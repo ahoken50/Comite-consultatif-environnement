@@ -16,7 +16,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
     };
 
     return (
-        <Box sx={{ display: 'flex' }}>
+        <Box sx={{ display: 'flex', minHeight: '100vh' }}>
             <CssBaseline />
             <Header onMenuClick={handleDrawerToggle} />
             <Sidebar mobileOpen={mobileOpen} onClose={handleDrawerToggle} />
