@@ -1,5 +1,5 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
-import { Project } from '../../types/project.types';
+import type { Project } from '../../types/project.types';
 import { projectsAPI } from './projectsAPI';
 
 interface ProjectsState {

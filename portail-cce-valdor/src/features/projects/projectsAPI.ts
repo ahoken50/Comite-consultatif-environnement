@@ -10,7 +10,7 @@ import {
     Timestamp
 } from 'firebase/firestore';
 import { db } from '../../services/firebase';
-import { Project } from '../../types/project.types';
+import type { Project } from '../../types/project.types';
 
 const COLLECTION_NAME = 'projects';
 

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Card, CardHeader, List, ListItem, ListItemAvatar, ListItemText, Avatar, Typography } from '@mui/material';
+import { Card, CardHeader, List, ListItem, ListItemAvatar, ListItemText, Avatar, Typography, Box } from '@mui/material';
 import { Comment, Add, CheckCircle } from '@mui/icons-material';
 
 const activities = [

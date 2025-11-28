@@ -17,37 +17,37 @@ const Dashboard: React.FC = () => {
 
             <Grid container spacing={3}>
                 {/* Stats Cards */}
-                <Grid item xs={12} sm={6} md={3}>
+                <Grid size={{ xs: 12, sm: 6, md: 3 }}>
                     <StatsCard title="Projets réalisés" value={8} icon={CheckCircle} color="primary" />
                 </Grid>
-                <Grid item xs={12} sm={6} md={3}>
+                <Grid size={{ xs: 12, sm: 6, md: 3 }}>
                     <StatsCard title="En cours" value={9} icon={Autorenew} color="secondary" />
                 </Grid>
-                <Grid item xs={12} sm={6} md={3}>
+                <Grid size={{ xs: 12, sm: 6, md: 3 }}>
                     <StatsCard title="Nouveaux" value={16} icon={NewReleases} color="warning" />
                 </Grid>
-                <Grid item xs={12} sm={6} md={3}>
+                <Grid size={{ xs: 12, sm: 6, md: 3 }}>
                     <StatsCard title="Urgents" value={2} icon={Warning} color="error" />
                 </Grid>
 
                 {/* Alerts & Next Meeting */}
-                <Grid item xs={12} md={8}>
+                <Grid size={{ xs: 12, md: 8 }}>
                     <AlertsPanel />
                 </Grid>
-                <Grid item xs={12} md={4}>
+                <Grid size={{ xs: 12, md: 4 }}>
                     <NextMeetingCard />
                 </Grid>
 
                 {/* Charts */}
-                <Grid item xs={12} md={4}>
+                <Grid size={{ xs: 12, md: 4 }}>
                     <CategoryChart />
                 </Grid>
-                <Grid item xs={12} md={8}>
+                <Grid size={{ xs: 12, md: 8 }}>
                     <ProgressChart />
                 </Grid>
 
                 {/* Activity Feed */}
-                <Grid item xs={12}>
+                <Grid size={{ xs: 12 }}>
                     <ActivityFeed />
                 </Grid>
             </Grid>

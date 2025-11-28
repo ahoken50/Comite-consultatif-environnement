@@ -14,7 +14,8 @@ import {
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Project, ProjectStatus, Priority, Category } from '../../types/project.types';
+import type { Project } from '../../types/project.types';
+import { ProjectStatus, Priority, Category } from '../../types/project.types';
 
 const projectSchema = z.object({
     code: z.string().min(1, 'Le code est requis'),
@@ -55,7 +56,7 @@ const ProjectForm: React.FC<ProjectFormProps> = ({ open, onClose, onSubmit, init
             <form onSubmit={handleSubmit(onSubmit)}>
                 <DialogContent>
                     <Grid container spacing={2}>
-                        <Grid item xs={12} sm={4}>
+                        <Grid size={{ xs: 12, sm: 4 }}>
                             <Controller
                                 name="code"
                                 control={control}
@@ -70,7 +71,7 @@ const ProjectForm: React.FC<ProjectFormProps> = ({ open, onClose, onSubmit, init
                                 )}
                             />
                         </Grid>
-                        <Grid item xs={12} sm={8}>
+                        <Grid size={{ xs: 12, sm: 8 }}>
                             <Controller
                                 name="name"
                                 control={control}
@@ -86,7 +87,7 @@ const ProjectForm: React.FC<ProjectFormProps> = ({ open, onClose, onSubmit, init
                             />
                         </Grid>
 
-                        <Grid item xs={12} sm={4}>
+                        <Grid size={{ xs: 12, sm: 4 }}>
                             <Controller
                                 name="category"
                                 control={control}
@@ -106,7 +107,7 @@ const ProjectForm: React.FC<ProjectFormProps> = ({ open, onClose, onSubmit, init
                                 )}
                             />
                         </Grid>
-                        <Grid item xs={12} sm={4}>
+                        <Grid size={{ xs: 12, sm: 4 }}>
                             <Controller
                                 name="priority"
                                 control={control}
@@ -126,7 +127,7 @@ const ProjectForm: React.FC<ProjectFormProps> = ({ open, onClose, onSubmit, init
                                 )}
                             />
                         </Grid>
-                        <Grid item xs={12} sm={4}>
+                        <Grid size={{ xs: 12, sm: 4 }}>
                             <Controller
                                 name="status"
                                 control={control}
@@ -147,7 +148,7 @@ const ProjectForm: React.FC<ProjectFormProps> = ({ open, onClose, onSubmit, init
                             />
                         </Grid>
 
-                        <Grid item xs={12}>
+                        <Grid size={{ xs: 12 }}>
                             <Controller
                                 name="description"
                                 control={control}
@@ -163,7 +164,7 @@ const ProjectForm: React.FC<ProjectFormProps> = ({ open, onClose, onSubmit, init
                             />
                         </Grid>
 
-                        <Grid item xs={12}>
+                        <Grid size={{ xs: 12 }}>
                             <Controller
                                 name="isUrgent"
                                 control={control}

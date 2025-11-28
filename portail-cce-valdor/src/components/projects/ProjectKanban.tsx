@@ -1,8 +1,9 @@
 import React from 'react';
 import { Box, Typography, Paper } from '@mui/material';
-import { DndContext, DragEndEvent, DragOverlay, useSensor, useSensors, PointerSensor } from '@dnd-kit/core';
-import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
-import { Project, ProjectStatus } from '../../types/project.types';
+import { DndContext, useSensor, useSensors, PointerSensor } from '@dnd-kit/core';
+import type { DragEndEvent } from '@dnd-kit/core';
+import type { Project } from '../../types/project.types';
+import { ProjectStatus } from '../../types/project.types';
 import ProjectCard from './ProjectCard';
 import { useDroppable } from '@dnd-kit/core';
 
@@ -51,7 +52,7 @@ const KanbanColumn = ({ id, title, color, projects, onProjectClick }: any) => {
     );
 };
 
-const ProjectKanban: React.FC<ProjectKanbanProps> = ({ projects, onProjectClick, onStatusChange }) => {
+const ProjectKanban: React.FC<ProjectKanbanProps> = ({ projects, onProjectClick }) => {
     const sensors = useSensors(useSensor(PointerSensor));
 
     const handleDragEnd = (event: DragEndEvent) => {

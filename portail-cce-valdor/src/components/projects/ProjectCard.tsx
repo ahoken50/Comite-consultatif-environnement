@@ -1,6 +1,7 @@
 import React from 'react';
 import { Card, CardContent, Typography, Box, Chip, Avatar, AvatarGroup, LinearProgress } from '@mui/material';
-import { Project, ProjectStatus, Priority } from '../../types/project.types';
+import type { Project } from '../../types/project.types';
+import { ProjectStatus, Priority } from '../../types/project.types';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 

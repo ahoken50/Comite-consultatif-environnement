@@ -5,7 +5,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import { signOut } from 'firebase/auth';
 import { auth } from '../../services/firebase';
 import { logout } from '../../features/auth/authSlice';
-import { RootState } from '../../store/rootReducer';
+import type { RootState } from '../../store/rootReducer';
 import logo from '../../assets/logo-valdor.png';
 
 interface HeaderProps {

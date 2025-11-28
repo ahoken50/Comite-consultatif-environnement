@@ -1,6 +1,6 @@
 import React from 'react';
 import { Card, CardContent, Box, Typography } from '@mui/material';
-import { SvgIconComponent } from '@mui/icons-material';
+import type { SvgIconComponent } from '@mui/icons-material';
 
 interface StatsCardProps {
     title: string;

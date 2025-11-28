@@ -13,7 +13,8 @@ import {
     Box
 } from '@mui/material';
 import { Edit, Delete, Visibility } from '@mui/icons-material';
-import { Project, ProjectStatus, Priority, Category } from '../../types/project.types';
+import type { Project } from '../../types/project.types';
+import { ProjectStatus, Priority } from '../../types/project.types';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
