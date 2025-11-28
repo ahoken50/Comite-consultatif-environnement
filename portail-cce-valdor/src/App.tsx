@@ -7,6 +7,7 @@ import { setUser, setLoading } from './features/auth/authSlice';
 import type { RootState } from './store/rootReducer';
 import MainLayout from './components/layout/MainLayout';
 import LoginPage from './pages/Auth/LoginPage';
+import SignUpPage from './pages/Auth/SignUpPage';
 
 import Dashboard from './pages/Dashboard/Dashboard';
 import ProjectsPage from './pages/Projects/ProjectsPage';
@@ -55,6 +56,7 @@ function App() {
     <Router>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/signup" element={<SignUpPage />} />
 
         <Route path="/" element={
           <ProtectedRoute>

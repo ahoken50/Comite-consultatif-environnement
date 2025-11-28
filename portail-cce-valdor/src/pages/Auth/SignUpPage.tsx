@@ -1,29 +1,63 @@
 import React, { useState } from 'react';
-import { Box, Button, Card, CardContent, TextField, Typography, Alert, InputAdornment, IconButton, Link } from '@mui/material';
-import { signInWithEmailAndPassword } from 'firebase/auth';
-import { auth } from '../../services/firebase';
+import { Box, Button, Card, CardContent, TextField, Typography, Alert, Link, InputAdornment, IconButton } from '@mui/material';
+import { createUserWithEmailAndPassword } from 'firebase/auth';
+import { doc, setDoc, collection, getDocs } from 'firebase/firestore';
+import { auth, db } from '../../services/firebase';
 import { useNavigate, Link as RouterLink } from 'react-router-dom';
-import { Email, Lock, Visibility, VisibilityOff } from '@mui/icons-material';
+import { Visibility, VisibilityOff, Email, Lock, Person } from '@mui/icons-material';
 import logo from '../../assets/logo-valdor.png';
 
-const LoginPage: React.FC = () => {
+const SignUpPage: React.FC = () => {
+    const [fullName, setFullName] = useState('');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
+    const [confirmPassword, setConfirmPassword] = useState('');
     const [showPassword, setShowPassword] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
     const navigate = useNavigate();
 
-    const handleLogin = async (e: React.FormEvent) => {
+    const handleSignup = async (e: React.FormEvent) => {
         e.preventDefault();
         setError(null);
+
+        if (password !== confirmPassword) {
+            setError("Les mots de passe ne correspondent pas.");
+            return;
+        }
+
         setLoading(true);
         try {
-            await signInWithEmailAndPassword(auth, email, password);
+            // 1. Create Authentication User
+            const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+            const user = userCredential.user;
+
+            // 2. Check if this is the first user in the 'users' collection
+            const usersRef = collection(db, 'users');
+            const snapshot = await getDocs(usersRef);
+            const isFirstUser = snapshot.empty;
+
+            const role = isFirstUser ? 'admin' : 'user';
+
+            // 3. Create User Document in Firestore
+            await setDoc(doc(db, 'users', user.uid), {
+                uid: user.uid,
+                email: user.email,
+                displayName: fullName,
+                role: role,
+                createdAt: new Date().toISOString()
+            });
+
             navigate('/dashboard');
         } catch (err: any) {
-            setError('Échec de la connexion. Vérifiez vos identifiants.');
             console.error(err);
+            if (err.code === 'auth/email-already-in-use') {
+                setError("Cette adresse courriel est déjà utilisée.");
+            } else if (err.code === 'auth/weak-password') {
+                setError("Le mot de passe doit contenir au moins 6 caractères.");
+            } else {
+                setError("Une erreur est survenue lors de l'inscription.");
+            }
         } finally {
             setLoading(false);
         }
@@ -79,7 +113,7 @@ const LoginPage: React.FC = () => {
                     </Box>
 
                     <Typography variant="h4" component="h1" sx={{ fontWeight: 'bold', color: 'grey.900', mb: 1, textAlign: 'center' }}>
-                        Connexion
+                        Créer un compte
                     </Typography>
                     <Typography variant="body2" sx={{ color: 'grey.600', fontWeight: 500, mb: 4, textAlign: 'center' }}>
                         Portail CCE Val-d'Or
@@ -87,8 +121,37 @@ const LoginPage: React.FC = () => {
 
                     {error && <Alert severity="error" sx={{ width: '100%', mb: 3 }}>{error}</Alert>}
 
-                    <form onSubmit={handleLogin} style={{ width: '100%' }}>
+                    <form onSubmit={handleSignup} style={{ width: '100%' }}>
                         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
+
+                            <Box>
+                                <Typography variant="caption" sx={{ fontWeight: 600, color: 'grey.800', ml: 0.5, mb: 0.5, display: 'block' }}>
+                                    Nom complet
+                                </Typography>
+                                <TextField
+                                    fullWidth
+                                    placeholder="Jean Tremblay"
+                                    value={fullName}
+                                    onChange={(e) => setFullName(e.target.value)}
+                                    required
+                                    InputProps={{
+                                        startAdornment: (
+                                            <InputAdornment position="start">
+                                                <Person sx={{ color: 'grey.500' }} />
+                                            </InputAdornment>
+                                        ),
+                                    }}
+                                    sx={{
+                                        '& .MuiOutlinedInput-root': {
+                                            borderRadius: 2,
+                                            bgcolor: 'white',
+                                            '& fieldset': { borderColor: 'grey.400' },
+                                            '&:hover fieldset': { borderColor: 'grey.500' },
+                                            '&.Mui-focused fieldset': { borderColor: '#059669', borderWidth: 2 }, // Emerald 600
+                                        }
+                                    }}
+                                />
+                            </Box>
 
                             <Box>
                                 <Typography variant="caption" sx={{ fontWeight: 600, color: 'grey.800', ml: 0.5, mb: 0.5, display: 'block' }}>
@@ -114,7 +177,7 @@ const LoginPage: React.FC = () => {
                                             bgcolor: 'white',
                                             '& fieldset': { borderColor: 'grey.400' },
                                             '&:hover fieldset': { borderColor: 'grey.500' },
-                                            '&.Mui-focused fieldset': { borderColor: '#059669', borderWidth: 2 }, // Emerald 600
+                                            '&.Mui-focused fieldset': { borderColor: '#059669', borderWidth: 2 },
                                         }
                                     }}
                                 />
@@ -160,6 +223,36 @@ const LoginPage: React.FC = () => {
                                 />
                             </Box>
 
+                            <Box>
+                                <Typography variant="caption" sx={{ fontWeight: 600, color: 'grey.800', ml: 0.5, mb: 0.5, display: 'block' }}>
+                                    Confirmer le mot de passe
+                                </Typography>
+                                <TextField
+                                    type={showPassword ? "text" : "password"}
+                                    fullWidth
+                                    placeholder="••••••••"
+                                    value={confirmPassword}
+                                    onChange={(e) => setConfirmPassword(e.target.value)}
+                                    required
+                                    InputProps={{
+                                        startAdornment: (
+                                            <InputAdornment position="start">
+                                                <Lock sx={{ color: 'grey.500' }} />
+                                            </InputAdornment>
+                                        )
+                                    }}
+                                    sx={{
+                                        '& .MuiOutlinedInput-root': {
+                                            borderRadius: 2,
+                                            bgcolor: 'white',
+                                            '& fieldset': { borderColor: 'grey.400' },
+                                            '&:hover fieldset': { borderColor: 'grey.500' },
+                                            '&.Mui-focused fieldset': { borderColor: '#059669', borderWidth: 2 },
+                                        }
+                                    }}
+                                />
+                            </Box>
+
                             <Button
                                 type="submit"
                                 variant="contained"
@@ -177,40 +270,23 @@ const LoginPage: React.FC = () => {
                                     boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)'
                                 }}
                             >
-                                {loading ? 'Connexion en cours...' : 'Se connecter'}
+                                {loading ? 'Création en cours...' : "S'inscrire"}
                             </Button>
 
-                            <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 1 }}>
-                                <Link href="#" sx={{ color: '#D32F2F', fontSize: '0.875rem', fontWeight: 600, textDecoration: 'none', '&:hover': { textDecoration: 'underline' } }}>
-                                    Mot de passe oublié?
-                                </Link>
-                                <Link component={RouterLink} to="/signup" sx={{ color: '#D32F2F', fontSize: '0.875rem', fontWeight: 600, textDecoration: 'none', '&:hover': { textDecoration: 'underline' } }}>
-                                    Créer un compte
-                                </Link>
+                            <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>
+                                <Typography variant="body2" sx={{ color: 'grey.600' }}>
+                                    Déjà un compte?{' '}
+                                    <Link component={RouterLink} to="/login" sx={{ color: '#D32F2F', fontWeight: 600, textDecoration: 'none', '&:hover': { textDecoration: 'underline' } }}>
+                                        Se connecter
+                                    </Link>
+                                </Typography>
                             </Box>
                         </Box>
                     </form>
                 </CardContent>
             </Card>
-
-            {/* Footer */}
-            <Box sx={{
-                position: 'absolute',
-                bottom: 24,
-                left: 0,
-                right: 0,
-                zIndex: 20,
-                display: 'flex',
-                justifyContent: 'center',
-                color: 'rgba(255,255,255,0.9)',
-                fontSize: '0.875rem'
-            }}>
-                <Typography variant="body2" sx={{ textShadow: '0 2px 4px rgba(0,0,0,0.5)' }}>
-                    © 2024 Ville de Val-d'Or. Tous droits réservés.
-                </Typography>
-            </Box>
         </Box>
     );
 };
 
-export default LoginPage;
+export default SignUpPage;
