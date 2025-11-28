@@ -17,8 +17,8 @@ const MembersPage: React.FC = () => {
     }, [dispatch]);
 
     const handleEdit = (member: Member) => {
-        console.log('Edit member', member);
-        // TODO: Implement edit modal
+        // Placeholder for edit functionality
+        alert(`Edit functionality for ${member.displayName} is not yet implemented.`);
     };
 
     const handleDelete = async (id: string) => {
@@ -42,8 +42,23 @@ const MembersPage: React.FC = () => {
                     Membres du comité
                 </Typography>
                 <Button variant="contained" startIcon={<Add />}>
+                    Ajouter un membre
+                </Button>
             </Box>
-            );
+
+            <Grid container spacing={3}>
+                {members.map((member) => (
+                    <Grid size={{ xs: 12, md: 6, lg: 4 }} key={member.id}>
+                        <MemberCard
+                            member={member}
+                            onEdit={handleEdit}
+                            onDelete={handleDelete}
+                        />
+                    </Grid>
+                ))}
+            </Grid>
+        </Box>
+    );
 };
 
-            export default MembersPage;
+export default MembersPage;

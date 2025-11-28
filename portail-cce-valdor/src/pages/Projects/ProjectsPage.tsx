@@ -19,8 +19,8 @@ import {
 } from '@mui/icons-material';
 import { useDispatch, useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
-import { AppDispatch } from '../../store/store';
-import { RootState } from '../../store/rootReducer';
+import type { AppDispatch } from '../../store/store';
+import type { RootState } from '../../store/rootReducer';
 import { fetchProjects } from '../../features/projects/projectsSlice';
 import ProjectCard from '../../components/projects/ProjectCard';
 import ProjectList from '../../components/projects/ProjectList';
@@ -40,7 +40,7 @@ const ProjectsPage: React.FC = () => {
         dispatch(fetchProjects());
     }, [dispatch]);
 
-    const handleViewChange = (event: React.MouseEvent<HTMLElement>, newView: 'grid' | 'list' | 'kanban' | null) => {
+    const handleViewChange = (_: React.MouseEvent<HTMLElement>, newView: 'grid' | 'list' | 'kanban' | null) => {
         if (newView !== null) {
             setView(newView);
         }
@@ -55,15 +55,25 @@ const ProjectsPage: React.FC = () => {
         navigate(`/projects/${id}`);
     };
 
-    const handleCreateProject = (data: any) => {
-        console.log('Create project', data);
-        // Dispatch create action here
-        setIsFormOpen(false);
+    const handleCreateProject = async (data: any) => {
+        try {
+            // Placeholder: Log data to avoid unused var warning
+            console.log('Creating project with:', data);
+            // await dispatch(createProject(data)).unwrap();
+            setIsFormOpen(false);
+        } catch (error) {
+            console.error('Failed to create project:', error);
+        }
     };
 
-    const handleStatusChange = (projectId: string, newStatus: ProjectStatus) => {
-        console.log('Status change', projectId, newStatus);
-        // Dispatch update action here
+    const handleStatusChange = async (projectId: string, newStatus: ProjectStatus) => {
+        try {
+            // Placeholder: Log data to avoid unused var warning
+            console.log('Updating status:', projectId, newStatus);
+            // await dispatch(updateProject({ id: projectId, updates: { status: newStatus } })).unwrap();
+        } catch (error) {
+            console.error('Failed to update project status:', error);
+        }
     };
 
     return (
@@ -133,15 +143,20 @@ const ProjectsPage: React.FC = () => {
                 <ProjectList
                     projects={filteredProjects}
                     onView={handleProjectClick}
-                    onEdit={(id) => console.log('Edit', id)}
-                    onDelete={(id) => console.log('Delete', id)}
+                    onEdit={(id) => handleProjectClick(id)} // Navigate to detail for edit
+                    onDelete={(id) => {
+                        if (window.confirm('Voulez-vous vraiment supprimer ce projet ?')) {
+                            // dispatch(deleteProject(id));
+                            console.log('Delete project', id);
+                        }
+                    }}
                 />
             )}
 
             {view === 'grid' && (
                 <Grid container spacing={3}>
                     {filteredProjects.map((project) => (
-                        <Grid item xs={12} sm={6} md={4} key={project.id}>
+                        <Grid size={{ xs: 12, sm: 6, md: 4 }} key={project.id}>
                             <ProjectCard project={project} onClick={handleProjectClick} />
                         </Grid>
                     ))}

@@ -2,8 +2,9 @@ import React, { useCallback, useState } from 'react';
 import { Box, Typography, Button, LinearProgress, Paper } from '@mui/material';
 import { CloudUpload } from '@mui/icons-material';
 import { useDropzone } from 'react-dropzone';
-import { useDispatch } from 'react-redux';
+import { useDispatch, useSelector } from 'react-redux';
 import type { AppDispatch } from '../../store/store';
+import type { RootState } from '../../store/rootReducer';
 import { uploadDocument } from '../../features/documents/documentsSlice';
 
 interface DocumentUploadProps {
@@ -18,10 +19,16 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({
     onUploadComplete
 }) => {
     const dispatch = useDispatch<AppDispatch>();
+    const { user } = useSelector((state: RootState) => state.auth);
     const [uploading, setUploading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
     const onDrop = useCallback(async (acceptedFiles: File[]) => {
+        if (!user) {
+            setError('Vous devez être connecté pour télécharger des fichiers.');
+            return;
+        }
+
         setUploading(true);
         setError(null);
 
@@ -31,7 +38,7 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({
                     file,
                     linkedEntityId,
                     linkedEntityType,
-                    uploadedBy: 'current-user' // TODO: Get from auth state
+                    uploadedBy: user.uid
                 })).unwrap();
             }
             if (onUploadComplete) {

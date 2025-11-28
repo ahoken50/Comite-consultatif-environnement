@@ -69,17 +69,20 @@ const MeetingsPage: React.FC = () => {
 
             <Grid container spacing={3}>
                 {displayedMeetings.map((meeting) => (
-                    <Grid item xs={12} sm={6} md={4} key={meeting.id}>
+                    <Grid size={{ xs: 12, sm: 6, md: 4 }} key={meeting.id}>
                         <MeetingCard
                             meeting={meeting}
                             onClick={handleMeetingClick}
-                            onEdit={(id) => console.log('Edit', id)}
-                            onDelete={(id) => console.log('Delete', id)}
+                            onEdit={(id) => handleMeetingClick(id)}
+                            onDelete={(id) => {
+                                // TODO: Implement delete
+                                console.log('Delete meeting', id);
+                            }}
                         />
                     </Grid>
                 ))}
                 {displayedMeetings.length === 0 && (
-                    <Grid item xs={12}>
+                    <Grid size={{ xs: 12 }}>
                         <Typography variant="body1" color="text.secondary" sx={{ textAlign: 'center', py: 4 }}>
                             Aucune réunion trouvée.
                         </Typography>
