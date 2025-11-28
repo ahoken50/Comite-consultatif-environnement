@@ -16,13 +16,22 @@ const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
     const { user } = useSelector((state: RootState) => state.auth);
     const dispatch = useDispatch();
     const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
+    const [notificationAnchorEl, setNotificationAnchorEl] = useState<null | HTMLElement>(null);
 
     const handleMenu = (event: React.MouseEvent<HTMLElement>) => {
         setAnchorEl(event.currentTarget);
     };
 
+    const handleNotificationClick = (event: React.MouseEvent<HTMLElement>) => {
+        setNotificationAnchorEl(event.currentTarget);
+    };
+
     const handleClose = () => {
         setAnchorEl(null);
+    };
+
+    const handleNotificationClose = () => {
+        setNotificationAnchorEl(null);
     };
 
     const handleLogout = async () => {
@@ -52,11 +61,27 @@ const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
                 </Box>
 
                 <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                    <IconButton color="inherit" size="large">
-                        <Badge badgeContent={4} color="error">
+                    <IconButton color="inherit" size="large" onClick={handleNotificationClick}>
+                        <Badge badgeContent={0} color="error">
                             <Notifications />
                         </Badge>
                     </IconButton>
+
+                    <Menu
+                        anchorEl={notificationAnchorEl}
+                        open={Boolean(notificationAnchorEl)}
+                        onClose={handleNotificationClose}
+                        anchorOrigin={{
+                            vertical: 'bottom',
+                            horizontal: 'right',
+                        }}
+                        transformOrigin={{
+                            vertical: 'top',
+                            horizontal: 'right',
+                        }}
+                    >
+                        <MenuItem onClick={handleNotificationClose}>Aucune notification</MenuItem>
+                    </Menu>
 
                     <IconButton
                         size="large"
