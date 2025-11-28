@@ -17,6 +17,7 @@ import MeetingDetailPage from './pages/Meetings/MeetingDetailPage';
 import DocumentsPage from './pages/Documents/DocumentsPage';
 import MembersPage from './pages/Members/MembersPage';
 import SettingsPage from './pages/Settings/SettingsPage';
+import ReportsPage from './pages/Reports/ReportsPage';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -117,6 +118,14 @@ function App() {
           <ProtectedRoute>
             <MainLayout>
               <SettingsPage />
+            </MainLayout>
+          </ProtectedRoute>
+        } />
+
+        <Route path="/reports" element={
+          <ProtectedRoute>
+            <MainLayout>
+              <ReportsPage />
             </MainLayout>
           </ProtectedRoute>
         } />

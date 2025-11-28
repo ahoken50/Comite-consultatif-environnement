@@ -1,4 +1,5 @@
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Box, Grid, Typography } from '@mui/material';
 import { CheckCircle, Autorenew, NewReleases, Warning } from '@mui/icons-material';
 import StatsCard from '../../components/dashboard/StatsCard';
@@ -9,6 +10,7 @@ import ProgressChart from '../../components/dashboard/ProgressChart';
 import ActivityFeed from '../../components/dashboard/ActivityFeed';
 
 const Dashboard: React.FC = () => {
+    const navigate = useNavigate();
     return (
         <Box>
             <Typography variant="h4" gutterBottom sx={{ fontWeight: 700, color: 'text.primary', mb: 4 }}>
@@ -18,16 +20,24 @@ const Dashboard: React.FC = () => {
             <Grid container spacing={3}>
                 {/* Stats Cards */}
                 <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-                    <StatsCard title="Projets réalisés" value={8} icon={CheckCircle} color="primary" />
+                    <Box onClick={() => navigate('/projects?status=completed')} sx={{ cursor: 'pointer', height: '100%' }}>
+                        <StatsCard title="Projets réalisés" value={8} icon={CheckCircle} color="primary" />
+                    </Box>
                 </Grid>
                 <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-                    <StatsCard title="En cours" value={9} icon={Autorenew} color="secondary" />
+                    <Box onClick={() => navigate('/projects?status=in_progress')} sx={{ cursor: 'pointer', height: '100%' }}>
+                        <StatsCard title="En cours" value={9} icon={Autorenew} color="secondary" />
+                    </Box>
                 </Grid>
                 <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-                    <StatsCard title="Nouveaux" value={16} icon={NewReleases} color="warning" />
+                    <Box onClick={() => navigate('/projects?status=new')} sx={{ cursor: 'pointer', height: '100%' }}>
+                        <StatsCard title="Nouveaux" value={16} icon={NewReleases} color="warning" />
+                    </Box>
                 </Grid>
                 <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-                    <StatsCard title="Urgents" value={2} icon={Warning} color="error" />
+                    <Box onClick={() => navigate('/projects?status=urgent')} sx={{ cursor: 'pointer', height: '100%' }}>
+                        <StatsCard title="Urgents" value={2} icon={Warning} color="error" />
+                    </Box>
                 </Grid>
 
                 {/* Alerts & Next Meeting */}

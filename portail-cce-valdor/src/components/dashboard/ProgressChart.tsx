@@ -16,8 +16,8 @@ const ProgressChart: React.FC = () => {
         <Card sx={{ height: '100%' }}>
             <CardHeader title="Progression mensuelle" sx={{ borderBottom: 1, borderColor: 'divider' }} />
             <CardContent>
-                <Box sx={{ height: 300, width: '100%' }}>
-                    <ResponsiveContainer>
+                <Box sx={{ height: 300, width: '100%', minHeight: 300, minWidth: 0 }}>
+                    <ResponsiveContainer width="100%" height="100%">
                         <LineChart data={data} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
                             <CartesianGrid strokeDasharray="3 3" vertical={false} />
                             <XAxis dataKey="name" axisLine={false} tickLine={false} />
