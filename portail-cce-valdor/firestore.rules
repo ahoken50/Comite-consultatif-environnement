@@ -1,0 +1,46 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isCoordinator() {
+      return isAuthenticated() && 
+        get(/databases/$(database)/documents/members/$(request.auth.uid)).data.role == 'coordinator';
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Members collection
+    match /members/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isOwner(userId); // Users can create their own profile
+      allow update: if isCoordinator() || isOwner(userId); // Coordinators or owner can update
+      allow delete: if isCoordinator(); // Only coordinators can delete
+    }
+
+    // Projects collection
+    match /projects/{projectId} {
+      allow read: if isAuthenticated();
+      allow write: if isCoordinator(); // Only coordinators can manage projects
+    }
+
+    // Meetings collection
+    match /meetings/{meetingId} {
+      allow read: if isAuthenticated();
+      allow write: if isCoordinator(); // Only coordinators can manage meetings
+    }
+
+    // Documents collection
+    match /documents/{documentId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated(); // Any authenticated user can upload
+      allow update, delete: if isCoordinator() || resource.data.uploadedBy == request.auth.uid;
+    }
+  }
+}
