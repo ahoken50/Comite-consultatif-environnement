@@ -101,6 +101,7 @@ const LoginPage: React.FC = () => {
                                     value={email}
                                     onChange={(e) => setEmail(e.target.value)}
                                     required
+                                    autoComplete="email"
                                     InputProps={{
                                         startAdornment: (
                                             <InputAdornment position="start">
@@ -131,6 +132,7 @@ const LoginPage: React.FC = () => {
                                     value={password}
                                     onChange={(e) => setPassword(e.target.value)}
                                     required
+                                    autoComplete="current-password"
                                     InputProps={{
                                         startAdornment: (
                                             <InputAdornment position="start">

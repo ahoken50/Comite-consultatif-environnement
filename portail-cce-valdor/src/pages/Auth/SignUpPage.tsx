@@ -134,6 +134,7 @@ const SignUpPage: React.FC = () => {
                                     value={fullName}
                                     onChange={(e) => setFullName(e.target.value)}
                                     required
+                                    autoComplete="name"
                                     InputProps={{
                                         startAdornment: (
                                             <InputAdornment position="start">
@@ -164,6 +165,7 @@ const SignUpPage: React.FC = () => {
                                     value={email}
                                     onChange={(e) => setEmail(e.target.value)}
                                     required
+                                    autoComplete="email"
                                     InputProps={{
                                         startAdornment: (
                                             <InputAdornment position="start">
@@ -194,6 +196,7 @@ const SignUpPage: React.FC = () => {
                                     value={password}
                                     onChange={(e) => setPassword(e.target.value)}
                                     required
+                                    autoComplete="new-password"
                                     InputProps={{
                                         startAdornment: (
                                             <InputAdornment position="start">
@@ -234,6 +237,7 @@ const SignUpPage: React.FC = () => {
                                     value={confirmPassword}
                                     onChange={(e) => setConfirmPassword(e.target.value)}
                                     required
+                                    autoComplete="new-password"
                                     InputProps={{
                                         startAdornment: (
                                             <InputAdornment position="start">
