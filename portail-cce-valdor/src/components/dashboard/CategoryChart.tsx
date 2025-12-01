@@ -2,12 +2,7 @@ import React from 'react';
 import { Card, CardHeader, CardContent, Box } from '@mui/material';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
 
-const data = [
-    { name: 'Eau', value: 8, color: '#0288D1' },
-    { name: 'Biodiversité', value: 5, color: '#2E7D32' },
-    { name: 'Matières résiduelles', value: 6, color: '#F57C00' },
-    { name: 'Réglementation', value: 4, color: '#7B1FA2' },
-];
+const data: Array<{ name: string; value: number; color: string }> = [];
 
 const CategoryChart: React.FC = () => {
     return (
