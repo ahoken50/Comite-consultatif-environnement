@@ -98,7 +98,17 @@ const MeetingForm: React.FC<MeetingFormProps> = ({ open, onClose, onSubmit, init
         if (!file) return;
 
         try {
-            const parsedData = await parseAgendaPDF(file);
+            let parsedData;
+            if (file.type === 'application/pdf') {
+                parsedData = await parseAgendaPDF(file);
+            } else if (file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
+                // Dynamic import to avoid circular dependencies if any, though not strictly needed here
+                const { parseAgendaDOCX } = await import('../../services/docxParserService');
+                parsedData = await parseAgendaDOCX(file);
+            } else {
+                alert('Format de fichier non supporté. Veuillez utiliser PDF ou DOCX.');
+                return;
+            }
 
             if (parsedData.title) {
                 setValue('title', parsedData.title);
@@ -118,8 +128,8 @@ const MeetingForm: React.FC<MeetingFormProps> = ({ open, onClose, onSubmit, init
                 replace(formItems);
             }
         } catch (error) {
-            console.error('Error parsing PDF:', error);
-            alert('Erreur lors de la lecture du PDF.');
+            console.error('Error parsing file:', error);
+            alert('Erreur lors de la lecture du fichier.');
         }
     };
 
@@ -137,7 +147,7 @@ const MeetingForm: React.FC<MeetingFormProps> = ({ open, onClose, onSubmit, init
                             size="small"
                             sx={{ mr: 1 }}
                         >
-                            Importer PDF
+                            Importer ODJ (PDF/DOCX)
                             <input
                                 id={fileInputId}
                                 type="file"
@@ -152,7 +162,7 @@ const MeetingForm: React.FC<MeetingFormProps> = ({ open, onClose, onSubmit, init
                                     whiteSpace: 'nowrap',
                                     width: 1,
                                 }}
-                                accept=".pdf"
+                                accept=".pdf,.docx"
                                 onChange={handleImportPDF}
                             />
                         </Button>
