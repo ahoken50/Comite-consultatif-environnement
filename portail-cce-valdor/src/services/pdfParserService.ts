@@ -68,32 +68,56 @@ export const parseAgendaPDF = async (file: File): Promise<ParsedMeetingData> => 
     let itemOrder = 1;
 
     for (const line of lines) {
-        const itemMatch = line.match(/^(\d+)\.\s+(.+)/);
-        if (itemMatch) {
-            // New item found
+        // Regex for item starting with number and dot (e.g. "1. Title")
+        // We also handle the case where the number and dot are on one line, and the text is on the next (handled by state)
+        // Relaxed regex: Number, optional dot/paren, optional whitespace, then content
+        const itemMatch = line.match(/^(\d+)[.)]?\s*(.*)/);
+
+        // Check if it's a "pure" number line (e.g. "1." or "1") which suggests the text is on the next line
+        const isNumberOnly = line.match(/^(\d+)[.)]?\s*$/);
+
+        if (itemMatch && !isNumberOnly && itemMatch[2].length > 0) {
+            // Standard case: "1. Title"
             if (currentItem && currentItem.title) {
                 result.agendaItems?.push(currentItem as AgendaItem);
             }
 
             const order = parseInt(itemMatch[1]);
-            // Simple check to ensure we are following a sequence (optional, but good for noise reduction)
-            // if (order === itemOrder) {
             currentItem = {
                 id: `imported-${Date.now()}-${order}`,
                 order: order,
                 title: itemMatch[2],
-                duration: 15, // Default
-                presenter: 'Coordonnateur', // Default
-                objective: 'Information', // Default
+                duration: 15,
+                presenter: 'Coordonnateur',
+                objective: 'Information',
                 decision: ''
             };
             itemOrder++;
-            // }
+        } else if (isNumberOnly) {
+            // Case: "1." on its own line. Prepare for next line to be the title.
+            if (currentItem && currentItem.title) {
+                result.agendaItems?.push(currentItem as AgendaItem);
+            }
+
+            const order = parseInt(isNumberOnly[1]);
+            currentItem = {
+                id: `imported-${Date.now()}-${order}`,
+                order: order,
+                title: '', // Will be filled by next line
+                duration: 15,
+                presenter: 'Coordonnateur',
+                objective: 'Information',
+                decision: ''
+            };
+            itemOrder++;
         } else if (currentItem) {
             // Append to current item title if it looks like continuation
-            // We assume that if a line doesn't start with a number and we are inside an item, it belongs to that item.
-            // We join with a space.
-            currentItem.title += ' ' + line;
+            // If the title is empty (from NumberOnly case), this line IS the title.
+            if (currentItem.title === '') {
+                currentItem.title = line;
+            } else {
+                currentItem.title += ' ' + line;
+            }
         }
     }
     // Push last item
