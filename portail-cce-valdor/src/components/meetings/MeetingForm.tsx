@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useId } from 'react';
 import {
     Dialog,
     DialogTitle,
@@ -66,6 +66,8 @@ const MeetingForm: React.FC<MeetingFormProps> = ({ open, onClose, onSubmit, init
         name: "agendaItems",
     });
 
+    const fileInputId = useId();
+
     const handlePrint = () => {
         const data = watch();
         // Create a temporary meeting object for the PDF generator
@@ -124,7 +126,7 @@ const MeetingForm: React.FC<MeetingFormProps> = ({ open, onClose, onSubmit, init
                     {!initialData && (
                         <Button
                             component="label"
-                            htmlFor="pdf-upload-input"
+                            htmlFor={fileInputId}
                             startIcon={<UploadFile />}
                             variant="outlined"
                             size="small"
@@ -132,9 +134,19 @@ const MeetingForm: React.FC<MeetingFormProps> = ({ open, onClose, onSubmit, init
                         >
                             Importer PDF
                             <input
-                                id="pdf-upload-input"
+                                id={fileInputId}
                                 type="file"
-                                hidden
+                                style={{
+                                    clip: 'rect(0 0 0 0)',
+                                    clipPath: 'inset(50%)',
+                                    height: 1,
+                                    overflow: 'hidden',
+                                    position: 'absolute',
+                                    bottom: 0,
+                                    left: 0,
+                                    whiteSpace: 'nowrap',
+                                    width: 1,
+                                }}
                                 accept=".pdf"
                                 onChange={handleImportPDF}
                             />
