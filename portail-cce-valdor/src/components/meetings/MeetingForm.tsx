@@ -16,9 +16,10 @@ import {
 import { useForm, Controller, useFieldArray } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Add, Delete, Print } from '@mui/icons-material';
+import { Add, Delete, Print, UploadFile } from '@mui/icons-material';
 import { MeetingType, MeetingStatus } from '../../types/meeting.types';
 import { generateAgendaPDF } from '../../services/pdfServiceAgenda';
+import { parseAgendaPDF } from '../../services/pdfParserService';
 
 const agendaItemSchema = z.object({
     title: z.string().min(1, 'Le titre est requis'),
@@ -48,7 +49,7 @@ interface MeetingFormProps {
 }
 
 const MeetingForm: React.FC<MeetingFormProps> = ({ open, onClose, onSubmit, initialData }) => {
-    const { control, handleSubmit, formState: { errors }, watch } = useForm<MeetingFormData>({
+    const { control, handleSubmit, formState: { errors }, watch, setValue } = useForm<MeetingFormData>({
         resolver: zodResolver(meetingSchema) as any,
         defaultValues: {
             title: initialData?.title || '',
@@ -60,7 +61,7 @@ const MeetingForm: React.FC<MeetingFormProps> = ({ open, onClose, onSubmit, init
         },
     });
 
-    const { fields, append, remove } = useFieldArray({
+    const { fields, append, remove, replace } = useFieldArray({
         control,
         name: "agendaItems",
     });
@@ -85,20 +86,69 @@ const MeetingForm: React.FC<MeetingFormProps> = ({ open, onClose, onSubmit, init
         generateAgendaPDF(meetingForPdf as any);
     };
 
+    const handleImportPDF = async (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        if (!file) return;
+
+        try {
+            const parsedData = await parseAgendaPDF(file);
+
+            if (parsedData.title) {
+                setValue('title', parsedData.title);
+            }
+            if (parsedData.date) {
+                setValue('date', parsedData.date);
+            }
+            if (parsedData.agendaItems && parsedData.agendaItems.length > 0) {
+                const formItems = parsedData.agendaItems.map(item => ({
+                    title: item.title,
+                    duration: item.duration || 15,
+                    presenter: item.presenter || 'Coordonnateur',
+                    objective: item.objective || 'Information',
+                    decision: item.decision || '',
+                    description: item.description || ''
+                }));
+                replace(formItems);
+            }
+        } catch (error) {
+            console.error('Error parsing PDF:', error);
+            alert('Erreur lors de la lecture du PDF.');
+        }
+    };
+
     return (
         <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
             <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 {initialData ? 'Modifier la réunion' : 'Nouvelle réunion'}
-                {initialData && (
-                    <Button
-                        startIcon={<Print />}
-                        onClick={handlePrint}
-                        variant="outlined"
-                        size="small"
-                    >
-                        Imprimer l'ODJ
-                    </Button>
-                )}
+                <Box>
+                    {!initialData && (
+                        <Button
+                            component="label"
+                            startIcon={<UploadFile />}
+                            variant="outlined"
+                            size="small"
+                            sx={{ mr: 1 }}
+                        >
+                            Importer PDF
+                            <input
+                                type="file"
+                                hidden
+                                accept=".pdf"
+                                onChange={handleImportPDF}
+                            />
+                        </Button>
+                    )}
+                    {initialData && (
+                        <Button
+                            startIcon={<Print />}
+                            onClick={handlePrint}
+                            variant="outlined"
+                            size="small"
+                        >
+                            Imprimer l'ODJ
+                        </Button>
+                    )}
+                </Box>
             </DialogTitle>
             <form onSubmit={handleSubmit(onSubmit)}>
                 <DialogContent>
@@ -287,7 +337,7 @@ const MeetingForm: React.FC<MeetingFormProps> = ({ open, onClose, onSubmit, init
                     </Button>
                 </DialogActions>
             </form>
-        </Dialog>
+        </Dialog >
     );
 };
 
