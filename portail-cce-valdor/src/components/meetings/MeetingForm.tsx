@@ -66,7 +66,8 @@ const MeetingForm: React.FC<MeetingFormProps> = ({ open, onClose, onSubmit, init
         name: "agendaItems",
     });
 
-    const fileInputId = useId();
+    const formId = useId();
+    const fileInputId = `${formId}-file-input`;
 
     const handleFormSubmit = (data: MeetingFormData) => {
         console.log('Form submitted with data:', data);
@@ -192,7 +193,7 @@ const MeetingForm: React.FC<MeetingFormProps> = ({ open, onClose, onSubmit, init
                                 render={({ field }) => (
                                     <TextField
                                         {...field}
-                                        id="meeting-title"
+                                        id={`${formId}-title`}
                                         label="Titre"
                                         fullWidth
                                         error={!!errors.title}
@@ -208,7 +209,7 @@ const MeetingForm: React.FC<MeetingFormProps> = ({ open, onClose, onSubmit, init
                                 render={({ field }) => (
                                     <TextField
                                         {...field}
-                                        id="meeting-date"
+                                        id={`${formId}-date`}
                                         label="Date et heure"
                                         type="datetime-local"
                                         fullWidth
@@ -226,7 +227,7 @@ const MeetingForm: React.FC<MeetingFormProps> = ({ open, onClose, onSubmit, init
                                 render={({ field }) => (
                                     <TextField
                                         {...field}
-                                        id="meeting-location"
+                                        id={`${formId}-location`}
                                         label="Lieu"
                                         fullWidth
                                         error={!!errors.location}
@@ -242,12 +243,14 @@ const MeetingForm: React.FC<MeetingFormProps> = ({ open, onClose, onSubmit, init
                                 render={({ field }) => (
                                     <TextField
                                         {...field}
-                                        id="meeting-type"
+                                        id={`${formId}-type`}
                                         select
                                         label="Type"
                                         fullWidth
                                         error={!!errors.type}
                                         helperText={errors.type?.message}
+                                        InputLabelProps={{ htmlFor: `${formId}-type` }}
+                                        inputProps={{ id: `${formId}-type` }}
                                     >
                                         {Object.values(MeetingType).map((type) => (
                                             <MenuItem key={type} value={type}>
@@ -266,12 +269,14 @@ const MeetingForm: React.FC<MeetingFormProps> = ({ open, onClose, onSubmit, init
                                 render={({ field }) => (
                                     <TextField
                                         {...field}
-                                        id="meeting-status"
+                                        id={`${formId}-status`}
                                         select
                                         label="Statut"
                                         fullWidth
                                         error={!!errors.status}
                                         helperText={errors.status?.message}
+                                        InputLabelProps={{ htmlFor: `${formId}-status` }}
+                                        inputProps={{ id: `${formId}-status` }}
                                     >
                                         {Object.values(MeetingStatus).map((status) => (
                                             <MenuItem key={status} value={status}>
@@ -308,7 +313,14 @@ const MeetingForm: React.FC<MeetingFormProps> = ({ open, onClose, onSubmit, init
                                                 name={`agendaItems.${index}.title`}
                                                 control={control}
                                                 render={({ field }) => (
-                                                    <TextField {...field} id={`agenda-${index}-title`} label="Sujet" fullWidth size="small" error={!!errors.agendaItems?.[index]?.title} />
+                                                    <TextField
+                                                        {...field}
+                                                        id={`${formId}-agenda-${index}-title`}
+                                                        label="Sujet"
+                                                        fullWidth
+                                                        size="small"
+                                                        error={!!errors.agendaItems?.[index]?.title}
+                                                    />
                                                 )}
                                             />
                                         </Grid>
@@ -317,7 +329,16 @@ const MeetingForm: React.FC<MeetingFormProps> = ({ open, onClose, onSubmit, init
                                                 name={`agendaItems.${index}.objective`}
                                                 control={control}
                                                 render={({ field }) => (
-                                                    <TextField {...field} id={`agenda-${index}-objective`} label="Objectif" fullWidth size="small" select>
+                                                    <TextField
+                                                        {...field}
+                                                        id={`${formId}-agenda-${index}-objective`}
+                                                        label="Objectif"
+                                                        fullWidth
+                                                        size="small"
+                                                        select
+                                                        InputLabelProps={{ htmlFor: `${formId}-agenda-${index}-objective` }}
+                                                        inputProps={{ id: `${formId}-agenda-${index}-objective` }}
+                                                    >
                                                         <MenuItem value="Information">Information</MenuItem>
                                                         <MenuItem value="Décision">Décision</MenuItem>
                                                         <MenuItem value="Consultation">Consultation</MenuItem>
@@ -330,7 +351,14 @@ const MeetingForm: React.FC<MeetingFormProps> = ({ open, onClose, onSubmit, init
                                                 name={`agendaItems.${index}.duration`}
                                                 control={control}
                                                 render={({ field }) => (
-                                                    <TextField {...field} id={`agenda-${index}-duration`} label="Durée (min)" type="number" fullWidth size="small" />
+                                                    <TextField
+                                                        {...field}
+                                                        id={`${formId}-agenda-${index}-duration`}
+                                                        label="Durée (min)"
+                                                        type="number"
+                                                        fullWidth
+                                                        size="small"
+                                                    />
                                                 )}
                                             />
                                         </Grid>
@@ -339,7 +367,13 @@ const MeetingForm: React.FC<MeetingFormProps> = ({ open, onClose, onSubmit, init
                                                 name={`agendaItems.${index}.presenter`}
                                                 control={control}
                                                 render={({ field }) => (
-                                                    <TextField {...field} id={`agenda-${index}-presenter`} label="Responsable" fullWidth size="small" />
+                                                    <TextField
+                                                        {...field}
+                                                        id={`${formId}-agenda-${index}-presenter`}
+                                                        label="Responsable"
+                                                        fullWidth
+                                                        size="small"
+                                                    />
                                                 )}
                                             />
                                         </Grid>
@@ -348,7 +382,13 @@ const MeetingForm: React.FC<MeetingFormProps> = ({ open, onClose, onSubmit, init
                                                 name={`agendaItems.${index}.decision`}
                                                 control={control}
                                                 render={({ field }) => (
-                                                    <TextField {...field} id={`agenda-${index}-decision`} label="Note / Décision attendue" fullWidth size="small" />
+                                                    <TextField
+                                                        {...field}
+                                                        id={`${formId}-agenda-${index}-decision`}
+                                                        label="Note / Décision attendue"
+                                                        fullWidth
+                                                        size="small"
+                                                    />
                                                 )}
                                             />
                                         </Grid>
