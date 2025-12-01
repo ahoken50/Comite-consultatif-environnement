@@ -90,8 +90,10 @@ export const parseAgendaPDF = async (file: File): Promise<ParsedMeetingData> => 
             itemOrder++;
             // }
         } else if (currentItem) {
-            // Append to current item description if it looks like continuation (heuristic)
-            // For now, we'll assume single line titles for simplicity or just ignore extra text to avoid noise
+            // Append to current item title if it looks like continuation
+            // We assume that if a line doesn't start with a number and we are inside an item, it belongs to that item.
+            // We join with a space.
+            currentItem.title += ' ' + line;
         }
     }
     // Push last item

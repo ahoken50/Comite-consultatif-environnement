@@ -124,6 +124,7 @@ const MeetingForm: React.FC<MeetingFormProps> = ({ open, onClose, onSubmit, init
                     {!initialData && (
                         <Button
                             component="label"
+                            htmlFor="pdf-upload-input"
                             startIcon={<UploadFile />}
                             variant="outlined"
                             size="small"
@@ -131,6 +132,7 @@ const MeetingForm: React.FC<MeetingFormProps> = ({ open, onClose, onSubmit, init
                         >
                             Importer PDF
                             <input
+                                id="pdf-upload-input"
                                 type="file"
                                 hidden
                                 accept=".pdf"
