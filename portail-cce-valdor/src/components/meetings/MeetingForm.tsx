@@ -7,12 +7,27 @@ import {
     Button,
     TextField,
     MenuItem,
-    Grid
+    Grid,
+    Typography,
+    IconButton,
+    Box,
+    Divider
 } from '@mui/material';
-import { useForm, Controller } from 'react-hook-form';
+import { useForm, Controller, useFieldArray } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
+import { Add, Delete, Print } from '@mui/icons-material';
 import { MeetingType, MeetingStatus } from '../../types/meeting.types';
+import { generateAgendaPDF } from '../../services/pdfServiceAgenda';
+
+const agendaItemSchema = z.object({
+    title: z.string().min(1, 'Le titre est requis'),
+    description: z.string().optional(),
+    duration: z.coerce.number().min(1, 'La durée est requise'),
+    presenter: z.string().min(1, 'Le responsable est requis'),
+    objective: z.string().min(1, 'L\'objectif est requis'),
+    decision: z.string().optional(),
+});
 
 const meetingSchema = z.object({
     title: z.string().min(1, 'Le titre est requis'),
@@ -20,6 +35,7 @@ const meetingSchema = z.object({
     location: z.string().min(1, 'Le lieu est requis'),
     type: z.nativeEnum(MeetingType),
     status: z.nativeEnum(MeetingStatus),
+    agendaItems: z.array(agendaItemSchema).optional(),
 });
 
 type MeetingFormData = z.infer<typeof meetingSchema>;
@@ -28,27 +44,68 @@ interface MeetingFormProps {
     open: boolean;
     onClose: () => void;
     onSubmit: (data: MeetingFormData) => void;
-    initialData?: Partial<MeetingFormData>;
+    initialData?: Partial<MeetingFormData> & { id?: string };
 }
 
 const MeetingForm: React.FC<MeetingFormProps> = ({ open, onClose, onSubmit, initialData }) => {
-    const { control, handleSubmit, formState: { errors } } = useForm<MeetingFormData>({
-        resolver: zodResolver(meetingSchema),
+    const { control, handleSubmit, formState: { errors }, watch } = useForm<MeetingFormData>({
+        resolver: zodResolver(meetingSchema) as any,
         defaultValues: {
             title: initialData?.title || '',
             date: initialData?.date || new Date().toISOString().slice(0, 16),
             location: initialData?.location || 'Salle du conseil',
             type: initialData?.type || MeetingType.REGULAR,
             status: initialData?.status || MeetingStatus.SCHEDULED,
+            agendaItems: initialData?.agendaItems || [],
         },
     });
 
+    const { fields, append, remove } = useFieldArray({
+        control,
+        name: "agendaItems",
+    });
+
+    const handlePrint = () => {
+        const data = watch();
+        // Create a temporary meeting object for the PDF generator
+        const meetingForPdf = {
+            ...data,
+            id: initialData?.id || 'temp',
+            attendees: [],
+            minutes: '',
+            dateCreated: new Date().toISOString(),
+            dateUpdated: new Date().toISOString(),
+            agendaItems: data.agendaItems?.map((item, index) => ({
+                ...item,
+                id: `item-${index}`,
+                order: index + 1,
+                description: item.description || '',
+            })) || []
+        };
+        generateAgendaPDF(meetingForPdf as any);
+    };
+
     return (
-        <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-            <DialogTitle>{initialData ? 'Modifier la réunion' : 'Nouvelle réunion'}</DialogTitle>
+        <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
+            <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                {initialData ? 'Modifier la réunion' : 'Nouvelle réunion'}
+                {initialData && (
+                    <Button
+                        startIcon={<Print />}
+                        onClick={handlePrint}
+                        variant="outlined"
+                        size="small"
+                    >
+                        Imprimer l'ODJ
+                    </Button>
+                )}
+            </DialogTitle>
             <form onSubmit={handleSubmit(onSubmit)}>
                 <DialogContent>
                     <Grid container spacing={2}>
+                        <Grid size={{ xs: 12 }}>
+                            <Typography variant="h6" gutterBottom>Informations générales</Typography>
+                        </Grid>
                         <Grid size={{ xs: 12 }}>
                             <Controller
                                 name="title"
@@ -141,6 +198,86 @@ const MeetingForm: React.FC<MeetingFormProps> = ({ open, onClose, onSubmit, init
                                 )}
                             />
                         </Grid>
+
+                        <Grid size={{ xs: 12 }}>
+                            <Divider sx={{ my: 2 }} />
+                            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                                <Typography variant="h6">Ordre du jour</Typography>
+                                <Button
+                                    startIcon={<Add />}
+                                    onClick={() => append({ title: '', duration: 15, presenter: '', objective: 'Information', decision: '' })}
+                                    variant="outlined"
+                                    size="small"
+                                >
+                                    Ajouter un point
+                                </Button>
+                            </Box>
+                        </Grid>
+
+                        {fields.map((field, index) => (
+                            <React.Fragment key={field.id}>
+                                <Grid size={{ xs: 12 }} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                    <Typography variant="subtitle2" sx={{ width: 24 }}>{index + 1}.</Typography>
+                                    <Grid container spacing={2} sx={{ flexGrow: 1 }}>
+                                        <Grid size={{ xs: 12, sm: 6 }}>
+                                            <Controller
+                                                name={`agendaItems.${index}.title`}
+                                                control={control}
+                                                render={({ field }) => (
+                                                    <TextField {...field} label="Sujet" fullWidth size="small" error={!!errors.agendaItems?.[index]?.title} />
+                                                )}
+                                            />
+                                        </Grid>
+                                        <Grid size={{ xs: 6, sm: 3 }}>
+                                            <Controller
+                                                name={`agendaItems.${index}.objective`}
+                                                control={control}
+                                                render={({ field }) => (
+                                                    <TextField {...field} label="Objectif" fullWidth size="small" select>
+                                                        <MenuItem value="Information">Information</MenuItem>
+                                                        <MenuItem value="Décision">Décision</MenuItem>
+                                                        <MenuItem value="Consultation">Consultation</MenuItem>
+                                                    </TextField>
+                                                )}
+                                            />
+                                        </Grid>
+                                        <Grid size={{ xs: 6, sm: 3 }}>
+                                            <Controller
+                                                name={`agendaItems.${index}.duration`}
+                                                control={control}
+                                                render={({ field }) => (
+                                                    <TextField {...field} label="Durée (min)" type="number" fullWidth size="small" />
+                                                )}
+                                            />
+                                        </Grid>
+                                        <Grid size={{ xs: 12, sm: 6 }}>
+                                            <Controller
+                                                name={`agendaItems.${index}.presenter`}
+                                                control={control}
+                                                render={({ field }) => (
+                                                    <TextField {...field} label="Responsable" fullWidth size="small" />
+                                                )}
+                                            />
+                                        </Grid>
+                                        <Grid size={{ xs: 12, sm: 6 }}>
+                                            <Controller
+                                                name={`agendaItems.${index}.decision`}
+                                                control={control}
+                                                render={({ field }) => (
+                                                    <TextField {...field} label="Note / Décision attendue" fullWidth size="small" />
+                                                )}
+                                            />
+                                        </Grid>
+                                    </Grid>
+                                    <IconButton onClick={() => remove(index)} color="error">
+                                        <Delete />
+                                    </IconButton>
+                                </Grid>
+                                <Grid size={{ xs: 12 }}>
+                                    <Divider />
+                                </Grid>
+                            </React.Fragment>
+                        ))}
                     </Grid>
                 </DialogContent>
                 <DialogActions>

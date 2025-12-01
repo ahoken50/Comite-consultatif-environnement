@@ -25,7 +25,7 @@ const MeetingsPage: React.FC = () => {
         await dispatch(createMeeting({
             ...data,
             attendees: [],
-            agendaItems: [],
+            // agendaItems is now part of data
             minutes: '',
         }));
         setIsFormOpen(false);

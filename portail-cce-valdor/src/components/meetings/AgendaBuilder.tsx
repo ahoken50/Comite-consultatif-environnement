@@ -83,6 +83,8 @@ const AgendaBuilder: React.FC<AgendaBuilderProps> = ({ items, onItemsChange }) =
             description: '',
             duration: 15,
             presenter: 'Coordonnateur',
+            objective: 'Information',
+            decision: '',
         };
         onItemsChange([...items, newItem]);
     };

@@ -22,6 +22,8 @@ export interface AgendaItem {
     description: string;
     duration: number; // in minutes
     presenter: string;
+    objective: string; // e.g., 'Information', 'Décision', 'Consultation'
+    decision?: string; // Optional note or decision
     linkedProjectId?: string;
 }
 
