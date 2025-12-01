@@ -1,8 +1,11 @@
 import * as pdfjsLib from 'pdfjs-dist';
 import { type AgendaItem } from '../types/meeting.types';
 
+// @ts-ignore
+import pdfWorker from 'pdfjs-dist/build/pdf.worker?url';
+
 // Set worker source
-pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
 
 interface ParsedMeetingData {
     title?: string;
