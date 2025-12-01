@@ -22,13 +22,30 @@ const MeetingsPage: React.FC = () => {
     }, [dispatch]);
 
     const handleCreateMeeting = async (data: any) => {
-        await dispatch(createMeeting({
-            ...data,
-            attendees: [],
-            // agendaItems is now part of data
-            minutes: '',
-        }));
-        setIsFormOpen(false);
+        console.log('MeetingsPage: handleCreateMeeting called with data:', data);
+        try {
+            const resultAction = await dispatch(createMeeting({
+                ...data,
+                attendees: [],
+                // agendaItems is now part of data
+                minutes: '',
+            }));
+
+            if (createMeeting.fulfilled.match(resultAction)) {
+                console.log('Meeting created successfully:', resultAction.payload);
+                setIsFormOpen(false);
+            } else {
+                if (resultAction.payload) {
+                    console.error('Failed to create meeting (payload):', resultAction.payload);
+                } else {
+                    console.error('Failed to create meeting (error):', resultAction.error);
+                }
+                alert('Erreur lors de la création de la réunion: ' + (resultAction.error?.message || 'Erreur inconnue'));
+            }
+        } catch (err) {
+            console.error('Unexpected error creating meeting:', err);
+            alert('Une erreur inattendue est survenue.');
+        }
     };
 
     const handleMeetingClick = (id: string) => {
