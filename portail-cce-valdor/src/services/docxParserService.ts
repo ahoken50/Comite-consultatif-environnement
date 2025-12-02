@@ -9,9 +9,10 @@ interface ParsedMeetingData {
 
 export const parseAgendaDOCX = async (file: File): Promise<ParsedMeetingData> => {
     const arrayBuffer = await file.arrayBuffer();
-    const result = await mammoth.extractRawText({ arrayBuffer });
-    const fullText = result.value;
-    const messages = result.messages; // Warnings, etc.
+    // Use convertToHtml to preserve list structure (auto-numbering becomes <ol>)
+    const result = await mammoth.convertToHtml({ arrayBuffer });
+    const html = result.value;
+    const messages = result.messages;
 
     if (messages.length > 0) {
         console.warn('Mammoth messages:', messages);
@@ -21,7 +22,9 @@ export const parseAgendaDOCX = async (file: File): Promise<ParsedMeetingData> =>
         agendaItems: []
     };
 
-    const lines = fullText.split('\n').map(line => line.trim()).filter(line => line.length > 0);
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, 'text/html');
+    const fullText = doc.body.textContent || "";
 
     // 1. Extract Date (Look for patterns like "Jeudi 9 juin 2022")
     // Regex for French date: DayName Day Month Year
@@ -43,64 +46,111 @@ export const parseAgendaDOCX = async (file: File): Promise<ParsedMeetingData> =>
     }
 
     // 2. Extract Title
-    // Look for "ASSEMBLÉE"
+    // Look for "ASSEMBLÉE" in the text
+    const lines = fullText.split('\n').map(line => line.trim()).filter(line => line.length > 0);
     const titleLine = lines.find(line => line.toUpperCase().includes('ASSEMBLÉE'));
     if (titleLine) {
         parsedResult.title = titleLine;
     }
 
     // 3. Extract Agenda Items
-    let currentItem: Partial<AgendaItem> | null = null;
-    let itemOrder = 1;
+    // Strategy A: Look for <ol> elements (Auto-numbered lists)
+    const orderedLists = doc.querySelectorAll('ol');
+    let foundAutoList = false;
 
-    for (const line of lines) {
-        // Regex for item starting with number and dot (e.g. "1. Title")
-        const itemMatch = line.match(/^(\d+)[.)]?\s*(.*)/);
-        const isNumberOnly = line.match(/^(\d+)[.)]?\s*$/);
+    // Find the longest ordered list, assuming it's the agenda
+    let mainList: HTMLOListElement | null = null;
+    let maxItems = 0;
 
-        if (itemMatch && !isNumberOnly && itemMatch[2].length > 0) {
-            if (currentItem && currentItem.title) {
-                parsedResult.agendaItems?.push(currentItem as AgendaItem);
-            }
-
-            const order = parseInt(itemMatch[1]);
-            currentItem = {
-                id: `imported-docx-${Date.now()}-${order}`,
-                order: order,
-                title: itemMatch[2],
-                duration: 15,
-                presenter: 'Coordonnateur',
-                objective: 'Information',
-                decision: ''
-            };
-            itemOrder++;
-        } else if (isNumberOnly) {
-            if (currentItem && currentItem.title) {
-                parsedResult.agendaItems?.push(currentItem as AgendaItem);
-            }
-
-            const order = parseInt(isNumberOnly[1]);
-            currentItem = {
-                id: `imported-docx-${Date.now()}-${order}`,
-                order: order,
-                title: '',
-                duration: 15,
-                presenter: 'Coordonnateur',
-                objective: 'Information',
-                decision: ''
-            };
-            itemOrder++;
-        } else if (currentItem) {
-            if (currentItem.title === '') {
-                currentItem.title = line;
-            } else {
-                currentItem.title += ' ' + line;
-            }
+    orderedLists.forEach((ol: HTMLOListElement) => {
+        const items = ol.querySelectorAll('li');
+        if (items.length > maxItems) {
+            maxItems = items.length;
+            mainList = ol;
         }
+    });
+
+    if (mainList && maxItems >= 3) { // Threshold to consider it a valid agenda
+        foundAutoList = true;
+        const listItems = (mainList as HTMLOListElement).querySelectorAll('li');
+        listItems.forEach((li: HTMLLIElement, index: number) => {
+            const text = li.textContent?.trim() || "";
+            if (text) {
+                parsedResult.agendaItems?.push({
+                    id: `imported-docx-auto-${Date.now()}-${index}`,
+                    order: index + 1,
+                    title: text,
+                    duration: 15,
+                    presenter: 'Coordonnateur',
+                    objective: 'Information',
+                    decision: '',
+                    description: ''
+                });
+            }
+        });
     }
 
-    if (currentItem && currentItem.title) {
-        parsedResult.agendaItems?.push(currentItem as AgendaItem);
+    // Strategy B: Fallback to text parsing (Manual numbering "1. Title")
+    if (!foundAutoList || parsedResult.agendaItems?.length === 0) {
+        let currentItem: Partial<AgendaItem> | null = null;
+        let itemOrder = 1;
+
+        for (const line of lines) {
+            // Regex for item starting with number and dot (e.g. "1. Title")
+            const itemMatch = line.match(/^(\d+)[.)]?\s+(.*)/); // Require space after dot
+            const isNumberOnly = line.match(/^(\d+)[.)]?\s*$/);
+
+            if (itemMatch && !isNumberOnly && itemMatch[2].length > 0) {
+                if (currentItem && currentItem.title) {
+                    parsedResult.agendaItems?.push(currentItem as AgendaItem);
+                }
+
+                const order = parseInt(itemMatch[1]);
+
+                currentItem = {
+                    id: `imported-docx-manual-${Date.now()}-${order}`,
+                    order: order,
+                    title: itemMatch[2],
+                    duration: 15,
+                    presenter: 'Coordonnateur',
+                    objective: 'Information',
+                    decision: '',
+                    description: ''
+                };
+                itemOrder++;
+            } else if (isNumberOnly) {
+                if (currentItem && currentItem.title) {
+                    parsedResult.agendaItems?.push(currentItem as AgendaItem);
+                }
+
+                const order = parseInt(isNumberOnly[1]);
+                currentItem = {
+                    id: `imported-docx-manual-${Date.now()}-${order}`,
+                    order: order,
+                    title: '',
+                    duration: 15,
+                    presenter: 'Coordonnateur',
+                    objective: 'Information',
+                    decision: '',
+                    description: ''
+                };
+                itemOrder++;
+            } else if (currentItem) {
+                // Append continuation lines
+                // Avoid appending Date or Title lines if they appear inside
+                if (!line.toUpperCase().includes('ASSEMBLÉE') && !line.match(dateRegex)) {
+                    if (currentItem.title === '') {
+                        currentItem.title = line;
+                    } else {
+                        currentItem.title += ' ' + line;
+                    }
+                }
+            }
+        }
+
+        if (currentItem && currentItem.title) {
+            parsedResult.agendaItems?.push(currentItem as AgendaItem);
+        }
     }
 
     return parsedResult;
