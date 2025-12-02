@@ -62,10 +62,17 @@ export const documentsAPI = {
             storagePath,
             uploadedBy: uploadedBy || 'unknown',
             dateUploaded: new Date().toISOString(), // Placeholder, will be converted to Timestamp
-            ...(linkedEntityId && { linkedEntityId }),
-            ...(linkedEntityType && { linkedEntityType }),
-            ...(agendaItemId && { agendaItemId })
+            linkedEntityId,
+            linkedEntityType,
+            agendaItemId
         };
+
+        // Remove undefined fields to prevent Firestore errors
+        Object.keys(docData).forEach(key => {
+            if ((docData as any)[key] === undefined) {
+                delete (docData as any)[key];
+            }
+        });
 
         const docRef = await addDoc(collection(db, COLLECTION_NAME), {
             ...docData,
