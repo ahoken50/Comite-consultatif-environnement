@@ -16,11 +16,11 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
     };
 
     return (
-        <Box sx={{ display: 'flex', minHeight: '100vh' }}>
+        <Box sx={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
             <CssBaseline />
             <Header onMenuClick={handleDrawerToggle} />
             <Sidebar mobileOpen={mobileOpen} onClose={handleDrawerToggle} />
-            <Box component="main" sx={{ flexGrow: 1, p: 3, width: { sm: `calc(100% - 240px)` } }}>
+            <Box component="main" sx={{ flexGrow: 1, p: 3, width: { sm: `calc(100% - 240px)` }, overflow: 'auto' }}>
                 <Toolbar /> {/* Spacer for fixed header */}
                 {children || <Outlet />}
             </Box>
