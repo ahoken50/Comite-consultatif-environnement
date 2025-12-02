@@ -119,6 +119,7 @@ const MeetingForm: React.FC<MeetingFormProps> = ({ open, onClose, onSubmit, init
             }
             if (parsedData.agendaItems && parsedData.agendaItems.length > 0) {
                 const formItems = parsedData.agendaItems.map(item => ({
+                    id: item.id,
                     title: item.title,
                     duration: item.duration || 15,
                     presenter: item.presenter || 'Coordonnateur',
