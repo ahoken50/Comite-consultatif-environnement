@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
     Box,
     Typography,
@@ -7,9 +7,16 @@ import {
     ListItem,
     ListItemText,
     ListItemIcon,
-    Button
+    Button,
+    Dialog,
+    DialogTitle,
+    DialogContent,
+    DialogActions,
+    TextField,
+    MenuItem,
+    Grid
 } from '@mui/material';
-import { DragIndicator, Add, Delete } from '@mui/icons-material';
+import { DragIndicator, Add, Delete, Edit } from '@mui/icons-material';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import type { DragEndEvent } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
@@ -21,7 +28,7 @@ interface AgendaBuilderProps {
     onItemsChange: (items: AgendaItem[]) => void;
 }
 
-const SortableItem = ({ item, onDelete }: { item: AgendaItem; onDelete: (id: string) => void }) => {
+const SortableItem = ({ item, onDelete, onEdit }: { item: AgendaItem; onDelete: (id: string) => void; onEdit: (item: AgendaItem) => void }) => {
     const {
         attributes,
         listeners,
@@ -40,9 +47,14 @@ const SortableItem = ({ item, onDelete }: { item: AgendaItem; onDelete: (id: str
             ref={setNodeRef}
             style={style}
             secondaryAction={
-                <IconButton edge="end" aria-label="delete" onClick={() => onDelete(item.id)}>
-                    <Delete />
-                </IconButton>
+                <Box>
+                    <IconButton edge="end" aria-label="edit" onClick={() => onEdit(item)} sx={{ mr: 1 }}>
+                        <Edit />
+                    </IconButton>
+                    <IconButton edge="end" aria-label="delete" onClick={() => onDelete(item.id)}>
+                        <Delete />
+                    </IconButton>
+                </Box>
             }
             sx={{ bgcolor: 'background.paper', mb: 1, borderRadius: 1, boxShadow: 1 }}
         >
@@ -51,13 +63,16 @@ const SortableItem = ({ item, onDelete }: { item: AgendaItem; onDelete: (id: str
             </ListItemIcon>
             <ListItemText
                 primary={item.title}
-                secondary={`${item.duration} min - ${item.presenter}`}
+                secondary={`${item.duration} min - ${item.presenter} - ${item.objective}`}
             />
         </ListItem>
     );
 };
 
 const AgendaBuilder: React.FC<AgendaBuilderProps> = ({ items, onItemsChange }) => {
+    const [editingItem, setEditingItem] = useState<AgendaItem | null>(null);
+    const [isEditOpen, setIsEditOpen] = useState(false);
+
     const sensors = useSensors(
         useSensor(PointerSensor),
         useSensor(KeyboardSensor, {
@@ -93,6 +108,19 @@ const AgendaBuilder: React.FC<AgendaBuilderProps> = ({ items, onItemsChange }) =
         onItemsChange(items.filter(item => item.id !== id));
     };
 
+    const handleEditItem = (item: AgendaItem) => {
+        setEditingItem({ ...item });
+        setIsEditOpen(true);
+    };
+
+    const handleSaveEdit = () => {
+        if (editingItem) {
+            onItemsChange(items.map(item => item.id === editingItem.id ? editingItem : item));
+            setIsEditOpen(false);
+            setEditingItem(null);
+        }
+    };
+
     return (
         <Box>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
@@ -113,11 +141,88 @@ const AgendaBuilder: React.FC<AgendaBuilderProps> = ({ items, onItemsChange }) =
                 >
                     <List>
                         {items.map((item) => (
-                            <SortableItem key={item.id} item={item} onDelete={handleDeleteItem} />
+                            <SortableItem
+                                key={item.id}
+                                item={item}
+                                onDelete={handleDeleteItem}
+                                onEdit={handleEditItem}
+                            />
                         ))}
                     </List>
                 </SortableContext>
             </DndContext>
+
+            <Dialog open={isEditOpen} onClose={() => setIsEditOpen(false)} maxWidth="sm" fullWidth>
+                <DialogTitle>Modifier le point</DialogTitle>
+                <DialogContent>
+                    {editingItem && (
+                        <Grid container spacing={2} sx={{ mt: 1 }}>
+                            <Grid size={{ xs: 12 }}>
+                                <TextField
+                                    label="Titre"
+                                    fullWidth
+                                    value={editingItem.title}
+                                    onChange={(e) => setEditingItem({ ...editingItem, title: e.target.value })}
+                                />
+                            </Grid>
+                            <Grid size={{ xs: 6 }}>
+                                <TextField
+                                    label="Durée (min)"
+                                    type="number"
+                                    fullWidth
+                                    value={editingItem.duration}
+                                    onChange={(e) => setEditingItem({ ...editingItem, duration: parseInt(e.target.value) || 0 })}
+                                />
+                            </Grid>
+                            <Grid size={{ xs: 6 }}>
+                                <TextField
+                                    label="Responsable"
+                                    fullWidth
+                                    value={editingItem.presenter}
+                                    onChange={(e) => setEditingItem({ ...editingItem, presenter: e.target.value })}
+                                />
+                            </Grid>
+                            <Grid size={{ xs: 12 }}>
+                                <TextField
+                                    select
+                                    label="Objectif"
+                                    fullWidth
+                                    value={editingItem.objective}
+                                    onChange={(e) => setEditingItem({ ...editingItem, objective: e.target.value })}
+                                >
+                                    <MenuItem value="Information">Information</MenuItem>
+                                    <MenuItem value="Décision">Décision</MenuItem>
+                                    <MenuItem value="Consultation">Consultation</MenuItem>
+                                </TextField>
+                            </Grid>
+                            <Grid size={{ xs: 12 }}>
+                                <TextField
+                                    label="Note / Décision attendue"
+                                    fullWidth
+                                    multiline
+                                    rows={2}
+                                    value={editingItem.decision || ''}
+                                    onChange={(e) => setEditingItem({ ...editingItem, decision: e.target.value })}
+                                />
+                            </Grid>
+                            <Grid size={{ xs: 12 }}>
+                                <TextField
+                                    label="Description détaillée"
+                                    fullWidth
+                                    multiline
+                                    rows={3}
+                                    value={editingItem.description || ''}
+                                    onChange={(e) => setEditingItem({ ...editingItem, description: e.target.value })}
+                                />
+                            </Grid>
+                        </Grid>
+                    )}
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={() => setIsEditOpen(false)}>Annuler</Button>
+                    <Button onClick={handleSaveEdit} variant="contained">Enregistrer</Button>
+                </DialogActions>
+            </Dialog>
         </Box>
     );
 };
