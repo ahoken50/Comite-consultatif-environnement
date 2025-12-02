@@ -24,7 +24,30 @@ export const parseAgendaDOCX = async (file: File): Promise<ParsedMeetingData> =>
 
     const parser = new DOMParser();
     const doc = parser.parseFromString(html, 'text/html');
-    const fullText = doc.body.textContent || "";
+
+    // Helper to extract text with newlines from HTML
+    const extractTextWithNewlines = (element: Element): string => {
+        let text = '';
+        const blockTags = ['P', 'DIV', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'LI', 'BR'];
+
+        element.childNodes.forEach(node => {
+            if (node.nodeType === Node.TEXT_NODE) {
+                text += node.textContent;
+            } else if (node.nodeType === Node.ELEMENT_NODE) {
+                const el = node as Element;
+                if (blockTags.includes(el.tagName)) {
+                    text += '\n';
+                }
+                text += extractTextWithNewlines(el);
+                if (blockTags.includes(el.tagName) && !text.endsWith('\n')) {
+                    text += '\n';
+                }
+            }
+        });
+        return text;
+    };
+
+    const fullText = extractTextWithNewlines(doc.body);
 
     // 1. Extract Date (Look for patterns like "Jeudi 9 juin 2022")
     // Regex for French date: DayName Day Month Year

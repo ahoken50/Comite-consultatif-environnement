@@ -18,6 +18,7 @@ import type { RootState } from '../../store/rootReducer';
 import { updateMeeting } from '../../features/meetings/meetingsSlice';
 import { fetchDocumentsByEntity, deleteDocument } from '../../features/documents/documentsSlice';
 import AgendaBuilder from '../../components/meetings/AgendaBuilder';
+import MeetingForm from '../../components/meetings/MeetingForm';
 import DocumentList from '../../components/documents/DocumentList';
 import DocumentUpload from '../../components/documents/DocumentUpload';
 import type { AgendaItem } from '../../types/meeting.types';
@@ -76,15 +77,39 @@ const MeetingDetailPage: React.FC = () => {
         }
     };
 
+    const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+
+    const handleMeetingUpdate = (updatedData: any) => {
+        if (id) {
+            dispatch(updateMeeting({
+                id,
+                updates: {
+                    ...updatedData,
+                    // Ensure we don't overwrite agenda items if they weren't part of the form data explicitly, 
+                    // though MeetingForm includes them.
+                    agendaItems: updatedData.agendaItems
+                }
+            }));
+            setIsEditModalOpen(false);
+        }
+    };
+
     return (
         <Box>
-            <Button
-                startIcon={<ArrowBack />}
-                onClick={() => navigate('/meetings')}
-                sx={{ mb: 2 }}
-            >
-                Retour aux réunions
-            </Button>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                <Button
+                    startIcon={<ArrowBack />}
+                    onClick={() => navigate('/meetings')}
+                >
+                    Retour aux réunions
+                </Button>
+                <Button
+                    variant="contained"
+                    onClick={() => setIsEditModalOpen(true)}
+                >
+                    Modifier la réunion
+                </Button>
+            </Box>
 
             <Paper sx={{ p: 3, mb: 3 }}>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
@@ -157,6 +182,15 @@ const MeetingDetailPage: React.FC = () => {
                     </Grid>
                 </TabPanel>
             </Paper>
+
+            {isEditModalOpen && (
+                <MeetingForm
+                    open={isEditModalOpen}
+                    onClose={() => setIsEditModalOpen(false)}
+                    onSubmit={handleMeetingUpdate}
+                    initialData={meeting}
+                />
+            )}
         </Box>
     );
 };
