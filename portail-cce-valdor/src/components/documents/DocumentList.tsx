@@ -7,25 +7,30 @@ import {
     ListItemText,
     IconButton,
     Typography,
-    Paper
+    Paper,
+    Chip,
+    Box
 } from '@mui/material';
 import {
     Description,
     PictureAsPdf,
     Image,
     Delete,
-    Download
+    Download,
+    AttachFile
 } from '@mui/icons-material';
 import type { Document } from '../../types/document.types';
+import type { AgendaItem } from '../../types/meeting.types';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
 interface DocumentListProps {
     documents: Document[];
     onDelete?: (id: string, storagePath: string) => void;
+    agendaItems?: AgendaItem[];
 }
 
-const DocumentList: React.FC<DocumentListProps> = ({ documents, onDelete }) => {
+const DocumentList: React.FC<DocumentListProps> = ({ documents, onDelete, agendaItems }) => {
     const getIcon = (type: string) => {
         if (type.includes('pdf')) return <PictureAsPdf />;
         if (type.includes('image')) return <Image />;
@@ -38,6 +43,12 @@ const DocumentList: React.FC<DocumentListProps> = ({ documents, onDelete }) => {
         const sizes = ['B', 'KB', 'MB', 'GB'];
         const i = Math.floor(Math.log(bytes) / Math.log(k));
         return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    };
+
+    const getAgendaItemLabel = (agendaItemId: string) => {
+        if (!agendaItems) return null;
+        const item = agendaItems.find(i => i.id === agendaItemId);
+        return item ? `Point ${item.order + 1}` : null;
     };
 
     if (documents.length === 0) {
@@ -78,7 +89,20 @@ const DocumentList: React.FC<DocumentListProps> = ({ documents, onDelete }) => {
                             </Avatar>
                         </ListItemAvatar>
                         <ListItemText
-                            primary={doc.name}
+                            primary={
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                    {doc.name}
+                                    {doc.agendaItemId && (
+                                        <Chip
+                                            label={getAgendaItemLabel(doc.agendaItemId)}
+                                            size="small"
+                                            variant="outlined"
+                                            color="primary"
+                                            icon={<AttachFile sx={{ fontSize: 14 }} />}
+                                        />
+                                    )}
+                                </Box>
+                            }
                             secondary={
                                 <React.Fragment>
                                     <Typography component="span" variant="body2" color="text.primary">

@@ -14,21 +14,28 @@ import {
     DialogActions,
     TextField,
     MenuItem,
-    Grid
+    Grid,
+    Chip,
+    Stack
 } from '@mui/material';
-import { DragIndicator, Add, Delete, Edit } from '@mui/icons-material';
+import { DragIndicator, Add, Delete, Edit, AttachFile } from '@mui/icons-material';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import type { DragEndEvent } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import type { AgendaItem } from '../../types/meeting.types';
+import type { Document } from '../../types/document.types';
+import DocumentUpload from '../documents/DocumentUpload';
 
 interface AgendaBuilderProps {
     items: AgendaItem[];
     onItemsChange: (items: AgendaItem[]) => void;
+    meetingId?: string;
+    documents?: Document[];
+    onDocumentUpload?: () => void;
 }
 
-const SortableItem = ({ item, onDelete, onEdit }: { item: AgendaItem; onDelete: (id: string) => void; onEdit: (item: AgendaItem) => void }) => {
+const SortableItem = ({ item, onDelete, onEdit, linkedDocuments }: { item: AgendaItem; onDelete: (id: string) => void; onEdit: (item: AgendaItem) => void; linkedDocuments?: Document[] }) => {
     const {
         attributes,
         listeners,
@@ -62,14 +69,26 @@ const SortableItem = ({ item, onDelete, onEdit }: { item: AgendaItem; onDelete: 
                 <DragIndicator />
             </ListItemIcon>
             <ListItemText
-                primary={item.title}
+                primary={
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        {item.title}
+                        {linkedDocuments && linkedDocuments.length > 0 && (
+                            <Chip
+                                icon={<AttachFile sx={{ fontSize: 16 }} />}
+                                label={linkedDocuments.length}
+                                size="small"
+                                variant="outlined"
+                            />
+                        )}
+                    </Box>
+                }
                 secondary={`${item.duration} min - ${item.presenter} - ${item.objective}`}
             />
         </ListItem>
     );
 };
 
-const AgendaBuilder: React.FC<AgendaBuilderProps> = ({ items, onItemsChange }) => {
+const AgendaBuilder: React.FC<AgendaBuilderProps> = ({ items, onItemsChange, meetingId, documents = [], onDocumentUpload }) => {
     const [editingItem, setEditingItem] = useState<AgendaItem | null>(null);
     const [isEditOpen, setIsEditOpen] = useState(false);
 
@@ -121,6 +140,10 @@ const AgendaBuilder: React.FC<AgendaBuilderProps> = ({ items, onItemsChange }) =
         }
     };
 
+    const getLinkedDocuments = (itemId: string) => {
+        return documents.filter(doc => doc.agendaItemId === itemId);
+    };
+
     return (
         <Box>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
@@ -146,13 +169,14 @@ const AgendaBuilder: React.FC<AgendaBuilderProps> = ({ items, onItemsChange }) =
                                 item={item}
                                 onDelete={handleDeleteItem}
                                 onEdit={handleEditItem}
+                                linkedDocuments={getLinkedDocuments(item.id)}
                             />
                         ))}
                     </List>
                 </SortableContext>
             </DndContext>
 
-            <Dialog open={isEditOpen} onClose={() => setIsEditOpen(false)} maxWidth="sm" fullWidth>
+            <Dialog open={isEditOpen} onClose={() => setIsEditOpen(false)} maxWidth="md" fullWidth>
                 <DialogTitle>Modifier le point</DialogTitle>
                 <DialogContent>
                     {editingItem && (
@@ -214,6 +238,32 @@ const AgendaBuilder: React.FC<AgendaBuilderProps> = ({ items, onItemsChange }) =
                                     value={editingItem.description || ''}
                                     onChange={(e) => setEditingItem({ ...editingItem, description: e.target.value })}
                                 />
+                            </Grid>
+
+                            {/* Document Section in Edit Dialog */}
+                            <Grid size={{ xs: 12 }}>
+                                <Typography variant="subtitle1" gutterBottom sx={{ mt: 2 }}>Documents liés</Typography>
+                                {getLinkedDocuments(editingItem.id).length > 0 && (
+                                    <Stack direction="row" spacing={1} sx={{ mb: 2, flexWrap: 'wrap', gap: 1 }}>
+                                        {getLinkedDocuments(editingItem.id).map(doc => (
+                                            <Chip
+                                                key={doc.id}
+                                                label={doc.name}
+                                                icon={<AttachFile />}
+                                                variant="outlined"
+                                                onDelete={() => { /* TODO: Handle unlink/delete */ }}
+                                            />
+                                        ))}
+                                    </Stack>
+                                )}
+                                {meetingId && (
+                                    <DocumentUpload
+                                        linkedEntityId={meetingId}
+                                        linkedEntityType="meeting"
+                                        agendaItemId={editingItem.id}
+                                        onUploadComplete={onDocumentUpload}
+                                    />
+                                )}
                             </Grid>
                         </Grid>
                     )}

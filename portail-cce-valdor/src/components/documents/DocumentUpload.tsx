@@ -10,12 +10,14 @@ import { uploadDocument } from '../../features/documents/documentsSlice';
 interface DocumentUploadProps {
     linkedEntityId?: string;
     linkedEntityType?: 'project' | 'meeting';
+    agendaItemId?: string;
     onUploadComplete?: () => void;
 }
 
 const DocumentUpload: React.FC<DocumentUploadProps> = ({
     linkedEntityId,
     linkedEntityType,
+    agendaItemId,
     onUploadComplete
 }) => {
     const dispatch = useDispatch<AppDispatch>();
@@ -38,7 +40,8 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({
                     file,
                     linkedEntityId,
                     linkedEntityType,
-                    uploadedBy: user.uid
+                    uploadedBy: user.uid,
+                    agendaItemId
                 })).unwrap();
             }
             if (onUploadComplete) {
@@ -49,7 +52,7 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({
         } finally {
             setUploading(false);
         }
-    }, [dispatch, linkedEntityId, linkedEntityType, onUploadComplete]);
+    }, [dispatch, linkedEntityId, linkedEntityType, agendaItemId, onUploadComplete]);
 
     const { getRootProps, getInputProps, isDragActive } = useDropzone({ onDrop });
 

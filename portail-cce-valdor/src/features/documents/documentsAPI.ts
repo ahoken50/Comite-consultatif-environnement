@@ -46,7 +46,7 @@ export const documentsAPI = {
         } as Document));
     },
 
-    upload: async (file: File, linkedEntityId?: string, linkedEntityType?: 'project' | 'meeting', uploadedBy?: string): Promise<Document> => {
+    upload: async (file: File, linkedEntityId?: string, linkedEntityType?: 'project' | 'meeting', uploadedBy?: string, agendaItemId?: string): Promise<Document> => {
         // 1. Upload file to Firebase Storage
         const storagePath = `documents/${Date.now()}_${file.name}`;
         const storageRef = ref(storage, storagePath);
@@ -63,7 +63,8 @@ export const documentsAPI = {
             uploadedBy: uploadedBy || 'unknown',
             dateUploaded: new Date().toISOString(), // Placeholder, will be converted to Timestamp
             linkedEntityId,
-            linkedEntityType
+            linkedEntityType,
+            agendaItemId
         };
 
         const docRef = await addDoc(collection(db, COLLECTION_NAME), {

@@ -9,4 +9,5 @@ export interface Document {
     dateUploaded: string; // ISO string
     linkedEntityId?: string; // ID of project or meeting
     linkedEntityType?: 'project' | 'meeting';
+    agendaItemId?: string; // ID of the specific agenda item if applicable
 }

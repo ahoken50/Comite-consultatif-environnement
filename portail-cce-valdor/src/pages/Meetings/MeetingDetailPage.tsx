@@ -151,6 +151,9 @@ const MeetingDetailPage: React.FC = () => {
                     <AgendaBuilder
                         items={meeting.agendaItems || []}
                         onItemsChange={handleAgendaUpdate}
+                        meetingId={meeting.id}
+                        documents={documents.filter(d => d.linkedEntityId === meeting.id)}
+                        onDocumentUpload={() => dispatch(fetchDocumentsByEntity({ entityId: meeting.id, entityType: 'meeting' }))}
                     />
                 </TabPanel>
 
@@ -169,6 +172,7 @@ const MeetingDetailPage: React.FC = () => {
                             <DocumentList
                                 documents={documents.filter(d => d.linkedEntityId === meeting.id)}
                                 onDelete={(docId, path) => dispatch(deleteDocument({ id: docId, storagePath: path }))}
+                                agendaItems={meeting.agendaItems}
                             />
                         </Grid>
                         <Grid size={{ xs: 12, md: 4 }}>

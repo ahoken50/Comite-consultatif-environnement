@@ -32,13 +32,14 @@ export const fetchDocumentsByEntity = createAsyncThunk(
 
 export const uploadDocument = createAsyncThunk(
     'documents/upload',
-    async ({ file, linkedEntityId, linkedEntityType, uploadedBy }: {
+    async ({ file, linkedEntityId, linkedEntityType, uploadedBy, agendaItemId }: {
         file: File;
         linkedEntityId?: string;
         linkedEntityType?: 'project' | 'meeting';
         uploadedBy?: string;
+        agendaItemId?: string;
     }) => {
-        return await documentsAPI.upload(file, linkedEntityId, linkedEntityType, uploadedBy);
+        return await documentsAPI.upload(file, linkedEntityId, linkedEntityType, uploadedBy, agendaItemId);
     }
 );
 
