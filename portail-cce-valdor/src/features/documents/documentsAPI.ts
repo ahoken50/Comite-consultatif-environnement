@@ -54,7 +54,7 @@ export const documentsAPI = {
         const url = await getDownloadURL(storageRef);
 
         // 2. Save metadata to Firestore
-        const docData: Omit<Document, 'id'> = {
+        const docData: Record<string, any> = {
             name: file.name,
             type: file.type,
             size: file.size,
@@ -62,22 +62,25 @@ export const documentsAPI = {
             storagePath,
             uploadedBy: uploadedBy || 'unknown',
             dateUploaded: new Date().toISOString(), // Placeholder, will be converted to Timestamp
-            linkedEntityId,
-            linkedEntityType,
-            agendaItemId
         };
 
-        // Remove undefined fields to prevent Firestore errors
-        Object.keys(docData).forEach(key => {
-            if ((docData as any)[key] === undefined) {
-                delete (docData as any)[key];
+        if (linkedEntityId) docData.linkedEntityId = linkedEntityId;
+        if (linkedEntityType) docData.linkedEntityType = linkedEntityType;
+        if (agendaItemId) docData.agendaItemId = agendaItemId;
+
+        const finalData = {
+            ...docData,
+            dateUploaded: Timestamp.now(),
+        };
+
+        // Paranoid check: Remove any undefined keys from finalData
+        Object.keys(finalData).forEach(key => {
+            if ((finalData as any)[key] === undefined) {
+                delete (finalData as any)[key];
             }
         });
 
-        const docRef = await addDoc(collection(db, COLLECTION_NAME), {
-            ...docData,
-            dateUploaded: Timestamp.now(),
-        });
+        const docRef = await addDoc(collection(db, COLLECTION_NAME), finalData);
 
         return { id: docRef.id, ...docData } as Document;
     },
