@@ -5,7 +5,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 import type { AppDispatch } from '../../store/store';
 import type { RootState } from '../../store/rootReducer';
-import { fetchMeetings, createMeeting } from '../../features/meetings/meetingsSlice';
+import { fetchMeetings, createMeeting, deleteMeeting } from '../../features/meetings/meetingsSlice';
 import MeetingCard from '../../components/meetings/MeetingCard';
 import MeetingForm from '../../components/meetings/MeetingForm';
 import { MeetingStatus } from '../../types/meeting.types';
@@ -91,9 +91,15 @@ const MeetingsPage: React.FC = () => {
                             meeting={meeting}
                             onClick={handleMeetingClick}
                             onEdit={(id) => handleMeetingClick(id)}
-                            onDelete={(id) => {
-                                // TODO: Implement delete
-                                console.log('Delete meeting', id);
+                            onDelete={async (id) => {
+                                if (window.confirm('Êtes-vous sûr de vouloir supprimer cette réunion ?')) {
+                                    try {
+                                        await dispatch(deleteMeeting(id)).unwrap();
+                                    } catch (err) {
+                                        console.error('Failed to delete meeting:', err);
+                                        alert('Erreur lors de la suppression de la réunion.');
+                                    }
+                                }
                             }}
                         />
                     </Grid>
