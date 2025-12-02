@@ -176,5 +176,83 @@ export const parseAgendaDOCX = async (file: File): Promise<ParsedMeetingData> =>
         }
     }
 
+    // Strategy C: Table Parsing (Specific columns: Sujet, TEMPS, Responsable, Objectif)
+    const tables = doc.querySelectorAll('table');
+    let foundTable = false;
+
+    tables.forEach((table) => {
+        if (foundTable) return;
+
+        const rows = table.querySelectorAll('tr');
+        if (rows.length < 2) return; // Need at least header and one data row
+
+        // Check headers
+        const headerRow = rows[0];
+        const headers = Array.from(headerRow.querySelectorAll('td, th')).map(cell => cell.textContent?.trim().toUpperCase() || '');
+
+        const sujetIndex = headers.findIndex(h => h.includes('SUJET'));
+        const tempsIndex = headers.findIndex(h => h.includes('TEMPS') || h.includes('DURÉE'));
+        const respIndex = headers.findIndex(h => h.includes('RESPONSABLE'));
+        const objIndex = headers.findIndex(h => h.includes('OBJECTIF') || h.includes('NOTE') || h.includes('DÉCISION'));
+
+        if (sujetIndex !== -1) {
+            foundTable = true;
+            // Clear previous strategy results if table is found, as it's likely more accurate
+            parsedResult.agendaItems = [];
+
+            for (let i = 1; i < rows.length; i++) {
+                const cells = rows[i].querySelectorAll('td');
+                if (cells.length <= sujetIndex) continue;
+
+                const rawTitle = cells[sujetIndex]?.textContent?.trim() || '';
+                if (!rawTitle) continue;
+
+                // Extract numbering if present (e.g., "1. Mot de bienvenue")
+                const titleMatch = rawTitle.match(/^(\d+)[.)]?\s+(.*)/);
+                const isNumberOnly = rawTitle.match(/^(\d+)[.)]?\s*$/);
+
+                let title = rawTitle;
+
+                if (titleMatch) {
+                    // Use extracted number for ordering if needed, currently using array index
+                    // order = parseInt(titleMatch[1]) - 1; 
+                    title = titleMatch[2];
+                } else if (isNumberOnly) {
+                    // Skip rows that are just numbers without text, or handle differently?
+                    // For now, let's assume it's a valid item with empty title if that happens, or skip.
+                    // Actually, user said "Le sujet est dans la colonne sujet et est numéroté."
+                    continue;
+                }
+
+                const durationStr = tempsIndex !== -1 ? cells[tempsIndex]?.textContent?.trim() : '15';
+                const duration = parseInt(durationStr || '15') || 15;
+
+                const presenter = respIndex !== -1 ? cells[respIndex]?.textContent?.trim() : 'Coordonnateur';
+
+                // Map Objectif column to decision/note or objective
+                const rawObjective = objIndex !== -1 ? cells[objIndex]?.textContent?.trim() : 'Information';
+                // Heuristic to categorize objective
+                let objective = 'Information';
+                if (rawObjective?.toUpperCase().includes('DÉCISION')) objective = 'Décision';
+                else if (rawObjective?.toUpperCase().includes('CONSULTATION')) objective = 'Consultation';
+
+                parsedResult.agendaItems.push({
+                    id: `imported-docx-table-${Date.now()}-${i}`,
+                    order: parsedResult.agendaItems.length, // Use sequential order
+                    title: title,
+                    duration: duration,
+                    presenter: presenter || 'Coordonnateur',
+                    objective: objective,
+                    decision: rawObjective || '', // Store full text in decision/note field
+                    description: ''
+                });
+            }
+        }
+    });
+
+    if (foundTable) {
+        return parsedResult;
+    }
+
     return parsedResult;
 };

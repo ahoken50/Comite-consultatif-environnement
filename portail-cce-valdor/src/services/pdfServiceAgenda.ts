@@ -3,7 +3,7 @@ import autoTable from 'jspdf-autotable';
 import type { Meeting } from '../types/meeting.types';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import logoUrl from '../assets/logo-valdor.png';
+import logoUrl from '../assets/logo-cce.png';
 
 const loadImage = (url: string): Promise<HTMLImageElement> => {
     return new Promise((resolve, reject) => {
