@@ -62,9 +62,9 @@ export const documentsAPI = {
             storagePath,
             uploadedBy: uploadedBy || 'unknown',
             dateUploaded: new Date().toISOString(), // Placeholder, will be converted to Timestamp
-            linkedEntityId,
-            linkedEntityType,
-            agendaItemId
+            ...(linkedEntityId && { linkedEntityId }),
+            ...(linkedEntityType && { linkedEntityType }),
+            ...(agendaItemId && { agendaItemId })
         };
 
         const docRef = await addDoc(collection(db, COLLECTION_NAME), {
