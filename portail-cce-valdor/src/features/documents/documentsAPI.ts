@@ -35,15 +35,17 @@ export const documentsAPI = {
         const q = query(
             collection(db, COLLECTION_NAME),
             where('linkedEntityId', '==', entityId),
-            where('linkedEntityType', '==', entityType),
-            orderBy('dateUploaded', 'desc')
+            where('linkedEntityType', '==', entityType)
         );
         const snapshot = await getDocs(q);
-        return snapshot.docs.map(doc => ({
+        const docs = snapshot.docs.map(doc => ({
             id: doc.id,
             ...doc.data(),
             dateUploaded: doc.data().dateUploaded?.toDate().toISOString(),
         } as Document));
+
+        // Sort in memory to avoid needing a composite index
+        return docs.sort((a, b) => new Date(b.dateUploaded).getTime() - new Date(a.dateUploaded).getTime());
     },
 
     upload: async (file: File, linkedEntityId?: string, linkedEntityType?: 'project' | 'meeting', uploadedBy?: string, agendaItemId?: string): Promise<Document> => {
