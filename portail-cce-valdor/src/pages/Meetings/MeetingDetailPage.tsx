@@ -176,6 +176,7 @@ const MeetingDetailPage: React.FC = () => {
                         meetingId={meeting.id}
                         documents={documents.filter(d => d.linkedEntityId === meeting.id)}
                         onDocumentUpload={() => dispatch(fetchDocumentsByEntity({ entityId: meeting.id, entityType: 'meeting' }))}
+                        initialAgendaItemId={(location.state as any)?.agendaItemId}
                     />
                 </TabPanel>
 

@@ -34,6 +34,7 @@ interface AgendaBuilderProps {
     meetingId?: string;
     documents?: Document[];
     onDocumentUpload?: () => void;
+    initialAgendaItemId?: string;
 }
 
 const SortableItem = ({ item, onDelete, onEdit, linkedDocuments }: { item: AgendaItem; onDelete: (id: string) => void; onEdit: (item: AgendaItem) => void; linkedDocuments?: Document[] }) => {
@@ -89,10 +90,21 @@ const SortableItem = ({ item, onDelete, onEdit, linkedDocuments }: { item: Agend
     );
 };
 
-const AgendaBuilder: React.FC<AgendaBuilderProps> = ({ items, onItemsChange, meetingId, documents = [], onDocumentUpload }) => {
+const AgendaBuilder: React.FC<AgendaBuilderProps> = ({ items, onItemsChange, meetingId, documents = [], onDocumentUpload, initialAgendaItemId }) => {
     const [editingItem, setEditingItem] = useState<AgendaItem | null>(null);
     const [isEditOpen, setIsEditOpen] = useState(false);
     const [previewDoc, setPreviewDoc] = useState<Document | null>(null);
+
+    // Auto-open edit dialog if initialAgendaItemId is provided
+    React.useEffect(() => {
+        if (initialAgendaItemId && items.length > 0) {
+            const itemToEdit = items.find(i => i.id === initialAgendaItemId);
+            if (itemToEdit) {
+                setEditingItem(itemToEdit);
+                setIsEditOpen(true);
+            }
+        }
+    }, [initialAgendaItemId, items]);
 
     const sensors = useSensors(
         useSensor(PointerSensor),
