@@ -26,6 +26,7 @@ import { CSS } from '@dnd-kit/utilities';
 import type { AgendaItem } from '../../types/meeting.types';
 import type { Document } from '../../types/document.types';
 import DocumentUpload from '../documents/DocumentUpload';
+import DocumentPreviewModal from '../documents/DocumentPreviewModal';
 
 interface AgendaBuilderProps {
     items: AgendaItem[];
@@ -91,6 +92,7 @@ const SortableItem = ({ item, onDelete, onEdit, linkedDocuments }: { item: Agend
 const AgendaBuilder: React.FC<AgendaBuilderProps> = ({ items, onItemsChange, meetingId, documents = [], onDocumentUpload }) => {
     const [editingItem, setEditingItem] = useState<AgendaItem | null>(null);
     const [isEditOpen, setIsEditOpen] = useState(false);
+    const [previewDoc, setPreviewDoc] = useState<Document | null>(null);
 
     const sensors = useSensors(
         useSensor(PointerSensor),
@@ -243,6 +245,9 @@ const AgendaBuilder: React.FC<AgendaBuilderProps> = ({ items, onItemsChange, mee
                             {/* Document Section in Edit Dialog */}
                             <Grid size={{ xs: 12 }}>
                                 <Typography variant="subtitle1" gutterBottom sx={{ mt: 2 }}>Documents liés</Typography>
+                                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+                                    Cliquez sur un document pour le prévisualiser.
+                                </Typography>
                                 {getLinkedDocuments(editingItem.id).length > 0 && (
                                     <Stack direction="row" spacing={1} sx={{ mb: 2, flexWrap: 'wrap', gap: 1 }}>
                                         {getLinkedDocuments(editingItem.id).map(doc => (
@@ -251,7 +256,9 @@ const AgendaBuilder: React.FC<AgendaBuilderProps> = ({ items, onItemsChange, mee
                                                 label={doc.name}
                                                 icon={<AttachFile />}
                                                 variant="outlined"
+                                                onClick={() => setPreviewDoc(doc)}
                                                 onDelete={() => { /* TODO: Handle unlink/delete */ }}
+                                                sx={{ cursor: 'pointer' }}
                                             />
                                         ))}
                                     </Stack>
@@ -273,6 +280,13 @@ const AgendaBuilder: React.FC<AgendaBuilderProps> = ({ items, onItemsChange, mee
                     <Button onClick={handleSaveEdit} variant="contained">Enregistrer</Button>
                 </DialogActions>
             </Dialog>
+
+            {/* Document Preview Modal */}
+            <DocumentPreviewModal
+                open={!!previewDoc}
+                onClose={() => setPreviewDoc(null)}
+                document={previewDoc}
+            />
         </Box>
     );
 };

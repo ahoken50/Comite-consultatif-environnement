@@ -30,7 +30,13 @@ interface DocumentListProps {
     agendaItems?: AgendaItem[];
 }
 
+import DocumentPreviewModal from './DocumentPreviewModal';
+import { useState } from 'react';
+import { Visibility } from '@mui/icons-material';
+
 const DocumentList: React.FC<DocumentListProps> = ({ documents, onDelete, agendaItems }) => {
+    const [previewDoc, setPreviewDoc] = useState<Document | null>(null);
+
     const getIcon = (type: string) => {
         if (type.includes('pdf')) return <PictureAsPdf />;
         if (type.includes('image')) return <Image />;
@@ -60,62 +66,74 @@ const DocumentList: React.FC<DocumentListProps> = ({ documents, onDelete, agenda
     }
 
     return (
-        <List>
-            {documents.map((doc) => (
-                <Paper key={doc.id} variant="outlined" sx={{ mb: 1 }}>
-                    <ListItem
-                        secondaryAction={
-                            <>
-                                <IconButton href={doc.url} target="_blank" rel="noopener noreferrer" size="small">
-                                    <Download />
-                                </IconButton>
-                                {onDelete && (
-                                    <IconButton
-                                        edge="end"
-                                        aria-label="delete"
-                                        onClick={() => onDelete(doc.id, doc.storagePath)}
-                                        size="small"
-                                        color="error"
-                                    >
-                                        <Delete />
+        <>
+            <List>
+                {documents.map((doc) => (
+                    <Paper key={doc.id} variant="outlined" sx={{ mb: 1 }}>
+                        <ListItem
+                            secondaryAction={
+                                <>
+                                    <IconButton onClick={() => setPreviewDoc(doc)} size="small" title="Prévisualiser">
+                                        <Visibility />
                                     </IconButton>
-                                )}
-                            </>
-                        }
-                    >
-                        <ListItemAvatar>
-                            <Avatar sx={{ bgcolor: 'primary.light' }}>
-                                {getIcon(doc.type)}
-                            </Avatar>
-                        </ListItemAvatar>
-                        <ListItemText
-                            primary={
-                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                    {doc.name}
-                                    {doc.agendaItemId && (
-                                        <Chip
-                                            label={getAgendaItemLabel(doc.agendaItemId)}
+                                    <IconButton href={doc.url} target="_blank" rel="noopener noreferrer" size="small" title="Télécharger">
+                                        <Download />
+                                    </IconButton>
+                                    {onDelete && (
+                                        <IconButton
+                                            edge="end"
+                                            aria-label="delete"
+                                            onClick={() => onDelete(doc.id, doc.storagePath)}
                                             size="small"
-                                            variant="outlined"
-                                            color="primary"
-                                            icon={<AttachFile sx={{ fontSize: 14 }} />}
-                                        />
+                                            color="error"
+                                        >
+                                            <Delete />
+                                        </IconButton>
                                     )}
-                                </Box>
+                                </>
                             }
-                            secondary={
-                                <React.Fragment>
-                                    <Typography component="span" variant="body2" color="text.primary">
-                                        {formatSize(doc.size)}
-                                    </Typography>
-                                    {" — " + format(new Date(doc.dateUploaded), 'd MMM yyyy', { locale: fr })}
-                                </React.Fragment>
-                            }
-                        />
-                    </ListItem>
-                </Paper>
-            ))}
-        </List>
+                        >
+                            <ListItemAvatar>
+                                <Avatar sx={{ bgcolor: 'primary.light', cursor: 'pointer' }} onClick={() => setPreviewDoc(doc)}>
+                                    {getIcon(doc.type)}
+                                </Avatar>
+                            </ListItemAvatar>
+                            <ListItemText
+                                primary={
+                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, cursor: 'pointer' }} onClick={() => setPreviewDoc(doc)}>
+                                        <Typography variant="body1" sx={{ textDecoration: 'underline', color: 'primary.main' }}>
+                                            {doc.name}
+                                        </Typography>
+                                        {doc.agendaItemId && (
+                                            <Chip
+                                                label={getAgendaItemLabel(doc.agendaItemId)}
+                                                size="small"
+                                                variant="outlined"
+                                                color="primary"
+                                                icon={<AttachFile sx={{ fontSize: 14 }} />}
+                                            />
+                                        )}
+                                    </Box>
+                                }
+                                secondary={
+                                    <React.Fragment>
+                                        <Typography component="span" variant="body2" color="text.primary">
+                                            {formatSize(doc.size)}
+                                        </Typography>
+                                        {" — " + format(new Date(doc.dateUploaded), 'd MMM yyyy', { locale: fr })}
+                                    </React.Fragment>
+                                }
+                            />
+                        </ListItem>
+                    </Paper>
+                ))}
+            </List>
+            <DocumentPreviewModal
+                open={!!previewDoc}
+                onClose={() => setPreviewDoc(null)}
+                document={previewDoc}
+            />
+        </>
     );
 };
 
