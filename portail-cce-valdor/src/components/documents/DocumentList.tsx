@@ -33,9 +33,11 @@ interface DocumentListProps {
 import DocumentPreviewModal from './DocumentPreviewModal';
 import { useState } from 'react';
 import { Visibility } from '@mui/icons-material';
+import { useNavigate } from 'react-router-dom';
 
 const DocumentList: React.FC<DocumentListProps> = ({ documents, onDelete, agendaItems }) => {
     const [previewDoc, setPreviewDoc] = useState<Document | null>(null);
+    const navigate = useNavigate();
 
     const getIcon = (type: string) => {
         if (type.includes('pdf')) return <PictureAsPdf />;
@@ -113,6 +115,15 @@ const DocumentList: React.FC<DocumentListProps> = ({ documents, onDelete, agenda
                                                 variant="outlined"
                                                 color="primary"
                                                 icon={<AttachFile sx={{ fontSize: 14 }} />}
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    if (doc.linkedEntityType === 'meeting' && doc.linkedEntityId) {
+                                                        navigate(`/meetings/${doc.linkedEntityId}`, {
+                                                            state: { tab: 0, agendaItemId: doc.agendaItemId }
+                                                        });
+                                                    }
+                                                }}
+                                                sx={{ cursor: 'pointer' }}
                                             />
                                         )}
                                     </Box>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import {
     Box,
     Typography,
@@ -61,11 +61,19 @@ const MeetingDetailPage: React.FC = () => {
     const { items: documents } = useSelector((state: RootState) => state.documents);
     const [tabValue, setTabValue] = useState(0);
 
+    const location = useLocation();
+
     useEffect(() => {
         if (id) {
             dispatch(fetchDocumentsByEntity({ entityId: id, entityType: 'meeting' }));
         }
     }, [dispatch, id]);
+
+    useEffect(() => {
+        if (location.state && (location.state as any).tab !== undefined) {
+            setTabValue((location.state as any).tab);
+        }
+    }, [location.state]);
 
     if (!meeting) {
         return <Typography>Réunion non trouvée</Typography>;
