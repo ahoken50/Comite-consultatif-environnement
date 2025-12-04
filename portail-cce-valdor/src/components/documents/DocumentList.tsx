@@ -53,8 +53,10 @@ const DocumentList: React.FC<DocumentListProps> = ({ documents, onDelete, agenda
 
     const getAgendaItemLabel = (agendaItemId: string) => {
         if (!agendaItems) return null;
-        const item = agendaItems.find(i => i.id === agendaItemId);
-        return item ? `Point ${item.order + 1}` : null;
+        const index = agendaItems.findIndex(i => i.id === agendaItemId);
+        if (index === -1) return null;
+        const item = agendaItems[index];
+        return `Point ${index + 1}: ${item.title}`;
     };
 
     if (documents.length === 0) {
