@@ -281,7 +281,9 @@ const MeetingForm: React.FC<MeetingFormProps> = ({ open, onClose, onSubmit, init
                                     >
                                         {Object.values(MeetingStatus).map((status) => (
                                             <MenuItem key={status} value={status}>
-                                                {status}
+                                                {status === MeetingStatus.SCHEDULED ? 'Planifiée' :
+                                                    status === MeetingStatus.IN_PROGRESS ? 'En cours' :
+                                                        status === MeetingStatus.COMPLETED ? 'Terminée' : 'Annulée'}
                                             </MenuItem>
                                         ))}
                                     </TextField>

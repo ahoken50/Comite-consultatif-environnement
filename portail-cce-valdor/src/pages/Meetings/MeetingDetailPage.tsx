@@ -140,8 +140,8 @@ const MeetingDetailPage: React.FC = () => {
                             {meeting.title}
                         </Typography>
                         <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
-                            <Chip label={meeting.type} variant="outlined" />
-                            <Chip label={meeting.status} color="primary" />
+                            <Chip label={meeting.type === 'regular' ? 'Régulière' : meeting.type === 'special' ? 'Spéciale' : 'Urgence'} variant="outlined" />
+                            <Chip label={meeting.status === 'scheduled' ? 'Planifiée' : meeting.status === 'in_progress' ? 'En cours' : meeting.status === 'completed' ? 'Terminée' : 'Annulée'} color="primary" />
                         </Box>
                         <Box sx={{ display: 'flex', gap: 3, color: 'text.secondary' }}>
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>

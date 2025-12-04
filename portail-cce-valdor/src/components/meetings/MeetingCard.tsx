@@ -60,7 +60,7 @@ const MeetingCard: React.FC<MeetingCardProps> = ({ meeting, onClick, onEdit, onD
                                 variant="outlined"
                             />
                             <Chip
-                                label={meeting.status}
+                                label={meeting.status === 'scheduled' ? 'Planifiée' : meeting.status === 'in_progress' ? 'En cours' : meeting.status === 'completed' ? 'Terminée' : 'Annulée'}
                                 size="small"
                                 color={getStatusColor(meeting.status) as any}
                             />

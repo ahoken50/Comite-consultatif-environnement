@@ -100,7 +100,14 @@ const ProjectForm: React.FC<ProjectFormProps> = ({ open, onClose, onSubmit, init
                                     >
                                         {Object.values(Category).map((option) => (
                                             <MenuItem key={option} value={option}>
-                                                {option}
+                                                {option === Category.WATER ? 'Eau' :
+                                                    option === Category.WASTE ? 'Matières résiduelles' :
+                                                        option === Category.BIODIVERSITY ? 'Biodiversité' :
+                                                            option === Category.CLIMATE ? 'Climat' :
+                                                                option === Category.REGULATION ? 'Réglementation' :
+                                                                    option === Category.EMERGENCY ? 'Urgence' :
+                                                                        option === Category.INNOVATION ? 'Innovation' :
+                                                                            option === Category.OPERATIONS ? 'Opérations' : option}
                                             </MenuItem>
                                         ))}
                                     </TextField>
@@ -120,7 +127,10 @@ const ProjectForm: React.FC<ProjectFormProps> = ({ open, onClose, onSubmit, init
                                     >
                                         {Object.values(Priority).map((option) => (
                                             <MenuItem key={option} value={option}>
-                                                {option}
+                                                {option === Priority.LOW ? 'Basse' :
+                                                    option === Priority.MEDIUM ? 'Moyenne' :
+                                                        option === Priority.HIGH ? 'Élevée' :
+                                                            option === Priority.CRITICAL ? 'Critique' : option}
                                             </MenuItem>
                                         ))}
                                     </TextField>
@@ -140,14 +150,18 @@ const ProjectForm: React.FC<ProjectFormProps> = ({ open, onClose, onSubmit, init
                                     >
                                         {Object.values(ProjectStatus).map((option) => (
                                             <MenuItem key={option} value={option}>
-                                                {option}
+                                                {option === ProjectStatus.PENDING ? 'En attente' :
+                                                    option === ProjectStatus.IN_PROGRESS ? 'En cours' :
+                                                        option === ProjectStatus.BLOCKED ? 'Bloqué' :
+                                                            option === ProjectStatus.COMPLETED ? 'Terminé' :
+                                                                option === ProjectStatus.FINANCING_RECEIVED ? 'Financement reçu' :
+                                                                    option === ProjectStatus.TO_CLARIFY ? 'À clarifier' : option}
                                             </MenuItem>
                                         ))}
                                     </TextField>
                                 )}
                             />
                         </Grid>
-
                         <Grid size={{ xs: 12 }}>
                             <Controller
                                 name="description"
