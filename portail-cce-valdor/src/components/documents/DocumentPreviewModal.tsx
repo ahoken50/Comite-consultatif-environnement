@@ -58,6 +58,7 @@ const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({ open, onClo
                         width="100%"
                         height="100%"
                         style={{ border: 'none' }}
+                        allow="fullscreen"
                     />
                 </Box>
             );
@@ -76,6 +77,7 @@ const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({ open, onClo
                         width="100%"
                         height="100%"
                         style={{ border: 'none' }}
+                        allow="fullscreen"
                     />
                     <Typography variant="caption" sx={{ display: 'block', textAlign: 'center', mt: 1, color: 'text.secondary' }}>
                         Visualisation via Microsoft Office Online. Si le document ne s'affiche pas, veuillez le télécharger.
