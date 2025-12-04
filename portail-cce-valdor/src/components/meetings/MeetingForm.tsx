@@ -149,7 +149,7 @@ const MeetingForm: React.FC<MeetingFormProps> = ({ open, onClose, onSubmit, init
                             size="small"
                             sx={{ mr: 1 }}
                         >
-                            Importer ODJ (PDF/DOCX)
+                            Importer Structure ODJ (PDF/DOCX)
                             <input
                                 id={fileInputId}
                                 type="file"

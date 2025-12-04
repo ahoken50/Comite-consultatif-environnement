@@ -77,6 +77,20 @@ const MeetingDetailPage: React.FC = () => {
         }
     };
 
+    // Patch: Ensure all agenda items have IDs (fixes legacy data issue)
+    useEffect(() => {
+        if (meeting && meeting.agendaItems) {
+            const itemsWithoutIds = meeting.agendaItems.filter(item => !item.id);
+            if (itemsWithoutIds.length > 0) {
+                const patchedItems = meeting.agendaItems.map((item, index) => ({
+                    ...item,
+                    id: item.id || `patched-${Date.now()}-${index}`
+                }));
+                dispatch(updateMeeting({ id: meeting.id, updates: { agendaItems: patchedItems } }));
+            }
+        }
+    }, [meeting, dispatch]);
+
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 
     const handleMeetingUpdate = (updatedData: any) => {
