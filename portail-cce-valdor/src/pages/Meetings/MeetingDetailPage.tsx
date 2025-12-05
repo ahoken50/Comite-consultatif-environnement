@@ -19,6 +19,7 @@ import { updateMeeting } from '../../features/meetings/meetingsSlice';
 import { fetchDocumentsByEntity, deleteDocument } from '../../features/documents/documentsSlice';
 import AgendaBuilder from '../../components/meetings/AgendaBuilder';
 import MinutesEditor from '../../components/meetings/MinutesEditor';
+import AttendanceManager from '../../components/meetings/AttendanceManager';
 import MeetingForm from '../../components/meetings/MeetingForm';
 import DocumentList from '../../components/documents/DocumentList';
 import DocumentUpload from '../../components/documents/DocumentUpload';
@@ -189,7 +190,10 @@ const MeetingDetailPage: React.FC = () => {
                 </TabPanel>
 
                 <TabPanel value={tabValue} index={2}>
-                    <Typography color="text.secondary">Gestion des présences à venir...</Typography>
+                    <AttendanceManager
+                        meeting={meeting}
+                        onUpdate={handleMeetingUpdate}
+                    />
                 </TabPanel>
 
                 <TabPanel value={tabValue} index={3}>

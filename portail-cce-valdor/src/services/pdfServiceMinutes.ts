@@ -23,70 +23,92 @@ export const generateMinutesPDF = async (meeting: Meeting, globalNotes?: string)
     // --- Header ---
     try {
         const logo = await loadImage(logoUrl);
-        doc.addImage(logo, 'PNG', 14, 10, 40, 15);
+        // Logo on the left
+        doc.addImage(logo, 'PNG', margin, 10, 25, 25);
     } catch (e) {
         console.error("Could not load logo", e);
     }
 
+    // Centered Title Block
+    doc.setTextColor(0, 0, 0);
     doc.setFontSize(14);
     doc.setFont('helvetica', 'bold');
     doc.text('COMITÉ CONSULTATIF EN ENVIRONNEMENT', pageWidth / 2, 20, { align: 'center' });
 
     doc.setFontSize(12);
-    doc.setFont('helvetica', 'normal');
     doc.text('PROCÈS-VERBAL', pageWidth / 2, 28, { align: 'center' });
-    doc.text(meeting.title.toUpperCase(), pageWidth / 2, 35, { align: 'center' });
+
+    doc.setFontSize(12);
+    doc.text(meeting.title.toUpperCase(), pageWidth / 2, 36, { align: 'center' });
 
     const dateStr = format(new Date(meeting.date), 'EEEE d MMMM yyyy', { locale: fr });
-    const formattedDate = dateStr.charAt(0).toUpperCase() + dateStr.slice(1);
-    doc.text(formattedDate, pageWidth / 2, 42, { align: 'center' });
+    const timeStr = format(new Date(meeting.date), 'HH:mm', { locale: fr }).replace(':', ' h ');
 
-    let currentY = 55;
-
-    // --- Attendees ---
     doc.setFontSize(10);
     doc.setFont('helvetica', 'normal');
 
-    // Filter attendees by role if available, otherwise just list them
-    const members = meeting.attendees?.filter(a => a.role !== 'Secrétaire' && a.role !== 'Conseiller') || [];
-    const others = meeting.attendees?.filter(a => a.role === 'Secrétaire' || a.role === 'Conseiller') || [];
+    // Introductory paragraph
+    const introText = `PROCÈS-VERBAL de la ${meeting.title} du Comité consultatif en environnement tenue le ${dateStr}, ${timeStr} à ${meeting.location}.`;
+    const splitIntro = doc.splitTextToSize(introText, contentWidth);
+    doc.text(splitIntro, margin, 45);
+
+    let currentY = 45 + (splitIntro.length * 5) + 5;
+
+    // --- Attendees Logic ---
+    const members = meeting.attendees?.filter(a => a.role !== 'Secrétaire' && a.role !== 'Conseiller responsable' && a.role !== 'Conseiller') || [];
+    const others = meeting.attendees?.filter(a => a.role === 'Secrétaire' || a.role === 'Conseiller responsable' || a.role === 'Conseiller') || [];
     const absents = meeting.attendees?.filter(a => !a.isPresent) || [];
     const presents = members.filter(a => a.isPresent);
+    const othersPresent = others.filter(a => a.isPresent);
+
+    // Helper to format names with roles
+    const formatName = (a: typeof members[0]) => {
+        // If role is generic 'Membre' or empty, just show name. If specific role (Présidente, Vice-président), append it.
+        const roleSuffix = (a.role && a.role !== 'Membre') ? `, ${a.role.toLowerCase()}` : '';
+        return `${a.name}${roleSuffix}`;
+    };
 
     // ÉTAIENT PRÉSENTS
     if (presents.length > 0) {
         doc.setFont('helvetica', 'bold');
         doc.text('ÉTAIENT PRÉSENTS', margin, currentY);
+        const labelWidth = doc.getTextWidth('ÉTAIENT PRÉSENTS ');
+
         doc.setFont('helvetica', 'normal');
-        const presentNames = presents.map(p => `${p.name}${p.role ? `, ${p.role}` : ''}`).join(', ');
-        const splitPresent = doc.splitTextToSize(presentNames, contentWidth - 40);
-        doc.text(splitPresent, margin + 40, currentY);
-        currentY += (splitPresent.length * 5) + 5;
+        const names = presents.map(formatName).join(', ');
+        const splitNames = doc.splitTextToSize(names, contentWidth - labelWidth);
+        doc.text(splitNames, margin + labelWidth, currentY);
+
+        currentY += (splitNames.length * 5) + 5;
     }
 
     // ÉTAIENT AUSSI PRÉSENTS
-    if (others.length > 0) {
+    if (othersPresent.length > 0) {
         doc.setFont('helvetica', 'bold');
         doc.text('ÉTAIENT AUSSI PRÉSENTS', margin, currentY);
+        const labelWidth = doc.getTextWidth('ÉTAIENT AUSSI PRÉSENTS ');
+
         doc.setFont('helvetica', 'normal');
-        const otherNames = others.map(p => `${p.name}${p.role ? `, ${p.role}` : ''}`).join(', ');
-        const splitOthers = doc.splitTextToSize(otherNames, contentWidth - 55);
-        doc.text(splitOthers, margin + 55, currentY);
-        currentY += (splitOthers.length * 5) + 5;
+        const names = othersPresent.map(formatName).join(', ');
+        const splitNames = doc.splitTextToSize(names, contentWidth - labelWidth);
+        doc.text(splitNames, margin + labelWidth, currentY);
+
+        currentY += (splitNames.length * 5) + 5;
     }
 
     // ÉTAIT ABSENT(E)
     if (absents.length > 0) {
         doc.setFont('helvetica', 'bold');
         doc.text('ÉTAIT ABSENT(E)', margin, currentY);
-        doc.setFont('helvetica', 'normal');
-        const absentNames = absents.map(p => p.name).join(', ');
-        const splitAbsent = doc.splitTextToSize(absentNames, contentWidth - 40);
-        doc.text(splitAbsent, margin + 40, currentY);
-        currentY += (splitAbsent.length * 5) + 10;
-    }
+        const labelWidth = doc.getTextWidth('ÉTAIT ABSENT(E) ');
 
-    currentY += 10;
+        doc.setFont('helvetica', 'normal');
+        const names = absents.map(a => a.name).join(', ');
+        const splitNames = doc.splitTextToSize(names, contentWidth - labelWidth);
+        doc.text(splitNames, margin + labelWidth, currentY);
+
+        currentY += (splitNames.length * 5) + 5;
+    }
 
     // --- Global Notes / Opening ---
     if (globalNotes) {
