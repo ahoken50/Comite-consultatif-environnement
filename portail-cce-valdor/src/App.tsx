@@ -18,6 +18,7 @@ import DocumentsPage from './pages/Documents/DocumentsPage';
 import MembersPage from './pages/Members/MembersPage';
 import SettingsPage from './pages/Settings/SettingsPage';
 import ReportsPage from './pages/Reports/ReportsPage';
+import MinutesPage from './pages/Minutes/MinutesPage';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -126,6 +127,14 @@ function App() {
           <ProtectedRoute>
             <MainLayout>
               <ReportsPage />
+            </MainLayout>
+          </ProtectedRoute>
+        } />
+
+        <Route path="/minutes" element={
+          <ProtectedRoute>
+            <MainLayout>
+              <MinutesPage />
             </MainLayout>
           </ProtectedRoute>
         } />
