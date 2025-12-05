@@ -18,6 +18,7 @@ import type { RootState } from '../../store/rootReducer';
 import { updateMeeting } from '../../features/meetings/meetingsSlice';
 import { fetchDocumentsByEntity, deleteDocument } from '../../features/documents/documentsSlice';
 import AgendaBuilder from '../../components/meetings/AgendaBuilder';
+import MinutesEditor from '../../components/meetings/MinutesEditor';
 import MeetingForm from '../../components/meetings/MeetingForm';
 import DocumentList from '../../components/documents/DocumentList';
 import DocumentUpload from '../../components/documents/DocumentUpload';
@@ -181,7 +182,10 @@ const MeetingDetailPage: React.FC = () => {
                 </TabPanel>
 
                 <TabPanel value={tabValue} index={1}>
-                    <Typography color="text.secondary">Éditeur de procès-verbal à venir...</Typography>
+                    <MinutesEditor
+                        meeting={meeting}
+                        onUpdate={handleMeetingUpdate}
+                    />
                 </TabPanel>
 
                 <TabPanel value={tabValue} index={2}>
