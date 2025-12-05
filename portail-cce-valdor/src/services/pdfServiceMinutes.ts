@@ -33,16 +33,19 @@ export const generateMinutesPDF = async (meeting: Meeting, globalNotes?: string)
     doc.setTextColor(0, 0, 0);
     doc.setFontSize(14);
     doc.setFont('helvetica', 'bold');
-    doc.text('COMITÉ CONSULTATIF EN ENVIRONNEMENT', pageWidth / 2, 20, { align: 'center' });
+    // Move text down to avoid overlap with logo (y=10 to 35)
+    doc.text('COMITÉ CONSULTATIF EN ENVIRONNEMENT', pageWidth / 2, 25, { align: 'center' });
 
     doc.setFontSize(12);
-    doc.text('PROCÈS-VERBAL', pageWidth / 2, 28, { align: 'center' });
+    doc.text('PROCÈS-VERBAL', pageWidth / 2, 33, { align: 'center' });
 
     doc.setFontSize(12);
-    doc.text(meeting.title.toUpperCase(), pageWidth / 2, 36, { align: 'center' });
+    doc.text(meeting.title.toUpperCase(), pageWidth / 2, 41, { align: 'center' });
 
     const dateStr = format(new Date(meeting.date), 'EEEE d MMMM yyyy', { locale: fr });
     const timeStr = format(new Date(meeting.date), 'HH:mm', { locale: fr }).replace(':', ' h ');
+    const formattedDate = dateStr.charAt(0).toUpperCase() + dateStr.slice(1);
+    doc.text(formattedDate, pageWidth / 2, 49, { align: 'center' });
 
     doc.setFontSize(10);
     doc.setFont('helvetica', 'normal');
@@ -50,9 +53,9 @@ export const generateMinutesPDF = async (meeting: Meeting, globalNotes?: string)
     // Introductory paragraph
     const introText = `PROCÈS-VERBAL de la ${meeting.title} du Comité consultatif en environnement tenue le ${dateStr}, ${timeStr} à ${meeting.location}.`;
     const splitIntro = doc.splitTextToSize(introText, contentWidth);
-    doc.text(splitIntro, margin, 45);
+    doc.text(splitIntro, margin, 60);
 
-    let currentY = 45 + (splitIntro.length * 5) + 5;
+    let currentY = 60 + (splitIntro.length * 5) + 5;
 
     // --- Attendees Logic ---
     const members = meeting.attendees?.filter(a => a.role !== 'Secrétaire' && a.role !== 'Conseiller responsable' && a.role !== 'Conseiller') || [];

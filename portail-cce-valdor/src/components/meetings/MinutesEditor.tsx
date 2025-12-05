@@ -11,9 +11,10 @@ import {
     Snackbar,
     MenuItem
 } from '@mui/material';
-import { Save, PictureAsPdf } from '@mui/icons-material';
-import type { Meeting } from '../../types/meeting.types';
+import { Save, PictureAsPdf, UploadFile } from '@mui/icons-material';
+import type { Meeting, AgendaItem } from '../../types/meeting.types';
 import { generateMinutesPDF } from '../../services/pdfServiceMinutes';
+import MinutesImportDialog from './MinutesImportDialog';
 
 interface MinutesEditorProps {
     meeting: Meeting;
@@ -25,6 +26,7 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
     const [itemDecisions, setItemDecisions] = useState<Record<string, string>>({});
     const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
     const [showSaveSuccess, setShowSaveSuccess] = useState(false);
+    const [isImportOpen, setIsImportOpen] = useState(false);
 
     // Initialize local state from meeting data
     useEffect(() => {
@@ -77,11 +79,53 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
         generateMinutesPDF(meetingForPdf, globalNotes);
     };
 
+    const handleImport = (parsedItems: Partial<AgendaItem>[]) => {
+        const newItems = [...meeting.agendaItems];
+        let parseIndex = 0;
+
+        // Map parsed items to agenda items sequentially
+        const updatedItems = newItems.map((item) => {
+            if (parseIndex < parsedItems.length) {
+                const parsed = parsedItems[parseIndex];
+                parseIndex++;
+                return {
+                    ...item,
+                    minuteType: parsed.minuteType,
+                    minuteNumber: parsed.minuteNumber,
+                    decision: parsed.decision,
+                    proposer: parsed.proposer,
+                    seconder: parsed.seconder
+                };
+            }
+            return item;
+        });
+
+        // Update local state
+        const newDecisions = { ...itemDecisions };
+        updatedItems.forEach(item => {
+            if (item.decision) {
+                newDecisions[item.id] = item.decision;
+            }
+        });
+        setItemDecisions(newDecisions);
+
+        // Update parent
+        onUpdate({ agendaItems: updatedItems });
+        setHasUnsavedChanges(true);
+    };
+
     return (
         <Box>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
                 <Typography variant="h6">Rédaction du Procès-Verbal</Typography>
                 <Box sx={{ display: 'flex', gap: 2 }}>
+                    <Button
+                        variant="outlined"
+                        startIcon={<UploadFile />}
+                        onClick={() => setIsImportOpen(true)}
+                    >
+                        Importer Texte
+                    </Button>
                     <Button
                         variant="outlined"
                         startIcon={<PictureAsPdf />}
@@ -99,6 +143,12 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
                     </Button>
                 </Box>
             </Box>
+
+            <MinutesImportDialog
+                open={isImportOpen}
+                onClose={() => setIsImportOpen(false)}
+                onImport={handleImport}
+            />
 
             <Paper sx={{ p: 3, mb: 3 }}>
                 <Typography variant="subtitle1" gutterBottom fontWeight="bold">Notes Générales / Introduction</Typography>
