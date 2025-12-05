@@ -1,5 +1,5 @@
 import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
+
 import type { Meeting } from '../types/meeting.types';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -17,6 +17,8 @@ const loadImage = (url: string): Promise<HTMLImageElement> => {
 export const generateMinutesPDF = async (meeting: Meeting, globalNotes?: string) => {
     const doc = new jsPDF();
     const pageWidth = doc.internal.pageSize.width;
+    const margin = 20;
+    const contentWidth = pageWidth - (margin * 2);
 
     // --- Header ---
     try {
@@ -42,73 +44,126 @@ export const generateMinutesPDF = async (meeting: Meeting, globalNotes?: string)
     let currentY = 55;
 
     // --- Attendees ---
-    // For now, we don't have a full attendance module, so we'll skip or list hardcoded if available.
-    // Future: Add attendance list here.
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
 
-    // --- Global Notes ---
-    if (globalNotes) {
-        doc.setFontSize(11);
+    // Filter attendees by role if available, otherwise just list them
+    const members = meeting.attendees?.filter(a => a.role !== 'Secrétaire' && a.role !== 'Conseiller') || [];
+    const others = meeting.attendees?.filter(a => a.role === 'Secrétaire' || a.role === 'Conseiller') || [];
+    const absents = meeting.attendees?.filter(a => !a.isPresent) || [];
+    const presents = members.filter(a => a.isPresent);
+
+    // ÉTAIENT PRÉSENTS
+    if (presents.length > 0) {
         doc.setFont('helvetica', 'bold');
-        doc.text('Notes générales:', 14, currentY);
-        currentY += 6;
+        doc.text('ÉTAIENT PRÉSENTS', margin, currentY);
         doc.setFont('helvetica', 'normal');
-        doc.setFontSize(10);
+        const presentNames = presents.map(p => `${p.name}${p.role ? `, ${p.role}` : ''}`).join(', ');
+        const splitPresent = doc.splitTextToSize(presentNames, contentWidth - 40);
+        doc.text(splitPresent, margin + 40, currentY);
+        currentY += (splitPresent.length * 5) + 5;
+    }
 
-        const splitNotes = doc.splitTextToSize(globalNotes, pageWidth - 28);
-        doc.text(splitNotes, 14, currentY);
+    // ÉTAIENT AUSSI PRÉSENTS
+    if (others.length > 0) {
+        doc.setFont('helvetica', 'bold');
+        doc.text('ÉTAIENT AUSSI PRÉSENTS', margin, currentY);
+        doc.setFont('helvetica', 'normal');
+        const otherNames = others.map(p => `${p.name}${p.role ? `, ${p.role}` : ''}`).join(', ');
+        const splitOthers = doc.splitTextToSize(otherNames, contentWidth - 55);
+        doc.text(splitOthers, margin + 55, currentY);
+        currentY += (splitOthers.length * 5) + 5;
+    }
+
+    // ÉTAIT ABSENT(E)
+    if (absents.length > 0) {
+        doc.setFont('helvetica', 'bold');
+        doc.text('ÉTAIT ABSENT(E)', margin, currentY);
+        doc.setFont('helvetica', 'normal');
+        const absentNames = absents.map(p => p.name).join(', ');
+        const splitAbsent = doc.splitTextToSize(absentNames, contentWidth - 40);
+        doc.text(splitAbsent, margin + 40, currentY);
+        currentY += (splitAbsent.length * 5) + 10;
+    }
+
+    currentY += 10;
+
+    // --- Global Notes / Opening ---
+    if (globalNotes) {
+        const splitNotes = doc.splitTextToSize(globalNotes, contentWidth);
+        doc.text(splitNotes, margin, currentY);
         currentY += (splitNotes.length * 5) + 10;
     }
 
-    // --- Agenda Items & Decisions ---
-    const tableBody = meeting.agendaItems.map((item) => [
-        `${item.order}.`,
-        item.title,
-        item.decision || 'Aucune note consignée.'
-    ]);
+    // --- Agenda Items ---
+    meeting.agendaItems.forEach((item) => {
+        // Check for page break
+        if (currentY > doc.internal.pageSize.height - 40) {
+            doc.addPage();
+            currentY = 20;
+        }
 
-    autoTable(doc, {
-        startY: currentY,
-        head: [['#', 'Sujet', 'Décision / Note']],
-        body: tableBody,
-        theme: 'grid', // Grid theme is better for minutes to separate items clearly
-        styles: {
-            fontSize: 10,
-            cellPadding: 4,
-            valign: 'top',
-            overflow: 'linebreak'
-        },
-        headStyles: {
-            fillColor: [240, 240, 240],
-            textColor: [0, 0, 0],
-            fontStyle: 'bold',
-            lineWidth: 0.1,
-            lineColor: [200, 200, 200]
-        },
-        columnStyles: {
-            0: { cellWidth: 10, fontStyle: 'bold' },
-            1: { cellWidth: 60, fontStyle: 'bold' },
-            2: { cellWidth: 'auto' }
-        },
+        // Title
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(11);
+        doc.text(item.title, margin, currentY);
+        currentY += 7;
+
+        // Minute Number (Resolution or Comment)
+        if (item.minuteNumber) {
+            const label = item.minuteType === 'resolution' ? 'RÉSOLUTION' : 'COMMENTAIRE';
+            doc.text(`${label} ${item.minuteNumber}`, margin, currentY);
+            currentY += 7;
+        }
+
+        // Content
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(10);
+        const content = item.decision || 'Aucune note consignée.';
+        const splitContent = doc.splitTextToSize(content, contentWidth);
+        doc.text(splitContent, margin, currentY);
+        currentY += (splitContent.length * 5) + 5;
+
+        // Mover/Seconder for Resolutions
+        if (item.minuteType === 'resolution' && (item.proposer || item.seconder)) {
+            // Check for page break
+            if (currentY > doc.internal.pageSize.height - 30) {
+                doc.addPage();
+                currentY = 20;
+            }
+
+            if (item.proposer) {
+                doc.text(`Proposé par : ${item.proposer}`, margin, currentY);
+                currentY += 5;
+            }
+            if (item.seconder) {
+                doc.text(`Appuyé par : ${item.seconder}`, margin, currentY);
+                currentY += 5;
+            }
+            currentY += 5;
+        }
+
+        currentY += 5; // Spacing between items
     });
 
     // --- Signatures ---
-    const finalY = (doc as any).lastAutoTable.finalY || currentY + 50;
-
-    let signatureY = finalY + 30;
+    // Ensure we have space
+    let signatureY = currentY + 20;
     if (signatureY > doc.internal.pageSize.height - 40) {
         doc.addPage();
         signatureY = 40;
     }
 
     doc.setFontSize(11);
-    const signatureX = pageWidth - 80;
 
-    doc.text('_________________________________', signatureX, signatureY);
-    doc.setFont('helvetica', 'bold');
-    doc.text('MICHAËL ROSS', signatureX, signatureY + 6);
-    doc.setFont('helvetica', 'normal');
-    doc.text('Coordonnateur en environnement', signatureX, signatureY + 11);
-    doc.text('Secrétaire', signatureX, signatureY + 16);
+    // President Signature
+    doc.text('___________________________', margin, signatureY);
+    doc.text('PATRICIA BOUTIN, Présidente', margin, signatureY + 6);
+
+    // Secretary Signature
+    const signatureX = pageWidth - 80;
+    doc.text('___________________________', signatureX, signatureY);
+    doc.text('MICHAËL ROSS, Secrétaire', signatureX, signatureY + 6);
 
     doc.save(`PV-${meeting.date.split('T')[0]}.pdf`);
 };

@@ -8,7 +8,8 @@ import {
     Divider,
     Grid,
     Alert,
-    Snackbar
+    Snackbar,
+    MenuItem
 } from '@mui/material';
 import { Save, PictureAsPdf } from '@mui/icons-material';
 import type { Meeting } from '../../types/meeting.types';
@@ -125,16 +126,89 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
                                 <Typography variant="caption" color="text.secondary" paragraph>
                                     {item.objective} - {item.presenter}
                                 </Typography>
+
+                                <Grid container spacing={2} sx={{ mb: 2 }}>
+                                    <Grid size={{ xs: 12, sm: 4 }}>
+                                        <TextField
+                                            select
+                                            fullWidth
+                                            label="Type de note"
+                                            size="small"
+                                            value={item.minuteType || 'other'}
+                                            onChange={(e) => {
+                                                const newItems = meeting.agendaItems.map(i =>
+                                                    i.id === item.id ? { ...i, minuteType: e.target.value as any } : i
+                                                );
+                                                onUpdate({ agendaItems: newItems });
+                                                setHasUnsavedChanges(true);
+                                            }}
+                                        >
+                                            <MenuItem value="other">Note simple</MenuItem>
+                                            <MenuItem value="resolution">Résolution</MenuItem>
+                                            <MenuItem value="comment">Commentaire</MenuItem>
+                                        </TextField>
+                                    </Grid>
+                                    <Grid size={{ xs: 12, sm: 4 }}>
+                                        <TextField
+                                            fullWidth
+                                            label="Numéro (ex: 09-35)"
+                                            size="small"
+                                            value={item.minuteNumber || ''}
+                                            onChange={(e) => {
+                                                const newItems = meeting.agendaItems.map(i =>
+                                                    i.id === item.id ? { ...i, minuteNumber: e.target.value } : i
+                                                );
+                                                onUpdate({ agendaItems: newItems });
+                                                setHasUnsavedChanges(true);
+                                            }}
+                                        />
+                                    </Grid>
+                                </Grid>
+
+                                {item.minuteType === 'resolution' && (
+                                    <Grid container spacing={2} sx={{ mb: 2 }}>
+                                        <Grid size={{ xs: 12, sm: 6 }}>
+                                            <TextField
+                                                fullWidth
+                                                label="Proposé par"
+                                                size="small"
+                                                value={item.proposer || ''}
+                                                onChange={(e) => {
+                                                    const newItems = meeting.agendaItems.map(i =>
+                                                        i.id === item.id ? { ...i, proposer: e.target.value } : i
+                                                    );
+                                                    onUpdate({ agendaItems: newItems });
+                                                    setHasUnsavedChanges(true);
+                                                }}
+                                            />
+                                        </Grid>
+                                        <Grid size={{ xs: 12, sm: 6 }}>
+                                            <TextField
+                                                fullWidth
+                                                label="Appuyé par"
+                                                size="small"
+                                                value={item.seconder || ''}
+                                                onChange={(e) => {
+                                                    const newItems = meeting.agendaItems.map(i =>
+                                                        i.id === item.id ? { ...i, seconder: e.target.value } : i
+                                                    );
+                                                    onUpdate({ agendaItems: newItems });
+                                                    setHasUnsavedChanges(true);
+                                                }}
+                                            />
+                                        </Grid>
+                                    </Grid>
+                                )}
+
                                 <TextField
                                     fullWidth
                                     multiline
-                                    rows={3}
-                                    label="Décision / Note au PV"
-                                    placeholder="Inscrire la décision prise ou le résumé des discussions..."
+                                    rows={4}
+                                    label="Contenu du PV"
+                                    placeholder={item.minuteType === 'resolution' ? "CONSIDÉRANT que...\n\nIL EST RÉSOLU..." : "Saisir le commentaire ou la note..."}
                                     value={itemDecisions[item.id] || ''}
                                     onChange={(e) => handleDecisionChange(item.id, e.target.value)}
                                     variant="outlined"
-                                    size="small"
                                 />
                             </Box>
                         </Grid>

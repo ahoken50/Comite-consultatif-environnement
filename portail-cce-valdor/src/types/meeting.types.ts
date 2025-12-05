@@ -25,6 +25,12 @@ export interface AgendaItem {
     objective: string; // e.g., 'Information', 'Décision', 'Consultation'
     decision?: string; // Optional note or decision
     linkedProjectId?: string;
+    // Minutes specific fields
+    minuteType?: 'resolution' | 'comment' | 'other';
+    minuteNumber?: string; // e.g. "09-35" or "09-A"
+    proposer?: string;
+    seconder?: string;
+    minuteContent?: string;
 }
 
 export interface Attendee {
