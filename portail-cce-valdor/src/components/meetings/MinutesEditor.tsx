@@ -29,15 +29,23 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
     const [showSaveSuccess, setShowSaveSuccess] = useState(false);
     const [isImportOpen, setIsImportOpen] = useState(false);
 
-    const [localFile, setLocalFile] = useState({
-        url: meeting.minutesFileUrl,
-        name: meeting.minutesFileName,
-        path: meeting.minutesFileStoragePath
+    // Local state for agenda item fields that need to be saved manually
+    const [localAgendaItems, setLocalAgendaItems] = useState<AgendaItem[]>(meeting.agendaItems || []);
+
+    const [localFile, setLocalFile] = useState<{
+        url: string | null | undefined;
+        name: string | null | undefined;
+        path: string | null | undefined;
+    }>({
+        url: meeting.minutesFileUrl ?? null,
+        name: meeting.minutesFileName ?? null,
+        path: meeting.minutesFileStoragePath ?? null
     });
 
     // Initialize local state from meeting data
     useEffect(() => {
         setGlobalNotes(meeting.minutes || '');
+        setLocalAgendaItems(meeting.agendaItems || []);
         const decisions: Record<string, string> = {};
         meeting.agendaItems.forEach(item => {
             decisions[item.id] = item.decision || '';
@@ -46,13 +54,16 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
     }, [meeting]);
 
     // Sync local file state if meeting prop updates externally
+    // Use strict comparison to handle null/undefined properly
     useEffect(() => {
-        // Only sync if they differ to avoid loops, though basic equality check is fine
-        if (meeting.minutesFileUrl !== localFile.url) {
+        const meetingUrl = meeting.minutesFileUrl ?? null;
+        const localUrl = localFile.url ?? null;
+
+        if (meetingUrl !== localUrl) {
             setLocalFile({
-                url: meeting.minutesFileUrl,
-                name: meeting.minutesFileName,
-                path: meeting.minutesFileStoragePath
+                url: meeting.minutesFileUrl ?? null,
+                name: meeting.minutesFileName ?? null,
+                path: meeting.minutesFileStoragePath ?? null
             });
         }
     }, [meeting.minutesFileUrl, meeting.minutesFileName, meeting.minutesFileStoragePath]);
@@ -70,8 +81,17 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
         setHasUnsavedChanges(true);
     };
 
+    // Handler for agenda item field changes (now stored locally until save)
+    const handleAgendaItemChange = (itemId: string, field: keyof AgendaItem, value: any) => {
+        setLocalAgendaItems(prev => prev.map(item =>
+            item.id === itemId ? { ...item, [field]: value } : item
+        ));
+        setHasUnsavedChanges(true);
+    };
+
     const handleSave = () => {
-        const updatedAgendaItems = meeting.agendaItems.map(item => ({
+        // Merge decisions into agenda items
+        const updatedAgendaItems = localAgendaItems.map(item => ({
             ...item,
             decision: itemDecisions[item.id] || ''
         }));
@@ -90,7 +110,7 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
         const meetingForPdf: Meeting = {
             ...meeting,
             minutes: globalNotes,
-            agendaItems: meeting.agendaItems.map(item => ({
+            agendaItems: localAgendaItems.map(item => ({
                 ...item,
                 decision: itemDecisions[item.id] || ''
             }))
@@ -99,7 +119,7 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
     };
 
     const handleImport = (parsedItems: Partial<AgendaItem>[]) => {
-        const newItems = [...meeting.agendaItems];
+        const newItems = [...localAgendaItems];
         let parseIndex = 0;
 
         // Map parsed items to agenda items sequentially
@@ -120,6 +140,7 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
         });
 
         // Update local state
+        setLocalAgendaItems(updatedItems);
         const newDecisions = { ...itemDecisions };
         updatedItems.forEach(item => {
             if (item.decision) {
@@ -127,9 +148,6 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
             }
         });
         setItemDecisions(newDecisions);
-
-        // Update parent
-        onUpdate({ agendaItems: updatedItems });
         setHasUnsavedChanges(true);
     };
 
@@ -153,13 +171,14 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
                 path: doc.storagePath
             });
 
+            // File upload is saved immediately (auto-save)
             onUpdate({
                 minutesFileUrl: doc.url,
                 minutesFileName: file.name,
                 minutesFileStoragePath: doc.storagePath,
                 minutesFileDocumentId: doc.id
             });
-            setHasUnsavedChanges(true);
+            // Don't set hasUnsavedChanges since it's already saved
 
         } catch (error) {
             console.error("Upload failed", error);
@@ -169,9 +188,9 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
     const handleDeleteFile = async () => {
         // Optimistic update
         setLocalFile({
-            url: undefined,
-            name: undefined,
-            path: undefined
+            url: null,
+            name: null,
+            path: null
         });
 
         if (!meeting.minutesFileUrl) return;
@@ -188,7 +207,7 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
             console.error("Warning: Failed to delete physical file or metadata record. Proceeding to unlink from meeting.", e);
         }
 
-        // ALWAYS unlink from meeting, regardless of storage deletion success
+        // ALWAYS unlink from meeting, regardless of storage deletion success (auto-save)
         try {
             onUpdate({
                 minutesFileUrl: null as any,
@@ -196,7 +215,7 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
                 minutesFileStoragePath: null as any,
                 minutesFileDocumentId: null as any
             });
-            setHasUnsavedChanges(true);
+            // Don't set hasUnsavedChanges since it's already saved
         } catch (e) {
             console.error("Error updating meeting record during file unlink", e);
         }
@@ -283,7 +302,7 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
                 <Typography variant="subtitle1" gutterBottom fontWeight="bold" sx={{ mb: 2 }}>Points de l'Ordre du Jour</Typography>
 
                 <Grid container spacing={3}>
-                    {meeting.agendaItems.map((item, index) => (
+                    {localAgendaItems.map((item, index) => (
                         <Grid size={{ xs: 12 }} key={item.id}>
                             <Box sx={{ bgcolor: 'background.default', p: 2, borderRadius: 1 }}>
                                 <Typography variant="subtitle2" gutterBottom>
@@ -301,13 +320,7 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
                                             label="Type de note"
                                             size="small"
                                             value={item.minuteType || 'other'}
-                                            onChange={(e) => {
-                                                const newItems = meeting.agendaItems.map(i =>
-                                                    i.id === item.id ? { ...i, minuteType: e.target.value as any } : i
-                                                );
-                                                onUpdate({ agendaItems: newItems });
-                                                setHasUnsavedChanges(true);
-                                            }}
+                                            onChange={(e) => handleAgendaItemChange(item.id, 'minuteType', e.target.value)}
                                         >
                                             <MenuItem value="other">Note simple</MenuItem>
                                             <MenuItem value="resolution">Résolution</MenuItem>
@@ -320,13 +333,7 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
                                             label="Numéro (ex: 09-35)"
                                             size="small"
                                             value={item.minuteNumber || ''}
-                                            onChange={(e) => {
-                                                const newItems = meeting.agendaItems.map(i =>
-                                                    i.id === item.id ? { ...i, minuteNumber: e.target.value } : i
-                                                );
-                                                onUpdate({ agendaItems: newItems });
-                                                setHasUnsavedChanges(true);
-                                            }}
+                                            onChange={(e) => handleAgendaItemChange(item.id, 'minuteNumber', e.target.value)}
                                         />
                                     </Grid>
                                 </Grid>
@@ -339,13 +346,7 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
                                                 label="Proposé par"
                                                 size="small"
                                                 value={item.proposer || ''}
-                                                onChange={(e) => {
-                                                    const newItems = meeting.agendaItems.map(i =>
-                                                        i.id === item.id ? { ...i, proposer: e.target.value } : i
-                                                    );
-                                                    onUpdate({ agendaItems: newItems });
-                                                    setHasUnsavedChanges(true);
-                                                }}
+                                                onChange={(e) => handleAgendaItemChange(item.id, 'proposer', e.target.value)}
                                             />
                                         </Grid>
                                         <Grid size={{ xs: 12, sm: 6 }}>
@@ -354,13 +355,7 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
                                                 label="Appuyé par"
                                                 size="small"
                                                 value={item.seconder || ''}
-                                                onChange={(e) => {
-                                                    const newItems = meeting.agendaItems.map(i =>
-                                                        i.id === item.id ? { ...i, seconder: e.target.value } : i
-                                                    );
-                                                    onUpdate({ agendaItems: newItems });
-                                                    setHasUnsavedChanges(true);
-                                                }}
+                                                onChange={(e) => handleAgendaItemChange(item.id, 'seconder', e.target.value)}
                                             />
                                         </Grid>
                                     </Grid>
