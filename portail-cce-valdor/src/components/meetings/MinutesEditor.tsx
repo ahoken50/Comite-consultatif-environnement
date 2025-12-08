@@ -139,13 +139,40 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
 
             onUpdate({
                 minutesFileUrl: doc.url,
-                minutesFileName: file.name
+                minutesFileName: file.name,
+                minutesFileStoragePath: doc.storagePath
             });
             setHasUnsavedChanges(true);
 
         } catch (error) {
             console.error("Upload failed", error);
             // Show error snackbar (not implemented here but good to have)
+        }
+    };
+
+    const handleDeleteFile = async () => {
+        if (!meeting.minutesFileUrl) return;
+
+        if (meeting.minutesFileStoragePath) {
+            try {
+                // Ideally delete from storage using documentsAPI.delete(id, path) but we miss ID.
+                // For now, just unlink.
+                onUpdate({
+                    minutesFileUrl: undefined,
+                    minutesFileName: undefined,
+                    minutesFileStoragePath: undefined
+                });
+                setHasUnsavedChanges(true);
+            } catch (e) {
+                console.error("Error clearing file", e);
+            }
+        } else {
+            onUpdate({
+                minutesFileUrl: undefined,
+                minutesFileName: undefined,
+                minutesFileStoragePath: undefined
+            });
+            setHasUnsavedChanges(true);
         }
     };
 
@@ -194,9 +221,14 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
 
             {meeting.minutesFileUrl && (
                 <Alert severity="success" sx={{ mb: 3 }} action={
-                    <Button color="inherit" size="small" href={meeting.minutesFileUrl} target="_blank">
-                        Voir le fichier
-                    </Button>
+                    <Box sx={{ display: 'flex', gap: 1 }}>
+                        <Button color="inherit" size="small" href={meeting.minutesFileUrl} target="_blank">
+                            Voir le fichier
+                        </Button>
+                        <Button color="error" size="small" onClick={handleDeleteFile}>
+                            Supprimer
+                        </Button>
+                    </Box>
                 }>
                     Fichier joint : {meeting.minutesFileName || 'Document'}
                 </Alert>

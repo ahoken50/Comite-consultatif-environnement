@@ -1,5 +1,4 @@
 import jsPDF from 'jspdf';
-
 import type { Meeting } from '../types/meeting.types';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -20,8 +19,37 @@ export const generateMinutesPDF = async (meeting: Meeting, globalNotes?: string)
         unit: 'mm'
     });
     const pageWidth = doc.internal.pageSize.width;
-    const margin = 20;
+    const margin = 25.4; // 1 inch
     const contentWidth = pageWidth - (margin * 2);
+
+    // Helper to write text with safe page breaks
+    const writeSafeText = (text: string | string[], x: number, y: number, options?: { align?: 'left' | 'center' | 'right', maxWidth?: number }): number => {
+        const align = options?.align || 'left';
+        const maxWidth = options?.maxWidth || contentWidth;
+        const lineHeight = 5;
+
+        // If text is string, split it
+        let lines: string[] = [];
+        if (typeof text === 'string') {
+            lines = doc.splitTextToSize(text, maxWidth);
+        } else {
+            lines = text;
+        }
+
+        let currentLineY = y;
+
+        lines.forEach(line => {
+            // Check page break
+            if (currentLineY > doc.internal.pageSize.height - margin) {
+                doc.addPage();
+                currentLineY = margin; // Reset to top margin
+            }
+            doc.text(line, x, currentLineY, { align });
+            currentLineY += lineHeight;
+        });
+
+        return currentLineY;
+    };
 
     // --- Header ---
     try {
@@ -55,10 +83,8 @@ export const generateMinutesPDF = async (meeting: Meeting, globalNotes?: string)
 
     // Introductory paragraph
     const introText = `PROCÈS-VERBAL de la ${meeting.title} du Comité consultatif en environnement tenue le ${dateStr}, ${timeStr} à ${meeting.location}.`;
-    const splitIntro = doc.splitTextToSize(introText, contentWidth);
-    doc.text(splitIntro, margin, 60);
-
-    let currentY = 60 + (splitIntro.length * 5) + 5;
+    let currentY = writeSafeText(introText, margin, 60);
+    currentY += 5;
 
     // --- Attendees Logic ---
     const members = meeting.attendees?.filter(a => a.role !== 'Secrétaire' && a.role !== 'Conseiller responsable' && a.role !== 'Conseiller') || [];
@@ -82,14 +108,20 @@ export const generateMinutesPDF = async (meeting: Meeting, globalNotes?: string)
 
         doc.setFont('helvetica', 'normal');
         const names = presents.map(formatName).join(', ');
+        // We need to handle wrapping manually here to indent lines after the first one
+        // We use writeSafeText but offset the first line manually? 
+        // Or simpler: just split and write.
         const splitNames = doc.splitTextToSize(names, contentWidth - labelWidth);
         doc.text(splitNames, margin + labelWidth, currentY);
 
+        // Calculate new Y based on lines
         currentY += (splitNames.length * 5) + 5;
     }
 
     // ÉTAIENT AUSSI PRÉSENTS
     if (othersPresent.length > 0) {
+        if (currentY > doc.internal.pageSize.height - margin - 20) { doc.addPage(); currentY = margin; }
+
         doc.setFont('helvetica', 'bold');
         doc.text('ÉTAIENT AUSSI PRÉSENTS', margin, currentY);
         const labelWidth = doc.getTextWidth('ÉTAIENT AUSSI PRÉSENTS ');
@@ -98,12 +130,13 @@ export const generateMinutesPDF = async (meeting: Meeting, globalNotes?: string)
         const names = othersPresent.map(formatName).join(', ');
         const splitNames = doc.splitTextToSize(names, contentWidth - labelWidth);
         doc.text(splitNames, margin + labelWidth, currentY);
-
         currentY += (splitNames.length * 5) + 5;
     }
 
     // ÉTAIT ABSENT(E)
     if (absents.length > 0) {
+        if (currentY > doc.internal.pageSize.height - margin - 20) { doc.addPage(); currentY = margin; }
+
         doc.setFont('helvetica', 'bold');
         doc.text('ÉTAIT ABSENT(E)', margin, currentY);
         const labelWidth = doc.getTextWidth('ÉTAIT ABSENT(E) ');
@@ -112,23 +145,21 @@ export const generateMinutesPDF = async (meeting: Meeting, globalNotes?: string)
         const names = absents.map(a => a.name).join(', ');
         const splitNames = doc.splitTextToSize(names, contentWidth - labelWidth);
         doc.text(splitNames, margin + labelWidth, currentY);
-
         currentY += (splitNames.length * 5) + 5;
     }
 
     // --- Global Notes / Opening ---
     if (globalNotes) {
-        const splitNotes = doc.splitTextToSize(globalNotes, contentWidth);
-        doc.text(splitNotes, margin, currentY);
-        currentY += (splitNotes.length * 5) + 10;
+        currentY = writeSafeText(globalNotes, margin, currentY);
+        currentY += 5;
     }
 
     // --- Agenda Items ---
     meeting.agendaItems.forEach((item) => {
-        // Check for page break
-        if (currentY > doc.internal.pageSize.height - 40) {
+        // Evaluate rough space needed for title + potential content
+        if (currentY > doc.internal.pageSize.height - margin - 20) {
             doc.addPage();
-            currentY = 20;
+            currentY = margin;
         }
 
         // Title
@@ -139,6 +170,7 @@ export const generateMinutesPDF = async (meeting: Meeting, globalNotes?: string)
 
         // Minute Number (Resolution or Comment)
         if (item.minuteNumber) {
+            if (currentY > doc.internal.pageSize.height - margin) { doc.addPage(); currentY = margin; }
             const label = item.minuteType === 'resolution' ? 'RÉSOLUTION' : 'COMMENTAIRE';
             doc.text(`${label} ${item.minuteNumber}`, margin, currentY);
             currentY += 7;
@@ -148,16 +180,14 @@ export const generateMinutesPDF = async (meeting: Meeting, globalNotes?: string)
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(10);
         const content = item.decision || 'Aucune note consignée.';
-        const splitContent = doc.splitTextToSize(content, contentWidth);
-        doc.text(splitContent, margin, currentY);
-        currentY += (splitContent.length * 5) + 5;
+        currentY = writeSafeText(content, margin, currentY);
+        currentY += 5;
 
         // Mover/Seconder for Resolutions
         if (item.minuteType === 'resolution' && (item.proposer || item.seconder)) {
-            // Check for page break
-            if (currentY > doc.internal.pageSize.height - 30) {
+            if (currentY > doc.internal.pageSize.height - margin - 15) {
                 doc.addPage();
-                currentY = 20;
+                currentY = margin;
             }
 
             if (item.proposer) {
@@ -177,7 +207,7 @@ export const generateMinutesPDF = async (meeting: Meeting, globalNotes?: string)
     // --- Signatures ---
     // Ensure we have space
     let signatureY = currentY + 20;
-    if (signatureY > doc.internal.pageSize.height - 40) {
+    if (signatureY > doc.internal.pageSize.height - margin - 40) {
         doc.addPage();
         signatureY = 40;
     }

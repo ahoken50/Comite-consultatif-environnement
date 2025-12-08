@@ -52,6 +52,7 @@ export interface Meeting {
     minutes: string; // HTML content for PV
     minutesFileUrl?: string; // URL of the uploaded signed PV
     minutesFileName?: string; // Name of the uploaded file
+    minutesFileStoragePath?: string; // Storage path of the uploaded file
     dateCreated: string;
     dateUpdated: string;
 }
