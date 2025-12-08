@@ -31,7 +31,13 @@ const DocumentsPage: React.FC = () => {
             console.log('[DEBUG] User confirmed deletion');
             try {
                 // Check if this document is linked as a meeting's minutes file
-                const linkedMeeting = meetings.find(m => m.minutesFileDocumentId === id);
+                // First try by documentId, then by storagePath as fallback for legacy data
+                let linkedMeeting = meetings.find(m => m.minutesFileDocumentId === id);
+
+                if (!linkedMeeting) {
+                    // Fallback: check by storagePath for documents uploaded before minutesFileDocumentId was added
+                    linkedMeeting = meetings.find(m => m.minutesFileStoragePath === storagePath);
+                }
 
                 if (linkedMeeting) {
                     console.log('[DEBUG] Document is linked to meeting:', linkedMeeting.id, '- clearing minutes file reference');
@@ -45,6 +51,8 @@ const DocumentsPage: React.FC = () => {
                             minutesFileDocumentId: null as any
                         }
                     }));
+                } else {
+                    console.log('[DEBUG] No linked meeting found for document:', id);
                 }
 
                 // Delete the document
