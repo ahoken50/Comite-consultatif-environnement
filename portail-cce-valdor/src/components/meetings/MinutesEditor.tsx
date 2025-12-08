@@ -15,6 +15,7 @@ import { Save, PictureAsPdf, UploadFile } from '@mui/icons-material';
 import type { Meeting, AgendaItem } from '../../types/meeting.types';
 import { generateMinutesPDF } from '../../services/pdfServiceMinutes';
 import MinutesImportDialog from './MinutesImportDialog';
+import { documentsAPI } from '../../features/documents/documentsAPI';
 
 interface MinutesEditorProps {
     meeting: Meeting;
@@ -138,12 +139,12 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
         try {
             const file = e.target.files[0];
 
-            const doc = await import('../../features/documents/documentsAPI').then(m => m.documentsAPI.upload(
+            const doc = await documentsAPI.upload(
                 file,
                 meeting.id,
                 'meeting',
                 'user' // Placeholder
-            ));
+            );
 
             // Optimistic local update
             setLocalFile({
@@ -175,15 +176,20 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
 
         if (!meeting.minutesFileUrl) return;
 
-        // Propagate to backend
+        // Proceed to delete physical file if possible
         try {
             if (meeting.minutesFileDocumentId && meeting.minutesFileStoragePath) {
-                await import('../../features/documents/documentsAPI').then(m => m.documentsAPI.delete(
+                await documentsAPI.delete(
                     meeting.minutesFileDocumentId!,
                     meeting.minutesFileStoragePath!
-                ));
+                );
             }
+        } catch (e) {
+            console.error("Warning: Failed to delete physical file or metadata record. Proceeding to unlink from meeting.", e);
+        }
 
+        // ALWAYS unlink from meeting, regardless of storage deletion success
+        try {
             onUpdate({
                 minutesFileUrl: null as any,
                 minutesFileName: null as any,
@@ -192,7 +198,7 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
             });
             setHasUnsavedChanges(true);
         } catch (e) {
-            console.error("Error clearing file", e);
+            console.error("Error updating meeting record during file unlink", e);
         }
     };
 
