@@ -307,18 +307,26 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
                 </Box>
             </Box>
 
-            {localFile.url && (
-                <Alert severity="success" sx={{ mb: 3 }} action={
+            {(localFile.url || meeting.minutesFileUrl) && (
+                <Alert severity={localFile.url ? "success" : "warning"} sx={{ mb: 3 }} action={
                     <Box sx={{ display: 'flex', gap: 1 }}>
-                        <Button color="inherit" size="small" href={localFile.url} target="_blank">
-                            Voir le fichier
-                        </Button>
-                        <Button color="error" size="small" onClick={handleDeleteFile}>
+                        {localFile.url && (
+                            <Button color="inherit" size="small" href={localFile.url} target="_blank">
+                                Voir le fichier
+                            </Button>
+                        )}
+                        <Button color="error" size="small" onClick={() => {
+                            console.log('[DEBUG] Supprimer button clicked!');
+                            handleDeleteFile();
+                        }}>
                             Supprimer
                         </Button>
                     </Box>
                 }>
-                    Fichier joint : {localFile.name || 'Document'}
+                    {localFile.url
+                        ? `Fichier joint : ${localFile.name || 'Document'}`
+                        : `Référence orpheline : ${meeting.minutesFileName || 'Document supprimé'} (cliquez Supprimer pour nettoyer)`
+                    }
                 </Alert>
             )}
 
