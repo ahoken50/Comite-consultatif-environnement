@@ -5,7 +5,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import type { AppDispatch } from '../../store/store';
 import type { RootState } from '../../store/rootReducer';
 import { fetchDocuments, deleteDocument } from '../../features/documents/documentsSlice';
-import { fetchMeetings } from '../../features/meetings/meetingsSlice';
+import { fetchMeetings, updateMeeting } from '../../features/meetings/meetingsSlice';
 import { fetchProjects } from '../../features/projects/projectsSlice';
 import DocumentList from '../../components/documents/DocumentList';
 import DocumentUpload from '../../components/documents/DocumentUpload';
@@ -28,8 +28,26 @@ const DocumentsPage: React.FC = () => {
     const handleDelete = async (id: string, storagePath: string) => {
         console.log('[DEBUG] handleDelete called with:', { id, storagePath });
         if (window.confirm('Êtes-vous sûr de vouloir supprimer ce document ?')) {
-            console.log('[DEBUG] User confirmed deletion, dispatching deleteDocument');
+            console.log('[DEBUG] User confirmed deletion');
             try {
+                // Check if this document is linked as a meeting's minutes file
+                const linkedMeeting = meetings.find(m => m.minutesFileDocumentId === id);
+
+                if (linkedMeeting) {
+                    console.log('[DEBUG] Document is linked to meeting:', linkedMeeting.id, '- clearing minutes file reference');
+                    // Clear the minutes file reference in the meeting
+                    await dispatch(updateMeeting({
+                        id: linkedMeeting.id,
+                        updates: {
+                            minutesFileUrl: null as any,
+                            minutesFileName: null as any,
+                            minutesFileStoragePath: null as any,
+                            minutesFileDocumentId: null as any
+                        }
+                    }));
+                }
+
+                // Delete the document
                 const result = await dispatch(deleteDocument({ id, storagePath }));
                 console.log('[DEBUG] deleteDocument result:', result);
             } catch (error) {
