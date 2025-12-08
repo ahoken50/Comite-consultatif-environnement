@@ -28,6 +28,12 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
     const [showSaveSuccess, setShowSaveSuccess] = useState(false);
     const [isImportOpen, setIsImportOpen] = useState(false);
 
+    const [localFile, setLocalFile] = useState({
+        url: meeting.minutesFileUrl,
+        name: meeting.minutesFileName,
+        path: meeting.minutesFileStoragePath
+    });
+
     // Initialize local state from meeting data
     useEffect(() => {
         setGlobalNotes(meeting.minutes || '');
@@ -37,6 +43,18 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
         });
         setItemDecisions(decisions);
     }, [meeting]);
+
+    // Sync local file state if meeting prop updates externally (e.g. initial load or other user update)
+    // We only sync if the local state is 'pristine' or if we want to enforce truth.
+    // However, since we update optimistically, we should be careful. 
+    // Usually simple effect works.
+    useEffect(() => {
+        setLocalFile({
+            url: meeting.minutesFileUrl,
+            name: meeting.minutesFileName,
+            path: meeting.minutesFileStoragePath
+        });
+    }, [meeting.minutesFileUrl, meeting.minutesFileName, meeting.minutesFileStoragePath]);
 
     const handleGlobalNotesChange = (value: string) => {
         setGlobalNotes(value);
@@ -119,23 +137,23 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
 
         try {
             const file = e.target.files[0];
-            // Use documentsAPI to upload
-            // We'll link it to the meeting with type 'meeting'
-            // We also need to update the meeting object with the URL
 
-            // Note: documentsAPI.upload returns a Document object
-            // We need to import documentsAPI
+            // Optimistic update could go here if we had a placeholder, but for upload we wait for the URL.
+            // Loading state could be added.
 
-            // For now, let's assume we can pass a dummy 'uploadedBy' or handle it 
-            // In a real app, we'd get the current user. 
-
-            // Since we don't have the user context here easily, we'll skip 'uploadedBy' or use 'system'
             const doc = await import('../../features/documents/documentsAPI').then(m => m.documentsAPI.upload(
                 file,
                 meeting.id,
                 'meeting',
                 'user' // Placeholder
             ));
+
+            // Optimistic local update
+            setLocalFile({
+                url: doc.url,
+                name: file.name,
+                path: doc.storagePath
+            });
 
             onUpdate({
                 minutesFileUrl: doc.url,
@@ -151,28 +169,26 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
     };
 
     const handleDeleteFile = async () => {
+        // Optimistic update
+        setLocalFile({
+            url: undefined,
+            name: undefined,
+            path: undefined
+        });
+
         if (!meeting.minutesFileUrl) return;
 
-        if (meeting.minutesFileStoragePath) {
-            try {
-                // Ideally delete from storage using documentsAPI.delete(id, path) but we miss ID.
-                // For now, just unlink.
-                onUpdate({
-                    minutesFileUrl: null as any,
-                    minutesFileName: null as any,
-                    minutesFileStoragePath: null as any
-                });
-                setHasUnsavedChanges(true);
-            } catch (e) {
-                console.error("Error clearing file", e);
-            }
-        } else {
+        // Propagate to backend
+        try {
             onUpdate({
                 minutesFileUrl: null as any,
                 minutesFileName: null as any,
                 minutesFileStoragePath: null as any
             });
             setHasUnsavedChanges(true);
+        } catch (e) {
+            console.error("Error clearing file", e);
+            // Revert local state if needed, but for now we assume success
         }
     };
 
@@ -219,10 +235,10 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
                 </Box>
             </Box>
 
-            {meeting.minutesFileUrl && (
+            {localFile.url && (
                 <Alert severity="success" sx={{ mb: 3 }} action={
                     <Box sx={{ display: 'flex', gap: 1 }}>
-                        <Button color="inherit" size="small" href={meeting.minutesFileUrl} target="_blank">
+                        <Button color="inherit" size="small" href={localFile.url} target="_blank">
                             Voir le fichier
                         </Button>
                         <Button color="error" size="small" onClick={handleDeleteFile}>
@@ -230,7 +246,7 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
                         </Button>
                     </Box>
                 }>
-                    Fichier joint : {meeting.minutesFileName || 'Document'}
+                    Fichier joint : {localFile.name || 'Document'}
                 </Alert>
             )}
 
