@@ -11,7 +11,7 @@ import {
     Snackbar,
     MenuItem
 } from '@mui/material';
-import { Save, PictureAsPdf, UploadFile } from '@mui/icons-material';
+import { Save, PictureAsPdf, UploadFile, DeleteSweep } from '@mui/icons-material';
 import type { Meeting, AgendaItem } from '../../types/meeting.types';
 import { generateMinutesPDF } from '../../services/pdfServiceMinutes';
 import MinutesImportDialog from './MinutesImportDialog';
@@ -221,6 +221,30 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
         }
     };
 
+    const handleClearAll = () => {
+        if (!window.confirm('Êtes-vous sûr de vouloir effacer tout le contenu du procès-verbal ? Cette action ne peut pas être annulée.')) {
+            return;
+        }
+
+        // Clear global notes
+        setGlobalNotes('');
+
+        // Clear all decisions
+        setItemDecisions({});
+
+        // Reset agenda items minute fields
+        setLocalAgendaItems(prev => prev.map(item => ({
+            ...item,
+            minuteType: undefined,
+            minuteNumber: undefined,
+            decision: undefined,
+            proposer: undefined,
+            seconder: undefined
+        })));
+
+        setHasUnsavedChanges(true);
+    };
+
     return (
         <Box>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
@@ -245,6 +269,14 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
                         onClick={() => setIsImportOpen(true)}
                     >
                         Importer Texte
+                    </Button>
+                    <Button
+                        variant="outlined"
+                        color="error"
+                        startIcon={<DeleteSweep />}
+                        onClick={handleClearAll}
+                    >
+                        Réinitialiser
                     </Button>
                     <Button
                         variant="outlined"

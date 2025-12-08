@@ -26,8 +26,17 @@ const DocumentsPage: React.FC = () => {
     }, [dispatch]);
 
     const handleDelete = async (id: string, storagePath: string) => {
+        console.log('[DEBUG] handleDelete called with:', { id, storagePath });
         if (window.confirm('Êtes-vous sûr de vouloir supprimer ce document ?')) {
-            await dispatch(deleteDocument({ id, storagePath }));
+            console.log('[DEBUG] User confirmed deletion, dispatching deleteDocument');
+            try {
+                const result = await dispatch(deleteDocument({ id, storagePath }));
+                console.log('[DEBUG] deleteDocument result:', result);
+            } catch (error) {
+                console.error('[DEBUG] deleteDocument error:', error);
+            }
+        } else {
+            console.log('[DEBUG] User cancelled deletion');
         }
     };
 
