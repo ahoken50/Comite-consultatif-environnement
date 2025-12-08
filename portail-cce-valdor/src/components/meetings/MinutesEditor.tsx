@@ -158,9 +158,9 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
                 // Ideally delete from storage using documentsAPI.delete(id, path) but we miss ID.
                 // For now, just unlink.
                 onUpdate({
-                    minutesFileUrl: undefined,
-                    minutesFileName: undefined,
-                    minutesFileStoragePath: undefined
+                    minutesFileUrl: null as any,
+                    minutesFileName: null as any,
+                    minutesFileStoragePath: null as any
                 });
                 setHasUnsavedChanges(true);
             } catch (e) {
@@ -168,9 +168,9 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
             }
         } else {
             onUpdate({
-                minutesFileUrl: undefined,
-                minutesFileName: undefined,
-                minutesFileStoragePath: undefined
+                minutesFileUrl: null as any,
+                minutesFileName: null as any,
+                minutesFileStoragePath: null as any
             });
             setHasUnsavedChanges(true);
         }

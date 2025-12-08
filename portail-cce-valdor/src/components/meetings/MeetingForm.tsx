@@ -53,7 +53,8 @@ const MeetingForm: React.FC<MeetingFormProps> = ({ open, onClose, onSubmit, init
         resolver: zodResolver(meetingSchema) as any,
         defaultValues: {
             title: initialData?.title || '',
-            date: initialData?.date || new Date().toISOString().slice(0, 16),
+            // Ensure date is in YYYY-MM-DDThh:mm format for datetime-local input
+            date: initialData?.date ? initialData.date.slice(0, 16) : new Date().toISOString().slice(0, 16),
             location: initialData?.location || 'Salle du conseil',
             type: initialData?.type || MeetingType.REGULAR,
             status: initialData?.status || MeetingStatus.SCHEDULED,
