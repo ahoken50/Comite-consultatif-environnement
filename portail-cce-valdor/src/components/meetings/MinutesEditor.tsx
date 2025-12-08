@@ -114,11 +114,59 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
         setHasUnsavedChanges(true);
     };
 
+    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (!e.target.files || e.target.files.length === 0) return;
+
+        try {
+            const file = e.target.files[0];
+            // Use documentsAPI to upload
+            // We'll link it to the meeting with type 'meeting'
+            // We also need to update the meeting object with the URL
+
+            // Note: documentsAPI.upload returns a Document object
+            // We need to import documentsAPI
+
+            // For now, let's assume we can pass a dummy 'uploadedBy' or handle it 
+            // In a real app, we'd get the current user. 
+
+            // Since we don't have the user context here easily, we'll skip 'uploadedBy' or use 'system'
+            const doc = await import('../../features/documents/documentsAPI').then(m => m.documentsAPI.upload(
+                file,
+                meeting.id,
+                'meeting',
+                'user' // Placeholder
+            ));
+
+            onUpdate({
+                minutesFileUrl: doc.url,
+                minutesFileName: file.name
+            });
+            setHasUnsavedChanges(true);
+
+        } catch (error) {
+            console.error("Upload failed", error);
+            // Show error snackbar (not implemented here but good to have)
+        }
+    };
+
     return (
         <Box>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
                 <Typography variant="h6">Rédaction du Procès-Verbal</Typography>
                 <Box sx={{ display: 'flex', gap: 2 }}>
+                    <Button
+                        variant="outlined"
+                        component="label"
+                        startIcon={<UploadFile />}
+                    >
+                        Téléverser PV Signé (PDF/DOCX)
+                        <input
+                            type="file"
+                            hidden
+                            accept=".pdf,.docx,.doc"
+                            onChange={handleFileUpload}
+                        />
+                    </Button>
                     <Button
                         variant="outlined"
                         startIcon={<UploadFile />}
@@ -143,6 +191,16 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
                     </Button>
                 </Box>
             </Box>
+
+            {meeting.minutesFileUrl && (
+                <Alert severity="success" sx={{ mb: 3 }} action={
+                    <Button color="inherit" size="small" href={meeting.minutesFileUrl} target="_blank">
+                        Voir le fichier
+                    </Button>
+                }>
+                    Fichier joint : {meeting.minutesFileName || 'Document'}
+                </Alert>
+            )}
 
             <MinutesImportDialog
                 open={isImportOpen}

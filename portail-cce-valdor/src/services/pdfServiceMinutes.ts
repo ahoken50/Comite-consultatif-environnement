@@ -15,7 +15,10 @@ const loadImage = (url: string): Promise<HTMLImageElement> => {
 };
 
 export const generateMinutesPDF = async (meeting: Meeting, globalNotes?: string) => {
-    const doc = new jsPDF();
+    const doc = new jsPDF({
+        format: 'legal',
+        unit: 'mm'
+    });
     const pageWidth = doc.internal.pageSize.width;
     const margin = 20;
     const contentWidth = pageWidth - (margin * 2);

@@ -50,6 +50,8 @@ export interface Meeting {
     attendees: Attendee[];
     agendaItems: AgendaItem[];
     minutes: string; // HTML content for PV
+    minutesFileUrl?: string; // URL of the uploaded signed PV
+    minutesFileName?: string; // Name of the uploaded file
     dateCreated: string;
     dateUpdated: string;
 }
