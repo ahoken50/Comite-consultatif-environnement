@@ -88,11 +88,21 @@ export const documentsAPI = {
     },
 
     delete: async (id: string, storagePath: string): Promise<void> => {
-        // 1. Delete from Firestore
+        // 1. Delete from Firestore first
         await deleteDoc(doc(db, COLLECTION_NAME, id));
 
-        // 2. Delete from Storage
-        const storageRef = ref(storage, storagePath);
-        await deleteObject(storageRef);
+        // 2. Try to delete from Storage, but don't fail if it doesn't exist
+        try {
+            const storageRef = ref(storage, storagePath);
+            await deleteObject(storageRef);
+        } catch (storageError: any) {
+            // If the file doesn't exist in Storage, that's okay - continue
+            if (storageError?.code === 'storage/object-not-found') {
+                console.warn('File not found in storage, continuing with deletion:', storagePath);
+            } else {
+                // Log but don't throw - Firestore record is already deleted
+                console.error('Failed to delete file from storage:', storageError);
+            }
+        }
     }
 };
