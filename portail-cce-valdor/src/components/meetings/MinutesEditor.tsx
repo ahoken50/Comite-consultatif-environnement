@@ -44,16 +44,16 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
         setItemDecisions(decisions);
     }, [meeting]);
 
-    // Sync local file state if meeting prop updates externally (e.g. initial load or other user update)
-    // We only sync if the local state is 'pristine' or if we want to enforce truth.
-    // However, since we update optimistically, we should be careful. 
-    // Usually simple effect works.
+    // Sync local file state if meeting prop updates externally
     useEffect(() => {
-        setLocalFile({
-            url: meeting.minutesFileUrl,
-            name: meeting.minutesFileName,
-            path: meeting.minutesFileStoragePath
-        });
+        // Only sync if they differ to avoid loops, though basic equality check is fine
+        if (meeting.minutesFileUrl !== localFile.url) {
+            setLocalFile({
+                url: meeting.minutesFileUrl,
+                name: meeting.minutesFileName,
+                path: meeting.minutesFileStoragePath
+            });
+        }
     }, [meeting.minutesFileUrl, meeting.minutesFileName, meeting.minutesFileStoragePath]);
 
     const handleGlobalNotesChange = (value: string) => {
@@ -138,9 +138,6 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
         try {
             const file = e.target.files[0];
 
-            // Optimistic update could go here if we had a placeholder, but for upload we wait for the URL.
-            // Loading state could be added.
-
             const doc = await import('../../features/documents/documentsAPI').then(m => m.documentsAPI.upload(
                 file,
                 meeting.id,
@@ -158,13 +155,13 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
             onUpdate({
                 minutesFileUrl: doc.url,
                 minutesFileName: file.name,
-                minutesFileStoragePath: doc.storagePath
+                minutesFileStoragePath: doc.storagePath,
+                minutesFileDocumentId: doc.id
             });
             setHasUnsavedChanges(true);
 
         } catch (error) {
             console.error("Upload failed", error);
-            // Show error snackbar (not implemented here but good to have)
         }
     };
 
@@ -180,15 +177,22 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
 
         // Propagate to backend
         try {
+            if (meeting.minutesFileDocumentId && meeting.minutesFileStoragePath) {
+                await import('../../features/documents/documentsAPI').then(m => m.documentsAPI.delete(
+                    meeting.minutesFileDocumentId!,
+                    meeting.minutesFileStoragePath!
+                ));
+            }
+
             onUpdate({
                 minutesFileUrl: null as any,
                 minutesFileName: null as any,
-                minutesFileStoragePath: null as any
+                minutesFileStoragePath: null as any,
+                minutesFileDocumentId: null as any
             });
             setHasUnsavedChanges(true);
         } catch (e) {
             console.error("Error clearing file", e);
-            // Revert local state if needed, but for now we assume success
         }
     };
 
