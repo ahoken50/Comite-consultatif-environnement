@@ -186,28 +186,39 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
     };
 
     const handleDeleteFile = async () => {
-        // Optimistic update
+        console.log('[DEBUG] handleDeleteFile called');
+        console.log('[DEBUG] Current meeting file state:', {
+            url: meeting.minutesFileUrl,
+            name: meeting.minutesFileName,
+            path: meeting.minutesFileStoragePath,
+            docId: meeting.minutesFileDocumentId
+        });
+
+        // Optimistic update for immediate UI feedback
         setLocalFile({
             url: null,
             name: null,
             path: null
         });
 
-        if (!meeting.minutesFileUrl) return;
-
-        // Proceed to delete physical file if possible
-        try {
-            if (meeting.minutesFileDocumentId && meeting.minutesFileStoragePath) {
+        // Try to delete physical file if IDs are available
+        if (meeting.minutesFileDocumentId && meeting.minutesFileStoragePath) {
+            try {
+                console.log('[DEBUG] Attempting to delete physical file...');
                 await documentsAPI.delete(
-                    meeting.minutesFileDocumentId!,
-                    meeting.minutesFileStoragePath!
+                    meeting.minutesFileDocumentId,
+                    meeting.minutesFileStoragePath
                 );
+                console.log('[DEBUG] Physical file deleted successfully');
+            } catch (e) {
+                console.warn('[DEBUG] Failed to delete physical file (may already be deleted):', e);
             }
-        } catch (e) {
-            console.error("Warning: Failed to delete physical file or metadata record. Proceeding to unlink from meeting.", e);
+        } else {
+            console.log('[DEBUG] No documentId or storagePath, skipping physical file deletion');
         }
 
-        // ALWAYS unlink from meeting, regardless of storage deletion success (auto-save)
+        // ALWAYS unlink from meeting, regardless of whether physical deletion succeeded
+        console.log('[DEBUG] Calling onUpdate to clear file references in meeting...');
         try {
             onUpdate({
                 minutesFileUrl: null as any,
@@ -215,9 +226,9 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
                 minutesFileStoragePath: null as any,
                 minutesFileDocumentId: null as any
             });
-            // Don't set hasUnsavedChanges since it's already saved
+            console.log('[DEBUG] onUpdate called successfully');
         } catch (e) {
-            console.error("Error updating meeting record during file unlink", e);
+            console.error('[DEBUG] Error calling onUpdate:', e);
         }
     };
 
