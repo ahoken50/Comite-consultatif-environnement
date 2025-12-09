@@ -249,17 +249,20 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
         // Clear all decisions
         setItemDecisions({});
 
-        // Reset agenda items minute fields - use empty strings instead of undefined
-        // Firestore ignores undefined values, so we must use empty strings to overwrite
-        // Note: minuteType must be undefined because it's a union type, not a string
-        setLocalAgendaItems(prev => prev.map(item => ({
-            ...item,
-            minuteType: undefined,
-            minuteNumber: '',
-            decision: '',
-            proposer: '',
-            seconder: ''
-        })));
+        // Reset agenda items minute fields
+        // IMPORTANT: Firestore does NOT accept undefined values
+        // We must exclude minuteType entirely (destructure it out) rather than setting it to undefined
+        setLocalAgendaItems(prev => prev.map(item => {
+            // Destructure to remove minuteType from the item
+            const { minuteType, ...itemWithoutMinuteType } = item;
+            return {
+                ...itemWithoutMinuteType,
+                minuteNumber: '',
+                decision: '',
+                proposer: '',
+                seconder: ''
+            };
+        }));
 
         console.log('[DEBUG] Local state cleared, hasUnsavedChanges set to true');
         setHasUnsavedChanges(true);
