@@ -39,6 +39,9 @@ export const meetingsAPI = {
     },
 
     update: async (id: string, updates: Partial<Meeting>): Promise<void> => {
+        console.log('[DEBUG meetingsAPI.update] Starting update for id:', id);
+        console.log('[DEBUG meetingsAPI.update] Updates received:', JSON.stringify(updates, null, 2));
+
         const docRef = doc(db, COLLECTION_NAME, id);
         const updatesWithTimestamp = {
             ...updates,
@@ -50,7 +53,13 @@ export const meetingsAPI = {
             updatesWithTimestamp.date = Timestamp.fromDate(new Date(updates.date));
         }
 
+        // Debug: Log what we're actually sending
+        if (updates.agendaItems && updates.agendaItems.length > 0) {
+            console.log('[DEBUG meetingsAPI.update] First agenda item being saved:', JSON.stringify(updates.agendaItems[0], null, 2));
+        }
+
         await updateDoc(docRef, updatesWithTimestamp);
+        console.log('[DEBUG meetingsAPI.update] updateDoc completed successfully');
     },
 
     delete: async (id: string): Promise<void> => {
