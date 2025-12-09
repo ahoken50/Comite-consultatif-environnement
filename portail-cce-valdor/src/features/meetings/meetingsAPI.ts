@@ -58,8 +58,16 @@ export const meetingsAPI = {
             console.log('[DEBUG meetingsAPI.update] First agenda item being saved:', JSON.stringify(updates.agendaItems[0], null, 2));
         }
 
-        await updateDoc(docRef, updatesWithTimestamp);
-        console.log('[DEBUG meetingsAPI.update] updateDoc completed successfully');
+        try {
+            console.log('[DEBUG meetingsAPI.update] Calling updateDoc...');
+            await updateDoc(docRef, updatesWithTimestamp);
+            console.log('[DEBUG meetingsAPI.update] updateDoc completed successfully');
+        } catch (error: any) {
+            console.error('[DEBUG meetingsAPI.update] ERROR calling updateDoc:', error);
+            console.error('[DEBUG meetingsAPI.update] Error code:', error?.code);
+            console.error('[DEBUG meetingsAPI.update] Error message:', error?.message);
+            throw error; // Re-throw so the caller knows it failed
+        }
     },
 
     delete: async (id: string): Promise<void> => {
