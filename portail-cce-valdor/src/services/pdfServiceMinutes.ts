@@ -13,38 +13,83 @@ const loadImage = (url: string): Promise<HTMLImageElement> => {
     });
 };
 
+/**
+ * Extracts the meeting number from the title (e.g., "9e ASSEMBLÉE" -> "09")
+ */
+const extractMeetingNumber = (title: string): string => {
+    const match = title.match(/(\d+)\s*[eè]/i);
+    if (match) {
+        return match[1].padStart(2, '0');
+    }
+    // Fallback: try to find any number
+    const numMatch = title.match(/(\d+)/);
+    return numMatch ? numMatch[1].padStart(2, '0') : '01';
+};
+
+/**
+ * Generate auto-numbering for items without minute numbers
+ * Format: XX-NN for resolutions, XX-A for comments
+ */
+const generateMinuteNumber = (
+    meetingNum: string,
+    minuteType: 'resolution' | 'comment' | 'other' | undefined,
+    resolutionCounter: number,
+    commentCounter: number
+): { number: string; newResCounter: number; newComCounter: number } => {
+    if (minuteType === 'resolution') {
+        const num = `${meetingNum}-${String(resolutionCounter).padStart(2, '0')}`;
+        return { number: num, newResCounter: resolutionCounter + 1, newComCounter: commentCounter };
+    } else if (minuteType === 'comment') {
+        // Use letters A-Z for comments
+        const letter = String.fromCharCode(65 + (commentCounter % 26)); // A=65
+        const num = `${meetingNum}-${letter}`;
+        return { number: num, newResCounter: resolutionCounter, newComCounter: commentCounter + 1 };
+    }
+    return { number: '', newResCounter: resolutionCounter, newComCounter: commentCounter };
+};
+
 export const generateMinutesPDF = async (meeting: Meeting, globalNotes?: string) => {
     const doc = new jsPDF({
         format: 'legal',
         unit: 'mm'
     });
     const pageWidth = doc.internal.pageSize.width;
+    const pageHeight = doc.internal.pageSize.height;
     const margin = 25.4; // 1 inch
     const contentWidth = pageWidth - (margin * 2);
+    const lineHeight = 5;
+
+    // Extract meeting number for auto-numbering
+    const meetingNum = extractMeetingNumber(meeting.title);
+    let resolutionCounter = 1;
+    let commentCounter = 0;
 
     // Helper to write text with safe page breaks
-    const writeSafeText = (text: string | string[], x: number, y: number, options?: { align?: 'left' | 'center' | 'right', maxWidth?: number }): number => {
+    const writeSafeText = (text: string | string[], x: number, y: number, options?: {
+        align?: 'left' | 'center' | 'right',
+        maxWidth?: number,
+        indent?: number
+    }): number => {
         const align = options?.align || 'left';
         const maxWidth = options?.maxWidth || contentWidth;
-        const lineHeight = 5;
+        const indent = options?.indent || 0;
 
-        // If text is string, split it
         let lines: string[] = [];
         if (typeof text === 'string') {
-            lines = doc.splitTextToSize(text, maxWidth);
+            lines = doc.splitTextToSize(text, maxWidth - indent);
         } else {
             lines = text;
         }
 
         let currentLineY = y;
 
-        lines.forEach(line => {
-            // Check page break
-            if (currentLineY > doc.internal.pageSize.height - margin) {
+        lines.forEach((line, index) => {
+            if (currentLineY > pageHeight - margin) {
                 doc.addPage();
-                currentLineY = margin; // Reset to top margin
+                currentLineY = margin;
             }
-            doc.text(line, x, currentLineY, { align });
+            const xPos = index > 0 && indent > 0 ? x + indent : x;
+            doc.text(line, xPos, currentLineY, { align });
             currentLineY += lineHeight;
         });
 
@@ -54,7 +99,6 @@ export const generateMinutesPDF = async (meeting: Meeting, globalNotes?: string)
     // --- Header ---
     try {
         const logo = await loadImage(logoUrl);
-        // Logo on the left
         doc.addImage(logo, 'PNG', margin, 10, 25, 25);
     } catch (e) {
         console.error("Could not load logo", e);
@@ -64,26 +108,25 @@ export const generateMinutesPDF = async (meeting: Meeting, globalNotes?: string)
     doc.setTextColor(0, 0, 0);
     doc.setFontSize(14);
     doc.setFont('helvetica', 'bold');
-    // Move text down to avoid overlap with logo (y=10 to 35)
-    doc.text('COMITÉ CONSULTATIF EN ENVIRONNEMENT', pageWidth / 2, 25, { align: 'center' });
+    doc.text('COMITÉ CONSULTATIF EN ENVIRONNEMENT', pageWidth / 2, 20, { align: 'center' });
+
+    doc.setFontSize(16);
+    doc.text('PROCÈS-VERBAL', pageWidth / 2, 28, { align: 'center' });
 
     doc.setFontSize(12);
-    doc.text('PROCÈS-VERBAL', pageWidth / 2, 33, { align: 'center' });
-
-    doc.setFontSize(12);
-    doc.text(meeting.title.toUpperCase(), pageWidth / 2, 41, { align: 'center' });
+    doc.text(meeting.title.toUpperCase(), pageWidth / 2, 38, { align: 'center' });
 
     const dateStr = format(new Date(meeting.date), 'EEEE d MMMM yyyy', { locale: fr });
     const timeStr = format(new Date(meeting.date), 'HH:mm', { locale: fr }).replace(':', ' h ');
     const formattedDate = dateStr.charAt(0).toUpperCase() + dateStr.slice(1);
-    doc.text(formattedDate, pageWidth / 2, 49, { align: 'center' });
+    doc.text(formattedDate, pageWidth / 2, 46, { align: 'center' });
 
     doc.setFontSize(10);
     doc.setFont('helvetica', 'normal');
 
     // Introductory paragraph
     const introText = `PROCÈS-VERBAL de la ${meeting.title} du Comité consultatif en environnement tenue le ${dateStr}, ${timeStr} à ${meeting.location}.`;
-    let currentY = writeSafeText(introText, margin, 60);
+    let currentY = writeSafeText(introText, margin, 58);
     currentY += 5;
 
     // --- Attendees Logic ---
@@ -93,9 +136,7 @@ export const generateMinutesPDF = async (meeting: Meeting, globalNotes?: string)
     const presents = members.filter(a => a.isPresent);
     const othersPresent = others.filter(a => a.isPresent);
 
-    // Helper to format names with roles
     const formatName = (a: typeof members[0]) => {
-        // If role is generic 'Membre' or empty, just show name. If specific role (Présidente, Vice-président), append it.
         const roleSuffix = (a.role && a.role !== 'Membre') ? `, ${a.role.toLowerCase()}` : '';
         return `${a.name}${roleSuffix}`;
     };
@@ -108,19 +149,14 @@ export const generateMinutesPDF = async (meeting: Meeting, globalNotes?: string)
 
         doc.setFont('helvetica', 'normal');
         const names = presents.map(formatName).join(', ');
-        // We need to handle wrapping manually here to indent lines after the first one
-        // We use writeSafeText but offset the first line manually? 
-        // Or simpler: just split and write.
         const splitNames = doc.splitTextToSize(names, contentWidth - labelWidth);
         doc.text(splitNames, margin + labelWidth, currentY);
-
-        // Calculate new Y based on lines
         currentY += (splitNames.length * 5) + 5;
     }
 
     // ÉTAIENT AUSSI PRÉSENTS
     if (othersPresent.length > 0) {
-        if (currentY > doc.internal.pageSize.height - margin - 20) { doc.addPage(); currentY = margin; }
+        if (currentY > pageHeight - margin - 20) { doc.addPage(); currentY = margin; }
 
         doc.setFont('helvetica', 'bold');
         doc.text('ÉTAIENT AUSSI PRÉSENTS', margin, currentY);
@@ -135,7 +171,7 @@ export const generateMinutesPDF = async (meeting: Meeting, globalNotes?: string)
 
     // ÉTAIT ABSENT(E)
     if (absents.length > 0) {
-        if (currentY > doc.internal.pageSize.height - margin - 20) { doc.addPage(); currentY = margin; }
+        if (currentY > pageHeight - margin - 20) { doc.addPage(); currentY = margin; }
 
         doc.setFont('helvetica', 'bold');
         doc.text('ÉTAIT ABSENT(E)', margin, currentY);
@@ -148,48 +184,100 @@ export const generateMinutesPDF = async (meeting: Meeting, globalNotes?: string)
         currentY += (splitNames.length * 5) + 5;
     }
 
-    // --- Global Notes / Opening ---
+    // --- Global Notes ---
     if (globalNotes) {
+        currentY += 3;
         currentY = writeSafeText(globalNotes, margin, currentY);
         currentY += 5;
     }
 
     // --- Agenda Items ---
     meeting.agendaItems.forEach((item) => {
-        // Evaluate rough space needed for title + potential content
-        if (currentY > doc.internal.pageSize.height - margin - 20) {
+        if (currentY > pageHeight - margin - 30) {
             doc.addPage();
             currentY = margin;
         }
 
-        // Title
+        // Item Title
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(11);
-        doc.text(item.title, margin, currentY);
-        currentY += 7;
+        currentY = writeSafeText(item.title, margin, currentY);
+        currentY += 3;
 
-        // Minute Number (Resolution or Comment)
-        if (item.minuteNumber) {
-            if (currentY > doc.internal.pageSize.height - margin) { doc.addPage(); currentY = margin; }
-            const label = item.minuteType === 'resolution' ? 'RÉSOLUTION' : 'COMMENTAIRE';
-            doc.text(`${label} ${item.minuteNumber}`, margin, currentY);
+        // Determine minute number (use existing or auto-generate)
+        let minuteNumber = item.minuteNumber;
+        if (!minuteNumber && item.minuteType) {
+            const gen = generateMinuteNumber(meetingNum, item.minuteType, resolutionCounter, commentCounter);
+            minuteNumber = gen.number;
+            resolutionCounter = gen.newResCounter;
+            commentCounter = gen.newComCounter;
+        }
+
+        // RÉSOLUTION or COMMENTAIRE header
+        if (minuteNumber) {
+            if (currentY > pageHeight - margin) { doc.addPage(); currentY = margin; }
+
+            const label = item.minuteType === 'resolution' ? 'RÉSOLUTION' :
+                item.minuteType === 'comment' ? 'COMMENTAIRE' : 'NOTE';
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(11);
+            doc.text(`${label} ${minuteNumber}`, margin, currentY);
             currentY += 7;
         }
 
-        // Content
+        // Content (decision/discussion)
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(10);
-        const content = item.decision || 'Aucune note consignée.';
-        currentY = writeSafeText(content, margin, currentY);
-        currentY += 5;
 
-        // Mover/Seconder for Resolutions
+        if (item.decision) {
+            // Parse content for CONSIDÉRANT and IL EST RÉSOLU formatting
+            const contentLines = item.decision.split('\n');
+
+            for (const line of contentLines) {
+                if (currentY > pageHeight - margin) {
+                    doc.addPage();
+                    currentY = margin;
+                }
+
+                const trimmedLine = line.trim();
+
+                // CONSIDÉRANT lines - could be bold or styled differently
+                if (/^CONSID[ÉE]RANT/i.test(trimmedLine)) {
+                    doc.setFont('helvetica', 'normal');
+                    currentY = writeSafeText(trimmedLine, margin, currentY);
+                }
+                // IL EST RÉSOLU - slightly emphasized
+                else if (/^IL EST R[ÉE]SOLU/i.test(trimmedLine)) {
+                    currentY += 2; // Small gap before
+                    doc.setFont('helvetica', 'bold');
+                    currentY = writeSafeText(trimmedLine, margin, currentY);
+                    doc.setFont('helvetica', 'normal');
+                }
+                // ATTENDU QUE
+                else if (/^ATTENDU/i.test(trimmedLine)) {
+                    doc.setFont('helvetica', 'normal');
+                    currentY = writeSafeText(trimmedLine, margin, currentY);
+                }
+                // Regular content
+                else if (trimmedLine.length > 0) {
+                    doc.setFont('helvetica', 'normal');
+                    currentY = writeSafeText(trimmedLine, margin, currentY);
+                }
+            }
+        } else {
+            currentY = writeSafeText('Aucune note consignée.', margin, currentY);
+        }
+
+        currentY += 3;
+
+        // Proposer/Seconder for Resolutions
         if (item.minuteType === 'resolution' && (item.proposer || item.seconder)) {
-            if (currentY > doc.internal.pageSize.height - margin - 15) {
+            if (currentY > pageHeight - margin - 15) {
                 doc.addPage();
                 currentY = margin;
             }
 
+            doc.setFontSize(10);
             if (item.proposer) {
                 doc.text(`Proposé par : ${item.proposer}`, margin, currentY);
                 currentY += 5;
@@ -198,30 +286,37 @@ export const generateMinutesPDF = async (meeting: Meeting, globalNotes?: string)
                 doc.text(`Appuyé par : ${item.seconder}`, margin, currentY);
                 currentY += 5;
             }
-            currentY += 5;
         }
 
-        currentY += 5; // Spacing between items
+        currentY += 7; // Spacing between items
     });
 
     // --- Signatures ---
-    // Ensure we have space
     let signatureY = currentY + 20;
-    if (signatureY > doc.internal.pageSize.height - margin - 40) {
+    if (signatureY > pageHeight - margin - 40) {
         doc.addPage();
-        signatureY = 40;
+        signatureY = 50;
     }
 
     doc.setFontSize(11);
+    doc.setFont('helvetica', 'normal');
+
+    // Find President and Secretary from attendees
+    const president = meeting.attendees?.find(a => a.role?.toLowerCase().includes('président'));
+    const secretary = meeting.attendees?.find(a => a.role?.toLowerCase().includes('secrétaire'));
 
     // President Signature
     doc.text('___________________________', margin, signatureY);
-    doc.text('PATRICIA BOUTIN, Présidente', margin, signatureY + 6);
+    const presidentName = president ? president.name.toUpperCase() : 'PRÉSIDENT(E)';
+    doc.text(`${presidentName}, Président(e)`, margin, signatureY + 6);
 
     // Secretary Signature
     const signatureX = pageWidth - 80;
     doc.text('___________________________', signatureX, signatureY);
-    doc.text('MICHAËL ROSS, Secrétaire', signatureX, signatureY + 6);
+    const secretaryName = secretary ? secretary.name.toUpperCase() : 'SECRÉTAIRE';
+    doc.text(`${secretaryName}, Secrétaire`, signatureX, signatureY + 6);
 
-    doc.save(`PV-${meeting.date.split('T')[0]}.pdf`);
+    // Save with formatted filename
+    const dateForFile = format(new Date(meeting.date), 'yyyy-MM-dd');
+    doc.save(`PV-CCE-${meetingNum}-${dateForFile}.pdf`);
 };
