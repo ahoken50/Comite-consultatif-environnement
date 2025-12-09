@@ -93,8 +93,12 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
         // Merge decisions into agenda items
         const updatedAgendaItems = localAgendaItems.map(item => ({
             ...item,
-            decision: itemDecisions[item.id] || ''
+            decision: itemDecisions[item.id] || item.decision || ''
         }));
+
+        console.log('[DEBUG] handleSave called');
+        console.log('[DEBUG] globalNotes:', globalNotes);
+        console.log('[DEBUG] First agenda item after merge:', updatedAgendaItems[0]);
 
         onUpdate({
             minutes: globalNotes,
@@ -237,22 +241,27 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
             return;
         }
 
+        console.log('[DEBUG] handleClearAll called - clearing all PV content');
+
         // Clear global notes
         setGlobalNotes('');
 
         // Clear all decisions
         setItemDecisions({});
 
-        // Reset agenda items minute fields
+        // Reset agenda items minute fields - use empty strings instead of undefined
+        // Firestore ignores undefined values, so we must use empty strings to overwrite
+        // Note: minuteType must be undefined because it's a union type, not a string
         setLocalAgendaItems(prev => prev.map(item => ({
             ...item,
             minuteType: undefined,
-            minuteNumber: undefined,
-            decision: undefined,
-            proposer: undefined,
-            seconder: undefined
+            minuteNumber: '',
+            decision: '',
+            proposer: '',
+            seconder: ''
         })));
 
+        console.log('[DEBUG] Local state cleared, hasUnsavedChanges set to true');
         setHasUnsavedChanges(true);
     };
 
