@@ -127,7 +127,10 @@ export const parseAgendaDOCX = async (file: File): Promise<ParsedMeetingData> =>
                 objective: 'Décision',
                 minuteType: 'resolution',
                 minuteNumber: `${resMatch[1]}-${resMatch[2]}`,
-                description: ''
+                description: '',
+                decision: '',
+                proposer: '',
+                seconder: ''
             };
             currentContent = [];
             itemOrder++;
@@ -156,7 +159,10 @@ export const parseAgendaDOCX = async (file: File): Promise<ParsedMeetingData> =>
                 objective: 'Information',
                 minuteType: 'comment',
                 minuteNumber: `${comMatch[1]}-${comMatch[2].toUpperCase()}`,
-                description: ''
+                description: '',
+                decision: '',
+                proposer: '',
+                seconder: ''
             };
             currentContent = [];
             itemOrder++;
