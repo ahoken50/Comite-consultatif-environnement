@@ -131,13 +131,14 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
             if (parseIndex < parsedItems.length) {
                 const parsed = parsedItems[parseIndex];
                 parseIndex++;
+                // Use fallbacks to prevent undefined values (Firestore rejects undefined)
                 return {
                     ...item,
-                    minuteType: parsed.minuteType,
-                    minuteNumber: parsed.minuteNumber,
-                    decision: parsed.decision,
-                    proposer: parsed.proposer,
-                    seconder: parsed.seconder
+                    minuteType: parsed.minuteType ?? item.minuteType,
+                    minuteNumber: parsed.minuteNumber ?? item.minuteNumber ?? '',
+                    decision: parsed.decision ?? item.decision ?? '',
+                    proposer: parsed.proposer ?? item.proposer ?? '',
+                    seconder: parsed.seconder ?? item.seconder ?? ''
                 };
             }
             return item;
