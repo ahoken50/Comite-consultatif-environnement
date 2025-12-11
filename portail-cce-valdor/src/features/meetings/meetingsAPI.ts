@@ -58,6 +58,30 @@ export const meetingsAPI = {
             console.log('[DEBUG meetingsAPI.update] First agenda item being saved:', JSON.stringify(updates.agendaItems[0], null, 2));
         }
 
+        // Deep check for undefined values
+        const findUndefined = (obj: any, path: string = ''): string[] => {
+            const undefinedPaths: string[] = [];
+            if (obj === undefined) {
+                undefinedPaths.push(path || 'root');
+            } else if (obj !== null && typeof obj === 'object') {
+                if (Array.isArray(obj)) {
+                    obj.forEach((item, index) => {
+                        undefinedPaths.push(...findUndefined(item, `${path}[${index}]`));
+                    });
+                } else {
+                    Object.keys(obj).forEach(key => {
+                        undefinedPaths.push(...findUndefined(obj[key], path ? `${path}.${key}` : key));
+                    });
+                }
+            }
+            return undefinedPaths;
+        };
+
+        const undefinedPaths = findUndefined(updatesWithTimestamp);
+        if (undefinedPaths.length > 0) {
+            console.error('[DEBUG meetingsAPI.update] FOUND UNDEFINED VALUES AT:', undefinedPaths);
+        }
+
         try {
             console.log('[DEBUG meetingsAPI.update] Calling updateDoc...');
             await updateDoc(docRef, updatesWithTimestamp);
