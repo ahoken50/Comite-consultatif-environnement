@@ -14,6 +14,45 @@ import type { Meeting } from '../../types/meeting.types';
 
 const COLLECTION_NAME = 'meetings';
 
+/**
+ * Recursively removes all undefined values from an object.
+ * Firestore does not accept undefined values and will throw an error.
+ * This function ensures all updates are safe by:
+ * - Removing keys with undefined values
+ * - Recursively processing nested objects and arrays
+ * - Replacing undefined strings with empty strings
+ */
+const sanitizeForFirestore = (obj: any): any => {
+    if (obj === undefined) {
+        return null; // Replace undefined with null (Firestore accepts null)
+    }
+    if (obj === null || typeof obj !== 'object') {
+        return obj;
+    }
+    if (obj instanceof Timestamp) {
+        return obj; // Preserve Firestore Timestamps
+    }
+    if (Array.isArray(obj)) {
+        return obj.map(item => sanitizeForFirestore(item));
+    }
+
+    const cleaned: any = {};
+    for (const key of Object.keys(obj)) {
+        const value = obj[key];
+        if (value === undefined) {
+            // For string-type fields, use empty string; otherwise null
+            if (['decision', 'description', 'proposer', 'seconder', 'minuteNumber', 'minutes'].includes(key)) {
+                cleaned[key] = '';
+            }
+            // Skip undefined values entirely for fields that should be absent
+            // This is safer than setting to null for optional fields like minuteType
+        } else {
+            cleaned[key] = sanitizeForFirestore(value);
+        }
+    }
+    return cleaned;
+};
+
 export const meetingsAPI = {
     fetchAll: async (): Promise<Meeting[]> => {
         const q = query(collection(db, COLLECTION_NAME), orderBy('date', 'desc'));
@@ -29,8 +68,10 @@ export const meetingsAPI = {
     },
 
     create: async (meeting: Omit<Meeting, 'id'>): Promise<Meeting> => {
+        // Sanitize before creating
+        const sanitizedMeeting = sanitizeForFirestore(meeting);
         const docRef = await addDoc(collection(db, COLLECTION_NAME), {
-            ...meeting,
+            ...sanitizedMeeting,
             date: Timestamp.fromDate(new Date(meeting.date)),
             dateCreated: Timestamp.now(),
             dateUpdated: Timestamp.now(),
@@ -43,43 +84,24 @@ export const meetingsAPI = {
         console.log('[DEBUG meetingsAPI.update] Updates received:', JSON.stringify(updates, null, 2));
 
         const docRef = doc(db, COLLECTION_NAME, id);
-        const updatesWithTimestamp = {
+
+        let updatesWithTimestamp: any = {
             ...updates,
             dateUpdated: Timestamp.now(),
         };
 
         if (updates.date) {
-            // @ts-ignore - handling the specific date conversion
             updatesWithTimestamp.date = Timestamp.fromDate(new Date(updates.date));
         }
 
-        // Debug: Log what we're actually sending
-        if (updates.agendaItems && updates.agendaItems.length > 0) {
-            console.log('[DEBUG meetingsAPI.update] First agenda item being saved:', JSON.stringify(updates.agendaItems[0], null, 2));
-        }
+        // CRITICAL: Sanitize to remove all undefined values
+        updatesWithTimestamp = sanitizeForFirestore(updatesWithTimestamp);
 
-        // Deep check for undefined values
-        const findUndefined = (obj: any, path: string = ''): string[] => {
-            const undefinedPaths: string[] = [];
-            if (obj === undefined) {
-                undefinedPaths.push(path || 'root');
-            } else if (obj !== null && typeof obj === 'object') {
-                if (Array.isArray(obj)) {
-                    obj.forEach((item, index) => {
-                        undefinedPaths.push(...findUndefined(item, `${path}[${index}]`));
-                    });
-                } else {
-                    Object.keys(obj).forEach(key => {
-                        undefinedPaths.push(...findUndefined(obj[key], path ? `${path}.${key}` : key));
-                    });
-                }
-            }
-            return undefinedPaths;
-        };
+        console.log('[DEBUG meetingsAPI.update] After sanitization:', JSON.stringify(updatesWithTimestamp, (_, v) => v === undefined ? '__UNDEFINED__' : v, 2));
 
-        const undefinedPaths = findUndefined(updatesWithTimestamp);
-        if (undefinedPaths.length > 0) {
-            console.error('[DEBUG meetingsAPI.update] FOUND UNDEFINED VALUES AT:', undefinedPaths);
+        // Debug: Log first agenda item if present
+        if (updatesWithTimestamp.agendaItems && updatesWithTimestamp.agendaItems.length > 0) {
+            console.log('[DEBUG meetingsAPI.update] First agenda item after sanitization:', JSON.stringify(updatesWithTimestamp.agendaItems[0], null, 2));
         }
 
         try {
@@ -90,7 +112,7 @@ export const meetingsAPI = {
             console.error('[DEBUG meetingsAPI.update] ERROR calling updateDoc:', error);
             console.error('[DEBUG meetingsAPI.update] Error code:', error?.code);
             console.error('[DEBUG meetingsAPI.update] Error message:', error?.message);
-            throw error; // Re-throw so the caller knows it failed
+            throw error;
         }
     },
 
