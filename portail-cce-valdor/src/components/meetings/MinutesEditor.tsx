@@ -47,7 +47,7 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
         setGlobalNotes(meeting.minutes || '');
         setLocalAgendaItems(meeting.agendaItems || []);
         const decisions: Record<string, string> = {};
-        meeting.agendaItems.forEach(item => {
+        (meeting.agendaItems || []).forEach(item => {
             decisions[item.id] = item.decision || '';
         });
         setItemDecisions(decisions);
