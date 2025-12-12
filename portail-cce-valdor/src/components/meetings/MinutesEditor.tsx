@@ -43,15 +43,22 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
     });
 
     // Initialize local state from meeting data
+    // Only update agendaItems from meeting if meeting has actual items
+    // This prevents data corruption from overwriting local state with empty arrays
     useEffect(() => {
         setGlobalNotes(meeting.minutes || '');
-        setLocalAgendaItems(meeting.agendaItems || []);
-        const decisions: Record<string, string> = {};
-        (meeting.agendaItems || []).forEach(item => {
-            decisions[item.id] = item.decision || '';
-        });
-        setItemDecisions(decisions);
-    }, [meeting]);
+
+        // Only sync agendaItems if meeting.agendaItems has actual content
+        // Don't overwrite with empty array to prevent corruption
+        if (meeting.agendaItems && meeting.agendaItems.length > 0) {
+            setLocalAgendaItems(meeting.agendaItems);
+            const decisions: Record<string, string> = {};
+            meeting.agendaItems.forEach(item => {
+                decisions[item.id] = item.decision || '';
+            });
+            setItemDecisions(decisions);
+        }
+    }, [meeting.id, meeting.minutes, meeting.agendaItems]);
 
     // Sync local file state if meeting prop updates externally
     // Use strict comparison to handle null/undefined properly
