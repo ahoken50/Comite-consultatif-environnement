@@ -16,6 +16,7 @@ import type { Meeting, AgendaItem } from '../../types/meeting.types';
 import { generateMinutesPDF } from '../../services/pdfServiceMinutes';
 import MinutesImportDialog from './MinutesImportDialog';
 import { documentsAPI } from '../../features/documents/documentsAPI';
+import { parseAgendaDOCX } from '../../services/docxParserService';
 
 interface MinutesEditorProps {
     meeting: Meeting;
@@ -169,6 +170,7 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
         try {
             const file = e.target.files[0];
 
+            // Upload file to storage
             const doc = await documentsAPI.upload(
                 file,
                 meeting.id,
@@ -190,7 +192,57 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
                 minutesFileStoragePath: doc.storagePath,
                 minutesFileDocumentId: doc.id
             });
-            // Don't set hasUnsavedChanges since it's already saved
+
+            // If it's a DOCX file, automatically parse and extract resolution/comment data
+            if (file.name.toLowerCase().endsWith('.docx')) {
+                try {
+                    console.log('[DEBUG] Parsing DOCX file for agenda items...');
+                    const parsedData = await parseAgendaDOCX(file);
+                    console.log('[DEBUG] Parsed data:', parsedData);
+
+                    if (parsedData.agendaItems && parsedData.agendaItems.length > 0) {
+                        console.log('[DEBUG] Found', parsedData.agendaItems.length, 'agenda items in DOCX');
+
+                        // Map parsed items to existing local agenda items
+                        // Match by order/index since the PV items should correspond to agenda items
+                        const updatedItems = localAgendaItems.map((item, index) => {
+                            // Find matching parsed item by checking if any parsed item has the same index
+                            const matchingParsed = parsedData.agendaItems?.find(
+                                (p, pIndex) => pIndex === index || p.order === index
+                            );
+
+                            if (matchingParsed) {
+                                return {
+                                    ...item,
+                                    minuteType: matchingParsed.minuteType ?? item.minuteType,
+                                    minuteNumber: matchingParsed.minuteNumber ?? item.minuteNumber ?? '',
+                                    decision: matchingParsed.decision ?? item.decision ?? '',
+                                    proposer: matchingParsed.proposer ?? item.proposer ?? '',
+                                    seconder: matchingParsed.seconder ?? item.seconder ?? ''
+                                };
+                            }
+                            return item;
+                        });
+
+                        setLocalAgendaItems(updatedItems);
+
+                        // Update item decisions state
+                        const newDecisions = { ...itemDecisions };
+                        updatedItems.forEach(item => {
+                            if (item.decision) {
+                                newDecisions[item.id] = item.decision;
+                            }
+                        });
+                        setItemDecisions(newDecisions);
+                        setHasUnsavedChanges(true);
+
+                        console.log('[DEBUG] Updated local agenda items with parsed data');
+                    }
+                } catch (parseError) {
+                    console.warn('[DEBUG] Failed to parse DOCX content:', parseError);
+                    // Don't fail the upload if parsing fails - file is already uploaded
+                }
+            }
 
         } catch (error) {
             console.error("Upload failed", error);
