@@ -14,6 +14,35 @@ const loadImage = (url: string): Promise<HTMLImageElement> => {
 };
 
 /**
+ * Sanitize text from Word documents to remove special characters
+ * that cause rendering issues in PDF (blue text, weird spacing)
+ */
+const sanitizeText = (text: string): string => {
+    if (!text) return '';
+
+    return text
+        // Remove zero-width characters
+        .replace(/[\u200B-\u200D\uFEFF]/g, '')
+        // Remove soft hyphens
+        .replace(/\u00AD/g, '')
+        // Remove non-breaking spaces and replace with regular spaces
+        .replace(/\u00A0/g, ' ')
+        // Remove other special whitespace characters
+        .replace(/[\u2000-\u200A\u202F\u205F\u3000]/g, ' ')
+        // Remove multiple consecutive spaces
+        .replace(/  +/g, ' ')
+        // Remove tab characters and replace with space
+        .replace(/\t/g, ' ')
+        // Normalize line endings
+        .replace(/\r\n/g, '\n')
+        .replace(/\r/g, '\n')
+        // Trim each line
+        .split('\n')
+        .map(line => line.trim())
+        .join('\n');
+};
+
+/**
  * Extracts the meeting number from the title (e.g., "9e ASSEMBLÉE" -> "09")
  */
 const extractMeetingNumber = (title: string): string => {
@@ -231,8 +260,10 @@ export const generateMinutesPDF = async (meeting: Meeting, globalNotes?: string)
         doc.setTextColor(0, 0, 0); // Force black text color
 
         if (item.decision) {
+            // Sanitize the content to remove special characters from Word
+            const sanitizedDecision = sanitizeText(item.decision);
             // Parse content for CONSIDÉRANT and IL EST RÉSOLU formatting
-            const contentLines = item.decision.split('\n');
+            const contentLines = sanitizedDecision.split('\n');
 
             for (const line of contentLines) {
                 if (currentY > pageHeight - margin) {
