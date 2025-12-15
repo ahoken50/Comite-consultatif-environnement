@@ -16,7 +16,7 @@ import type { Meeting, AgendaItem } from '../../types/meeting.types';
 import { generateMinutesPDF } from '../../services/pdfServiceMinutes';
 import MinutesImportDialog from './MinutesImportDialog';
 import { documentsAPI } from '../../features/documents/documentsAPI';
-import { parseAgendaDOCX } from '../../services/docxParserService';
+// Note: parseAgendaDOCX is imported dynamically when needed
 
 interface MinutesEditorProps {
     meeting: Meeting;
@@ -197,28 +197,30 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
             if (file.name.toLowerCase().endsWith('.docx')) {
                 try {
                     console.log('[DEBUG] Parsing DOCX file for agenda items...');
-                    const parsedData = await parseAgendaDOCX(file);
+                    const { parseAgendaDOCX: parseDocx, matchPVToAgenda } = await import('../../services/docxParserService');
+                    const parsedData = await parseDocx(file);
                     console.log('[DEBUG] Parsed data:', parsedData);
 
                     if (parsedData.agendaItems && parsedData.agendaItems.length > 0) {
                         console.log('[DEBUG] Found', parsedData.agendaItems.length, 'agenda items in DOCX');
 
-                        // Map parsed items to existing local agenda items
-                        // Match by order/index since the PV items should correspond to agenda items
-                        const updatedItems = localAgendaItems.map((item, index) => {
-                            // Find matching parsed item by checking if any parsed item has the same index
-                            const matchingParsed = parsedData.agendaItems?.find(
-                                (p, pIndex) => pIndex === index || p.order === index
-                            );
+                        // Use title-based matching instead of just index
+                        const matchMap = matchPVToAgenda(parsedData.agendaItems, localAgendaItems);
+                        console.log('[DEBUG] Matched', matchMap.size, 'items by title similarity');
 
-                            if (matchingParsed) {
+                        // Update items that have a match
+                        const updatedItems = localAgendaItems.map((item) => {
+                            const matchedPV = matchMap.get(item.id);
+
+                            if (matchedPV) {
+                                console.log('[DEBUG] Updating item:', item.title, 'with PV data:', matchedPV.minuteNumber);
                                 return {
                                     ...item,
-                                    minuteType: matchingParsed.minuteType ?? item.minuteType,
-                                    minuteNumber: matchingParsed.minuteNumber ?? item.minuteNumber ?? '',
-                                    decision: matchingParsed.decision ?? item.decision ?? '',
-                                    proposer: matchingParsed.proposer ?? item.proposer ?? '',
-                                    seconder: matchingParsed.seconder ?? item.seconder ?? ''
+                                    minuteType: matchedPV.minuteType ?? item.minuteType,
+                                    minuteNumber: matchedPV.minuteNumber ?? item.minuteNumber ?? '',
+                                    decision: matchedPV.decision ?? item.decision ?? '',
+                                    proposer: matchedPV.proposer ?? item.proposer ?? '',
+                                    seconder: matchedPV.seconder ?? item.seconder ?? ''
                                 };
                             }
                             return item;
