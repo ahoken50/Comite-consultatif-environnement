@@ -228,6 +228,7 @@ export const generateMinutesPDF = async (meeting: Meeting, globalNotes?: string)
         // Content (decision/discussion)
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(10);
+        doc.setTextColor(0, 0, 0); // Force black text color
 
         if (item.decision) {
             // Parse content for CONSIDÉRANT and IL EST RÉSOLU formatting
@@ -240,6 +241,9 @@ export const generateMinutesPDF = async (meeting: Meeting, globalNotes?: string)
                 }
 
                 const trimmedLine = line.trim();
+
+                // Ensure text color is always black
+                doc.setTextColor(0, 0, 0);
 
                 // CONSIDÉRANT lines - could be bold or styled differently
                 if (/^CONSID[ÉE]RANT/i.test(trimmedLine)) {
