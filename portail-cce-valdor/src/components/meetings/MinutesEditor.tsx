@@ -284,6 +284,16 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
 
                         console.log('[DEBUG] Updated local agenda items with parsed data');
                     }
+
+                    // Also update attendees if parsed from DOCX
+                    if (parsedData.attendees && parsedData.attendees.length > 0) {
+                        console.log('[DEBUG] Found', parsedData.attendees.length, 'attendees in DOCX');
+                        // Update meeting with parsed attendees
+                        onUpdate({
+                            attendees: parsedData.attendees
+                        });
+                        console.log('[DEBUG] Updated meeting attendees from parsed data');
+                    }
                 } catch (parseError) {
                     console.warn('[DEBUG] Failed to parse DOCX content:', parseError);
                     // Don't fail the upload if parsing fails - file is already uploaded

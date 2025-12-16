@@ -434,8 +434,8 @@ export const generateMinutesPDF = async (meeting: Meeting, globalNotes?: string)
 
     // ============ DOCUMENT DEFINITION ============
     const docDefinition: TDocumentDefinitions = {
-        pageSize: 'LETTER',
-        pageMargins: [72, 50, 72, 50], // 1 inch left/right, smaller top/bottom
+        pageSize: 'LEGAL', // 8.5 x 14 inches
+        pageMargins: [72, 72, 72, 72], // 1 inch margins all around (72 points = 1 inch)
         content: content,
         styles: {
             mainTitle: {
