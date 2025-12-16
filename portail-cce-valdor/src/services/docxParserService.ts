@@ -191,8 +191,11 @@ export const parseAgendaDOCX = async (file: File): Promise<ParsedMeetingData> =>
 
         // Track potential titles: non-formal, non-marker text that could be a section header
         // These get used when we encounter a resolution/comment with no current section
+        // Exclude numbered items (1., 2., 3., etc.) - they should not be section titles
+        const numberedItemPattern = /^\d+\.\s+/;
         if (!currentItem && !formalLanguageRegex.test(text) &&
             !resolutionRegex.test(text) && !commentaireRegex.test(text) &&
+            !numberedItemPattern.test(text) &&
             text.length > 10 && text.length < 300 && !text.startsWith('Sur une proposition')) {
             lastPotentialTitle = text;
         }
