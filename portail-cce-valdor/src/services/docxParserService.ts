@@ -1,5 +1,5 @@
 import mammoth from 'mammoth';
-import { type AgendaItem } from '../types/meeting.types';
+import { type AgendaItem, type MinuteEntry } from '../types/meeting.types';
 
 interface ParsedMeetingData {
     title?: string;
@@ -76,6 +76,7 @@ export const parseAgendaDOCX = async (file: File): Promise<ParsedMeetingData> =>
 
     const parsedItems: ParsedPVItem[] = [];
     let currentSectionTitle = '';
+    let lastPotentialTitle = ''; // Track last non-formal paragraph as potential title
     let currentItem: ParsedPVItem | null = null;
     let currentContent: string[] = [];
 
@@ -99,14 +100,17 @@ export const parseAgendaDOCX = async (file: File): Promise<ParsedMeetingData> =>
                 parsedItems.push(currentItem);
             }
 
+            // Use currentSectionTitle if set, otherwise fall back to lastPotentialTitle
+            const titleToUse = currentSectionTitle || lastPotentialTitle;
+
             currentItem = {
-                sectionTitle: currentSectionTitle,
+                sectionTitle: titleToUse,
                 minuteType: 'resolution',
                 minuteNumber: `${resMatch[1]}-${resMatch[2]}`,
                 decision: ''
             };
             currentContent = [];
-            console.log('[docxParser] Found resolution:', currentItem.minuteNumber, 'for section:', currentSectionTitle);
+            console.log('[docxParser] Found resolution:', currentItem.minuteNumber, 'for section:', titleToUse);
             continue;
         }
 
@@ -119,14 +123,17 @@ export const parseAgendaDOCX = async (file: File): Promise<ParsedMeetingData> =>
                 parsedItems.push(currentItem);
             }
 
+            // Use currentSectionTitle if set, otherwise fall back to lastPotentialTitle
+            const titleToUse = currentSectionTitle || lastPotentialTitle;
+
             currentItem = {
-                sectionTitle: currentSectionTitle,
+                sectionTitle: titleToUse,
                 minuteType: 'comment',
                 minuteNumber: `${comMatch[1]}-${comMatch[2].toUpperCase()}`,
                 decision: ''
             };
             currentContent = [];
-            console.log('[docxParser] Found comment:', currentItem.minuteNumber, 'for section:', currentSectionTitle);
+            console.log('[docxParser] Found comment:', currentItem.minuteNumber, 'for section:', titleToUse);
             continue;
         }
 
@@ -148,10 +155,19 @@ export const parseAgendaDOCX = async (file: File): Promise<ParsedMeetingData> =>
                     }
 
                     currentSectionTitle = text;
+                    lastPotentialTitle = text; // Also update potential title
                     console.log('[docxParser] Found section title (bold):', currentSectionTitle);
                     continue;
                 }
             }
+        }
+
+        // Track potential titles: non-formal, non-marker text that could be a section header
+        // These get used when we encounter a resolution/comment with no current section
+        if (!currentItem && !formalLanguageRegex.test(text) &&
+            !resolutionRegex.test(text) && !commentaireRegex.test(text) &&
+            text.length > 10 && text.length < 300 && !text.startsWith('Sur une proposition')) {
+            lastPotentialTitle = text;
         }
 
         // If we're in an item, collect content
@@ -173,22 +189,62 @@ export const parseAgendaDOCX = async (file: File): Promise<ParsedMeetingData> =>
     console.log('[docxParser] Total parsed items:', parsedItems.length);
 
     // ============================================================
-    // 4. Convert ParsedPVItems to AgendaItems
+    // 4. Convert ParsedPVItems to AgendaItems (grouped by section)
     // ============================================================
-    parsedResult.agendaItems = parsedItems.map((item, index) => ({
-        id: `imported-pv-${Date.now()}-${index}`,
-        order: index,
-        title: item.sectionTitle || `Point ${index + 1}`,
-        duration: 15,
-        presenter: 'Coordonnateur',
-        objective: item.minuteType === 'resolution' ? 'Décision' : 'Information',
-        minuteType: item.minuteType,
-        minuteNumber: item.minuteNumber,
-        description: '',
-        decision: item.decision,
-        proposer: item.proposer || '',
-        seconder: item.seconder || ''
-    }));
+    // Group parsed items by section title to support multiple resolutions/comments per item
+    const groupedBySectionTitle = new Map<string, ParsedPVItem[]>();
+
+    for (const item of parsedItems) {
+        const title = item.sectionTitle || 'Sans titre';
+        if (!groupedBySectionTitle.has(title)) {
+            groupedBySectionTitle.set(title, []);
+        }
+        groupedBySectionTitle.get(title)!.push(item);
+    }
+
+    console.log('[docxParser] Grouped into', groupedBySectionTitle.size, 'sections');
+
+    // Convert grouped items to AgendaItems with minuteEntries arrays
+    let order = 0;
+    parsedResult.agendaItems = [];
+
+    for (const [sectionTitle, items] of groupedBySectionTitle) {
+        // Create minuteEntries from all items in this section
+        const minuteEntries: MinuteEntry[] = items.map(item => ({
+            type: item.minuteType,
+            number: item.minuteNumber,
+            content: item.decision,
+            proposer: item.proposer,
+            seconder: item.seconder
+        }));
+
+        // Determine objective based on whether there are resolutions
+        const hasResolution = items.some(i => i.minuteType === 'resolution');
+
+        // Keep legacy fields for backward compatibility (use first item's data)
+        const firstItem = items[0];
+
+        const agendaItem: AgendaItem = {
+            id: `imported-pv-${Date.now()}-${order}`,
+            order: order++,
+            title: sectionTitle,
+            duration: 15,
+            presenter: 'Coordonnateur',
+            objective: hasResolution ? 'Décision' : 'Information',
+            description: '',
+            // NEW: Array of all resolutions/comments for this section
+            minuteEntries: minuteEntries,
+            // Legacy fields (kept for backward compatibility)
+            minuteType: firstItem.minuteType,
+            minuteNumber: firstItem.minuteNumber,
+            decision: firstItem.decision,
+            proposer: firstItem.proposer || '',
+            seconder: firstItem.seconder || ''
+        };
+
+        parsedResult.agendaItems.push(agendaItem);
+        console.log('[docxParser] Created agenda item:', sectionTitle, 'with', minuteEntries.length, 'entries');
+    }
 
     // ============================================================
     // 5. Fallbacks (if no items found)

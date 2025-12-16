@@ -17,20 +17,32 @@ export type MeetingStatus = typeof MeetingStatus[keyof typeof MeetingStatus];
 
 export interface AgendaItem {
     id: string;
-    order: number;
+    order?: number;
     title: string;
     description: string;
     duration: number; // in minutes
     presenter: string;
     objective: string; // e.g., 'Information', 'Décision', 'Consultation'
-    decision?: string; // Optional note or decision
+    decision?: string; // Optional note or decision (legacy - kept for backward compatibility)
     linkedProjectId?: string;
-    // Minutes specific fields
+    // Legacy minutes fields (kept for backward compatibility)
     minuteType?: 'resolution' | 'comment' | 'other';
     minuteNumber?: string; // e.g. "09-35" or "09-A"
     proposer?: string;
     seconder?: string;
     minuteContent?: string;
+    // NEW: Array of resolutions/comments for this agenda item
+    // Allows multiple resolutions AND comments per item
+    minuteEntries?: MinuteEntry[];
+}
+
+// NEW: Interface for individual minute entry (resolution or comment)
+export interface MinuteEntry {
+    type: 'resolution' | 'comment';
+    number: string;      // e.g., "09-35" or "09-A"
+    content: string;     // The decision/comment text (CONSIDÉRANT, IL EST RÉSOLU, etc.)
+    proposer?: string;
+    seconder?: string;
 }
 
 export interface Attendee {

@@ -293,47 +293,86 @@ export const generateMinutesPDF = async (meeting: Meeting, globalNotes?: string)
             margin: [0, 20, 0, 10]
         });
 
-        // Determine minute number
-        let minuteNumber = item.minuteNumber;
-        if (!minuteNumber && item.minuteType) {
-            const gen = generateMinuteNumber(meetingNum, item.minuteType, resolutionCounter, commentCounter);
-            minuteNumber = gen.number;
-            resolutionCounter = gen.newResCounter;
-            commentCounter = gen.newComCounter;
-        }
-
-        // Resolution/Comment header
-        if (minuteNumber) {
-            const label = item.minuteType === 'resolution' ? 'RÉSOLUTION' :
-                item.minuteType === 'comment' ? 'COMMENTAIRE' : 'NOTE';
-            content.push({
-                text: `${label} ${minuteNumber}`,
-                style: 'resolutionHeader',
-                margin: [0, 5, 0, 10]
-            });
-        }
-
-        // Decision content
-        const decisionContent = formatDecisionContent(item.decision || '');
-        if (decisionContent.length > 0) {
-            content.push(...decisionContent);
-        }
-
-        // Proposer/Seconder
-        if (item.minuteType === 'resolution' && (item.proposer || item.seconder)) {
-            if (item.proposer) {
+        // Check if we have minuteEntries (new format) or need to use legacy fields
+        if (item.minuteEntries && item.minuteEntries.length > 0) {
+            // NEW: Render all minute entries (multiple resolutions/comments)
+            for (const entry of item.minuteEntries) {
+                // Entry header (RÉSOLUTION/COMMENTAIRE)
+                const label = entry.type === 'resolution' ? 'RÉSOLUTION' : 'COMMENTAIRE';
                 content.push({
-                    text: `Proposé par : ${item.proposer}`,
-                    style: 'bodyText',
-                    margin: [0, 10, 0, 3]
+                    text: `${label} ${entry.number}`,
+                    style: 'resolutionHeader',
+                    margin: [0, 10, 0, 10]
+                });
+
+                // Entry content
+                const entryContent = formatDecisionContent(entry.content || '');
+                if (entryContent.length > 0) {
+                    content.push(...entryContent);
+                }
+
+                // Proposer/Seconder for resolutions
+                if (entry.type === 'resolution' && (entry.proposer || entry.seconder)) {
+                    if (entry.proposer) {
+                        content.push({
+                            text: `Proposé par : ${entry.proposer}`,
+                            style: 'bodyText',
+                            margin: [0, 10, 0, 3]
+                        });
+                    }
+                    if (entry.seconder) {
+                        content.push({
+                            text: `Appuyé par : ${entry.seconder}`,
+                            style: 'bodyText',
+                            margin: [0, 0, 0, 5]
+                        });
+                    }
+                }
+            }
+        } else {
+            // LEGACY: Use single minuteType/minuteNumber/decision fields
+            // Determine minute number
+            let minuteNumber = item.minuteNumber;
+            if (!minuteNumber && item.minuteType) {
+                const gen = generateMinuteNumber(meetingNum, item.minuteType, resolutionCounter, commentCounter);
+                minuteNumber = gen.number;
+                resolutionCounter = gen.newResCounter;
+                commentCounter = gen.newComCounter;
+            }
+
+            // Resolution/Comment header
+            if (minuteNumber) {
+                const label = item.minuteType === 'resolution' ? 'RÉSOLUTION' :
+                    item.minuteType === 'comment' ? 'COMMENTAIRE' : 'NOTE';
+                content.push({
+                    text: `${label} ${minuteNumber}`,
+                    style: 'resolutionHeader',
+                    margin: [0, 5, 0, 10]
                 });
             }
-            if (item.seconder) {
-                content.push({
-                    text: `Appuyé par : ${item.seconder}`,
-                    style: 'bodyText',
-                    margin: [0, 0, 0, 5]
-                });
+
+            // Decision content
+            const decisionContent = formatDecisionContent(item.decision || '');
+            if (decisionContent.length > 0) {
+                content.push(...decisionContent);
+            }
+
+            // Proposer/Seconder
+            if (item.minuteType === 'resolution' && (item.proposer || item.seconder)) {
+                if (item.proposer) {
+                    content.push({
+                        text: `Proposé par : ${item.proposer}`,
+                        style: 'bodyText',
+                        margin: [0, 10, 0, 3]
+                    });
+                }
+                if (item.seconder) {
+                    content.push({
+                        text: `Appuyé par : ${item.seconder}`,
+                        style: 'bodyText',
+                        margin: [0, 0, 0, 5]
+                    });
+                }
             }
         }
     }

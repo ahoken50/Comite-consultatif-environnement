@@ -213,9 +213,21 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
                             const matchedPV = matchMap.get(item.id);
 
                             if (matchedPV) {
-                                console.log('[DEBUG] Updating item:', item.title, 'with PV data:', matchedPV.minuteNumber);
+                                // Log all minute entries for debugging
+                                if (matchedPV.minuteEntries && matchedPV.minuteEntries.length > 0) {
+                                    console.log('[DEBUG] Updating item:', item.title, 'with', matchedPV.minuteEntries.length, 'minute entries:');
+                                    matchedPV.minuteEntries.forEach(entry => {
+                                        console.log('  -', entry.type, entry.number);
+                                    });
+                                } else {
+                                    console.log('[DEBUG] Updating item:', item.title, 'with PV data:', matchedPV.minuteNumber);
+                                }
+
                                 return {
                                     ...item,
+                                    // NEW: Copy all minute entries (resolutions + comments)
+                                    minuteEntries: matchedPV.minuteEntries ?? item.minuteEntries,
+                                    // Legacy fields (kept for backward compatibility)
                                     minuteType: matchedPV.minuteType ?? item.minuteType,
                                     minuteNumber: matchedPV.minuteNumber ?? item.minuteNumber ?? '',
                                     decision: matchedPV.decision ?? item.decision ?? '',
@@ -436,6 +448,27 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
                                 <Typography variant="caption" color="text.secondary" paragraph>
                                     {item.objective} - {item.presenter}
                                 </Typography>
+
+                                {/* NEW: Display all minute entries (resolutions + comments) */}
+                                {item.minuteEntries && item.minuteEntries.length > 0 && (
+                                    <Box sx={{ mb: 2, p: 2, bgcolor: 'success.light', borderRadius: 1, opacity: 0.9 }}>
+                                        <Typography variant="caption" fontWeight="bold" color="success.dark" gutterBottom>
+                                            {item.minuteEntries.length} entrée(s) importée(s) du PV :
+                                        </Typography>
+                                        {item.minuteEntries.map((entry, entryIndex) => (
+                                            <Box key={entryIndex} sx={{ mt: 1, p: 1, bgcolor: 'white', borderRadius: 1, border: '1px solid', borderColor: entry.type === 'resolution' ? 'primary.main' : 'warning.main' }}>
+                                                <Typography variant="body2" fontWeight="bold" color={entry.type === 'resolution' ? 'primary.main' : 'warning.dark'}>
+                                                    {entry.type === 'resolution' ? '📋 RÉSOLUTION' : '💬 COMMENTAIRE'} {entry.number}
+                                                </Typography>
+                                                {entry.content && (
+                                                    <Typography variant="body2" sx={{ mt: 0.5, whiteSpace: 'pre-wrap', maxHeight: '150px', overflow: 'auto' }}>
+                                                        {entry.content.substring(0, 500)}{entry.content.length > 500 ? '...' : ''}
+                                                    </Typography>
+                                                )}
+                                            </Box>
+                                        ))}
+                                    </Box>
+                                )}
 
                                 <Grid container spacing={2} sx={{ mb: 2 }}>
                                     <Grid size={{ xs: 12, sm: 4 }}>
