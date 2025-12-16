@@ -96,18 +96,15 @@ export const parseAgendaDOCX = async (file: File): Promise<ParsedMeetingData> =>
     // ============================================================
     // 3. Parse sections with their RÉSOLUTION/COMMENTAIRE
     // ============================================================
-    // A section title ends with semicolon (e.g., "Adoption de l'ordre du jour...;")
-    // Followed by RÉSOLUTION XX-NN or COMMENTAIRE XX-A
+    // Strategy: Track potential title lines and use look-back when finding RÉSOLUTION/COMMENTAIRE
 
     const resolutionRegex = /^R[ÉE]SOLUTION\s+(\d{2})-(\d+)/i;
     const commentaireRegex = /^COMMENTAIRE\s+(\d{2})-([A-Za-z])/i;
-    const sectionTitleRegex = /;$/; // Lines ending with semicolon are section titles
-    const considerantRegex = /^CONSID[ÉE]RANT/i;
-    const ilEstResoluRegex = /^IL EST R[ÉE]SOLU/i;
-    const attenduRegex = /^ATTENDU/i;
+    const formalLanguageRegex = /^(CONSID[ÉE]RANT|ATTENDU|RECONNAISSANT|IL EST R[ÉE]SOLU|QUE\s)/i;
 
     const parsedItems: ParsedPVItem[] = [];
     let currentSectionTitle = '';
+    let lastPotentialTitle = ''; // Track lines that could be section titles
     let currentItem: ParsedPVItem | null = null;
     let currentContent: string[] = [];
 
@@ -128,6 +125,21 @@ export const parseAgendaDOCX = async (file: File): Promise<ParsedMeetingData> =>
         return skipPatterns.some(pattern => pattern.test(line));
     };
 
+    // Check if a line could be a section title
+    const isPotentialTitle = (line: string): boolean => {
+        // Not formal language
+        if (formalLanguageRegex.test(line)) return false;
+        // Not too short or too long
+        if (line.length < 15 || line.length > 200) return false;
+        // Not a meta/header line
+        if (isSkipLine(line)) return false;
+        // Not a signature line
+        if (/^_{3,}|^Président|^Secrétaire|^PATRICIA|^MICHA[EË]L/i.test(line)) return false;
+        // Not a resolution/comment line
+        if (resolutionRegex.test(line) || commentaireRegex.test(line)) return false;
+        return true;
+    };
+
     for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
 
@@ -136,8 +148,15 @@ export const parseAgendaDOCX = async (file: File): Promise<ParsedMeetingData> =>
             continue;
         }
 
-        // Check if this is a section title (ends with semicolon)
-        if (sectionTitleRegex.test(line) && line.length > 10 && line.length < 200) {
+        // Track potential title lines (lines that could be section headers)
+        // These are used when we encounter a RÉSOLUTION/COMMENTAIRE with no current section
+        if (isPotentialTitle(line) && !currentItem) {
+            lastPotentialTitle = line;
+        }
+
+        // Check if this is a section title (ends with semicolon but NOT formal resolution language)
+        // Section titles are lines like "Adoption de l'ordre du jour de la 9e assemblée ordinaire du CCE;"
+        if (line.endsWith(';') && line.length > 10 && line.length < 200 && !formalLanguageRegex.test(line)) {
             // Save previous item if exists
             if (currentItem) {
                 currentItem.decision = currentContent.join('\n').trim();
@@ -147,7 +166,8 @@ export const parseAgendaDOCX = async (file: File): Promise<ParsedMeetingData> =>
             }
 
             currentSectionTitle = line;
-            console.log('[docxParser] Found section title:', currentSectionTitle);
+            lastPotentialTitle = line; // Also update lastPotentialTitle
+            console.log('[docxParser] Found section title (semicolon):', currentSectionTitle);
             continue;
         }
 
@@ -160,14 +180,17 @@ export const parseAgendaDOCX = async (file: File): Promise<ParsedMeetingData> =>
                 parsedItems.push(currentItem);
             }
 
+            // Use currentSectionTitle if set, otherwise use lastPotentialTitle
+            const titleToUse = currentSectionTitle || lastPotentialTitle;
+
             currentItem = {
-                sectionTitle: currentSectionTitle,
+                sectionTitle: titleToUse,
                 minuteType: 'resolution',
                 minuteNumber: `${resMatch[1]}-${resMatch[2]}`,
                 decision: ''
             };
             currentContent = [];
-            console.log('[docxParser] Found resolution:', currentItem.minuteNumber, 'for section:', currentSectionTitle);
+            console.log('[docxParser] Found resolution:', currentItem.minuteNumber, 'for section:', titleToUse);
             continue;
         }
 
@@ -180,21 +203,25 @@ export const parseAgendaDOCX = async (file: File): Promise<ParsedMeetingData> =>
                 parsedItems.push(currentItem);
             }
 
+            // Use currentSectionTitle if set, otherwise use lastPotentialTitle
+            const titleToUse = currentSectionTitle || lastPotentialTitle;
+
             currentItem = {
-                sectionTitle: currentSectionTitle,
+                sectionTitle: titleToUse,
                 minuteType: 'comment',
                 minuteNumber: `${comMatch[1]}-${comMatch[2].toUpperCase()}`,
                 decision: ''
             };
             currentContent = [];
-            console.log('[docxParser] Found comment:', currentItem.minuteNumber, 'for section:', currentSectionTitle);
+            console.log('[docxParser] Found comment:', currentItem.minuteNumber, 'for section:', titleToUse);
             continue;
         }
 
         // If we're in an item, collect content
         if (currentItem) {
             // Check for CONSIDÉRANT/IL EST RÉSOLU/ATTENDU
-            if (considerantRegex.test(line) || ilEstResoluRegex.test(line) || attenduRegex.test(line)) {
+            // Check for formal language (CONSIDÉRANT/IL EST RÉSOLU/ATTENDU) - add to content
+            if (formalLanguageRegex.test(line)) {
                 currentContent.push(line);
                 continue;
             }
