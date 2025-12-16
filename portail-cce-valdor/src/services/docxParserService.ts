@@ -8,14 +8,11 @@ interface ParsedMeetingData {
     meetingNumber?: string;
 }
 
-/**
- * Parsed item from PV document - contains a section title and its resolution/comment data
- */
 interface ParsedPVItem {
-    sectionTitle: string;        // The title line ending with semicolon (e.g., "Adoption de l'ordre du jour...")
+    sectionTitle: string;
     minuteType: 'resolution' | 'comment';
-    minuteNumber: string;        // e.g., "09-35" or "09-A"
-    decision: string;            // Full CONSIDÉRANT/IL EST RÉSOLU content
+    minuteNumber: string;
+    decision: string;
     proposer?: string;
     seconder?: string;
 }
@@ -36,34 +33,10 @@ export const parseAgendaDOCX = async (file: File): Promise<ParsedMeetingData> =>
     const parser = new DOMParser();
     const doc = parser.parseFromString(html, 'text/html');
 
-    // Helper to extract text with proper newlines from HTML
-    const extractTextWithNewlines = (element: Element): string => {
-        let text = '';
-        const blockTags = ['P', 'DIV', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'LI', 'BR'];
-
-        element.childNodes.forEach(node => {
-            if (node.nodeType === Node.TEXT_NODE) {
-                text += node.textContent;
-            } else if (node.nodeType === Node.ELEMENT_NODE) {
-                const el = node as Element;
-                if (blockTags.includes(el.tagName)) {
-                    text += '\n';
-                }
-                text += extractTextWithNewlines(el);
-                if (blockTags.includes(el.tagName) && !text.endsWith('\n')) {
-                    text += '\n';
-                }
-            }
-        });
-        return text;
-    };
-
-    const fullText = extractTextWithNewlines(doc.body);
-    const lines = fullText.split('\n').map(line => line.trim()).filter(line => line.length > 0);
-
     // ============================================================
     // 1. Extract Date
     // ============================================================
+    const fullText = doc.body.textContent || '';
     const dateRegex = /(\d{1,2})\s+(janvier|février|mars|avril|mai|juin|juillet|août|septembre|octobre|novembre|décembre)\s+(\d{4})/i;
     const dateMatch = fullText.match(dateRegex);
     if (dateMatch) {
@@ -84,156 +57,112 @@ export const parseAgendaDOCX = async (file: File): Promise<ParsedMeetingData> =>
     // ============================================================
     // 2. Extract Title and Meeting Number
     // ============================================================
-    const titleLine = lines.find(line => line.toUpperCase().includes('ASSEMBLÉE'));
+    const titleMatch = fullText.match(/(\d+)\s*[eè]\s*ASSEMBL[ÉE]E/i);
+    if (titleMatch) {
+        parsedResult.meetingNumber = titleMatch[1].padStart(2, '0');
+    }
+    const titleLine = fullText.match(/PROCÈS-VERBAL[^.]+\./)?.[0];
     if (titleLine) {
         parsedResult.title = titleLine;
-        const meetingNumMatch = titleLine.match(/(\d+)\s*[eè]/i);
-        if (meetingNumMatch) {
-            parsedResult.meetingNumber = meetingNumMatch[1].padStart(2, '0');
-        }
     }
 
     // ============================================================
-    // 3. Parse sections with their RÉSOLUTION/COMMENTAIRE
+    // 3. Parse HTML structure for sections and resolutions
     // ============================================================
-    // Strategy: Track potential title lines and use look-back when finding RÉSOLUTION/COMMENTAIRE
-
-    const resolutionRegex = /^R[ÉE]SOLUTION\s+(\d{2})-(\d+)/i;
-    const commentaireRegex = /^COMMENTAIRE\s+(\d{2})-([A-Za-z])/i;
-    const formalLanguageRegex = /^(CONSID[ÉE]RANT|ATTENDU|RECONNAISSANT|IL EST R[ÉE]SOLU|QUE\s)/i;
+    // Strategy: 
+    // - Bold text (<strong>) that's a standalone paragraph = section title
+    // - <h2> with RÉSOLUTION = resolution marker
+    // - <strong> with COMMENTAIRE = comment marker
 
     const parsedItems: ParsedPVItem[] = [];
     let currentSectionTitle = '';
-    let lastPotentialTitle = ''; // Track lines that could be section titles
     let currentItem: ParsedPVItem | null = null;
     let currentContent: string[] = [];
 
-    // Skip header lines (before the first section)
-    const skipPatterns = [
-        /^COMITÉ CONSULTATIF/i,
-        /^PROCÈS-VERBAL/i,
-        /^ASSEMBLÉE/i,
-        /^ÉTAIENT PRÉSENTS/i,
-        /^ÉTAIENT AUSSI PRÉSENTS/i,
-        /^ÉTAIT ABSENT/i,
-        /^\d{1,2}\s+(janvier|février|mars|avril|mai|juin|juillet|août|septembre|octobre|novembre|décembre)/i,
-        /^Mardi|^Lundi|^Mercredi|^Jeudi|^Vendredi/i,
-        /^Salle /i,
-    ];
+    const resolutionRegex = /^R[ÉE]SOLUTION\s+(\d{2})-(\d+)/i;
+    const commentaireRegex = /^COMMENTAIRE\s+(\d{2})-([A-Za-z])/i;
+    const formalLanguageRegex = /^(CONSID[ÉE]RANT|ATTENDU|RECONNAISSANT|IL EST R[ÉE]SOLU)/i;
 
-    const isSkipLine = (line: string): boolean => {
-        return skipPatterns.some(pattern => pattern.test(line));
-    };
+    // Get all block elements
+    const elements = doc.body.querySelectorAll('p, h1, h2, h3, h4, h5, h6, li');
 
-    // Check if a line could be a section title
-    const isPotentialTitle = (line: string): boolean => {
-        // Not formal language
-        if (formalLanguageRegex.test(line)) return false;
-        // Not too short or too long
-        if (line.length < 15 || line.length > 200) return false;
-        // Not a meta/header line
-        if (isSkipLine(line)) return false;
-        // Not a signature line
-        if (/^_{3,}|^Président|^Secrétaire|^PATRICIA|^MICHA[EË]L/i.test(line)) return false;
-        // Not a resolution/comment line
-        if (resolutionRegex.test(line) || commentaireRegex.test(line)) return false;
-        return true;
-    };
+    for (const element of elements) {
+        const text = element.textContent?.trim() || '';
+        if (!text) continue;
 
-    for (let i = 0; i < lines.length; i++) {
-        const line = lines[i];
+        // Check for RÉSOLUTION in h2
+        if (element.tagName === 'H2') {
+            const resMatch = text.match(resolutionRegex);
+            if (resMatch) {
+                // Save previous item
+                if (currentItem) {
+                    currentItem.decision = currentContent.join('\n').trim();
+                    parsedItems.push(currentItem);
+                }
 
-        // Skip header/meta lines
-        if (isSkipLine(line)) {
-            continue;
-        }
-
-        // Track potential title lines (lines that could be section headers)
-        // These are used when we encounter a RÉSOLUTION/COMMENTAIRE with no current section
-        if (isPotentialTitle(line) && !currentItem) {
-            lastPotentialTitle = line;
-        }
-
-        // Check if this is a section title (ends with semicolon but NOT formal resolution language)
-        // Section titles are lines like "Adoption de l'ordre du jour de la 9e assemblée ordinaire du CCE;"
-        if (line.endsWith(';') && line.length > 10 && line.length < 200 && !formalLanguageRegex.test(line)) {
-            // Save previous item if exists
-            if (currentItem) {
-                currentItem.decision = currentContent.join('\n').trim();
-                parsedItems.push(currentItem);
-                currentItem = null;
+                currentItem = {
+                    sectionTitle: currentSectionTitle,
+                    minuteType: 'resolution',
+                    minuteNumber: `${resMatch[1]}-${resMatch[2]}`,
+                    decision: ''
+                };
                 currentContent = [];
+                console.log('[docxParser] Found resolution:', currentItem.minuteNumber, 'for section:', currentSectionTitle);
+                continue;
             }
-
-            currentSectionTitle = line;
-            lastPotentialTitle = line; // Also update lastPotentialTitle
-            console.log('[docxParser] Found section title (semicolon):', currentSectionTitle);
-            continue;
         }
 
-        // Check for RÉSOLUTION
-        const resMatch = line.match(resolutionRegex);
-        if (resMatch) {
-            // Save previous item if exists
-            if (currentItem) {
-                currentItem.decision = currentContent.join('\n').trim();
-                parsedItems.push(currentItem);
+        // Check for bold text - could be section title or COMMENTAIRE
+        const strongElement = element.querySelector('strong');
+        const isBoldParagraph = strongElement && strongElement.textContent?.trim() === text;
+
+        if (isBoldParagraph) {
+            // Check if it's a COMMENTAIRE marker
+            const comMatch = text.match(commentaireRegex);
+            if (comMatch) {
+                // Save previous item
+                if (currentItem) {
+                    currentItem.decision = currentContent.join('\n').trim();
+                    parsedItems.push(currentItem);
+                }
+
+                currentItem = {
+                    sectionTitle: currentSectionTitle,
+                    minuteType: 'comment',
+                    minuteNumber: `${comMatch[1]}-${comMatch[2].toUpperCase()}`,
+                    decision: ''
+                };
+                currentContent = [];
+                console.log('[docxParser] Found comment:', currentItem.minuteNumber, 'for section:', currentSectionTitle);
+                continue;
             }
 
-            // Use currentSectionTitle if set, otherwise use lastPotentialTitle
-            const titleToUse = currentSectionTitle || lastPotentialTitle;
+            // If not formal language and not too short, it's likely a section title
+            if (!formalLanguageRegex.test(text) && text.length > 15 && text.length < 250) {
+                // Don't treat RÉSOLUTION/COMMENTAIRE as section titles
+                if (!resolutionRegex.test(text) && !commentaireRegex.test(text)) {
+                    // Save previous item if exists
+                    if (currentItem) {
+                        currentItem.decision = currentContent.join('\n').trim();
+                        parsedItems.push(currentItem);
+                        currentItem = null;
+                        currentContent = [];
+                    }
 
-            currentItem = {
-                sectionTitle: titleToUse,
-                minuteType: 'resolution',
-                minuteNumber: `${resMatch[1]}-${resMatch[2]}`,
-                decision: ''
-            };
-            currentContent = [];
-            console.log('[docxParser] Found resolution:', currentItem.minuteNumber, 'for section:', titleToUse);
-            continue;
-        }
-
-        // Check for COMMENTAIRE
-        const comMatch = line.match(commentaireRegex);
-        if (comMatch) {
-            // Save previous item if exists
-            if (currentItem) {
-                currentItem.decision = currentContent.join('\n').trim();
-                parsedItems.push(currentItem);
+                    currentSectionTitle = text;
+                    console.log('[docxParser] Found section title (bold):', currentSectionTitle);
+                    continue;
+                }
             }
-
-            // Use currentSectionTitle if set, otherwise use lastPotentialTitle
-            const titleToUse = currentSectionTitle || lastPotentialTitle;
-
-            currentItem = {
-                sectionTitle: titleToUse,
-                minuteType: 'comment',
-                minuteNumber: `${comMatch[1]}-${comMatch[2].toUpperCase()}`,
-                decision: ''
-            };
-            currentContent = [];
-            console.log('[docxParser] Found comment:', currentItem.minuteNumber, 'for section:', titleToUse);
-            continue;
         }
 
         // If we're in an item, collect content
         if (currentItem) {
-            // Check for CONSIDÉRANT/IL EST RÉSOLU/ATTENDU
-            // Check for formal language (CONSIDÉRANT/IL EST RÉSOLU/ATTENDU) - add to content
-            if (formalLanguageRegex.test(line)) {
-                currentContent.push(line);
+            // Skip signature lines
+            if (/^_{3,}|^PATRICIA BOUTIN|^MICHA[EË]L ROSS|^Président|^Secrétaire/i.test(text)) {
                 continue;
             }
-
-            // Skip signature lines and other meta content
-            if (!line.match(/^_{3,}/) &&
-                !line.match(/^PATRICIA BOUTIN/i) &&
-                !line.match(/^MICHA[EË]L ROSS/i) &&
-                !line.match(/^Président/i) &&
-                !line.match(/^Secrétaire/i)) {
-                currentContent.push(line);
-            }
+            currentContent.push(text);
         }
     }
 
@@ -248,7 +177,6 @@ export const parseAgendaDOCX = async (file: File): Promise<ParsedMeetingData> =>
     // ============================================================
     // 4. Convert ParsedPVItems to AgendaItems
     // ============================================================
-    // Each parsed item becomes an agenda item with its section title
     parsedResult.agendaItems = parsedItems.map((item, index) => ({
         id: `imported-pv-${Date.now()}-${index}`,
         order: index,
@@ -265,9 +193,10 @@ export const parseAgendaDOCX = async (file: File): Promise<ParsedMeetingData> =>
     }));
 
     // ============================================================
-    // 5. Fallback: If no items found, try ordered lists
+    // 5. Fallbacks (if no items found)
     // ============================================================
     if (!parsedResult.agendaItems || parsedResult.agendaItems.length === 0) {
+        // Try ordered lists
         const orderedLists = doc.querySelectorAll('ol');
         let mainList: HTMLOListElement | null = null;
         let maxItems = 0;
@@ -299,46 +228,6 @@ export const parseAgendaDOCX = async (file: File): Promise<ParsedMeetingData> =>
                 }
             });
         }
-    }
-
-    // ============================================================
-    // 6. Fallback: Table parsing
-    // ============================================================
-    if (!parsedResult.agendaItems || parsedResult.agendaItems.length === 0) {
-        const tables = doc.querySelectorAll('table');
-
-        tables.forEach((table) => {
-            if (parsedResult.agendaItems && parsedResult.agendaItems.length > 0) return;
-
-            const rows = table.querySelectorAll('tr');
-            if (rows.length < 2) return;
-
-            const headerRow = rows[0];
-            const headers = Array.from(headerRow.querySelectorAll('td, th')).map(cell => cell.textContent?.trim().toUpperCase() || '');
-            const sujetIndex = headers.findIndex(h => h.includes('SUJET'));
-
-            if (sujetIndex !== -1) {
-                parsedResult.agendaItems = [];
-                for (let i = 1; i < rows.length; i++) {
-                    const cells = rows[i].querySelectorAll('td');
-                    if (cells.length <= sujetIndex) continue;
-
-                    const rawTitle = cells[sujetIndex]?.textContent?.trim() || '';
-                    if (!rawTitle) continue;
-
-                    parsedResult.agendaItems.push({
-                        id: `imported-docx-table-${Date.now()}-${i}`,
-                        order: i - 1,
-                        title: rawTitle,
-                        duration: 15,
-                        presenter: 'Coordonnateur',
-                        objective: 'Information',
-                        decision: '',
-                        description: ''
-                    });
-                }
-            }
-        });
     }
 
     console.log('[docxParserService] Final parsed result:', parsedResult);
@@ -380,14 +269,21 @@ export const matchPVToAgenda = (
         const sharedWords = pvWords.filter(w => agendaWords.includes(w));
         const matchRatio = sharedWords.length / Math.min(pvWords.length, agendaWords.length);
 
-        return matchRatio >= 0.5; // At least 50% of significant words match
+        return matchRatio >= 0.5;
     };
+
+    // Track which agenda items have been matched to avoid duplicates
+    const matchedAgendaIds = new Set<string>();
 
     // Try to match each PV item to an agenda item
     for (const pvItem of pvItems) {
         for (const agendaItem of agendaItems) {
+            // Skip if this agenda item is already matched
+            if (matchedAgendaIds.has(agendaItem.id)) continue;
+
             if (titlesMatch(pvItem.title, agendaItem.title)) {
                 matchMap.set(agendaItem.id, pvItem);
+                matchedAgendaIds.add(agendaItem.id);
                 console.log('[matchPVToAgenda] Matched:', pvItem.title, '->', agendaItem.title);
                 break;
             }
