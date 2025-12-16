@@ -98,10 +98,12 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
     };
 
     const handleSave = () => {
-        // Merge decisions into agenda items
+        // Merge decisions into agenda items, preserving minuteEntries
         const updatedAgendaItems = localAgendaItems.map(item => ({
             ...item,
-            decision: itemDecisions[item.id] || item.decision || ''
+            decision: itemDecisions[item.id] || item.decision || '',
+            // Explicitly preserve minuteEntries
+            minuteEntries: item.minuteEntries
         }));
 
         console.log('[DEBUG] handleSave called');
