@@ -91,7 +91,27 @@ export const parseAgendaDOCX = async (file: File): Promise<ParsedMeetingData> =>
         const text = element.textContent?.trim() || '';
         if (!text) continue;
 
-        // Check for RÉSOLUTION - can be in h2, bold text, or regular paragraph
+        const tagName = element.tagName;
+
+        // ============================================================
+        // PRIORITY 1: Detect H1 as section titles (Titre 1 in Word)
+        // ============================================================
+        if (tagName === 'H1') {
+            // Save previous item if exists
+            if (currentItem) {
+                currentItem.decision = currentContent.join('\n').trim();
+                parsedItems.push(currentItem);
+                currentItem = null;
+                currentContent = [];
+            }
+
+            currentSectionTitle = text;
+            lastPotentialTitle = text;
+            console.log('[docxParser] Found section title (H1):', currentSectionTitle);
+            continue;
+        }
+
+        // Check for RÉSOLUTION - can be in h4, h2, bold text, or regular paragraph
         const resMatch = text.match(resolutionRegex);
         if (resMatch) {
             // Save previous item
@@ -146,6 +166,13 @@ export const parseAgendaDOCX = async (file: File): Promise<ParsedMeetingData> =>
             if (!formalLanguageRegex.test(text) && text.length > 15 && text.length < 250) {
                 // Don't treat RÉSOLUTION/COMMENTAIRE as section titles
                 if (!resolutionRegex.test(text) && !commentaireRegex.test(text)) {
+                    // Skip numbered sub-sections (1., 2., 3., etc.) - these are not main section titles
+                    const numberedItemRegex = /^\d+\.\s+/;
+                    if (numberedItemRegex.test(text)) {
+                        // This is a numbered sub-item, not a main section - skip it
+                        continue;
+                    }
+
                     // Save previous item if exists
                     if (currentItem) {
                         currentItem.decision = currentContent.join('\n').trim();
