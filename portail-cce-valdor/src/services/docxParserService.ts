@@ -120,9 +120,12 @@ export const parseAgendaDOCX = async (file: File): Promise<ParsedMeetingData> =>
         return 'Membre';
     };
 
-    // Extract clean name (remove role suffix)
+    // Extract clean name (remove M./Mme. prefixes and role suffixes)
     const cleanName = (name: string): string => {
         return name
+            // Remove M./Mme./M /Mme prefixes
+            .replace(/^(M\.|Mme\.|M\s|Mme\s)/i, '')
+            // Remove role suffixes
             .replace(/,?\s*(président|présidente|vice-président|vice-présidente|secrétaire|conseiller responsable|conseiller|conseillère).*$/i, '')
             .trim();
     };
