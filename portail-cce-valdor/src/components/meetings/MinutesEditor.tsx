@@ -11,7 +11,7 @@ import {
     Snackbar,
     MenuItem
 } from '@mui/material';
-import { Save, PictureAsPdf, UploadFile, DeleteSweep } from '@mui/icons-material';
+import { Save, PictureAsPdf, UploadFile, DeleteSweep, Add } from '@mui/icons-material';
 import type { Meeting, AgendaItem } from '../../types/meeting.types';
 import { generateMinutesPDF } from '../../services/pdfServiceMinutes';
 import MinutesImportDialog from './MinutesImportDialog';
@@ -94,6 +94,36 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
         setLocalAgendaItems(prev => prev.map(item =>
             item.id === itemId ? { ...item, [field]: value } : item
         ));
+        setHasUnsavedChanges(true);
+    };
+
+    // Handler for editing a specific minuteEntry
+    const handleMinuteEntryChange = (itemId: string, entryIndex: number, field: string, value: any) => {
+        setLocalAgendaItems(prev => prev.map(item => {
+            if (item.id === itemId && item.minuteEntries) {
+                const updatedEntries = [...item.minuteEntries];
+                updatedEntries[entryIndex] = { ...updatedEntries[entryIndex], [field]: value };
+                return { ...item, minuteEntries: updatedEntries };
+            }
+            return item;
+        }));
+        setHasUnsavedChanges(true);
+    };
+
+    // Handler for adding a new minuteEntry
+    const handleAddMinuteEntry = (itemId: string) => {
+        setLocalAgendaItems(prev => prev.map(item => {
+            if (item.id === itemId) {
+                const entries = item.minuteEntries || [];
+                const newEntry = {
+                    type: 'comment' as const,
+                    number: '',
+                    content: ''
+                };
+                return { ...item, minuteEntries: [...entries, newEntry] };
+            }
+            return item;
+        }));
         setHasUnsavedChanges(true);
     };
 
@@ -451,26 +481,64 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
                                     {item.objective} - {item.presenter}
                                 </Typography>
 
-                                {/* NEW: Display all minute entries (resolutions + comments) */}
+                                {/* Editable minute entries (resolutions + comments) */}
                                 {item.minuteEntries && item.minuteEntries.length > 0 && (
-                                    <Box sx={{ mb: 2, p: 2, bgcolor: 'success.light', borderRadius: 1, opacity: 0.9 }}>
-                                        <Typography variant="caption" fontWeight="bold" color="success.dark" gutterBottom>
-                                            {item.minuteEntries.length} entrée(s) importée(s) du PV :
+                                    <Box sx={{ mb: 2 }}>
+                                        <Typography variant="caption" fontWeight="bold" color="primary" gutterBottom sx={{ display: 'block', mb: 1 }}>
+                                            {item.minuteEntries.length} entrée(s) du PV :
                                         </Typography>
                                         {item.minuteEntries.map((entry, entryIndex) => (
-                                            <Box key={entryIndex} sx={{ mt: 1, p: 1, bgcolor: 'white', borderRadius: 1, border: '1px solid', borderColor: entry.type === 'resolution' ? 'primary.main' : 'warning.main' }}>
-                                                <Typography variant="body2" fontWeight="bold" color={entry.type === 'resolution' ? 'primary.main' : 'warning.dark'}>
-                                                    {entry.type === 'resolution' ? '📋 RÉSOLUTION' : '💬 COMMENTAIRE'} {entry.number}
-                                                </Typography>
-                                                {entry.content && (
-                                                    <Typography variant="body2" sx={{ mt: 0.5, whiteSpace: 'pre-wrap', maxHeight: '150px', overflow: 'auto' }}>
-                                                        {entry.content.substring(0, 500)}{entry.content.length > 500 ? '...' : ''}
-                                                    </Typography>
-                                                )}
+                                            <Box key={entryIndex} sx={{ mb: 2, p: 2, bgcolor: 'grey.50', borderRadius: 1, border: '1px solid', borderColor: entry.type === 'resolution' ? 'primary.main' : 'warning.main' }}>
+                                                <Grid container spacing={2} sx={{ mb: 1 }}>
+                                                    <Grid size={{ xs: 12, sm: 4 }}>
+                                                        <TextField
+                                                            select
+                                                            fullWidth
+                                                            label="Type"
+                                                            size="small"
+                                                            value={entry.type}
+                                                            onChange={(e) => handleMinuteEntryChange(item.id, entryIndex, 'type', e.target.value)}
+                                                        >
+                                                            <MenuItem value="resolution">📋 Résolution</MenuItem>
+                                                            <MenuItem value="comment">💬 Commentaire</MenuItem>
+                                                        </TextField>
+                                                    </Grid>
+                                                    <Grid size={{ xs: 12, sm: 4 }}>
+                                                        <TextField
+                                                            fullWidth
+                                                            label="Numéro (ex: 09-35)"
+                                                            size="small"
+                                                            value={entry.number || ''}
+                                                            onChange={(e) => handleMinuteEntryChange(item.id, entryIndex, 'number', e.target.value)}
+                                                        />
+                                                    </Grid>
+                                                </Grid>
+                                                <TextField
+                                                    fullWidth
+                                                    multiline
+                                                    rows={4}
+                                                    label={entry.type === 'resolution' ? "Contenu de la résolution" : "Contenu du commentaire"}
+                                                    placeholder={entry.type === 'resolution' ? "CONSIDÉRANT que...\n\nIL EST RÉSOLU..." : "Saisir le commentaire..."}
+                                                    value={entry.content || ''}
+                                                    onChange={(e) => handleMinuteEntryChange(item.id, entryIndex, 'content', e.target.value)}
+                                                    variant="outlined"
+                                                    size="small"
+                                                />
                                             </Box>
                                         ))}
                                     </Box>
                                 )}
+
+                                {/* Button to add new entry */}
+                                <Button
+                                    variant="outlined"
+                                    size="small"
+                                    startIcon={<Add />}
+                                    onClick={() => handleAddMinuteEntry(item.id)}
+                                    sx={{ mb: 2 }}
+                                >
+                                    Ajouter résolution/commentaire
+                                </Button>
 
                                 <Grid container spacing={2} sx={{ mb: 2 }}>
                                     <Grid size={{ xs: 12, sm: 4 }}>
