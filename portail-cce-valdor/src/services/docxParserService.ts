@@ -1,11 +1,12 @@
 import mammoth from 'mammoth';
-import { type AgendaItem, type MinuteEntry } from '../types/meeting.types';
+import { type AgendaItem, type MinuteEntry, type Attendee } from '../types/meeting.types';
 
 interface ParsedMeetingData {
     title?: string;
     date?: string;
     agendaItems?: AgendaItem[];
     meetingNumber?: string;
+    attendees?: Attendee[]; // Parsed attendance info
 }
 
 interface ParsedPVItem {
@@ -64,6 +65,116 @@ export const parseAgendaDOCX = async (file: File): Promise<ParsedMeetingData> =>
     const titleLine = fullText.match(/PROCÈS-VERBAL[^.]+\./)?.[0];
     if (titleLine) {
         parsedResult.title = titleLine;
+    }
+
+    // ============================================================
+    // 2.5 Extract Attendance Information
+    // ============================================================
+    const attendees: Attendee[] = [];
+    let attendeeIdCounter = 0;
+
+    // Helper to parse names from a text block
+    const parseNames = (text: string): string[] => {
+        // Split by comma or "et" 
+        const names: string[] = [];
+        // Remove common suffixes first for splitting, then add back for role detection
+        const cleanText = text
+            .replace(/,\s*(président|vice-président|secrétaire|présidente|vice-présidente)/gi, ', $1')
+            .replace(/\s+et\s+/gi, ', ');
+
+        // Split by comma
+        const parts = cleanText.split(',').map(p => p.trim()).filter(p => p.length > 0);
+
+        for (const part of parts) {
+            // Extract name and optional role
+            const cleaned = part.trim();
+            if (cleaned && cleaned.length > 2) {
+                names.push(cleaned);
+            }
+        }
+        return names;
+    };
+
+    // Helper to determine role from name or context
+    const determineRole = (name: string, section: string): string => {
+        const nameLower = name.toLowerCase();
+        if (nameLower.includes('président') || nameLower.includes('présidente')) {
+            return 'Président(e)';
+        }
+        if (nameLower.includes('vice-président') || nameLower.includes('vice-présidente')) {
+            return 'Vice-président(e)';
+        }
+        if (nameLower.includes('secrétaire')) {
+            return 'Secrétaire';
+        }
+        if (nameLower.includes('conseiller responsable')) {
+            return 'Conseiller responsable';
+        }
+        if (nameLower.includes('conseiller') || nameLower.includes('conseillère')) {
+            return 'Conseiller';
+        }
+        // Based on section
+        if (section === 'aussi_presents') {
+            return 'Invité';
+        }
+        return 'Membre';
+    };
+
+    // Extract clean name (remove role suffix)
+    const cleanName = (name: string): string => {
+        return name
+            .replace(/,?\s*(président|présidente|vice-président|vice-présidente|secrétaire|conseiller responsable|conseiller|conseillère).*$/i, '')
+            .trim();
+    };
+
+    // ÉTAIENT PRÉSENTS
+    const presentsMatch = fullText.match(/ÉTAIENT\s+PRÉSENTS?\s+([^É]+?)(?=ÉTAIENT\s+AUSSI|ÉTAI(?:T|ENT)\s+ABSENT|$)/is);
+    if (presentsMatch) {
+        const names = parseNames(presentsMatch[1]);
+        console.log('[docxParser] Found ÉTAIENT PRÉSENTS:', names);
+        for (const name of names) {
+            attendees.push({
+                id: `attendee-${Date.now()}-${attendeeIdCounter++}`,
+                name: cleanName(name),
+                role: determineRole(name, 'presents'),
+                isPresent: true
+            });
+        }
+    }
+
+    // ÉTAIENT AUSSI PRÉSENTS
+    const alsoPresentsMatch = fullText.match(/ÉTAIENT\s+AUSSI\s+PRÉSENTS?\s+([^É]+?)(?=ÉTAI(?:T|ENT)\s+ABSENT|$)/is);
+    if (alsoPresentsMatch) {
+        const names = parseNames(alsoPresentsMatch[1]);
+        console.log('[docxParser] Found ÉTAIENT AUSSI PRÉSENTS:', names);
+        for (const name of names) {
+            attendees.push({
+                id: `attendee-${Date.now()}-${attendeeIdCounter++}`,
+                name: cleanName(name),
+                role: determineRole(name, 'aussi_presents'),
+                isPresent: true
+            });
+        }
+    }
+
+    // ÉTAIT ABSENT(E)(S)
+    const absentsMatch = fullText.match(/ÉTAI(?:T|ENT)\s+ABSENTE?S?\s+([^1-9É]+?)(?=\d|ORDRE|$)/is);
+    if (absentsMatch) {
+        const names = parseNames(absentsMatch[1]);
+        console.log('[docxParser] Found ÉTAIT ABSENT(E)(S):', names);
+        for (const name of names) {
+            attendees.push({
+                id: `attendee-${Date.now()}-${attendeeIdCounter++}`,
+                name: cleanName(name),
+                role: determineRole(name, 'absents'),
+                isPresent: false
+            });
+        }
+    }
+
+    if (attendees.length > 0) {
+        parsedResult.attendees = attendees;
+        console.log('[docxParser] Total attendees parsed:', attendees.length);
     }
 
     // ============================================================

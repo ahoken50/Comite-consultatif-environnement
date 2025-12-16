@@ -129,10 +129,32 @@ const formatDecisionContent = (decision: string): Content[] => {
     return content;
 };
 
+/**
+ * Get logo as base64 for PDF embedding
+ */
+const getLogoBase64 = async (): Promise<string | null> => {
+    try {
+        const response = await fetch('/logo-cce.png');
+        if (!response.ok) return null;
+        const blob = await response.blob();
+        return new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result as string);
+            reader.readAsDataURL(blob);
+        });
+    } catch (e) {
+        console.warn('Could not load logo:', e);
+        return null;
+    }
+};
+
 export const generateMinutesPDF = async (meeting: Meeting, globalNotes?: string) => {
     const meetingNum = extractMeetingNumber(meeting.title);
     let resolutionCounter = 1;
     let commentCounter = 0;
+
+    // Load logo for PDF header
+    const logoBase64 = await getLogoBase64();
 
     // Format date
     const dateObj = new Date(meeting.date);
@@ -164,14 +186,19 @@ export const generateMinutesPDF = async (meeting: Meeting, globalNotes?: string)
     // Logo and title side by side
     content.push({
         columns: [
-            // Left side - placeholder for logo (will show text instead since we can't embed the image easily)
-            {
+            // Left side - logo
+            logoBase64 ? {
+                image: logoBase64,
+                width: 70,
+                height: 70,
+                margin: [0, 0, 15, 0] as [number, number, number, number]
+            } : {
                 width: 80,
                 stack: [
-                    { text: 'CCE', style: 'logoText', alignment: 'center' },
-                    { text: 'VAL-D\'OR', style: 'logoSubText', alignment: 'center' }
+                    { text: 'CCE', style: 'logoText', alignment: 'center' as const },
+                    { text: 'VAL-D\'OR', style: 'logoSubText', alignment: 'center' as const }
                 ],
-                margin: [0, 0, 15, 0]
+                margin: [0, 0, 15, 0] as [number, number, number, number]
             },
             // Right side - titles
             {
