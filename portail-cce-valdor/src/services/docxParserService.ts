@@ -90,53 +90,51 @@ export const parseAgendaDOCX = async (file: File): Promise<ParsedMeetingData> =>
         const text = element.textContent?.trim() || '';
         if (!text) continue;
 
-        // Check for RÉSOLUTION in h2
-        if (element.tagName === 'H2') {
-            const resMatch = text.match(resolutionRegex);
-            if (resMatch) {
-                // Save previous item
-                if (currentItem) {
-                    currentItem.decision = currentContent.join('\n').trim();
-                    parsedItems.push(currentItem);
-                }
-
-                currentItem = {
-                    sectionTitle: currentSectionTitle,
-                    minuteType: 'resolution',
-                    minuteNumber: `${resMatch[1]}-${resMatch[2]}`,
-                    decision: ''
-                };
-                currentContent = [];
-                console.log('[docxParser] Found resolution:', currentItem.minuteNumber, 'for section:', currentSectionTitle);
-                continue;
+        // Check for RÉSOLUTION - can be in h2, bold text, or regular paragraph
+        const resMatch = text.match(resolutionRegex);
+        if (resMatch) {
+            // Save previous item
+            if (currentItem) {
+                currentItem.decision = currentContent.join('\n').trim();
+                parsedItems.push(currentItem);
             }
+
+            currentItem = {
+                sectionTitle: currentSectionTitle,
+                minuteType: 'resolution',
+                minuteNumber: `${resMatch[1]}-${resMatch[2]}`,
+                decision: ''
+            };
+            currentContent = [];
+            console.log('[docxParser] Found resolution:', currentItem.minuteNumber, 'for section:', currentSectionTitle);
+            continue;
         }
 
-        // Check for bold text - could be section title or COMMENTAIRE
+        // Check for COMMENTAIRE - can be in bold text or regular paragraph
+        const comMatch = text.match(commentaireRegex);
+        if (comMatch) {
+            // Save previous item
+            if (currentItem) {
+                currentItem.decision = currentContent.join('\n').trim();
+                parsedItems.push(currentItem);
+            }
+
+            currentItem = {
+                sectionTitle: currentSectionTitle,
+                minuteType: 'comment',
+                minuteNumber: `${comMatch[1]}-${comMatch[2].toUpperCase()}`,
+                decision: ''
+            };
+            currentContent = [];
+            console.log('[docxParser] Found comment:', currentItem.minuteNumber, 'for section:', currentSectionTitle);
+            continue;
+        }
+
+        // Check for bold text - could be section title
         const strongElement = element.querySelector('strong');
         const isBoldParagraph = strongElement && strongElement.textContent?.trim() === text;
 
         if (isBoldParagraph) {
-            // Check if it's a COMMENTAIRE marker
-            const comMatch = text.match(commentaireRegex);
-            if (comMatch) {
-                // Save previous item
-                if (currentItem) {
-                    currentItem.decision = currentContent.join('\n').trim();
-                    parsedItems.push(currentItem);
-                }
-
-                currentItem = {
-                    sectionTitle: currentSectionTitle,
-                    minuteType: 'comment',
-                    minuteNumber: `${comMatch[1]}-${comMatch[2].toUpperCase()}`,
-                    decision: ''
-                };
-                currentContent = [];
-                console.log('[docxParser] Found comment:', currentItem.minuteNumber, 'for section:', currentSectionTitle);
-                continue;
-            }
-
             // If not formal language and not too short, it's likely a section title
             if (!formalLanguageRegex.test(text) && text.length > 15 && text.length < 250) {
                 // Don't treat RÉSOLUTION/COMMENTAIRE as section titles
