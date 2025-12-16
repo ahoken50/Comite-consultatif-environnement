@@ -162,29 +162,29 @@ export const parseAgendaDOCX = async (file: File): Promise<ParsedMeetingData> =>
         const isBoldParagraph = strongElement && strongElement.textContent?.trim() === text;
 
         if (isBoldParagraph) {
-            // If not formal language and not too short, it's likely a section title
+            // If not formal language and not too short, it could be a section title
             if (!formalLanguageRegex.test(text) && text.length > 15 && text.length < 250) {
                 // Don't treat RÉSOLUTION/COMMENTAIRE as section titles
                 if (!resolutionRegex.test(text) && !commentaireRegex.test(text)) {
-                    // Skip numbered sub-sections (1., 2., 3., etc.) - these are not main section titles
+                    // Check if it's a numbered sub-section (1., 2., 3., etc.)
                     const numberedItemRegex = /^\d+\.\s+/;
-                    if (numberedItemRegex.test(text)) {
-                        // This is a numbered sub-item, not a main section - skip it
+
+                    // Only treat as section title if NOT a numbered item
+                    if (!numberedItemRegex.test(text)) {
+                        // Save previous item if exists
+                        if (currentItem) {
+                            currentItem.decision = currentContent.join('\n').trim();
+                            parsedItems.push(currentItem);
+                            currentItem = null;
+                            currentContent = [];
+                        }
+
+                        currentSectionTitle = text;
+                        lastPotentialTitle = text; // Also update potential title
+                        console.log('[docxParser] Found section title (bold):', currentSectionTitle);
                         continue;
                     }
-
-                    // Save previous item if exists
-                    if (currentItem) {
-                        currentItem.decision = currentContent.join('\n').trim();
-                        parsedItems.push(currentItem);
-                        currentItem = null;
-                        currentContent = [];
-                    }
-
-                    currentSectionTitle = text;
-                    lastPotentialTitle = text; // Also update potential title
-                    console.log('[docxParser] Found section title (bold):', currentSectionTitle);
-                    continue;
+                    // Numbered items fall through to content collection below
                 }
             }
         }
