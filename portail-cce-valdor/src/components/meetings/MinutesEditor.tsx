@@ -366,7 +366,8 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
                 minuteNumber: '',
                 decision: '',
                 proposer: '',
-                seconder: ''
+                seconder: '',
+                minuteEntries: [] // Also clear imported entries
             };
         }));
 
