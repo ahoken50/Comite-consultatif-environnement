@@ -130,49 +130,70 @@ export const parseAgendaDOCX = async (file: File): Promise<ParsedMeetingData> =>
             .trim();
     };
 
-    // ÉTAIENT PRÉSENTS
-    const presentsMatch = fullText.match(/ÉTAIENT\s+PRÉSENTS?\s+([^É]+?)(?=ÉTAIENT\s+AUSSI|ÉTAI(?:T|ENT)\s+ABSENT|$)/is);
+    // ÉTAIENT PRÉSENTS - capture until ÉTAIENT AUSSI or ÉTAIT ABSENT
+    const presentsRegex = /[ÉE]TAIENT\s+PR[ÉE]SENTS?\s+([\s\S]+?)(?=[ÉE]TAIENT\s+AUSSI|[ÉE]TAI(?:T|ENT)\s+ABSENT)/i;
+    const presentsMatch = fullText.match(presentsRegex);
     if (presentsMatch) {
-        const names = parseNames(presentsMatch[1]);
+        const capturedText = presentsMatch[1].trim();
+        console.log('[docxParser] ÉTAIENT PRÉSENTS raw text:', capturedText);
+        const names = parseNames(capturedText);
         console.log('[docxParser] Found ÉTAIENT PRÉSENTS:', names);
         for (const name of names) {
-            attendees.push({
-                id: `attendee-${Date.now()}-${attendeeIdCounter++}`,
-                name: cleanName(name),
-                role: determineRole(name, 'presents'),
-                isPresent: true
-            });
+            if (name.length > 2) {
+                attendees.push({
+                    id: `attendee-${Date.now()}-${attendeeIdCounter++}`,
+                    name: cleanName(name),
+                    role: determineRole(name, 'presents'),
+                    isPresent: true
+                });
+            }
         }
+    } else {
+        console.log('[docxParser] No ÉTAIENT PRÉSENTS match found');
     }
 
-    // ÉTAIENT AUSSI PRÉSENTS
-    const alsoPresentsMatch = fullText.match(/ÉTAIENT\s+AUSSI\s+PRÉSENTS?\s+([^É]+?)(?=ÉTAI(?:T|ENT)\s+ABSENT|$)/is);
+    // ÉTAIENT AUSSI PRÉSENTS - capture until ÉTAIT ABSENT or end
+    const alsoPresentsRegex = /[ÉE]TAIENT\s+AUSSI\s+PR[ÉE]SENTS?\s+([\s\S]+?)(?=[ÉE]TAI(?:T|ENT)\s+ABSENT|ORDRE\s+DU\s+JOUR|\d+\.\s|$)/i;
+    const alsoPresentsMatch = fullText.match(alsoPresentsRegex);
     if (alsoPresentsMatch) {
-        const names = parseNames(alsoPresentsMatch[1]);
+        const capturedText = alsoPresentsMatch[1].trim();
+        console.log('[docxParser] ÉTAIENT AUSSI PRÉSENTS raw text:', capturedText);
+        const names = parseNames(capturedText);
         console.log('[docxParser] Found ÉTAIENT AUSSI PRÉSENTS:', names);
         for (const name of names) {
-            attendees.push({
-                id: `attendee-${Date.now()}-${attendeeIdCounter++}`,
-                name: cleanName(name),
-                role: determineRole(name, 'aussi_presents'),
-                isPresent: true
-            });
+            if (name.length > 2) {
+                attendees.push({
+                    id: `attendee-${Date.now()}-${attendeeIdCounter++}`,
+                    name: cleanName(name),
+                    role: determineRole(name, 'aussi_presents'),
+                    isPresent: true
+                });
+            }
         }
+    } else {
+        console.log('[docxParser] No ÉTAIENT AUSSI PRÉSENTS match found');
     }
 
-    // ÉTAIT ABSENT(E)(S)
-    const absentsMatch = fullText.match(/ÉTAI(?:T|ENT)\s+ABSENTE?S?\s+([^1-9É]+?)(?=\d|ORDRE|$)/is);
+    // ÉTAIT ABSENT(E)(S) - capture until next section or numbered item
+    const absentsRegex = /[ÉE]TAI(?:T|ENT)\s+ABSENTE?S?\s+([\s\S]+?)(?=ORDRE\s+DU\s+JOUR|\d+\.\s|OUVERTURE|$)/i;
+    const absentsMatch = fullText.match(absentsRegex);
     if (absentsMatch) {
-        const names = parseNames(absentsMatch[1]);
+        const capturedText = absentsMatch[1].trim();
+        console.log('[docxParser] ÉTAIT ABSENT raw text:', capturedText);
+        const names = parseNames(capturedText);
         console.log('[docxParser] Found ÉTAIT ABSENT(E)(S):', names);
         for (const name of names) {
-            attendees.push({
-                id: `attendee-${Date.now()}-${attendeeIdCounter++}`,
-                name: cleanName(name),
-                role: determineRole(name, 'absents'),
-                isPresent: false
-            });
+            if (name.length > 2) {
+                attendees.push({
+                    id: `attendee-${Date.now()}-${attendeeIdCounter++}`,
+                    name: cleanName(name),
+                    role: determineRole(name, 'absents'),
+                    isPresent: false
+                });
+            }
         }
+    } else {
+        console.log('[docxParser] No ÉTAIT ABSENT match found');
     }
 
     if (attendees.length > 0) {
