@@ -95,25 +95,21 @@ export const parseAgendaDOCX = async (file: File): Promise<ParsedMeetingData> =>
 
         console.log('[docxParser] Normalized text:', normalized);
 
-        // Split approach: find each M./Mme. section and parse name + optional role
-        const parts = normalized.split(/(?=M\.|Mme\.)/i).filter(p => p.trim().length > 0);
+        // Use regex to find all M./Mme. Name patterns with optional role
+        // The key is to use lookahead to stop at next M./Mme. or end
+        const personRegex = /(?:M\.|Mme\.?)\s*([A-ZÀ-Ÿ][a-zà-ÿ]+(?:[\s\-][A-ZÀ-Ÿ][a-zà-ÿ\-]+)*?)(?:,\s*([^,M]+?))?(?=,?\s*(?:M\.|Mme\.)|$)/gi;
 
-        for (const part of parts) {
-            // Match: M./Mme. + Name (stops at comma or end)
-            const nameMatch = part.match(/^(?:M\.|Mme\.?)\s*([A-ZÀ-Ÿ][a-zà-ÿ]+(?:[\s\-][A-ZÀ-Ÿ][a-zà-ÿ\-]+)*)/i);
-            if (!nameMatch) continue;
+        let match;
+        while ((match = personRegex.exec(normalized)) !== null) {
+            const name = match[1].trim();
+            const roleTextRaw = match[2] ? match[2].trim().toLowerCase() : '';
 
-            const name = nameMatch[1].trim();
-            const afterName = part.substring(nameMatch[0].length).trim();
-
-            // Check if there's a role after the name (starts with comma)
+            // Determine role from the captured text
             let role = 'Membre';
-            if (afterName.startsWith(',')) {
-                const roleText = afterName.substring(1).split(',')[0].trim().toLowerCase();
-
-                // Check each role pattern
+            if (roleTextRaw) {
+                // Check each role pattern - order matters (more specific first)
                 for (const rp of rolePatterns) {
-                    if (rp.pattern.test(roleText)) {
+                    if (rp.pattern.test(roleTextRaw)) {
                         role = rp.role;
                         break;
                     }
@@ -169,23 +165,28 @@ export const parseAgendaDOCX = async (file: File): Promise<ParsedMeetingData> =>
         console.log('[docxParser] No ÉTAIENT AUSSI PRÉSENTS match found');
     }
 
-    // ÉTAIT ABSENT(E)(S) - capture only M./Mme. + First + Last name
-    // Pattern: M./Mme. + Prénom (capitalized) + optional space + Nom (capitalized)
-    const absentsRegex = /[ÉE]TAI(?:T|ENT)\s+ABSENTE?S?\s+((?:M\.|Mme\.?)\s+[A-ZÀ-Ÿ][a-zà-ÿ]+\s+[A-ZÀ-Ÿ][a-zà-ÿ]+)/i;
-    const absentsMatch = fullText.match(absentsRegex);
+    // ÉTAIT ABSENT(E)(S) - use a different approach
+    // Find the section, then extract only M./Mme. + Prénom + Nom (exactly 2 capitalized words)
+    const absentsSectionRegex = /[ÉE]TAI(?:T|ENT)\s+ABSENTE?S?\s+([^\n]+)/i;
+    const absentsMatch = fullText.match(absentsSectionRegex);
     if (absentsMatch) {
-        const capturedText = absentsMatch[1].trim();
-        console.log('[docxParser] ÉTAIT ABSENT raw text:', capturedText);
-        const parsedPeople = parseNamesWithRoles(capturedText);
-        console.log('[docxParser] Found ÉTAIT ABSENT(E)(S):', parsedPeople.length, 'people');
-        for (const person of parsedPeople) {
+        const sectionText = absentsMatch[1].trim();
+        console.log('[docxParser] ÉTAIT ABSENT raw section:', sectionText);
+
+        // Extract only: M./Mme. + exactly 2 capitalized words (Prénom Nom)
+        const absentPersonRegex = /(?:M\.|Mme\.?)\s+([A-ZÀ-Ÿ][a-zà-ÿ]+)\s+([A-ZÀ-Ÿ][a-zà-ÿ]+)/g;
+        let absentMatch;
+        while ((absentMatch = absentPersonRegex.exec(sectionText)) !== null) {
+            const name = `${absentMatch[1]} ${absentMatch[2]}`;
+            console.log('[docxParser] Parsed absent person:', name);
             attendees.push({
                 id: `attendee-${Date.now()}-${attendeeIdCounter++}`,
-                name: person.name,
-                role: person.role,
+                name: name,
+                role: 'Membre',
                 isPresent: false
             });
         }
+        console.log('[docxParser] Found ÉTAIT ABSENT(E)(S): parsed');
     } else {
         console.log('[docxParser] No ÉTAIT ABSENT match found');
     }
