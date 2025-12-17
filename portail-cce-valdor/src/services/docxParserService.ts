@@ -73,10 +73,10 @@ export const parseAgendaDOCX = async (file: File): Promise<ParsedMeetingData> =>
     const attendees: Attendee[] = [];
     let attendeeIdCounter = 0;
 
-    // Role patterns to detect
+    // Role patterns to detect - ORDER MATTERS! More specific patterns first
     const rolePatterns = [
+        { pattern: /vice[- ]pr[ée]sidente?/i, role: 'Vice-président(e)' },  // Must be before président
         { pattern: /pr[ée]sidente?/i, role: 'Président(e)' },
-        { pattern: /vice[- ]pr[ée]sidente?/i, role: 'Vice-président(e)' },
         { pattern: /secr[ée]taire/i, role: 'Secrétaire' },
         { pattern: /conseill[ie](?:[eè]re?)?\s+responsable/i, role: 'Conseiller responsable' },
         { pattern: /conseill[ie](?:[eè]re?)?/i, role: 'Conseiller' }
@@ -95,71 +95,34 @@ export const parseAgendaDOCX = async (file: File): Promise<ParsedMeetingData> =>
 
         console.log('[docxParser] Normalized text:', normalized);
 
-        // Regex to match: M./Mme. + Name + optional ", role"
-        // Pattern: (M\.|Mme\.?\s+)([A-ZÀ-Ÿ][a-zà-ÿ]+(?:\s+[A-ZÀ-Ÿ][a-zà-ÿ\-]+)*)(,\s*(?:président|vice-président|secrétaire|conseiller responsable|présidente)e?)?
-        const personRegex = /(?:M\.|Mme\.?)\s*([A-ZÀ-Ÿ][a-zà-ÿ]+(?:[\s\-][A-ZÀ-Ÿa-zà-ÿ\-]+)*?)(?:,\s*(président|présidente|vice[- ]président|vice[- ]présidente|secrétaire|conseill[ie](?:[eè]re?)?\s*responsable))?(?=,\s*(?:M\.|Mme\.?)|$)/gi;
+        // Split approach: find each M./Mme. section and parse name + optional role
+        const parts = normalized.split(/(?=M\.|Mme\.)/i).filter(p => p.trim().length > 0);
 
-        let match;
-        while ((match = personRegex.exec(normalized)) !== null) {
-            const name = match[1].trim();
-            const roleText = match[2] || '';
+        for (const part of parts) {
+            // Match: M./Mme. + Name (stops at comma or end)
+            const nameMatch = part.match(/^(?:M\.|Mme\.?)\s*([A-ZÀ-Ÿ][a-zà-ÿ]+(?:[\s\-][A-ZÀ-Ÿ][a-zà-ÿ\-]+)*)/i);
+            if (!nameMatch) continue;
+
+            const name = nameMatch[1].trim();
+            const afterName = part.substring(nameMatch[0].length).trim();
+
+            // Check if there's a role after the name (starts with comma)
+            let role = 'Membre';
+            if (afterName.startsWith(',')) {
+                const roleText = afterName.substring(1).split(',')[0].trim().toLowerCase();
+
+                // Check each role pattern
+                for (const rp of rolePatterns) {
+                    if (rp.pattern.test(roleText)) {
+                        role = rp.role;
+                        break;
+                    }
+                }
+            }
 
             if (name.length > 2) {
-                // Determine role from the captured role text or default
-                let role = 'Membre';
-                if (roleText) {
-                    for (const rp of rolePatterns) {
-                        if (rp.pattern.test(roleText)) {
-                            role = rp.role;
-                            break;
-                        }
-                    }
-                }
-
                 results.push({ name, role });
                 console.log('[docxParser] Parsed person:', name, 'with role:', role);
-            }
-        }
-
-        // If regex didn't match, try simpler approach
-        if (results.length === 0) {
-            console.log('[docxParser] Regex failed, using fallback parsing');
-            // Split by M./Mme.
-            const parts = normalized.split(/(?=M\.|Mme\.)/i).filter(p => p.trim().length > 0);
-
-            for (const part of parts) {
-                // Extract the name (remove M./Mme. prefix)
-                let cleaned = part.replace(/^(M\.|Mme\.?)\s*/i, '').trim();
-
-                // Check if there's a role after comma
-                let role = 'Membre';
-                const commaIdx = cleaned.indexOf(',');
-                if (commaIdx > 0) {
-                    const afterComma = cleaned.substring(commaIdx + 1).trim().toLowerCase();
-                    const beforeComma = cleaned.substring(0, commaIdx).trim();
-
-                    // Check if afterComma is a role
-                    let isRole = false;
-                    for (const rp of rolePatterns) {
-                        if (rp.pattern.test(afterComma)) {
-                            role = rp.role;
-                            isRole = true;
-                            break;
-                        }
-                    }
-
-                    if (isRole) {
-                        cleaned = beforeComma;
-                    } else {
-                        // The part after comma is another name, only take the first part
-                        cleaned = beforeComma;
-                    }
-                }
-
-                if (cleaned.length > 2 && !rolePatterns.some(rp => rp.pattern.test(cleaned))) {
-                    results.push({ name: cleaned, role });
-                    console.log('[docxParser] Fallback parsed person:', cleaned, 'with role:', role);
-                }
             }
         }
 
@@ -206,8 +169,9 @@ export const parseAgendaDOCX = async (file: File): Promise<ParsedMeetingData> =>
         console.log('[docxParser] No ÉTAIENT AUSSI PRÉSENTS match found');
     }
 
-    // ÉTAIT ABSENT(E)(S) - capture only names (M./Mme. + Name), stop at any section header
-    const absentsRegex = /[ÉE]TAI(?:T|ENT)\s+ABSENTE?S?\s+((?:(?:M\.|Mme\.?)\s*[A-ZÀ-Ÿ][a-zà-ÿ]+(?:[\s\-][A-ZÀ-Ÿa-zà-ÿ\-]+)*(?:\s*,\s*)?)+)/i;
+    // ÉTAIT ABSENT(E)(S) - capture only M./Mme. + First + Last name
+    // Pattern: M./Mme. + Prénom (capitalized) + optional space + Nom (capitalized)
+    const absentsRegex = /[ÉE]TAI(?:T|ENT)\s+ABSENTE?S?\s+((?:M\.|Mme\.?)\s+[A-ZÀ-Ÿ][a-zà-ÿ]+\s+[A-ZÀ-Ÿ][a-zà-ÿ]+)/i;
     const absentsMatch = fullText.match(absentsRegex);
     if (absentsMatch) {
         const capturedText = absentsMatch[1].trim();
