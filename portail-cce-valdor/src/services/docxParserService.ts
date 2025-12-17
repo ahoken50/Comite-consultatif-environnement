@@ -73,61 +73,97 @@ export const parseAgendaDOCX = async (file: File): Promise<ParsedMeetingData> =>
     const attendees: Attendee[] = [];
     let attendeeIdCounter = 0;
 
-    // Helper to parse names from a text block
-    const parseNames = (text: string): string[] => {
-        // Split by comma or "et" 
-        const names: string[] = [];
-        // Remove common suffixes first for splitting, then add back for role detection
-        const cleanText = text
-            .replace(/,\s*(président|vice-président|secrétaire|présidente|vice-présidente)/gi, ', $1')
-            .replace(/\s+et\s+/gi, ', ');
+    // Role patterns to detect
+    const rolePatterns = [
+        { pattern: /pr[ée]sidente?/i, role: 'Président(e)' },
+        { pattern: /vice[- ]pr[ée]sidente?/i, role: 'Vice-président(e)' },
+        { pattern: /secr[ée]taire/i, role: 'Secrétaire' },
+        { pattern: /conseill[ie](?:[eè]re?)?\s+responsable/i, role: 'Conseiller responsable' },
+        { pattern: /conseill[ie](?:[eè]re?)?/i, role: 'Conseiller' }
+    ];
 
-        // Split by comma
-        const parts = cleanText.split(',').map(p => p.trim()).filter(p => p.length > 0);
+    // Parse a text block containing names with optional roles
+    // Format: "M. Luc Bossé, Mme Patricia Boutin, présidente, M. Sébastien Brodeur-Girard..."
+    const parseNamesWithRoles = (text: string): Array<{ name: string, role: string }> => {
+        const results: Array<{ name: string, role: string }> = [];
 
-        for (const part of parts) {
-            // Extract name and optional role
-            const cleaned = part.trim();
-            if (cleaned && cleaned.length > 2) {
-                names.push(cleaned);
+        // First, normalize the text
+        let normalized = text
+            .replace(/\s+/g, ' ')  // Normalize spaces
+            .replace(/\s+et\s+/gi, ', ')  // Replace "et" with comma
+            .trim();
+
+        console.log('[docxParser] Normalized text:', normalized);
+
+        // Regex to match: M./Mme. + Name + optional ", role"
+        // Pattern: (M\.|Mme\.?\s+)([A-ZÀ-Ÿ][a-zà-ÿ]+(?:\s+[A-ZÀ-Ÿ][a-zà-ÿ\-]+)*)(,\s*(?:président|vice-président|secrétaire|conseiller responsable|présidente)e?)?
+        const personRegex = /(?:M\.|Mme\.?)\s*([A-ZÀ-Ÿ][a-zà-ÿ]+(?:[\s\-][A-ZÀ-Ÿa-zà-ÿ\-]+)*?)(?:,\s*(président|présidente|vice[- ]président|vice[- ]présidente|secrétaire|conseill[ie](?:[eè]re?)?\s*responsable))?(?=,\s*(?:M\.|Mme\.?)|$)/gi;
+
+        let match;
+        while ((match = personRegex.exec(normalized)) !== null) {
+            const name = match[1].trim();
+            const roleText = match[2] || '';
+
+            if (name.length > 2) {
+                // Determine role from the captured role text or default
+                let role = 'Membre';
+                if (roleText) {
+                    for (const rp of rolePatterns) {
+                        if (rp.pattern.test(roleText)) {
+                            role = rp.role;
+                            break;
+                        }
+                    }
+                }
+
+                results.push({ name, role });
+                console.log('[docxParser] Parsed person:', name, 'with role:', role);
             }
         }
-        return names;
-    };
 
-    // Helper to determine role from name or context
-    const determineRole = (name: string, section: string): string => {
-        const nameLower = name.toLowerCase();
-        if (nameLower.includes('président') || nameLower.includes('présidente')) {
-            return 'Président(e)';
-        }
-        if (nameLower.includes('vice-président') || nameLower.includes('vice-présidente')) {
-            return 'Vice-président(e)';
-        }
-        if (nameLower.includes('secrétaire')) {
-            return 'Secrétaire';
-        }
-        if (nameLower.includes('conseiller responsable')) {
-            return 'Conseiller responsable';
-        }
-        if (nameLower.includes('conseiller') || nameLower.includes('conseillère')) {
-            return 'Conseiller';
-        }
-        // Based on section
-        if (section === 'aussi_presents') {
-            return 'Invité';
-        }
-        return 'Membre';
-    };
+        // If regex didn't match, try simpler approach
+        if (results.length === 0) {
+            console.log('[docxParser] Regex failed, using fallback parsing');
+            // Split by M./Mme.
+            const parts = normalized.split(/(?=M\.|Mme\.)/i).filter(p => p.trim().length > 0);
 
-    // Extract clean name (remove M./Mme. prefixes and role suffixes)
-    const cleanName = (name: string): string => {
-        return name
-            // Remove M./Mme./M /Mme prefixes
-            .replace(/^(M\.|Mme\.|M\s|Mme\s)/i, '')
-            // Remove role suffixes
-            .replace(/,?\s*(président|présidente|vice-président|vice-présidente|secrétaire|conseiller responsable|conseiller|conseillère).*$/i, '')
-            .trim();
+            for (const part of parts) {
+                // Extract the name (remove M./Mme. prefix)
+                let cleaned = part.replace(/^(M\.|Mme\.?)\s*/i, '').trim();
+
+                // Check if there's a role after comma
+                let role = 'Membre';
+                const commaIdx = cleaned.indexOf(',');
+                if (commaIdx > 0) {
+                    const afterComma = cleaned.substring(commaIdx + 1).trim().toLowerCase();
+                    const beforeComma = cleaned.substring(0, commaIdx).trim();
+
+                    // Check if afterComma is a role
+                    let isRole = false;
+                    for (const rp of rolePatterns) {
+                        if (rp.pattern.test(afterComma)) {
+                            role = rp.role;
+                            isRole = true;
+                            break;
+                        }
+                    }
+
+                    if (isRole) {
+                        cleaned = beforeComma;
+                    } else {
+                        // The part after comma is another name, only take the first part
+                        cleaned = beforeComma;
+                    }
+                }
+
+                if (cleaned.length > 2 && !rolePatterns.some(rp => rp.pattern.test(cleaned))) {
+                    results.push({ name: cleaned, role });
+                    console.log('[docxParser] Fallback parsed person:', cleaned, 'with role:', role);
+                }
+            }
+        }
+
+        return results;
     };
 
     // ÉTAIENT PRÉSENTS - capture until ÉTAIENT AUSSI or ÉTAIT ABSENT
@@ -136,17 +172,15 @@ export const parseAgendaDOCX = async (file: File): Promise<ParsedMeetingData> =>
     if (presentsMatch) {
         const capturedText = presentsMatch[1].trim();
         console.log('[docxParser] ÉTAIENT PRÉSENTS raw text:', capturedText);
-        const names = parseNames(capturedText);
-        console.log('[docxParser] Found ÉTAIENT PRÉSENTS:', names);
-        for (const name of names) {
-            if (name.length > 2) {
-                attendees.push({
-                    id: `attendee-${Date.now()}-${attendeeIdCounter++}`,
-                    name: cleanName(name),
-                    role: determineRole(name, 'presents'),
-                    isPresent: true
-                });
-            }
+        const parsedPeople = parseNamesWithRoles(capturedText);
+        console.log('[docxParser] Found ÉTAIENT PRÉSENTS:', parsedPeople.length, 'people');
+        for (const person of parsedPeople) {
+            attendees.push({
+                id: `attendee-${Date.now()}-${attendeeIdCounter++}`,
+                name: person.name,
+                role: person.role,
+                isPresent: true
+            });
         }
     } else {
         console.log('[docxParser] No ÉTAIENT PRÉSENTS match found');
@@ -158,39 +192,35 @@ export const parseAgendaDOCX = async (file: File): Promise<ParsedMeetingData> =>
     if (alsoPresentsMatch) {
         const capturedText = alsoPresentsMatch[1].trim();
         console.log('[docxParser] ÉTAIENT AUSSI PRÉSENTS raw text:', capturedText);
-        const names = parseNames(capturedText);
-        console.log('[docxParser] Found ÉTAIENT AUSSI PRÉSENTS:', names);
-        for (const name of names) {
-            if (name.length > 2) {
-                attendees.push({
-                    id: `attendee-${Date.now()}-${attendeeIdCounter++}`,
-                    name: cleanName(name),
-                    role: determineRole(name, 'aussi_presents'),
-                    isPresent: true
-                });
-            }
+        const parsedPeople = parseNamesWithRoles(capturedText);
+        console.log('[docxParser] Found ÉTAIENT AUSSI PRÉSENTS:', parsedPeople.length, 'people');
+        for (const person of parsedPeople) {
+            attendees.push({
+                id: `attendee-${Date.now()}-${attendeeIdCounter++}`,
+                name: person.name,
+                role: person.role,
+                isPresent: true
+            });
         }
     } else {
         console.log('[docxParser] No ÉTAIENT AUSSI PRÉSENTS match found');
     }
 
-    // ÉTAIT ABSENT(E)(S) - capture until next section or numbered item
-    const absentsRegex = /[ÉE]TAI(?:T|ENT)\s+ABSENTE?S?\s+([\s\S]+?)(?=ORDRE\s+DU\s+JOUR|\d+\.\s|OUVERTURE|$)/i;
+    // ÉTAIT ABSENT(E)(S) - capture only names (M./Mme. + Name), stop at any section header
+    const absentsRegex = /[ÉE]TAI(?:T|ENT)\s+ABSENTE?S?\s+((?:(?:M\.|Mme\.?)\s*[A-ZÀ-Ÿ][a-zà-ÿ]+(?:[\s\-][A-ZÀ-Ÿa-zà-ÿ\-]+)*(?:\s*,\s*)?)+)/i;
     const absentsMatch = fullText.match(absentsRegex);
     if (absentsMatch) {
         const capturedText = absentsMatch[1].trim();
         console.log('[docxParser] ÉTAIT ABSENT raw text:', capturedText);
-        const names = parseNames(capturedText);
-        console.log('[docxParser] Found ÉTAIT ABSENT(E)(S):', names);
-        for (const name of names) {
-            if (name.length > 2) {
-                attendees.push({
-                    id: `attendee-${Date.now()}-${attendeeIdCounter++}`,
-                    name: cleanName(name),
-                    role: determineRole(name, 'absents'),
-                    isPresent: false
-                });
-            }
+        const parsedPeople = parseNamesWithRoles(capturedText);
+        console.log('[docxParser] Found ÉTAIT ABSENT(E)(S):', parsedPeople.length, 'people');
+        for (const person of parsedPeople) {
+            attendees.push({
+                id: `attendee-${Date.now()}-${attendeeIdCounter++}`,
+                name: person.name,
+                role: person.role,
+                isPresent: false
+            });
         }
     } else {
         console.log('[docxParser] No ÉTAIT ABSENT match found');
