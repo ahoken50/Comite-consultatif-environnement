@@ -236,53 +236,92 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
                     if (parsedData.agendaItems && parsedData.agendaItems.length > 0) {
                         console.log('[DEBUG] Found', parsedData.agendaItems.length, 'agenda items in DOCX');
 
-                        // Use title-based matching instead of just index
-                        const matchMap = matchPVToAgenda(parsedData.agendaItems, localAgendaItems);
-                        console.log('[DEBUG] Matched', matchMap.size, 'items by title similarity');
+                        // If meeting has no agenda items, CREATE new ones from parsed data
+                        if (localAgendaItems.length === 0) {
+                            console.log('[DEBUG] Meeting has no agenda items - creating from parsed DOCX');
 
-                        // Update items that have a match
-                        const updatedItems = localAgendaItems.map((item) => {
-                            const matchedPV = matchMap.get(item.id);
+                            // Create new agenda items from parsed data
+                            const newAgendaItems: AgendaItem[] = parsedData.agendaItems.map((parsed, index) => ({
+                                id: `agenda-${Date.now()}-${index}`,
+                                order: index + 1,
+                                title: parsed.title || `Point ${index + 1}`,
+                                description: '',
+                                duration: 10,
+                                presenter: '',
+                                objective: 'Information',
+                                decision: parsed.decision || '',
+                                minuteType: parsed.minuteType,
+                                minuteNumber: parsed.minuteNumber || '',
+                                proposer: parsed.proposer || '',
+                                seconder: parsed.seconder || '',
+                                minuteEntries: parsed.minuteEntries || []
+                            }));
 
-                            if (matchedPV) {
-                                // Log all minute entries for debugging
-                                if (matchedPV.minuteEntries && matchedPV.minuteEntries.length > 0) {
-                                    console.log('[DEBUG] Updating item:', item.title, 'with', matchedPV.minuteEntries.length, 'minute entries:');
-                                    matchedPV.minuteEntries.forEach(entry => {
-                                        console.log('  -', entry.type, entry.number);
-                                    });
-                                } else {
-                                    console.log('[DEBUG] Updating item:', item.title, 'with PV data:', matchedPV.minuteNumber);
+                            setLocalAgendaItems(newAgendaItems);
+
+                            // Update item decisions state
+                            const newDecisions: Record<string, string> = {};
+                            newAgendaItems.forEach(item => {
+                                if (item.decision) {
+                                    newDecisions[item.id] = item.decision;
                                 }
+                            });
+                            setItemDecisions(newDecisions);
+                            setHasUnsavedChanges(true);
 
-                                return {
-                                    ...item,
-                                    // NEW: Copy all minute entries (resolutions + comments)
-                                    minuteEntries: matchedPV.minuteEntries ?? item.minuteEntries,
-                                    // Legacy fields (kept for backward compatibility)
-                                    minuteType: matchedPV.minuteType ?? item.minuteType,
-                                    minuteNumber: matchedPV.minuteNumber ?? item.minuteNumber ?? '',
-                                    decision: matchedPV.decision ?? item.decision ?? '',
-                                    proposer: matchedPV.proposer ?? item.proposer ?? '',
-                                    seconder: matchedPV.seconder ?? item.seconder ?? ''
-                                };
-                            }
-                            return item;
-                        });
+                            // Also save to Firebase immediately
+                            onUpdate({ agendaItems: newAgendaItems });
 
-                        setLocalAgendaItems(updatedItems);
+                            console.log('[DEBUG] Created', newAgendaItems.length, 'new agenda items from DOCX');
+                        } else {
+                            // Use title-based matching instead of just index
+                            const matchMap = matchPVToAgenda(parsedData.agendaItems, localAgendaItems);
+                            console.log('[DEBUG] Matched', matchMap.size, 'items by title similarity');
 
-                        // Update item decisions state
-                        const newDecisions = { ...itemDecisions };
-                        updatedItems.forEach(item => {
-                            if (item.decision) {
-                                newDecisions[item.id] = item.decision;
-                            }
-                        });
-                        setItemDecisions(newDecisions);
-                        setHasUnsavedChanges(true);
+                            // Update items that have a match
+                            const updatedItems = localAgendaItems.map((item) => {
+                                const matchedPV = matchMap.get(item.id);
 
-                        console.log('[DEBUG] Updated local agenda items with parsed data');
+                                if (matchedPV) {
+                                    // Log all minute entries for debugging
+                                    if (matchedPV.minuteEntries && matchedPV.minuteEntries.length > 0) {
+                                        console.log('[DEBUG] Updating item:', item.title, 'with', matchedPV.minuteEntries.length, 'minute entries:');
+                                        matchedPV.minuteEntries.forEach(entry => {
+                                            console.log('  -', entry.type, entry.number);
+                                        });
+                                    } else {
+                                        console.log('[DEBUG] Updating item:', item.title, 'with PV data:', matchedPV.minuteNumber);
+                                    }
+
+                                    return {
+                                        ...item,
+                                        // NEW: Copy all minute entries (resolutions + comments)
+                                        minuteEntries: matchedPV.minuteEntries ?? item.minuteEntries,
+                                        // Legacy fields (kept for backward compatibility)
+                                        minuteType: matchedPV.minuteType ?? item.minuteType,
+                                        minuteNumber: matchedPV.minuteNumber ?? item.minuteNumber ?? '',
+                                        decision: matchedPV.decision ?? item.decision ?? '',
+                                        proposer: matchedPV.proposer ?? item.proposer ?? '',
+                                        seconder: matchedPV.seconder ?? item.seconder ?? ''
+                                    };
+                                }
+                                return item;
+                            });
+
+                            setLocalAgendaItems(updatedItems);
+
+                            // Update item decisions state
+                            const newDecisions = { ...itemDecisions };
+                            updatedItems.forEach(item => {
+                                if (item.decision) {
+                                    newDecisions[item.id] = item.decision;
+                                }
+                            });
+                            setItemDecisions(newDecisions);
+                            setHasUnsavedChanges(true);
+
+                            console.log('[DEBUG] Updated local agenda items with parsed data');
+                        }
                     }
 
                     // Also update attendees if parsed from DOCX
