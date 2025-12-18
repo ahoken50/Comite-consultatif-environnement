@@ -1,5 +1,3 @@
-import jsPDF from 'jspdf';
-import html2canvas from 'html2canvas';
 import type { Meeting } from '../types/meeting.types';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -501,6 +499,60 @@ const generateHTMLDocument = (meeting: Meeting, _globalNotes?: string): string =
             font-size: 11px;
             color: #555;
         }
+
+        /* IMPRESSION */
+        @media print {
+            @page {
+                size: legal portrait;
+                margin: 0.75in 0.5in;
+            }
+
+            body {
+                background-color: white;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+
+            .document-page {
+                width: 100%;
+                padding: 0;
+                box-shadow: none;
+            }
+
+            .resolution-block {
+                page-break-inside: avoid !important;
+                break-inside: avoid !important;
+            }
+
+            .content-section {
+                page-break-inside: avoid;
+                break-inside: avoid;
+            }
+
+            .section-title {
+                page-break-after: avoid;
+                break-after: avoid;
+            }
+
+            .signatures {
+                page-break-inside: avoid !important;
+                break-inside: avoid !important;
+            }
+
+            .attendance {
+                page-break-inside: avoid;
+                break-inside: avoid;
+            }
+
+            header {
+                page-break-after: avoid;
+            }
+
+            p {
+                orphans: 3;
+                widows: 3;
+            }
+        }
     </style>
 </head>
 <body>
@@ -562,109 +614,30 @@ const generateHTMLDocument = (meeting: Meeting, _globalNotes?: string): string =
 };
 
 /**
- * Generate PDF from HTML using html2canvas and jsPDF
+ * Generate PDF from HTML using native browser print
+ * This approach respects CSS page-break rules for resolution blocks
  */
 export const generateMinutesPDF = async (meeting: Meeting, globalNotes?: string) => {
-    const meetingNum = extractMeetingNumber(meeting.title);
     const html = generateHTMLDocument(meeting, globalNotes);
 
-    // Create a hidden container for rendering
-    const container = document.createElement('div');
-    container.style.position = 'absolute';
-    container.style.left = '-9999px';
-    container.style.top = '0';
-    container.innerHTML = html;
-    document.body.appendChild(container);
+    // Open a new window for printing
+    const printWindow = window.open('', '_blank', 'width=816,height=1056');
 
-    // Wait for fonts to load
-    await document.fonts.ready;
-
-    // Wait a bit for images and fonts to fully render
-    await new Promise(resolve => setTimeout(resolve, 500));
-
-    const page = container.querySelector('.document-page') as HTMLElement;
-
-    if (!page) {
-        console.error('Could not find .document-page element');
-        document.body.removeChild(container);
+    if (!printWindow) {
+        alert('Veuillez autoriser les pop-ups pour générer le PDF.');
         return;
     }
 
-    try {
-        // Use html2canvas to render the HTML
-        const canvas = await html2canvas(page, {
-            scale: 2, // Higher resolution
-            useCORS: true,
-            allowTaint: true,
-            backgroundColor: '#ffffff',
-            logging: false
-        });
+    // Write the HTML content
+    printWindow.document.write(html);
+    printWindow.document.close();
 
-        // Create PDF with Legal size (8.5 x 14 inches)
-        const pdf = new jsPDF({
-            orientation: 'portrait',
-            unit: 'in',
-            format: 'legal' // 8.5 x 14 inches
-        });
+    // Wait for fonts and images to load
+    await new Promise(resolve => setTimeout(resolve, 1500));
 
-        // Page dimensions and margins
-        const pageWidth = 8.5;
-        const pageHeight = 14;
-        const marginX = 0.5; // 0.5 inch left/right margins (narrower)
-        const marginY = 0.75; // 0.75 inch top/bottom margins
-        const contentWidth = pageWidth - (marginX * 2);
-        const contentHeight = pageHeight - (marginY * 2);
+    // Trigger print dialog - user can choose "Microsoft Print to PDF" or similar
+    printWindow.print();
 
-        // Calculate image dimensions to fit within content area
-        const imgWidth = contentWidth;
-        const imgHeight = (canvas.height * imgWidth) / canvas.width;
-
-        // Calculate how many pages we need
-        const totalPages = Math.ceil(imgHeight / contentHeight);
-
-        for (let pageNum = 0; pageNum < totalPages; pageNum++) {
-            if (pageNum > 0) {
-                pdf.addPage();
-            }
-
-            // Calculate source region for this page (in image coordinates)
-            const sourceY = (pageNum * contentHeight * canvas.width) / imgWidth;
-            const sourceHeight = (contentHeight * canvas.width) / imgWidth;
-
-            // Create a temporary canvas for this page's content
-            const pageCanvas = document.createElement('canvas');
-            pageCanvas.width = canvas.width;
-            pageCanvas.height = Math.min(sourceHeight, canvas.height - sourceY);
-
-            const ctx = pageCanvas.getContext('2d');
-            if (ctx) {
-                // Draw only the portion needed for this page
-                ctx.drawImage(
-                    canvas,
-                    0, sourceY,                          // Source x, y
-                    canvas.width, pageCanvas.height,     // Source width, height
-                    0, 0,                                // Dest x, y
-                    pageCanvas.width, pageCanvas.height  // Dest width, height
-                );
-
-                // Calculate the height of this slice in inches
-                const sliceHeight = (pageCanvas.height * imgWidth) / canvas.width;
-
-                // Add this slice to the PDF
-                const sliceData = pageCanvas.toDataURL('image/jpeg', 0.95);
-                pdf.addImage(sliceData, 'JPEG', marginX, marginY, imgWidth, sliceHeight);
-            }
-        }
-
-        // Download
-        const dateForFile = format(new Date(meeting.date), 'yyyy-MM-dd');
-        pdf.save(`PV-CCE-${meetingNum}-${dateForFile}.pdf`);
-
-    } catch (error) {
-        console.error('Error generating PDF:', error);
-        alert('Erreur lors de la génération du PDF. Veuillez réessayer.');
-    } finally {
-        // Clean up
-        document.body.removeChild(container);
-    }
+    // Optional: close the window after print (some browsers may not allow this)
+    // printWindow.close();
 };
