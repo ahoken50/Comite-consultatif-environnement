@@ -113,33 +113,48 @@ const formatDecisionHTML = (decision: string): string => {
 
 /**
  * Format content paragraphs for HTML
+ * Each line break creates a new paragraph for proper separation
  */
 const formatContentHTML = (text: string): string => {
     if (!text) return '';
 
     const sanitized = sanitizeText(text);
-    const paragraphs = sanitized.split('\n\n').filter(p => p.trim().length > 0);
+    // Split on single newlines to preserve paragraph structure
+    const lines = sanitized.split('\n').filter(p => p.trim().length > 0);
     let html = '';
+    let currentParagraph = '';
 
-    for (const para of paragraphs) {
-        const trimmed = para.trim();
-        // Check if subsection title (numbered)
-        if (/^\d+\.\s+[A-Z]/.test(trimmed)) {
-            // Find the colon or end of first sentence for title
+    for (const line of lines) {
+        const trimmed = line.trim();
+
+        // Check if subsection title (numbered like "1. Title:" or "2. Another Title:")
+        if (/^\d+\.\s+[A-ZÀ-Ÿ]/.test(trimmed)) {
+            // Flush any accumulated paragraph
+            if (currentParagraph) {
+                html += `<p>${currentParagraph}</p>`;
+                currentParagraph = '';
+            }
+            // Find the colon for title separation
             const colonIndex = trimmed.indexOf(':');
-            if (colonIndex > 0) {
+            if (colonIndex > 0 && colonIndex < 100) {
                 const title = trimmed.substring(0, colonIndex + 1);
                 const rest = trimmed.substring(colonIndex + 1).trim();
                 html += `<div class="subsection-title">${title}</div>`;
                 if (rest) {
-                    html += `<p>${rest.replace(/\n/g, ' ')}</p>`;
+                    html += `<p>${rest}</p>`;
                 }
             } else {
-                html += `<div class="subsection-title">${trimmed.replace(/\n/g, ' ')}</div>`;
+                html += `<div class="subsection-title">${trimmed}</div>`;
             }
         } else {
-            html += `<p>${trimmed.replace(/\n/g, ' ')}</p>`;
+            // Regular paragraph - each line is a separate paragraph
+            html += `<p>${trimmed}</p>`;
         }
+    }
+
+    // Flush any remaining paragraph
+    if (currentParagraph) {
+        html += `<p>${currentParagraph}</p>`;
     }
 
     return html;
