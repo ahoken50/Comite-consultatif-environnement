@@ -2,8 +2,8 @@ import { db } from './firebase';
 import { doc, updateDoc } from 'firebase/firestore';
 import type { Meeting, MinutesDraft } from '../types/meeting.types';
 
-// Environment variable for Gemini API key
-const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
+// Environment variable for Gemini API key (matches GOOGLE_AI_API GitHub secret)
+const GEMINI_API_KEY = import.meta.env.VITE_GOOGLE_AI_API;
 
 // Gemini API endpoint
 const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
@@ -30,7 +30,7 @@ export const transcribeAudio = async (
     if (!GEMINI_API_KEY) {
         return {
             success: false,
-            error: 'Clé API Gemini non configurée. Ajoutez VITE_GEMINI_API_KEY dans .env'
+            error: 'Clé API Gemini non configurée. Vérifiez GOOGLE_AI_API dans les secrets GitHub.'
         };
     }
 
