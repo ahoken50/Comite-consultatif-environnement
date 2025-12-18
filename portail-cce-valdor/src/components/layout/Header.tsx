@@ -61,7 +61,12 @@ const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
                 </Box>
 
                 <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                    <IconButton color="inherit" size="large" onClick={handleNotificationClick}>
+                    <IconButton
+                        aria-label="Afficher les notifications"
+                        color="inherit"
+                        size="large"
+                        onClick={handleNotificationClick}
+                    >
                         <Badge badgeContent={0} color="error">
                             <Notifications />
                         </Badge>
