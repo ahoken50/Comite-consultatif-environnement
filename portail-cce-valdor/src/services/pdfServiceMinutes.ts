@@ -1,19 +1,8 @@
-import pdfMake from 'pdfmake/build/pdfmake';
-import * as pdfFonts from 'pdfmake/build/vfs_fonts';
-import type { TDocumentDefinitions, Content, TableCell } from 'pdfmake/interfaces';
+import jsPDF from 'jspdf';
+import html2canvas from 'html2canvas';
 import type { Meeting } from '../types/meeting.types';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
-
-// Initialize pdfMake with fonts
-(pdfMake as any).vfs = (pdfFonts as any).pdfMake?.vfs || (pdfFonts as any).vfs || pdfFonts;
-
-// Premium color palette matching HTML template
-const PRIMARY_COLOR = '#1e4e3d';   // Vert Val-d'Or élégant
-const ACCENT_COLOR = '#c5a065';    // Or/Beige institutionnel
-const TEXT_COLOR = '#2b2b2b';
-const LIGHT_BG = '#f9fbfa';        // Light green for attendance section
-const RESOLUTION_BG = '#fdfcf8';   // Light cream for resolution blocks
 
 /**
  * Sanitize text from Word documents to remove special characters
@@ -48,248 +37,119 @@ const extractMeetingNumber = (title: string): string => {
 };
 
 /**
- * Generate minute number for items without one
+ * Format CONSIDÉRANT and IL EST RÉSOLU content for HTML
  */
-const generateMinuteNumber = (
-    meetingNum: string,
-    minuteType: 'resolution' | 'comment' | 'other' | undefined,
-    resolutionCounter: number,
-    commentCounter: number
-): { number: string; newResCounter: number; newComCounter: number } => {
-    if (minuteType === 'resolution') {
-        const num = `${meetingNum}-${String(resolutionCounter).padStart(2, '0')}`;
-        return { number: num, newResCounter: resolutionCounter + 1, newComCounter: commentCounter };
-    } else if (minuteType === 'comment') {
-        const letter = String.fromCharCode(65 + (commentCounter % 26));
-        const num = `${meetingNum}-${letter}`;
-        return { number: num, newResCounter: resolutionCounter, newComCounter: commentCounter + 1 };
-    }
-    return { number: '', newResCounter: resolutionCounter, newComCounter: commentCounter };
-};
-
-/**
- * Parse decision text and format CONSIDÉRANT/IL EST RÉSOLU clauses
- */
-const formatDecisionContent = (decision: string): Content[] => {
-    if (!decision) return [];
+const formatDecisionHTML = (decision: string): string => {
+    if (!decision) return '';
 
     const sanitized = sanitizeText(decision);
     const lines = sanitized.split('\n').filter(line => line.trim().length > 0);
-    const content: Content[] = [];
+    let html = '';
+    let inResolvedList = false;
 
     for (const line of lines) {
-        const trimmedLine = line.trim();
+        const trimmed = line.trim();
 
-        // CONSIDÉRANT - with styling
-        if (/^CONSID[ÉE]RANT/i.test(trimmedLine)) {
-            const match = trimmedLine.match(/^(CONSID[ÉE]RANT)\s*(.*)/i);
+        // CONSIDÉRANT
+        if (/^CONSID[ÉE]RANT/i.test(trimmed)) {
+            if (inResolvedList) {
+                html += '</ul>';
+                inResolvedList = false;
+            }
+            const match = trimmed.match(/^(CONSID[ÉE]RANT)\s*(.*)/i);
             if (match) {
-                content.push({
-                    text: [
-                        { text: match[1].toUpperCase() + ' ', style: 'considerantKeyword' },
-                        { text: match[2] || '', style: 'resolutionText' }
-                    ],
-                    margin: [20, 4, 0, 4]
-                });
+                html += `<span class="considerant"><strong>${match[1].toUpperCase()}</strong> ${match[2] || ''}</span>`;
             }
         }
-        // ATTENDU - similar styling
-        else if (/^ATTENDU/i.test(trimmedLine)) {
-            const match = trimmedLine.match(/^(ATTENDU)\s*(.*)/i);
+        // ATTENDU
+        else if (/^ATTENDU/i.test(trimmed)) {
+            if (inResolvedList) {
+                html += '</ul>';
+                inResolvedList = false;
+            }
+            const match = trimmed.match(/^(ATTENDU)\s*(.*)/i);
             if (match) {
-                content.push({
-                    text: [
-                        { text: match[1].toUpperCase() + ' ', style: 'considerantKeyword' },
-                        { text: match[2] || '', style: 'resolutionText' }
-                    ],
-                    margin: [20, 4, 0, 4]
-                });
+                html += `<span class="considerant"><strong>${match[1].toUpperCase()}</strong> ${match[2] || ''}</span>`;
             }
         }
-        // IL EST RÉSOLU - bold heading
-        else if (/^IL EST R[ÉE]SOLU/i.test(trimmedLine)) {
-            const match = trimmedLine.match(/^(IL EST R[ÉE]SOLU\s*:?)\s*(.*)/i);
+        // IL EST RÉSOLU
+        else if (/^IL EST R[ÉE]SOLU/i.test(trimmed)) {
+            if (inResolvedList) {
+                html += '</ul>';
+                inResolvedList = false;
+            }
+            const match = trimmed.match(/^(IL EST R[ÉE]SOLU\s*:?)\s*(.*)/i);
             if (match) {
-                content.push({
-                    text: match[1],
-                    style: 'ilEstResolu',
-                    margin: [0, 12, 0, 8]
-                });
+                html += `<span class="il-est-resolu">${match[1]}</span>`;
                 if (match[2]) {
-                    content.push({
-                        text: match[2],
-                        style: 'resolutionText',
-                        margin: [0, 0, 0, 4]
-                    });
+                    html += `<span class="resolution-text">${match[2]}</span>`;
                 }
             }
         }
-        // Bullet points (lines starting with -)
-        else if (/^[-•]/.test(trimmedLine)) {
-            content.push({
-                text: [
-                    { text: '• ', color: ACCENT_COLOR },
-                    { text: trimmedLine.replace(/^[-•]\s*/, ''), style: 'resolutionText' }
-                ],
-                margin: [20, 4, 0, 4]
-            });
+        // Bullet points
+        else if (/^[-•]/.test(trimmed)) {
+            if (!inResolvedList) {
+                html += '<ul class="resolu-list">';
+                inResolvedList = true;
+            }
+            html += `<li>${trimmed.replace(/^[-•]\s*/, '')}</li>`;
         }
         // Regular text
         else {
-            content.push({
-                text: trimmedLine,
-                style: 'resolutionText',
-                margin: [0, 4, 0, 4]
-            });
+            if (inResolvedList) {
+                html += '</ul>';
+                inResolvedList = false;
+            }
+            html += `<span class="resolution-text">${trimmed}</span>`;
         }
     }
 
-    return content;
+    if (inResolvedList) {
+        html += '</ul>';
+    }
+
+    return html;
 };
 
 /**
- * Format content text with paragraph detection (for comments)
+ * Format content paragraphs for HTML
  */
-const formatContentText = (text: string): Content[] => {
-    if (!text) return [];
+const formatContentHTML = (text: string): string => {
+    if (!text) return '';
 
     const sanitized = sanitizeText(text);
     const paragraphs = sanitized.split('\n\n').filter(p => p.trim().length > 0);
-    const content: Content[] = [];
+    let html = '';
 
     for (const para of paragraphs) {
-        // Check if this is a sub-section title (numbered)
-        if (/^\d+\.\s+[A-Z]/.test(para.trim())) {
-            content.push({
-                text: para.trim(),
-                style: 'subsectionTitle',
-                margin: [0, 15, 0, 8]
-            });
+        const trimmed = para.trim();
+        // Check if subsection title (numbered)
+        if (/^\d+\.\s+[A-Z]/.test(trimmed)) {
+            // Find the colon or end of first sentence for title
+            const colonIndex = trimmed.indexOf(':');
+            if (colonIndex > 0) {
+                const title = trimmed.substring(0, colonIndex + 1);
+                const rest = trimmed.substring(colonIndex + 1).trim();
+                html += `<div class="subsection-title">${title}</div>`;
+                if (rest) {
+                    html += `<p>${rest.replace(/\n/g, ' ')}</p>`;
+                }
+            } else {
+                html += `<div class="subsection-title">${trimmed.replace(/\n/g, ' ')}</div>`;
+            }
         } else {
-            content.push({
-                text: para.replace(/\n/g, ' ').trim(),
-                style: 'bodyText',
-                alignment: 'justify' as const,
-                margin: [0, 0, 0, 15]
-            });
+            html += `<p>${trimmed.replace(/\n/g, ' ')}</p>`;
         }
     }
 
-    return content;
+    return html;
 };
 
 /**
- * Get logo as base64 for PDF embedding
+ * Generate the complete HTML document for the PV
  */
-const getLogoBase64 = async (): Promise<string | null> => {
-    const loadImage = async (url: string): Promise<string | null> => {
-        try {
-            const response = await fetch(url);
-            if (!response.ok) {
-                console.warn(`Logo fetch failed for ${url}: ${response.status}`);
-                return null;
-            }
-            const blob = await response.blob();
-
-            // Verify it's an image
-            if (!blob.type.startsWith('image/')) {
-                console.warn(`Invalid blob type for ${url}: ${blob.type}`);
-                return null;
-            }
-
-            return new Promise((resolve) => {
-                const reader = new FileReader();
-                reader.onloadend = () => {
-                    const result = reader.result as string;
-                    // Validate it's a proper dataURL
-                    if (result && result.startsWith('data:image/')) {
-                        resolve(result);
-                    } else {
-                        console.warn('Invalid dataURL format');
-                        resolve(null);
-                    }
-                };
-                reader.onerror = () => {
-                    console.warn('FileReader error');
-                    resolve(null);
-                };
-                reader.readAsDataURL(blob);
-            });
-        } catch (e) {
-            console.warn(`Error loading image ${url}:`, e);
-            return null;
-        }
-    };
-
-    // Try city logo first, then CCE logo
-    const logos = ['/logo-valdor.png', '/logo-cce.png'];
-    for (const logoUrl of logos) {
-        const result = await loadImage(logoUrl);
-        if (result) {
-            console.log(`Logo loaded successfully: ${logoUrl}`);
-            return result;
-        }
-    }
-
-    console.warn('No logo could be loaded');
-    return null;
-};
-
-/**
- * Create a resolution block with gold top border
- */
-const createResolutionBlock = (
-    number: string,
-    type: 'resolution' | 'comment',
-    decisionContent: Content[]
-): Content => {
-    const label = type === 'resolution' ? 'RÉSOLUTION' : 'COMMENTAIRE';
-
-    return {
-        table: {
-            widths: ['*'],
-            body: [
-                // Gold top border row
-                [{
-                    text: '',
-                    fillColor: ACCENT_COLOR,
-                    border: [false, false, false, false] as [boolean, boolean, boolean, boolean],
-                    margin: [0, 0, 0, 0]
-                }],
-                // Content row
-                [{
-                    stack: [
-                        {
-                            text: `${label} ${number}`,
-                            style: 'resolutionHeader',
-                            margin: [0, 0, 0, 12]
-                        },
-                        ...decisionContent
-                    ],
-                    fillColor: RESOLUTION_BG,
-                    border: [true, false, true, true] as [boolean, boolean, boolean, boolean],
-                    borderColor: ['#e0e0e0', '#e0e0e0', '#e0e0e0', '#e0e0e0'],
-                    margin: [15, 15, 15, 15]
-                }]
-            ]
-        },
-        layout: {
-            hLineWidth: () => 1,
-            vLineWidth: () => 1,
-            hLineColor: () => '#e0e0e0',
-            vLineColor: () => '#e0e0e0'
-        },
-        margin: [0, 20, 0, 20]
-    };
-};
-
-export const generateMinutesPDF = async (meeting: Meeting, globalNotes?: string) => {
+const generateHTMLDocument = (meeting: Meeting, _globalNotes?: string): string => {
     const meetingNum = extractMeetingNumber(meeting.title);
-    let resolutionCounter = 1;
-    let commentCounter = 0;
-
-    // Load logo for PDF header
-    const logoBase64 = await getLogoBase64();
 
     // Format date
     const dateObj = new Date(meeting.date);
@@ -300,8 +160,14 @@ export const generateMinutesPDF = async (meeting: Meeting, globalNotes?: string)
     const timeStr = format(dateObj, 'HH', { locale: fr }) + ' h';
 
     // Attendees processing
-    const members = meeting.attendees?.filter(a => a.role !== 'Secrétaire' && a.role !== 'Conseiller responsable' && a.role !== 'Conseiller' && a.role !== 'Invité') || [];
-    const others = meeting.attendees?.filter(a => a.role === 'Secrétaire' || a.role === 'Conseiller responsable' || a.role === 'Conseiller' || a.role === 'Invité') || [];
+    const members = meeting.attendees?.filter(a =>
+        a.role !== 'Secrétaire' && a.role !== 'Conseiller responsable' &&
+        a.role !== 'Conseiller' && a.role !== 'Invité'
+    ) || [];
+    const others = meeting.attendees?.filter(a =>
+        a.role === 'Secrétaire' || a.role === 'Conseiller responsable' ||
+        a.role === 'Conseiller' || a.role === 'Invité'
+    ) || [];
     const absents = meeting.attendees?.filter(a => !a.isPresent) || [];
     const presents = members.filter(a => a.isPresent);
     const othersPresent = others.filter(a => a.isPresent);
@@ -311,326 +177,453 @@ export const generateMinutesPDF = async (meeting: Meeting, globalNotes?: string)
         return `${a.name}${roleLabel}`;
     };
 
-    // Build document content
-    const content: Content[] = [];
+    // Get president and secretary for signatures
+    const president = meeting.attendees?.find(a =>
+        a.role?.toLowerCase().includes('président') && !a.role?.toLowerCase().includes('vice')
+    );
+    const secretary = meeting.attendees?.find(a => a.role?.toLowerCase().includes('secrétaire'));
+    const presidentName = president ? president.name : 'Président(e)';
+    const secretaryName = secretary ? secretary.name : 'Secrétaire';
 
-    // ============ HEADER ============
-    // Centered logo
-    if (logoBase64) {
-        content.push({
-            image: logoBase64,
-            width: 120,
-            alignment: 'center',
-            margin: [0, 0, 0, 20]
-        });
-    }
+    // Build sections HTML
+    let sectionsHTML = '';
 
-    // Title: PROCÈS-VERBAL
-    content.push({
-        text: 'PROCÈS-VERBAL',
-        style: 'mainTitle',
-        alignment: 'center',
-        margin: [0, 0, 0, 8]
-    });
-
-    // Subtitle: Comité Consultatif en Environnement (CCE)
-    content.push({
-        text: 'Comité Consultatif en Environnement (CCE)',
-        style: 'subtitle',
-        alignment: 'center',
-        margin: [0, 0, 0, 15]
-    });
-
-    // Meeting info in italics
-    content.push({
-        text: [
-            `${meetingNum.replace(/^0/, '')}e assemblée ordinaire\n`,
-            `Tenue le ${dayName} ${dayOfMonth} ${monthName} ${year}, ${timeStr}\n`,
-            meeting.location || 'Salle de conférence du Service permis, inspection et environnement'
-        ],
-        style: 'meetingInfo',
-        alignment: 'center',
-        margin: [0, 0, 0, 20]
-    });
-
-    // Double line border under header
-    content.push({
-        canvas: [
-            { type: 'line', x1: 0, y1: 0, x2: 468, y2: 0, lineWidth: 1, lineColor: PRIMARY_COLOR },
-            { type: 'line', x1: 0, y1: 4, x2: 468, y2: 4, lineWidth: 1, lineColor: PRIMARY_COLOR }
-        ],
-        alignment: 'center',
-        margin: [0, 0, 0, 25]
-    });
-
-    // ============ ATTENDANCE SECTION ============
-    // Build attendance rows for the table
-    const attendanceRows: TableCell[][] = [];
-
-    if (presents.length > 0 || true) {
-        attendanceRows.push([
-            { text: 'Étaient présents', style: 'attendanceTitle', border: [false, false, false, false] },
-        ]);
-        attendanceRows.push([
-            {
-                text: presents.length > 0 ? presents.map(formatName).join(', ') + '.' : '[Membres présents]',
-                style: presents.length > 0 ? 'attendanceText' : 'placeholder',
-                border: [false, false, false, false]
-            }
-        ]);
-    }
-
-    if (othersPresent.length > 0) {
-        attendanceRows.push([
-            { text: 'Étaient aussi présents', style: 'attendanceTitle', border: [false, false, false, false], margin: [0, 10, 0, 0] }
-        ]);
-        attendanceRows.push([
-            { text: othersPresent.map(formatName).join(', ') + '.', style: 'attendanceText', border: [false, false, false, false] }
-        ]);
-    }
-
-    if (absents.length > 0) {
-        const absentLabel = absents.length === 1 ?
-            (absents[0].name.includes('Mme') || !absents[0].name.includes('M.') ? 'Était absente' : 'Était absent') :
-            'Étaient absents';
-        attendanceRows.push([
-            { text: absentLabel, style: 'attendanceTitle', border: [false, false, false, false], margin: [0, 10, 0, 0] }
-        ]);
-        attendanceRows.push([
-            { text: absents.map(a => a.name).join(', ') + '.', style: 'attendanceText', border: [false, false, false, false] }
-        ]);
-    }
-
-    // Attendance box with left border effect
-    content.push({
-        table: {
-            widths: ['*'],
-            body: [[{
-                table: {
-                    widths: ['*'],
-                    body: attendanceRows
-                },
-                layout: 'noBorders',
-                fillColor: LIGHT_BG,
-                margin: [15, 12, 15, 12]
-            }]]
-        },
-        layout: {
-            hLineWidth: () => 0,
-            vLineWidth: (i: number) => i === 0 ? 4 : 0,
-            vLineColor: () => PRIMARY_COLOR
-        },
-        margin: [0, 0, 0, 35]
-    });
-
-    // ============ GLOBAL NOTES ============
-    if (globalNotes) {
-        const notesContent = formatContentText(globalNotes);
-        content.push(...notesContent);
-    }
-
-    // ============ AGENDA ITEMS ============
     for (const item of meeting.agendaItems) {
         // Get comment reference if any
         let commentRef = '';
         if (item.minuteEntries && item.minuteEntries.length > 0) {
             const comment = item.minuteEntries.find(e => e.type === 'comment');
             if (comment) {
-                commentRef = `COMMENTAIRE ${comment.number}`;
+                commentRef = `<span class="comment-ref">COMMENTAIRE ${comment.number}</span>`;
             }
         }
 
-        // Section title with optional comment reference
-        content.push({
-            table: {
-                widths: ['*', 'auto'],
-                body: [[
-                    {
-                        text: item.title,
-                        style: 'sectionTitle',
-                        border: [false, false, false, true] as [boolean, boolean, boolean, boolean],
-                        borderColor: ['#ddd', '#ddd', '#ddd', '#ddd']
-                    },
-                    {
-                        text: commentRef,
-                        style: 'commentRef',
-                        border: [false, false, false, true] as [boolean, boolean, boolean, boolean],
-                        borderColor: ['#ddd', '#ddd', '#ddd', '#ddd'],
-                        alignment: 'right'
-                    }
-                ]]
-            },
-            layout: {
-                hLineWidth: (i: number) => i === 1 ? 1 : 0,
-                vLineWidth: () => 0,
-                hLineColor: () => '#ddd'
-            },
-            margin: [0, 25, 0, 15]
-        });
+        sectionsHTML += `
+            <section class="content-section">
+                <div class="section-title">
+                    ${item.title}
+                    ${commentRef}
+                </div>
+        `;
 
-        // Check if we have minuteEntries (new format) or need to use legacy fields
+        // Render minute entries
         if (item.minuteEntries && item.minuteEntries.length > 0) {
             for (const entry of item.minuteEntries) {
                 if (entry.type === 'comment') {
-                    // Comment content as regular paragraphs
-                    const commentContent = formatContentText(entry.content || '');
-                    content.push(...commentContent);
+                    sectionsHTML += formatContentHTML(entry.content || '');
                 } else if (entry.type === 'resolution') {
-                    // Resolution block with gold border
-                    const decisionContent = formatDecisionContent(entry.content || '');
-                    content.push(createResolutionBlock(entry.number, 'resolution', decisionContent));
+                    sectionsHTML += `
+                        <div class="resolution-block">
+                            <span class="resolution-header">RÉSOLUTION ${entry.number}</span>
+                            <div class="resolution-content">
+                                ${formatDecisionHTML(entry.content || '')}
+                            </div>
+                        </div>
+                    `;
                 }
             }
-        } else {
-            // LEGACY: Use single minuteType/minuteNumber/decision fields
-            let minuteNumber = item.minuteNumber;
-            if (!minuteNumber && item.minuteType) {
-                const gen = generateMinuteNumber(meetingNum, item.minuteType, resolutionCounter, commentCounter);
-                minuteNumber = gen.number;
-                resolutionCounter = gen.newResCounter;
-                commentCounter = gen.newComCounter;
-            }
-
-            if (minuteNumber && item.minuteType) {
-                if (item.minuteType === 'resolution') {
-                    const decisionContent = formatDecisionContent(item.decision || '');
-                    content.push(createResolutionBlock(minuteNumber, 'resolution', decisionContent));
-                } else if (item.minuteType === 'comment') {
-                    const commentContent = formatContentText(item.decision || '');
-                    content.push(...commentContent);
-                }
-            } else if (item.decision) {
-                const decisionContent = formatContentText(item.decision);
-                content.push(...decisionContent);
+        } else if (item.decision) {
+            // Legacy format
+            if (item.minuteType === 'resolution') {
+                sectionsHTML += `
+                    <div class="resolution-block">
+                        <span class="resolution-header">RÉSOLUTION ${item.minuteNumber || ''}</span>
+                        <div class="resolution-content">
+                            ${formatDecisionHTML(item.decision)}
+                        </div>
+                    </div>
+                `;
+            } else {
+                sectionsHTML += formatContentHTML(item.decision);
             }
         }
+
+        sectionsHTML += '</section>';
     }
 
-    // ============ SIGNATURES ============
-    const president = meeting.attendees?.find(a => a.role?.toLowerCase().includes('président') && !a.role?.toLowerCase().includes('vice'));
-    const secretary = meeting.attendees?.find(a => a.role?.toLowerCase().includes('secrétaire'));
-    const presidentName = president ? president.name : 'Président(e)';
-    const secretaryName = secretary ? secretary.name : 'Secrétaire';
-
-    content.push({
-        columns: [
-            {
-                width: '45%',
-                stack: [
-                    { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 180, y2: 0, lineWidth: 1, lineColor: '#000' }] },
-                    { text: presidentName.toUpperCase(), style: 'signatureName', margin: [0, 8, 0, 0] },
-                    { text: 'Président(e)', style: 'signatureRole' }
-                ],
-                alignment: 'center'
-            },
-            { width: '10%', text: '' },
-            {
-                width: '45%',
-                stack: [
-                    { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 180, y2: 0, lineWidth: 1, lineColor: '#000' }] },
-                    { text: secretaryName.toUpperCase(), style: 'signatureName', margin: [0, 8, 0, 0] },
-                    { text: 'Secrétaire', style: 'signatureRole' }
-                ],
-                alignment: 'center'
-            }
-        ],
-        margin: [0, 60, 0, 0]
-    });
-
-    // ============ DOCUMENT DEFINITION ============
-    const docDefinition: TDocumentDefinitions = {
-        pageSize: 'LEGAL', // 8.5 x 14 inches
-        pageMargins: [60, 50, 60, 50],
-        content: content,
-        styles: {
-            mainTitle: {
-                fontSize: 22,
-                bold: true,
-                color: PRIMARY_COLOR,
-                characterSpacing: 2
-            },
-            subtitle: {
-                fontSize: 13,
-                color: ACCENT_COLOR,
-                characterSpacing: 1
-            },
-            meetingInfo: {
-                fontSize: 12,
-                italics: true,
-                color: '#555',
-                lineHeight: 1.4
-            },
-            sectionTitle: {
-                fontSize: 14,
-                bold: true,
-                color: PRIMARY_COLOR
-            },
-            subsectionTitle: {
-                fontSize: 12,
-                bold: true,
-                color: '#444'
-            },
-            commentRef: {
-                fontSize: 10,
-                color: '#888'
-            },
-            attendanceTitle: {
-                fontSize: 11,
-                bold: true,
-                color: PRIMARY_COLOR
-            },
-            attendanceText: {
-                fontSize: 12,
-                lineHeight: 1.3
-            },
-            resolutionHeader: {
-                fontSize: 13,
-                bold: true,
-                color: ACCENT_COLOR
-            },
-            resolutionText: {
-                fontSize: 11,
-                italics: true,
-                color: '#444',
-                lineHeight: 1.3
-            },
-            considerantKeyword: {
-                fontSize: 10,
-                bold: true,
-                color: PRIMARY_COLOR
-            },
-            ilEstResolu: {
-                fontSize: 11,
-                bold: true,
-                color: PRIMARY_COLOR
-            },
-            bodyText: {
-                fontSize: 12,
-                lineHeight: 1.4,
-                color: TEXT_COLOR
-            },
-            placeholder: {
-                fontSize: 12,
-                italics: true,
-                color: '#888888'
-            },
-            signatureName: {
-                fontSize: 11,
-                bold: true
-            },
-            signatureRole: {
-                fontSize: 10,
-                color: '#555'
-            }
-        },
-        defaultStyle: {
-            font: 'Roboto',
-            fontSize: 11,
-            color: TEXT_COLOR
+    // Complete HTML document
+    return `<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Procès-Verbal CCE - Ville de Val-d'Or</title>
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;0,700;1,400&family=Montserrat:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <style>
+        /* CONFIGURATION GÉNÉRALE */
+        :root {
+            --primary-color: #1e4e3d;
+            --accent-color: #c5a065;
+            --text-color: #2b2b2b;
+            --bg-color: #ffffff;
         }
-    };
 
-    // Generate and download PDF
-    const dateForFile = format(new Date(meeting.date), 'yyyy-MM-dd');
-    pdfMake.createPdf(docDefinition).download(`PV-CCE-${meetingNum}-${dateForFile}.pdf`);
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background-color: #ffffff;
+            font-family: 'Cormorant Garamond', serif;
+            color: var(--text-color);
+            margin: 0;
+            padding: 0;
+        }
+
+        /* PAGE */
+        .document-page {
+            background-color: var(--bg-color);
+            width: 816px;
+            padding: 60px 80px;
+            box-sizing: border-box;
+        }
+
+        /* EN-TÊTE */
+        header {
+            text-align: center;
+            margin-bottom: 50px;
+            border-bottom: 3px double var(--primary-color);
+            padding-bottom: 25px;
+        }
+
+        .logo-placeholder {
+            width: 150px;
+            height: auto;
+            margin: 0 auto 20px auto;
+            display: block;
+        }
+
+        h1 {
+            font-family: 'Montserrat', sans-serif;
+            font-size: 24px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            color: var(--primary-color);
+            margin: 0 0 10px 0;
+            font-weight: 600;
+        }
+
+        h2 {
+            font-family: 'Montserrat', sans-serif;
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--accent-color);
+            margin: 0 0 20px 0;
+            font-weight: 500;
+        }
+
+        .meeting-info {
+            font-size: 16px;
+            font-style: italic;
+            color: #555;
+            line-height: 1.4;
+        }
+
+        /* SECTION PRÉSENCES */
+        .attendance {
+            background-color: #f9fbfa;
+            border-left: 4px solid var(--primary-color);
+            padding: 15px 25px;
+            margin-bottom: 40px;
+            font-family: 'Montserrat', sans-serif;
+            font-size: 13px;
+        }
+
+        .attendance h3 {
+            color: var(--primary-color);
+            margin: 0 0 8px 0;
+            font-size: 12px;
+            text-transform: uppercase;
+        }
+
+        .attendance-group {
+            margin-bottom: 12px;
+        }
+
+        /* CORPS DU TEXTE */
+        .content-section {
+            margin-bottom: 35px;
+        }
+
+        .section-title {
+            font-family: 'Montserrat', sans-serif;
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--primary-color);
+            border-bottom: 1px solid #ddd;
+            padding-bottom: 5px;
+            margin-top: 30px;
+            margin-bottom: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+        }
+
+        .comment-ref {
+            font-size: 11px;
+            color: #888;
+            font-weight: 400;
+        }
+
+        .subsection-title {
+            font-family: 'Montserrat', sans-serif;
+            font-size: 14px;
+            font-weight: 600;
+            color: #444;
+            margin-top: 20px;
+            margin-bottom: 10px;
+        }
+
+        p {
+            font-size: 15px;
+            line-height: 1.5;
+            margin-bottom: 15px;
+            text-align: justify;
+        }
+
+        /* BLOCS RÉSOLUTION */
+        .resolution-block {
+            background-color: #fdfcf8;
+            border: 1px solid #e0e0e0;
+            border-top: 3px solid var(--accent-color);
+            padding: 20px 30px;
+            margin: 25px 0;
+            page-break-inside: avoid;
+        }
+
+        .resolution-header {
+            font-family: 'Montserrat', sans-serif;
+            font-size: 14px;
+            font-weight: 700;
+            color: var(--accent-color);
+            margin-bottom: 15px;
+            display: block;
+        }
+
+        .resolution-content {
+            font-style: italic;
+            color: #444;
+        }
+
+        .considerant {
+            margin-bottom: 8px;
+            display: block;
+            text-indent: -20px;
+            padding-left: 20px;
+        }
+        
+        .considerant strong {
+            font-family: 'Montserrat', sans-serif;
+            font-size: 12px;
+            color: var(--primary-color);
+            margin-right: 5px;
+        }
+
+        .il-est-resolu {
+            margin-top: 15px;
+            margin-bottom: 10px;
+            font-weight: 600;
+            color: var(--primary-color);
+            display: block;
+            font-family: 'Montserrat', sans-serif;
+        }
+
+        .resolution-text {
+            display: block;
+            margin-bottom: 8px;
+        }
+
+        .resolu-list {
+            list-style-type: none;
+            padding-left: 0;
+            margin: 10px 0;
+        }
+
+        .resolu-list li {
+            position: relative;
+            padding-left: 20px;
+            margin-bottom: 10px;
+        }
+
+        .resolu-list li::before {
+            content: "•";
+            color: var(--accent-color);
+            position: absolute;
+            left: 0;
+        }
+
+        /* SIGNATURES */
+        .signatures {
+            margin-top: 60px;
+            display: flex;
+            justify-content: space-between;
+            page-break-inside: avoid;
+        }
+
+        .signature-block {
+            width: 40%;
+            text-align: center;
+        }
+
+        .signature-line {
+            border-bottom: 1px solid #000;
+            height: 50px;
+            margin-bottom: 10px;
+        }
+
+        .signature-name {
+            font-family: 'Montserrat', sans-serif;
+            font-weight: 700;
+            font-size: 12px;
+            text-transform: uppercase;
+        }
+
+        .signature-role {
+            font-family: 'Montserrat', sans-serif;
+            font-size: 11px;
+            color: #555;
+        }
+    </style>
+</head>
+<body>
+    <div class="document-page">
+        <!-- EN-TÊTE -->
+        <header>
+            <img src="/logo-valdor.png" alt="Logo Ville de Val-d'Or" class="logo-placeholder" onerror="this.style.display='none';">
+            
+            <h1>Procès-Verbal</h1>
+            <h2>Comité Consultatif en Environnement (CCE)</h2>
+            <div class="meeting-info">
+                ${meetingNum.replace(/^0/, '')}e assemblée ordinaire<br>
+                Tenue le ${dayName} ${dayOfMonth} ${monthName} ${year}, ${timeStr}<br>
+                ${meeting.location || 'Salle de conférence des bureaux du Service permis, inspection et environnement'}
+            </div>
+        </header>
+
+        <!-- PRÉSENCES -->
+        <section class="attendance">
+            ${presents.length > 0 ? `
+            <div class="attendance-group">
+                <h3>Étaient présents</h3>
+                <div>${presents.map(formatName).join(', ')}.</div>
+            </div>
+            ` : ''}
+            ${othersPresent.length > 0 ? `
+            <div class="attendance-group">
+                <h3>Étaient aussi présents</h3>
+                <div>${othersPresent.map(formatName).join(', ')}.</div>
+            </div>
+            ` : ''}
+            ${absents.length > 0 ? `
+            <div class="attendance-group">
+                <h3>Était absent${absents.length > 1 ? 's' : ''}</h3>
+                <div>${absents.map(a => a.name).join(', ')}.</div>
+            </div>
+            ` : ''}
+        </section>
+
+        <!-- CONTENU -->
+        ${sectionsHTML}
+
+        <!-- SIGNATURES -->
+        <section class="signatures">
+            <div class="signature-block">
+                <div class="signature-line"></div>
+                <div class="signature-name">${presidentName}</div>
+                <div class="signature-role">Président(e)</div>
+            </div>
+            <div class="signature-block">
+                <div class="signature-line"></div>
+                <div class="signature-name">${secretaryName}</div>
+                <div class="signature-role">Secrétaire</div>
+            </div>
+        </section>
+    </div>
+</body>
+</html>`;
+};
+
+/**
+ * Generate PDF from HTML using html2canvas and jsPDF
+ */
+export const generateMinutesPDF = async (meeting: Meeting, globalNotes?: string) => {
+    const meetingNum = extractMeetingNumber(meeting.title);
+    const html = generateHTMLDocument(meeting, globalNotes);
+
+    // Create a hidden container for rendering
+    const container = document.createElement('div');
+    container.style.position = 'absolute';
+    container.style.left = '-9999px';
+    container.style.top = '0';
+    container.innerHTML = html;
+    document.body.appendChild(container);
+
+    // Wait for fonts to load
+    await document.fonts.ready;
+
+    // Wait a bit for images and fonts to fully render
+    await new Promise(resolve => setTimeout(resolve, 500));
+
+    const page = container.querySelector('.document-page') as HTMLElement;
+
+    if (!page) {
+        console.error('Could not find .document-page element');
+        document.body.removeChild(container);
+        return;
+    }
+
+    try {
+        // Use html2canvas to render the HTML
+        const canvas = await html2canvas(page, {
+            scale: 2, // Higher resolution
+            useCORS: true,
+            allowTaint: true,
+            backgroundColor: '#ffffff',
+            logging: false
+        });
+
+        // Create PDF with Letter size (8.5 x 11 inches)
+        const pdf = new jsPDF({
+            orientation: 'portrait',
+            unit: 'in',
+            format: 'legal' // 8.5 x 14 inches
+        });
+
+        const pageWidth = 8.5;
+        const pageHeight = 14;
+        const imgWidth = pageWidth;
+        const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+        // If content is longer than one page, handle pagination
+        let heightLeft = imgHeight;
+        let position = 0;
+
+        const imgData = canvas.toDataURL('image/jpeg', 0.95);
+
+        // First page
+        pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
+        heightLeft -= pageHeight;
+
+        // Additional pages if needed
+        while (heightLeft > 0) {
+            position = heightLeft - imgHeight;
+            pdf.addPage();
+            pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
+            heightLeft -= pageHeight;
+        }
+
+        // Download
+        const dateForFile = format(new Date(meeting.date), 'yyyy-MM-dd');
+        pdf.save(`PV-CCE-${meetingNum}-${dateForFile}.pdf`);
+
+    } catch (error) {
+        console.error('Error generating PDF:', error);
+        alert('Erreur lors de la génération du PDF. Veuillez réessayer.');
+    } finally {
+        // Clean up
+        document.body.removeChild(container);
+    }
 };
