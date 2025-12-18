@@ -52,6 +52,31 @@ export interface Attendee {
     isPresent: boolean;
 }
 
+// Audio recording for AI transcription
+export interface AudioRecording {
+    fileUrl: string;
+    fileName: string;
+    storagePath: string;
+    fileSize: number; // bytes
+    duration: number; // seconds
+    mimeType: string;
+    uploadedAt: string; // ISO string
+    transcription?: string;
+    transcriptionStatus: 'pending' | 'processing' | 'completed' | 'error';
+    transcriptionError?: string;
+    transcribedAt?: string; // ISO string
+}
+
+// AI-generated minutes draft
+export interface MinutesDraft {
+    content: string;
+    generatedAt: string; // ISO string
+    status: 'draft' | 'reviewed' | 'final';
+    version: number;
+    userFeedback?: string;
+    finalizedAt?: string; // ISO string
+}
+
 export interface Meeting {
     id: string;
     title: string;
@@ -66,6 +91,9 @@ export interface Meeting {
     minutesFileName?: string; // Name of the uploaded file
     minutesFileStoragePath?: string; // Storage path of the uploaded file
     minutesFileDocumentId?: string; // ID of the document in Documents collection
+    // AI Transcription fields
+    audioRecording?: AudioRecording;
+    minutesDraft?: MinutesDraft;
     dateCreated: string;
     dateUpdated: string;
 }
