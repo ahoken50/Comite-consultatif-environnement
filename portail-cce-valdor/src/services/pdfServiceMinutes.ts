@@ -170,7 +170,7 @@ const formatContentText = (text: string): Content[] => {
                 text: para.replace(/\n/g, ' ').trim(),
                 style: 'bodyText',
                 alignment: 'justify' as const,
-                margin: [0, 0, 0, 12]
+                margin: [0, 0, 0, 15]
             });
         }
     }
@@ -568,8 +568,7 @@ export const generateMinutesPDF = async (meeting: Meeting, globalNotes?: string)
             subsectionTitle: {
                 fontSize: 12,
                 bold: true,
-                color: '#444',
-                decoration: 'underline'
+                color: '#444'
             },
             commentRef: {
                 fontSize: 10,
