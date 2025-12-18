@@ -7,14 +7,16 @@ import {
     LinearProgress,
     IconButton,
     Alert,
-    Chip
+    Chip,
+    CircularProgress
 } from '@mui/material';
 import {
     CloudUpload,
     AudioFile,
     Delete,
     PlayArrow,
-    Pause
+    Pause,
+    Psychology
 } from '@mui/icons-material';
 import type { AudioRecording } from '../../types/meeting.types';
 import type { UploadProgress } from '../../services/audioStorageService';
@@ -25,24 +27,28 @@ import {
     formatFileSize,
     formatDuration
 } from '../../services/audioStorageService';
+import { transcribeAudio, isGeminiConfigured } from '../../services/geminiService';
 
 interface AudioUploadProps {
     meetingId: string;
     audioRecording?: AudioRecording;
     onUploadComplete?: (recording: AudioRecording) => void;
     onDelete?: () => void;
+    onTranscriptionComplete?: () => void;
 }
 
 const AudioUpload: React.FC<AudioUploadProps> = ({
     meetingId,
     audioRecording,
     onUploadComplete,
-    onDelete
+    onDelete,
+    onTranscriptionComplete
 }) => {
     const [isDragging, setIsDragging] = useState(false);
     const [uploadProgress, setUploadProgress] = useState<UploadProgress | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [isPlaying, setIsPlaying] = useState(false);
+    const [isTranscribing, setIsTranscribing] = useState(false);
     const audioRef = React.useRef<HTMLAudioElement | null>(null);
 
     const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -120,6 +126,32 @@ const AudioUpload: React.FC<AudioUploadProps> = ({
         }
     };
 
+    const handleTranscribe = async () => {
+        if (!audioRecording) return;
+
+        if (!isGeminiConfigured()) {
+            setError('Clé API Gemini non configurée. Ajoutez VITE_GEMINI_API_KEY dans votre fichier .env');
+            return;
+        }
+
+        setIsTranscribing(true);
+        setError(null);
+
+        const result = await transcribeAudio(
+            meetingId,
+            audioRecording.fileUrl,
+            audioRecording.mimeType
+        );
+
+        if (result.success) {
+            onTranscriptionComplete?.();
+        } else {
+            setError(result.error || 'Erreur lors de la transcription');
+        }
+
+        setIsTranscribing(false);
+    };
+
     const getStatusColor = (status: AudioRecording['transcriptionStatus']) => {
         switch (status) {
             case 'completed': return 'success';
@@ -173,6 +205,51 @@ const AudioUpload: React.FC<AudioUploadProps> = ({
                         <Delete />
                     </IconButton>
                 </Box>
+
+                {/* Transcription Button */}
+                {audioRecording.transcriptionStatus === 'pending' && (
+                    <Box sx={{ mt: 2 }}>
+                        <Button
+                            variant="contained"
+                            color="primary"
+                            fullWidth
+                            startIcon={isTranscribing ? <CircularProgress size={20} color="inherit" /> : <Psychology />}
+                            onClick={handleTranscribe}
+                            disabled={isTranscribing}
+                        >
+                            {isTranscribing ? 'Transcription en cours...' : 'Lancer la transcription IA'}
+                        </Button>
+                    </Box>
+                )}
+
+                {audioRecording.transcriptionStatus === 'processing' && (
+                    <Box sx={{ mt: 2, textAlign: 'center' }}>
+                        <CircularProgress size={24} sx={{ mr: 1 }} />
+                        <Typography variant="body2" color="text.secondary" component="span">
+                            Transcription en cours, veuillez patienter...
+                        </Typography>
+                    </Box>
+                )}
+
+                {audioRecording.transcriptionStatus === 'error' && (
+                    <Box sx={{ mt: 2 }}>
+                        <Alert severity="error">
+                            {audioRecording.transcriptionError || 'Erreur de transcription'}
+                        </Alert>
+                        <Button
+                            variant="outlined"
+                            color="primary"
+                            fullWidth
+                            sx={{ mt: 1 }}
+                            startIcon={<Psychology />}
+                            onClick={handleTranscribe}
+                            disabled={isTranscribing}
+                        >
+                            Réessayer
+                        </Button>
+                    </Box>
+                )}
+
                 <audio
                     ref={audioRef}
                     src={audioRecording.fileUrl}

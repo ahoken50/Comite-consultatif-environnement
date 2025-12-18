@@ -12,10 +12,11 @@ import {
     MenuItem
 } from '@mui/material';
 import { Save, PictureAsPdf, UploadFile, DeleteSweep, Add } from '@mui/icons-material';
-import type { Meeting, AgendaItem, AudioRecording } from '../../types/meeting.types';
+import type { Meeting, AgendaItem, AudioRecording, MinutesDraft } from '../../types/meeting.types';
 import { generateMinutesPDF } from '../../services/pdfServiceMinutes';
 import MinutesImportDialog from './MinutesImportDialog';
 import AudioUpload from './AudioUpload';
+import TranscriptionViewer from './TranscriptionViewer';
 import { documentsAPI } from '../../features/documents/documentsAPI';
 // Note: parseAgendaDOCX is imported dynamically when needed
 
@@ -493,7 +494,25 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
                     onDelete={() => {
                         onUpdate({ audioRecording: undefined as any });
                     }}
+                    onTranscriptionComplete={() => {
+                        // Force refresh by toggling a state or calling parent
+                        console.log('Transcription complete, refresh meeting data!');
+                    }}
                 />
+
+                {/* Transcription Viewer and Draft Generator */}
+                {meeting.audioRecording?.transcription && (
+                    <TranscriptionViewer
+                        meeting={meeting}
+                        onDraftGenerated={(draft: MinutesDraft) => {
+                            onUpdate({ minutesDraft: draft });
+                        }}
+                        onApplyToMinutes={(content: string) => {
+                            setGlobalNotes(content);
+                            setHasUnsavedChanges(true);
+                        }}
+                    />
+                )}
             </Paper>
 
             {(localFile.url || meeting.minutesFileUrl) && (
