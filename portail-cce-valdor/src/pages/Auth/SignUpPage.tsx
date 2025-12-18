@@ -206,6 +206,7 @@ const SignUpPage: React.FC = () => {
                                         endAdornment: (
                                             <InputAdornment position="end">
                                                 <IconButton
+                                                    aria-label={showPassword ? 'Masquer le mot de passe' : 'Afficher le mot de passe'}
                                                     onClick={() => setShowPassword(!showPassword)}
                                                     edge="end"
                                                 >
