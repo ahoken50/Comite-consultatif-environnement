@@ -12,9 +12,10 @@ import {
     MenuItem
 } from '@mui/material';
 import { Save, PictureAsPdf, UploadFile, DeleteSweep, Add } from '@mui/icons-material';
-import type { Meeting, AgendaItem } from '../../types/meeting.types';
+import type { Meeting, AgendaItem, AudioRecording } from '../../types/meeting.types';
 import { generateMinutesPDF } from '../../services/pdfServiceMinutes';
 import MinutesImportDialog from './MinutesImportDialog';
+import AudioUpload from './AudioUpload';
 import { documentsAPI } from '../../features/documents/documentsAPI';
 // Note: parseAgendaDOCX is imported dynamically when needed
 
@@ -474,6 +475,26 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
                     </Button>
                 </Box>
             </Box>
+
+            {/* Section Transcription IA */}
+            <Paper sx={{ p: 2, mb: 3, bgcolor: 'background.default' }}>
+                <Typography variant="subtitle1" fontWeight={600} gutterBottom>
+                    🎤 Transcription IA (Beta)
+                </Typography>
+                <Typography variant="body2" color="text.secondary" paragraph>
+                    Importez un enregistrement audio/vidéo de l'assemblée pour générer automatiquement un brouillon de procès-verbal.
+                </Typography>
+                <AudioUpload
+                    meetingId={meeting.id}
+                    audioRecording={meeting.audioRecording}
+                    onUploadComplete={(recording: AudioRecording) => {
+                        onUpdate({ audioRecording: recording });
+                    }}
+                    onDelete={() => {
+                        onUpdate({ audioRecording: undefined as any });
+                    }}
+                />
+            </Paper>
 
             {(localFile.url || meeting.minutesFileUrl) && (
                 <Alert severity={localFile.url ? "success" : "warning"} sx={{ mb: 3 }} action={
