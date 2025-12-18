@@ -610,33 +610,50 @@ export const generateMinutesPDF = async (meeting: Meeting, globalNotes?: string)
         // Page dimensions and margins
         const pageWidth = 8.5;
         const pageHeight = 14;
-        const margin = 0.75; // 0.75 inch margins
-        const contentWidth = pageWidth - (margin * 2);
-        const contentHeight = pageHeight - (margin * 2);
+        const marginX = 0.5; // 0.5 inch left/right margins (narrower)
+        const marginY = 0.75; // 0.75 inch top/bottom margins
+        const contentWidth = pageWidth - (marginX * 2);
+        const contentHeight = pageHeight - (marginY * 2);
 
-        // Calculate image dimensions to fit within margins
+        // Calculate image dimensions to fit within content area
         const imgWidth = contentWidth;
         const imgHeight = (canvas.height * imgWidth) / canvas.width;
 
-        const imgData = canvas.toDataURL('image/jpeg', 0.95);
+        // Calculate how many pages we need
+        const totalPages = Math.ceil(imgHeight / contentHeight);
 
-        // Handle multi-page content
-        let yOffset = 0;
-        let pageNumber = 0;
-
-        while (yOffset < imgHeight) {
-            if (pageNumber > 0) {
+        for (let pageNum = 0; pageNum < totalPages; pageNum++) {
+            if (pageNum > 0) {
                 pdf.addPage();
             }
 
-            // Calculate the portion of image to show on this page
-            const yPosition = margin - yOffset;
+            // Calculate source region for this page (in image coordinates)
+            const sourceY = (pageNum * contentHeight * canvas.width) / imgWidth;
+            const sourceHeight = (contentHeight * canvas.width) / imgWidth;
 
-            // Add the full image, positioned so the correct portion shows
-            pdf.addImage(imgData, 'JPEG', margin, yPosition, imgWidth, imgHeight);
+            // Create a temporary canvas for this page's content
+            const pageCanvas = document.createElement('canvas');
+            pageCanvas.width = canvas.width;
+            pageCanvas.height = Math.min(sourceHeight, canvas.height - sourceY);
 
-            yOffset += contentHeight;
-            pageNumber++;
+            const ctx = pageCanvas.getContext('2d');
+            if (ctx) {
+                // Draw only the portion needed for this page
+                ctx.drawImage(
+                    canvas,
+                    0, sourceY,                          // Source x, y
+                    canvas.width, pageCanvas.height,     // Source width, height
+                    0, 0,                                // Dest x, y
+                    pageCanvas.width, pageCanvas.height  // Dest width, height
+                );
+
+                // Calculate the height of this slice in inches
+                const sliceHeight = (pageCanvas.height * imgWidth) / canvas.width;
+
+                // Add this slice to the PDF
+                const sliceData = pageCanvas.toDataURL('image/jpeg', 0.95);
+                pdf.addImage(sliceData, 'JPEG', marginX, marginY, imgWidth, sliceHeight);
+            }
         }
 
         // Download
