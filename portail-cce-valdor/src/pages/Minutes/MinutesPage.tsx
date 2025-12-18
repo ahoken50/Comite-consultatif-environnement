@@ -46,9 +46,39 @@ const MinutesPage: React.FC = () => {
     };
 
     const getMinutesStatus = (meeting: any) => {
-        if (meeting.minutes && meeting.minutes.length > 20) {
-            return <Chip label="Rédigé" color="success" size="small" variant="outlined" />;
+        // Check if agendaItems have minute entries with content
+        const agendaItems = meeting.agendaItems || [];
+
+        if (agendaItems.length === 0) {
+            return <Chip label="À rédiger" color="warning" size="small" variant="outlined" />;
         }
+
+        // Count items that have minute entries with content
+        const itemsWithContent = agendaItems.filter((item: any) => {
+            // Check new format (minuteEntries array)
+            if (item.minuteEntries && item.minuteEntries.length > 0) {
+                return item.minuteEntries.some((entry: any) =>
+                    entry.content && entry.content.trim().length > 10
+                );
+            }
+            // Check legacy format (decision field)
+            if (item.decision && item.decision.trim().length > 10) {
+                return true;
+            }
+            return false;
+        });
+
+        const completionRatio = itemsWithContent.length / agendaItems.length;
+
+        if (completionRatio >= 0.8) {
+            // 80%+ items have content = Rédigé
+            return <Chip label="Rédigé" color="success" size="small" variant="outlined" />;
+        } else if (completionRatio > 0) {
+            // Some items have content = En cours
+            return <Chip label="En cours" color="info" size="small" variant="outlined" />;
+        }
+
+        // No items have content = À rédiger
         return <Chip label="À rédiger" color="warning" size="small" variant="outlined" />;
     };
 
