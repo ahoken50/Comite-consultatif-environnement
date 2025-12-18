@@ -600,34 +600,43 @@ export const generateMinutesPDF = async (meeting: Meeting, globalNotes?: string)
             logging: false
         });
 
-        // Create PDF with Letter size (8.5 x 11 inches)
+        // Create PDF with Legal size (8.5 x 14 inches)
         const pdf = new jsPDF({
             orientation: 'portrait',
             unit: 'in',
             format: 'legal' // 8.5 x 14 inches
         });
 
+        // Page dimensions and margins
         const pageWidth = 8.5;
         const pageHeight = 14;
-        const imgWidth = pageWidth;
-        const imgHeight = (canvas.height * imgWidth) / canvas.width;
+        const margin = 0.75; // 0.75 inch margins
+        const contentWidth = pageWidth - (margin * 2);
+        const contentHeight = pageHeight - (margin * 2);
 
-        // If content is longer than one page, handle pagination
-        let heightLeft = imgHeight;
-        let position = 0;
+        // Calculate image dimensions to fit within margins
+        const imgWidth = contentWidth;
+        const imgHeight = (canvas.height * imgWidth) / canvas.width;
 
         const imgData = canvas.toDataURL('image/jpeg', 0.95);
 
-        // First page
-        pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
-        heightLeft -= pageHeight;
+        // Handle multi-page content
+        let yOffset = 0;
+        let pageNumber = 0;
 
-        // Additional pages if needed
-        while (heightLeft > 0) {
-            position = heightLeft - imgHeight;
-            pdf.addPage();
-            pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
-            heightLeft -= pageHeight;
+        while (yOffset < imgHeight) {
+            if (pageNumber > 0) {
+                pdf.addPage();
+            }
+
+            // Calculate the portion of image to show on this page
+            const yPosition = margin - yOffset;
+
+            // Add the full image, positioned so the correct portion shows
+            pdf.addImage(imgData, 'JPEG', margin, yPosition, imgWidth, imgHeight);
+
+            yOffset += contentHeight;
+            pageNumber++;
         }
 
         // Download
