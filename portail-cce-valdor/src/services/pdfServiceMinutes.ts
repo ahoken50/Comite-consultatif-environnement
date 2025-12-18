@@ -1,6 +1,6 @@
 import pdfMake from 'pdfmake/build/pdfmake';
 import * as pdfFonts from 'pdfmake/build/vfs_fonts';
-import type { TDocumentDefinitions, Content } from 'pdfmake/interfaces';
+import type { TDocumentDefinitions, Content, TableCell } from 'pdfmake/interfaces';
 import type { Meeting } from '../types/meeting.types';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -8,9 +8,12 @@ import { fr } from 'date-fns/locale';
 // Initialize pdfMake with fonts
 (pdfMake as any).vfs = (pdfFonts as any).pdfMake?.vfs || (pdfFonts as any).vfs || pdfFonts;
 
-// Colors matching the reference document
-const DARK_GREEN = '#1a5c37';
-const DARK_BLUE = '#1a3c6e';
+// Premium color palette matching HTML template
+const PRIMARY_COLOR = '#1e4e3d';   // Vert Val-d'Or élégant
+const ACCENT_COLOR = '#c5a065';    // Or/Beige institutionnel
+const TEXT_COLOR = '#2b2b2b';
+const LIGHT_BG = '#f9fbfa';        // Light green for attendance section
+const RESOLUTION_BG = '#fdfcf8';   // Light cream for resolution blocks
 
 /**
  * Sanitize text from Word documents to remove special characters
@@ -77,51 +80,97 @@ const formatDecisionContent = (decision: string): Content[] => {
     for (const line of lines) {
         const trimmedLine = line.trim();
 
-        // CONSIDÉRANT - with hanging indent
+        // CONSIDÉRANT - with styling
         if (/^CONSID[ÉE]RANT/i.test(trimmedLine)) {
             const match = trimmedLine.match(/^(CONSID[ÉE]RANT)\s*(.*)/i);
             if (match) {
                 content.push({
-                    columns: [
-                        { text: match[1].toUpperCase(), width: 80, style: 'bodyText' },
-                        { text: match[2] || '', width: '*', style: 'bodyText' }
+                    text: [
+                        { text: match[1].toUpperCase() + ' ', style: 'considerantKeyword' },
+                        { text: match[2] || '', style: 'resolutionText' }
                     ],
-                    margin: [0, 3, 0, 3]
+                    margin: [20, 4, 0, 4]
                 });
             }
         }
-        // IL EST RÉSOLU - bold
-        else if (/^IL EST R[ÉE]SOLU/i.test(trimmedLine)) {
-            const match = trimmedLine.match(/^(IL EST R[ÉE]SOLU\s*:?)\s*(.*)/i);
-            if (match) {
-                content.push({
-                    columns: [
-                        { text: match[1], width: 95, style: 'boldText' },
-                        { text: match[2] || '', width: '*', style: 'boldText' }
-                    ],
-                    margin: [0, 8, 0, 3]
-                });
-            }
-        }
-        // ATTENDU - similar to CONSIDÉRANT
+        // ATTENDU - similar styling
         else if (/^ATTENDU/i.test(trimmedLine)) {
             const match = trimmedLine.match(/^(ATTENDU)\s*(.*)/i);
             if (match) {
                 content.push({
-                    columns: [
-                        { text: match[1].toUpperCase(), width: 60, style: 'bodyText' },
-                        { text: match[2] || '', width: '*', style: 'bodyText' }
+                    text: [
+                        { text: match[1].toUpperCase() + ' ', style: 'considerantKeyword' },
+                        { text: match[2] || '', style: 'resolutionText' }
                     ],
-                    margin: [0, 3, 0, 3]
+                    margin: [20, 4, 0, 4]
                 });
             }
         }
-        // Regular text - with first line indent effect via margin
+        // IL EST RÉSOLU - bold heading
+        else if (/^IL EST R[ÉE]SOLU/i.test(trimmedLine)) {
+            const match = trimmedLine.match(/^(IL EST R[ÉE]SOLU\s*:?)\s*(.*)/i);
+            if (match) {
+                content.push({
+                    text: match[1],
+                    style: 'ilEstResolu',
+                    margin: [0, 12, 0, 8]
+                });
+                if (match[2]) {
+                    content.push({
+                        text: match[2],
+                        style: 'resolutionText',
+                        margin: [0, 0, 0, 4]
+                    });
+                }
+            }
+        }
+        // Bullet points (lines starting with -)
+        else if (/^[-•]/.test(trimmedLine)) {
+            content.push({
+                text: [
+                    { text: '• ', color: ACCENT_COLOR },
+                    { text: trimmedLine.replace(/^[-•]\s*/, ''), style: 'resolutionText' }
+                ],
+                margin: [20, 4, 0, 4]
+            });
+        }
+        // Regular text
         else {
             content.push({
                 text: trimmedLine,
+                style: 'resolutionText',
+                margin: [0, 4, 0, 4]
+            });
+        }
+    }
+
+    return content;
+};
+
+/**
+ * Format content text with paragraph detection (for comments)
+ */
+const formatContentText = (text: string): Content[] => {
+    if (!text) return [];
+
+    const sanitized = sanitizeText(text);
+    const paragraphs = sanitized.split('\n\n').filter(p => p.trim().length > 0);
+    const content: Content[] = [];
+
+    for (const para of paragraphs) {
+        // Check if this is a sub-section title (numbered)
+        if (/^\d+\.\s+[A-Z]/.test(para.trim())) {
+            content.push({
+                text: para.trim(),
+                style: 'subsectionTitle',
+                margin: [0, 15, 0, 8]
+            });
+        } else {
+            content.push({
+                text: para.replace(/\n/g, ' ').trim(),
                 style: 'bodyText',
-                margin: [0, 5, 0, 5]
+                alignment: 'justify' as const,
+                margin: [0, 0, 0, 12]
             });
         }
     }
@@ -134,8 +183,19 @@ const formatDecisionContent = (decision: string): Content[] => {
  */
 const getLogoBase64 = async (): Promise<string | null> => {
     try {
-        const response = await fetch('/logo-cce.png');
-        if (!response.ok) return null;
+        // Try city logo first
+        const response = await fetch('/logo-valdor.png');
+        if (!response.ok) {
+            // Fallback to CCE logo
+            const fallback = await fetch('/logo-cce.png');
+            if (!fallback.ok) return null;
+            const blob = await fallback.blob();
+            return new Promise((resolve) => {
+                const reader = new FileReader();
+                reader.onloadend = () => resolve(reader.result as string);
+                reader.readAsDataURL(blob);
+            });
+        }
         const blob = await response.blob();
         return new Promise((resolve) => {
             const reader = new FileReader();
@@ -148,6 +208,54 @@ const getLogoBase64 = async (): Promise<string | null> => {
     }
 };
 
+/**
+ * Create a resolution block with gold top border
+ */
+const createResolutionBlock = (
+    number: string,
+    type: 'resolution' | 'comment',
+    decisionContent: Content[]
+): Content => {
+    const label = type === 'resolution' ? 'RÉSOLUTION' : 'COMMENTAIRE';
+
+    return {
+        table: {
+            widths: ['*'],
+            body: [
+                // Gold top border row
+                [{
+                    text: '',
+                    fillColor: ACCENT_COLOR,
+                    border: [false, false, false, false] as [boolean, boolean, boolean, boolean],
+                    margin: [0, 0, 0, 0]
+                }],
+                // Content row
+                [{
+                    stack: [
+                        {
+                            text: `${label} ${number}`,
+                            style: 'resolutionHeader',
+                            margin: [0, 0, 0, 12]
+                        },
+                        ...decisionContent
+                    ],
+                    fillColor: RESOLUTION_BG,
+                    border: [true, false, true, true] as [boolean, boolean, boolean, boolean],
+                    borderColor: ['#e0e0e0', '#e0e0e0', '#e0e0e0', '#e0e0e0'],
+                    margin: [15, 15, 15, 15]
+                }]
+            ]
+        },
+        layout: {
+            hLineWidth: () => 1,
+            vLineWidth: () => 1,
+            hLineColor: () => '#e0e0e0',
+            vLineColor: () => '#e0e0e0'
+        },
+        margin: [0, 20, 0, 20]
+    };
+};
+
 export const generateMinutesPDF = async (meeting: Meeting, globalNotes?: string) => {
     const meetingNum = extractMeetingNumber(meeting.title);
     let resolutionCounter = 1;
@@ -158,207 +266,196 @@ export const generateMinutesPDF = async (meeting: Meeting, globalNotes?: string)
 
     // Format date
     const dateObj = new Date(meeting.date);
-    // Date components for formatting
     const dayName = format(dateObj, 'EEEE', { locale: fr });
     const dayOfMonth = format(dateObj, 'd', { locale: fr });
     const monthName = format(dateObj, 'MMMM', { locale: fr });
     const year = format(dateObj, 'yyyy', { locale: fr });
-    const timeStr = format(dateObj, 'HH', { locale: fr }) + ' h ' + format(dateObj, 'mm', { locale: fr });
-    const capitalizedDay = dayName.charAt(0).toUpperCase() + dayName.slice(1);
-    const formattedDateLine = `${capitalizedDay} ${dayOfMonth} ${monthName} ${year}`;
+    const timeStr = format(dateObj, 'HH', { locale: fr }) + ' h';
 
     // Attendees processing
-    const members = meeting.attendees?.filter(a => a.role !== 'Secrétaire' && a.role !== 'Conseiller responsable' && a.role !== 'Conseiller') || [];
-    const others = meeting.attendees?.filter(a => a.role === 'Secrétaire' || a.role === 'Conseiller responsable' || a.role === 'Conseiller') || [];
+    const members = meeting.attendees?.filter(a => a.role !== 'Secrétaire' && a.role !== 'Conseiller responsable' && a.role !== 'Conseiller' && a.role !== 'Invité') || [];
+    const others = meeting.attendees?.filter(a => a.role === 'Secrétaire' || a.role === 'Conseiller responsable' || a.role === 'Conseiller' || a.role === 'Invité') || [];
     const absents = meeting.attendees?.filter(a => !a.isPresent) || [];
     const presents = members.filter(a => a.isPresent);
     const othersPresent = others.filter(a => a.isPresent);
 
     const formatName = (a: typeof members[0]) => {
-        const roleSuffix = (a.role && a.role !== 'Membre') ? `, ${a.role.toLowerCase()}` : '';
-        return `${a.name}${roleSuffix}`;
+        const roleLabel = a.role && a.role !== 'Membre' ? ` (${a.role})` : '';
+        return `${a.name}${roleLabel}`;
     };
 
     // Build document content
     const content: Content[] = [];
 
     // ============ HEADER ============
-    // Logo and title side by side
+    // Centered logo
+    if (logoBase64) {
+        content.push({
+            image: logoBase64,
+            width: 120,
+            alignment: 'center',
+            margin: [0, 0, 0, 20]
+        });
+    }
+
+    // Title: PROCÈS-VERBAL
     content.push({
-        columns: [
-            // Left side - logo
-            logoBase64 ? {
-                image: logoBase64,
-                width: 70,
-                height: 70,
-                margin: [0, 0, 15, 0] as [number, number, number, number]
-            } : {
-                width: 80,
-                stack: [
-                    { text: 'CCE', style: 'logoText', alignment: 'center' as const },
-                    { text: 'VAL-D\'OR', style: 'logoSubText', alignment: 'center' as const }
-                ],
-                margin: [0, 0, 15, 0] as [number, number, number, number]
-            },
-            // Right side - titles
-            {
-                width: '*',
-                stack: [
-                    {
-                        text: 'COMITÉ CONSULTATIF EN ENVIRONNEMENT',
-                        style: 'mainTitle',
-                        alignment: 'center'
-                    },
-                    {
-                        text: 'PROCÈS-VERBAL',
-                        style: 'mainTitle',
-                        alignment: 'center',
-                        margin: [0, 5, 0, 0]
-                    }
-                ]
-            }
-        ],
+        text: 'PROCÈS-VERBAL',
+        style: 'mainTitle',
+        alignment: 'center',
+        margin: [0, 0, 0, 8]
+    });
+
+    // Subtitle: Comité Consultatif en Environnement (CCE)
+    content.push({
+        text: 'Comité Consultatif en Environnement (CCE)',
+        style: 'subtitle',
+        alignment: 'center',
         margin: [0, 0, 0, 15]
     });
 
-    // Assembly title and date
+    // Meeting info in italics
     content.push({
-        text: `ASSEMBLÉE ORDINAIRE CCE ${meetingNum.replace(/^0/, '')}`,
-        style: 'assemblyTitle',
+        text: [
+            `${meetingNum.replace(/^0/, '')}e assemblée ordinaire\n`,
+            `Tenue le ${dayName} ${dayOfMonth} ${monthName} ${year}, ${timeStr}\n`,
+            meeting.location || 'Salle de conférence du Service permis, inspection et environnement'
+        ],
+        style: 'meetingInfo',
         alignment: 'center',
-        margin: [0, 10, 0, 5]
-    });
-
-    content.push({
-        text: formattedDateLine,
-        style: 'dateTitle',
-        alignment: 'center',
-        decoration: 'underline',
         margin: [0, 0, 0, 20]
     });
 
-    // Introductory paragraph
-    const meetingTitle = `ASSEMBLÉE ORDINAIRE CCE ${meetingNum.replace(/^0/, '')}`;
+    // Double line border under header
     content.push({
-        text: `PROCÈS-VERBAL de la ${meetingTitle} du Comité consultatif en environnement tenue le ${dayName} ${dayOfMonth} ${monthName} ${year}, ${timeStr} à ${meeting.location}.`,
-        style: 'bodyText',
-        margin: [0, 0, 0, 20]
-    });
-
-    // ============ ATTENDEES SECTION ============
-    // This section is reserved for attendees - will show placeholder if no data
-    content.push({
-        text: '________________________________________________________________________',
+        canvas: [
+            { type: 'line', x1: 0, y1: 0, x2: 468, y2: 0, lineWidth: 1, lineColor: PRIMARY_COLOR },
+            { type: 'line', x1: 0, y1: 4, x2: 468, y2: 4, lineWidth: 1, lineColor: PRIMARY_COLOR }
+        ],
         alignment: 'center',
-        margin: [0, 10, 0, 10],
-        color: '#cccccc'
+        margin: [0, 0, 0, 25]
     });
 
-    // ÉTAIENT PRÉSENTS
-    if (presents.length > 0) {
-        content.push({
-            columns: [
-                { text: 'ÉTAIENT PRÉSENTS', style: 'attendeeLabel', width: 130 },
-                { text: presents.map(formatName).join(', '), style: 'bodyText', width: '*' }
-            ],
-            margin: [0, 5, 0, 8]
-        });
-    } else {
-        content.push({
-            columns: [
-                { text: 'ÉTAIENT PRÉSENTS', style: 'attendeeLabel', width: 130 },
-                { text: '[Membres présents]', style: 'placeholder', width: '*' }
-            ],
-            margin: [0, 5, 0, 8]
-        });
+    // ============ ATTENDANCE SECTION ============
+    // Build attendance rows for the table
+    const attendanceRows: TableCell[][] = [];
+
+    if (presents.length > 0 || true) {
+        attendanceRows.push([
+            { text: 'Étaient présents', style: 'attendanceTitle', border: [false, false, false, false] },
+        ]);
+        attendanceRows.push([
+            {
+                text: presents.length > 0 ? presents.map(formatName).join(', ') + '.' : '[Membres présents]',
+                style: presents.length > 0 ? 'attendanceText' : 'placeholder',
+                border: [false, false, false, false]
+            }
+        ]);
     }
 
-    // ÉTAIENT AUSSI PRÉSENTS
     if (othersPresent.length > 0) {
-        content.push({
-            columns: [
-                { text: 'ÉTAIENT AUSSI PRÉSENTS', style: 'attendeeLabel', width: 155 },
-                { text: othersPresent.map(formatName).join(', '), style: 'bodyText', width: '*' }
-            ],
-            margin: [0, 0, 0, 8]
-        });
+        attendanceRows.push([
+            { text: 'Étaient aussi présents', style: 'attendanceTitle', border: [false, false, false, false], margin: [0, 10, 0, 0] }
+        ]);
+        attendanceRows.push([
+            { text: othersPresent.map(formatName).join(', ') + '.', style: 'attendanceText', border: [false, false, false, false] }
+        ]);
     }
 
-    // ÉTAIT ABSENT(E)
     if (absents.length > 0) {
-        content.push({
-            columns: [
-                { text: 'ÉTAIT ABSENT(E)', style: 'attendeeLabel', width: 115 },
-                { text: absents.map(a => a.name).join(', '), style: 'bodyText', width: '*' }
-            ],
-            margin: [0, 0, 0, 8]
-        });
+        const absentLabel = absents.length === 1 ?
+            (absents[0].name.includes('Mme') || !absents[0].name.includes('M.') ? 'Était absente' : 'Était absent') :
+            'Étaient absents';
+        attendanceRows.push([
+            { text: absentLabel, style: 'attendanceTitle', border: [false, false, false, false], margin: [0, 10, 0, 0] }
+        ]);
+        attendanceRows.push([
+            { text: absents.map(a => a.name).join(', ') + '.', style: 'attendanceText', border: [false, false, false, false] }
+        ]);
     }
 
+    // Attendance box with left border effect
     content.push({
-        text: '________________________________________________________________________',
-        alignment: 'center',
-        margin: [0, 10, 0, 20],
-        color: '#cccccc'
+        table: {
+            widths: ['*'],
+            body: [[{
+                table: {
+                    widths: ['*'],
+                    body: attendanceRows
+                },
+                layout: 'noBorders',
+                fillColor: LIGHT_BG,
+                margin: [15, 12, 15, 12]
+            }]]
+        },
+        layout: {
+            hLineWidth: () => 0,
+            vLineWidth: (i: number) => i === 0 ? 4 : 0,
+            vLineColor: () => PRIMARY_COLOR
+        },
+        margin: [0, 0, 0, 35]
     });
 
     // ============ GLOBAL NOTES ============
     if (globalNotes) {
-        content.push({
-            text: sanitizeText(globalNotes),
-            style: 'bodyText',
-            margin: [0, 0, 0, 15]
-        });
+        const notesContent = formatContentText(globalNotes);
+        content.push(...notesContent);
     }
 
     // ============ AGENDA ITEMS ============
     for (const item of meeting.agendaItems) {
-        // Item title - bold and slightly larger
+        // Get comment reference if any
+        let commentRef = '';
+        if (item.minuteEntries && item.minuteEntries.length > 0) {
+            const comment = item.minuteEntries.find(e => e.type === 'comment');
+            if (comment) {
+                commentRef = `COMMENTAIRE ${comment.number}`;
+            }
+        }
+
+        // Section title with optional comment reference
         content.push({
-            text: item.title,
-            style: 'itemTitle',
-            margin: [0, 20, 0, 10]
+            table: {
+                widths: ['*', 'auto'],
+                body: [[
+                    {
+                        text: item.title,
+                        style: 'sectionTitle',
+                        border: [false, false, false, true] as [boolean, boolean, boolean, boolean],
+                        borderColor: ['#ddd', '#ddd', '#ddd', '#ddd']
+                    },
+                    {
+                        text: commentRef,
+                        style: 'commentRef',
+                        border: [false, false, false, true] as [boolean, boolean, boolean, boolean],
+                        borderColor: ['#ddd', '#ddd', '#ddd', '#ddd'],
+                        alignment: 'right'
+                    }
+                ]]
+            },
+            layout: {
+                hLineWidth: (i: number) => i === 1 ? 1 : 0,
+                vLineWidth: () => 0,
+                hLineColor: () => '#ddd'
+            },
+            margin: [0, 25, 0, 15]
         });
 
         // Check if we have minuteEntries (new format) or need to use legacy fields
         if (item.minuteEntries && item.minuteEntries.length > 0) {
-            // NEW: Render all minute entries (multiple resolutions/comments)
             for (const entry of item.minuteEntries) {
-                // Entry header (RÉSOLUTION/COMMENTAIRE)
-                const label = entry.type === 'resolution' ? 'RÉSOLUTION' : 'COMMENTAIRE';
-                content.push({
-                    text: `${label} ${entry.number}`,
-                    style: 'resolutionHeader',
-                    margin: [0, 10, 0, 10]
-                });
-
-                // Entry content
-                const entryContent = formatDecisionContent(entry.content || '');
-                if (entryContent.length > 0) {
-                    content.push(...entryContent);
-                }
-
-                // Proposer/Seconder for resolutions
-                if (entry.type === 'resolution' && (entry.proposer || entry.seconder)) {
-                    if (entry.proposer) {
-                        content.push({
-                            text: `Proposé par : ${entry.proposer}`,
-                            style: 'bodyText',
-                            margin: [0, 10, 0, 3]
-                        });
-                    }
-                    if (entry.seconder) {
-                        content.push({
-                            text: `Appuyé par : ${entry.seconder}`,
-                            style: 'bodyText',
-                            margin: [0, 0, 0, 5]
-                        });
-                    }
+                if (entry.type === 'comment') {
+                    // Comment content as regular paragraphs
+                    const commentContent = formatContentText(entry.content || '');
+                    content.push(...commentContent);
+                } else if (entry.type === 'resolution') {
+                    // Resolution block with gold border
+                    const decisionContent = formatDecisionContent(entry.content || '');
+                    content.push(createResolutionBlock(entry.number, 'resolution', decisionContent));
                 }
             }
         } else {
             // LEGACY: Use single minuteType/minuteNumber/decision fields
-            // Determine minute number
             let minuteNumber = item.minuteNumber;
             if (!minuteNumber && item.minuteType) {
                 const gen = generateMinuteNumber(meetingNum, item.minuteType, resolutionCounter, commentCounter);
@@ -367,66 +464,47 @@ export const generateMinutesPDF = async (meeting: Meeting, globalNotes?: string)
                 commentCounter = gen.newComCounter;
             }
 
-            // Resolution/Comment header
-            if (minuteNumber) {
-                const label = item.minuteType === 'resolution' ? 'RÉSOLUTION' :
-                    item.minuteType === 'comment' ? 'COMMENTAIRE' : 'NOTE';
-                content.push({
-                    text: `${label} ${minuteNumber}`,
-                    style: 'resolutionHeader',
-                    margin: [0, 5, 0, 10]
-                });
-            }
-
-            // Decision content
-            const decisionContent = formatDecisionContent(item.decision || '');
-            if (decisionContent.length > 0) {
+            if (minuteNumber && item.minuteType) {
+                if (item.minuteType === 'resolution') {
+                    const decisionContent = formatDecisionContent(item.decision || '');
+                    content.push(createResolutionBlock(minuteNumber, 'resolution', decisionContent));
+                } else if (item.minuteType === 'comment') {
+                    const commentContent = formatContentText(item.decision || '');
+                    content.push(...commentContent);
+                }
+            } else if (item.decision) {
+                const decisionContent = formatContentText(item.decision);
                 content.push(...decisionContent);
-            }
-
-            // Proposer/Seconder
-            if (item.minuteType === 'resolution' && (item.proposer || item.seconder)) {
-                if (item.proposer) {
-                    content.push({
-                        text: `Proposé par : ${item.proposer}`,
-                        style: 'bodyText',
-                        margin: [0, 10, 0, 3]
-                    });
-                }
-                if (item.seconder) {
-                    content.push({
-                        text: `Appuyé par : ${item.seconder}`,
-                        style: 'bodyText',
-                        margin: [0, 0, 0, 5]
-                    });
-                }
             }
         }
     }
 
     // ============ SIGNATURES ============
-    const president = meeting.attendees?.find(a => a.role?.toLowerCase().includes('président'));
+    const president = meeting.attendees?.find(a => a.role?.toLowerCase().includes('président') && !a.role?.toLowerCase().includes('vice'));
     const secretary = meeting.attendees?.find(a => a.role?.toLowerCase().includes('secrétaire'));
-    const presidentName = president ? president.name.toUpperCase() : 'PRÉSIDENT(E)';
-    const secretaryName = secretary ? secretary.name.toUpperCase() : 'SECRÉTAIRE';
+    const presidentName = president ? president.name : 'Président(e)';
+    const secretaryName = secretary ? secretary.name : 'Secrétaire';
 
     content.push({
         columns: [
             {
-                width: '*',
+                width: '45%',
                 stack: [
-                    { text: '___________________________', margin: [0, 0, 0, 5] },
-                    { text: `${presidentName}`, style: 'signatureName' },
+                    { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 180, y2: 0, lineWidth: 1, lineColor: '#000' }] },
+                    { text: presidentName.toUpperCase(), style: 'signatureName', margin: [0, 8, 0, 0] },
                     { text: 'Président(e)', style: 'signatureRole' }
-                ]
+                ],
+                alignment: 'center'
             },
+            { width: '10%', text: '' },
             {
-                width: '*',
+                width: '45%',
                 stack: [
-                    { text: '___________________________', margin: [0, 0, 0, 5], alignment: 'right' },
-                    { text: `${secretaryName}`, style: 'signatureName', alignment: 'right' },
-                    { text: 'Secrétaire', style: 'signatureRole', alignment: 'right' }
-                ]
+                    { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 180, y2: 0, lineWidth: 1, lineColor: '#000' }] },
+                    { text: secretaryName.toUpperCase(), style: 'signatureName', margin: [0, 8, 0, 0] },
+                    { text: 'Secrétaire', style: 'signatureRole' }
+                ],
+                alignment: 'center'
             }
         ],
         margin: [0, 60, 0, 0]
@@ -435,57 +513,78 @@ export const generateMinutesPDF = async (meeting: Meeting, globalNotes?: string)
     // ============ DOCUMENT DEFINITION ============
     const docDefinition: TDocumentDefinitions = {
         pageSize: 'LEGAL', // 8.5 x 14 inches
-        pageMargins: [72, 72, 72, 72], // 1 inch margins all around (72 points = 1 inch)
+        pageMargins: [60, 50, 60, 50],
         content: content,
         styles: {
             mainTitle: {
-                fontSize: 16,
+                fontSize: 22,
                 bold: true,
-                color: DARK_GREEN
+                color: PRIMARY_COLOR,
+                characterSpacing: 2
             },
-            assemblyTitle: {
+            subtitle: {
+                fontSize: 13,
+                color: ACCENT_COLOR,
+                characterSpacing: 1
+            },
+            meetingInfo: {
+                fontSize: 12,
+                italics: true,
+                color: '#555',
+                lineHeight: 1.4
+            },
+            sectionTitle: {
                 fontSize: 14,
                 bold: true,
-                color: DARK_BLUE
+                color: PRIMARY_COLOR
             },
-            dateTitle: {
+            subsectionTitle: {
                 fontSize: 12,
                 bold: true,
-                color: DARK_BLUE
+                color: '#444',
+                decoration: 'underline'
             },
-            logoText: {
-                fontSize: 20,
-                bold: true,
-                color: DARK_GREEN
-            },
-            logoSubText: {
+            commentRef: {
                 fontSize: 10,
-                bold: true,
-                color: DARK_GREEN
+                color: '#888'
             },
-            itemTitle: {
-                fontSize: 13,
-                bold: true
+            attendanceTitle: {
+                fontSize: 11,
+                bold: true,
+                color: PRIMARY_COLOR
+            },
+            attendanceText: {
+                fontSize: 12,
+                lineHeight: 1.3
             },
             resolutionHeader: {
-                fontSize: 12,
-                bold: true
+                fontSize: 13,
+                bold: true,
+                color: ACCENT_COLOR
             },
-            bodyText: {
+            resolutionText: {
                 fontSize: 11,
+                italics: true,
+                color: '#444',
                 lineHeight: 1.3
             },
-            boldText: {
+            considerantKeyword: {
+                fontSize: 10,
+                bold: true,
+                color: PRIMARY_COLOR
+            },
+            ilEstResolu: {
                 fontSize: 11,
                 bold: true,
-                lineHeight: 1.3
+                color: PRIMARY_COLOR
             },
-            attendeeLabel: {
-                fontSize: 11,
-                bold: true
+            bodyText: {
+                fontSize: 12,
+                lineHeight: 1.4,
+                color: TEXT_COLOR
             },
             placeholder: {
-                fontSize: 11,
+                fontSize: 12,
                 italics: true,
                 color: '#888888'
             },
@@ -494,12 +593,14 @@ export const generateMinutesPDF = async (meeting: Meeting, globalNotes?: string)
                 bold: true
             },
             signatureRole: {
-                fontSize: 10
+                fontSize: 10,
+                color: '#555'
             }
         },
         defaultStyle: {
             font: 'Roboto',
-            fontSize: 11
+            fontSize: 11,
+            color: TEXT_COLOR
         }
     };
 
