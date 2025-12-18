@@ -182,30 +182,57 @@ const formatContentText = (text: string): Content[] => {
  * Get logo as base64 for PDF embedding
  */
 const getLogoBase64 = async (): Promise<string | null> => {
-    try {
-        // Try city logo first
-        const response = await fetch('/logo-valdor.png');
-        if (!response.ok) {
-            // Fallback to CCE logo
-            const fallback = await fetch('/logo-cce.png');
-            if (!fallback.ok) return null;
-            const blob = await fallback.blob();
+    const loadImage = async (url: string): Promise<string | null> => {
+        try {
+            const response = await fetch(url);
+            if (!response.ok) {
+                console.warn(`Logo fetch failed for ${url}: ${response.status}`);
+                return null;
+            }
+            const blob = await response.blob();
+
+            // Verify it's an image
+            if (!blob.type.startsWith('image/')) {
+                console.warn(`Invalid blob type for ${url}: ${blob.type}`);
+                return null;
+            }
+
             return new Promise((resolve) => {
                 const reader = new FileReader();
-                reader.onloadend = () => resolve(reader.result as string);
+                reader.onloadend = () => {
+                    const result = reader.result as string;
+                    // Validate it's a proper dataURL
+                    if (result && result.startsWith('data:image/')) {
+                        resolve(result);
+                    } else {
+                        console.warn('Invalid dataURL format');
+                        resolve(null);
+                    }
+                };
+                reader.onerror = () => {
+                    console.warn('FileReader error');
+                    resolve(null);
+                };
                 reader.readAsDataURL(blob);
             });
+        } catch (e) {
+            console.warn(`Error loading image ${url}:`, e);
+            return null;
         }
-        const blob = await response.blob();
-        return new Promise((resolve) => {
-            const reader = new FileReader();
-            reader.onloadend = () => resolve(reader.result as string);
-            reader.readAsDataURL(blob);
-        });
-    } catch (e) {
-        console.warn('Could not load logo:', e);
-        return null;
+    };
+
+    // Try city logo first, then CCE logo
+    const logos = ['/logo-valdor.png', '/logo-cce.png'];
+    for (const logoUrl of logos) {
+        const result = await loadImage(logoUrl);
+        if (result) {
+            console.log(`Logo loaded successfully: ${logoUrl}`);
+            return result;
+        }
     }
+
+    console.warn('No logo could be loaded');
+    return null;
 };
 
 /**
