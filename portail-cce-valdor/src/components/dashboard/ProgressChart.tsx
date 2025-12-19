@@ -1,5 +1,5 @@
 import React from 'react';
-import { Card, CardHeader, CardContent, Box } from '@mui/material';
+import { Card, CardHeader, CardContent } from '@mui/material';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 
 const data: Array<{ name: string; completed: number; new: number }> = [];
@@ -9,7 +9,7 @@ const ProgressChart: React.FC = () => {
         <Card sx={{ height: '100%' }}>
             <CardHeader title="Progression mensuelle" sx={{ borderBottom: 1, borderColor: 'divider' }} />
             <CardContent>
-                <Box sx={{ height: 300, width: '100%', minHeight: 300, minWidth: 0 }}>
+                <div style={{ height: 300, width: '100%', minHeight: 300, minWidth: 0 }}>
                     <ResponsiveContainer width="100%" height="100%">
                         <LineChart data={data} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
                             <CartesianGrid strokeDasharray="3 3" vertical={false} />
@@ -21,7 +21,7 @@ const ProgressChart: React.FC = () => {
                             <Line type="monotone" dataKey="new" name="Nouveaux" stroke="#2563eb" strokeWidth={2} dot={{ r: 4 }} />
                         </LineChart>
                     </ResponsiveContainer>
-                </Box>
+                </div>
             </CardContent>
         </Card>
     );
