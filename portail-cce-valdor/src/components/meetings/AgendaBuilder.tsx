@@ -19,7 +19,7 @@ import {
     Stack,
     DialogContentText
 } from '@mui/material';
-import { DragIndicator, Add, Delete, Edit, AttachFile } from '@mui/icons-material';
+import { DragIndicator, Add, Delete, Edit, AttachFile, Print } from '@mui/icons-material';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import type { DragEndEvent } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
@@ -28,11 +28,14 @@ import type { AgendaItem } from '../../types/meeting.types';
 import type { Document } from '../../types/document.types';
 import DocumentUpload from '../documents/DocumentUpload';
 import DocumentPreviewModal from '../documents/DocumentPreviewModal';
+import type { Meeting } from '../../types/meeting.types';
+import { generateAgendaPDF } from '../../services/pdfServiceAgenda';
 
 interface AgendaBuilderProps {
     items: AgendaItem[];
     onItemsChange: (items: AgendaItem[]) => void;
     meetingId?: string;
+    meeting?: Meeting; // For PDF generation
     documents?: Document[];
     onDocumentUpload?: () => void;
     initialAgendaItemId?: string;
@@ -93,7 +96,7 @@ const SortableItem = ({ item, onDelete, onEdit, linkedDocuments }: { item: Agend
     );
 };
 
-const AgendaBuilder: React.FC<AgendaBuilderProps> = ({ items, onItemsChange, meetingId, documents = [], onDocumentUpload, initialAgendaItemId, onDocumentUnlink, onDocumentDelete }) => {
+const AgendaBuilder: React.FC<AgendaBuilderProps> = ({ items, onItemsChange, meetingId, meeting, documents = [], onDocumentUpload, initialAgendaItemId, onDocumentUnlink, onDocumentDelete }) => {
     const [editingItem, setEditingItem] = useState<AgendaItem | null>(null);
     const [isEditOpen, setIsEditOpen] = useState(false);
     const [previewDoc, setPreviewDoc] = useState<Document | null>(null);
@@ -166,9 +169,21 @@ const AgendaBuilder: React.FC<AgendaBuilderProps> = ({ items, onItemsChange, mee
         <Box>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
                 <Typography variant="h6">Ordre du jour</Typography>
-                <Button startIcon={<Add />} onClick={handleAddItem} variant="outlined" size="small">
-                    Ajouter un point
-                </Button>
+                <Box sx={{ display: 'flex', gap: 1 }}>
+                    {meeting && (
+                        <Button
+                            startIcon={<Print />}
+                            onClick={() => generateAgendaPDF(meeting)}
+                            variant="outlined"
+                            size="small"
+                        >
+                            Imprimer l'ODJ
+                        </Button>
+                    )}
+                    <Button startIcon={<Add />} onClick={handleAddItem} variant="outlined" size="small">
+                        Ajouter un point
+                    </Button>
+                </Box>
             </Box>
 
             <DndContext

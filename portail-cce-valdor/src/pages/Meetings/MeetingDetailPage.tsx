@@ -197,6 +197,7 @@ const MeetingDetailPage: React.FC = () => {
                         items={meeting.agendaItems || []}
                         onItemsChange={handleAgendaUpdate}
                         meetingId={meeting.id}
+                        meeting={meeting}
                         documents={documents.filter(d => d.linkedEntityId === meeting.id)}
                         onDocumentUpload={() => dispatch(fetchDocumentsByEntity({ entityId: meeting.id, entityType: 'meeting' }))}
                         initialAgendaItemId={(location.state as any)?.agendaItemId}

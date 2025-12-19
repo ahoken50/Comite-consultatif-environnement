@@ -37,7 +37,7 @@ export const generateAgendaPDF = async (meeting: Meeting) => {
                 </div>
                 <div class="agenda-body">
                     <div class="agenda-details">
-                        ${item.description ? `<div class="agenda-note-box">${item.description}</div>` : ''}
+                        ${item.decision ? `<div class="agenda-note-box">${item.decision}</div>` : ''}
                         <div class="agenda-meta">Responsable : <span>${item.presenter || 'Coordonnateur'}</span></div>
                     </div>
                     <div class="agenda-objective-section">
