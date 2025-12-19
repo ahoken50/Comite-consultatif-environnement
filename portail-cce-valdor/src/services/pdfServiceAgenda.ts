@@ -1,11 +1,6 @@
-import html2pdf from 'html2pdf.js';
 import type { Meeting } from '../types/meeting.types';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
-
-// Import logos as URLs
-import logoCceUrl from '/logo-cce.png';
-import logoValdorUrl from '/logo-valdor.png';
 
 /**
  * Generates a beautifully styled Agenda PDF from meeting data using HTML template.
@@ -311,8 +306,8 @@ export const generateAgendaPDF = async (meeting: Meeting) => {
     <!-- EN-TÊTE AVEC LOGOS -->
     <header>
         <div class="logo-container">
-            <img src="${logoCceUrl}" alt="Logo CCE" class="logo-img" onerror="this.style.display='none';">
-            <img src="${logoValdorUrl}" alt="Logo Val-d'Or" class="logo-img" onerror="this.style.display='none';">
+            <img src="/logo-cce.png" alt="Logo CCE" class="logo-img" onerror="this.style.display='none';">
+            <img src="/logo-valdor.png" alt="Logo Val-d'Or" class="logo-img" onerror="this.style.display='none';">
         </div>
         
         <h1>Ordre du Jour</h1>
@@ -341,51 +336,23 @@ export const generateAgendaPDF = async (meeting: Meeting) => {
 </html>
     `;
 
-    // Create a temporary container that's visible but hidden from user view
-    // Using opacity: 0 and pointer-events: none instead of off-screen positioning
-    // This ensures html2canvas can properly measure and render the content
-    const container = document.createElement('div');
-    container.innerHTML = htmlContent;
-    container.style.position = 'fixed';
-    container.style.top = '0';
-    container.style.left = '0';
-    container.style.width = '816px'; // Legal width at 96 DPI
-    container.style.minHeight = '1344px'; // Legal height at 96 DPI
-    container.style.zIndex = '-9999';
-    container.style.opacity = '0';
-    container.style.pointerEvents = 'none';
-    container.style.overflow = 'visible';
-    document.body.appendChild(container);
+    // Open a new window for printing (same approach as pdfServiceMinutes.ts)
+    const printWindow = window.open('', '_blank', 'width=816,height=1056');
 
-    // Wait for images to load and DOM to settle
-    await new Promise(resolve => setTimeout(resolve, 500));
-
-    // PDF options
-    const opt = {
-        margin: [0.5, 0.5, 0.5, 0.5] as [number, number, number, number], // inches
-        filename: `ODJ-${meeting.date.split('T')[0]}.pdf`,
-        image: { type: 'jpeg' as const, quality: 0.98 },
-        html2canvas: {
-            scale: 2,
-            useCORS: true,
-            letterRendering: true,
-            width: 816,
-            height: container.scrollHeight || 1344,
-            windowWidth: 816,
-            windowHeight: container.scrollHeight || 1344
-        },
-        jsPDF: {
-            unit: 'in' as const,
-            format: 'legal' as const,
-            orientation: 'portrait' as const
-        },
-        pagebreak: { mode: ['avoid-all', 'css', 'legacy'] as ('avoid-all' | 'css' | 'legacy')[] }
-    };
-
-    try {
-        await html2pdf().set(opt).from(container).save();
-    } finally {
-        // Cleanup
-        document.body.removeChild(container);
+    if (!printWindow) {
+        alert('Veuillez autoriser les pop-ups pour générer le PDF.');
+        return;
     }
+
+    // Write the HTML content
+    printWindow.document.write(htmlContent);
+    printWindow.document.close();
+
+    // Wait for fonts and images to load
+    await new Promise(resolve => setTimeout(resolve, 1500));
+
+    // Trigger print dialog - user can choose "Microsoft Print to PDF" or similar
+    printWindow.print();
+
+    // Note: Window closes automatically in most browsers after print dialog
 };
