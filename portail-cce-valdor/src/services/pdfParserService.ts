@@ -55,16 +55,22 @@ export const parseAgendaPDF = async (file: File): Promise<ParsedMeetingData> => 
     }
 
     // 2. Extract Title
-    // Look for "ASSEMBLÉE" and potentially the line before (e.g., "COMITÉ...")
+    // Look for "ASSEMBLÉE" and walk upwards to capture header
     const titleIndex = lines.findIndex(line => line.toUpperCase().includes('ASSEMBLÉE'));
     if (titleIndex !== -1) {
         let fullTitle = lines[titleIndex];
-        // Check if previous line exists and looks like a header (uppercase)
-        if (titleIndex > 0) {
-            const prevLine = lines[titleIndex - 1];
-            // If prev line is mostly uppercase and not a date
-            if (prevLine === prevLine.toUpperCase() && !prevLine.match(/^\d/)) {
+        // Walk upwards up to 3 lines
+        for (let i = 1; i <= 3; i++) {
+            if (titleIndex - i < 0) break;
+            const prevLine = lines[titleIndex - i];
+
+            // Allow lines that are uppercase OR start with a digit (e.g. "13e")
+            const isHeaderLine = prevLine === prevLine.toUpperCase() || /^\d/.test(prevLine);
+
+            if (isHeaderLine && prevLine) {
                 fullTitle = prevLine + '\n' + fullTitle;
+            } else {
+                break; // Stop if we hit a non-header line
             }
         }
         result.title = fullTitle;
@@ -118,22 +124,28 @@ export const parseAgendaPDF = async (file: File): Promise<ParsedMeetingData> => 
             if (currentItem.title === '') {
                 currentItem.title = line;
             } else {
-                // Heuristic: If line starts with lowercase letter (and isn't a common stop word like 'de', 'le'),
-                // OR if the current title ends with a hyphen,
-                // assume it's a word split and join WITHOUT space.
-                // Otherwise join WITH space.
+                // Heuristic for word merging:
+                // Join WITHOUT space if:
+                // 1. Current line starts with lowercase (and isn't common short word)
+                // 2. Previous part does NOT end with a connector (de, à, le...)
+                // 3. Previous part does NOT look like an ordinal (13e, 1er)
+                // 4. Previous part ends with hyphen (always join)
 
+                const currentTitle = currentItem.title || '';
                 const startsWithLower = /^[a-z]/.test(line);
                 const isCommonWord = /^(de|le|la|les|des|du|en|un|une|et|à|au|aux|sur|par|pour|dans)\b/i.test(line);
-                const currentTitle = currentItem.title || '';
                 const endsWithHyphen = currentTitle.trim().endsWith('-');
 
+                // Regex for connectors at end of string: " de", " le" etc.
+                const endsWithConnector = /(?:^|\s)(de|le|la|les|des|du|en|un|une|et|à|au|aux|sur|par|pour|dans)$/i.test(currentTitle.trim());
+
+                // Regex for ordinals: 13e, 1er.
+                const endsWithOrdinal = /\d+(?:e|er|ère|eme|ème)$/i.test(currentTitle.trim());
+
                 if (endsWithHyphen) {
-                    // Remove hyphen if it looks like a soft hyphen? No, just keep hyphen logic simple for now
-                    // Usually "environne-\nment" -> "environnement"
                     currentItem.title = currentTitle.trim().replace(/-$/, '') + line;
-                } else if (startsWithLower && !isCommonWord) {
-                    // likely a split word like "Ado" + "ption" or "Rev" + "u"
+                } else if (startsWithLower && !isCommonWord && !endsWithConnector && !endsWithOrdinal) {
+                    // likely a split word like "Ado" + "ption"
                     currentItem.title = currentTitle + line;
                 } else {
                     currentItem.title = currentTitle + ' ' + line;
