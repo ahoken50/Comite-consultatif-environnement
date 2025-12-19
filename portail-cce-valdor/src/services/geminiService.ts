@@ -22,6 +22,69 @@ interface GeminiResponse {
 /**
  * Transcribe audio file using Gemini API
  */
+const UPLOAD_API_URL = 'https://generativelanguage.googleapis.com/upload/v1beta/files';
+
+interface GeminiFileResponse {
+    file: {
+        name: string;
+        uri: string;
+        mimeType: string;
+        state: string;
+    };
+}
+
+/**
+ * Upload file to Gemini using Resumable Upload Protocol
+ * Necessary for files > 20MB
+ */
+const uploadToGemini = async (blob: Blob, mimeType: string, displayName: string): Promise<string> => {
+    if (!GEMINI_API_KEY) throw new Error('API Key missing');
+
+    // 1. Initiate Resumable Upload
+    const initResponse = await fetch(`${UPLOAD_API_URL}?key=${GEMINI_API_KEY}`, {
+        method: 'POST',
+        headers: {
+            'X-Goog-Upload-Protocol': 'resumable',
+            'X-Goog-Upload-Command': 'start',
+            'X-Goog-Upload-Header-Content-Length': blob.size.toString(),
+            'X-Goog-Upload-Header-Content-Type': mimeType,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ file: { display_name: displayName } })
+    });
+
+    if (!initResponse.ok) {
+        throw new Error(`Failed to initiate upload: ${initResponse.statusText}`);
+    }
+
+    const uploadUrl = initResponse.headers.get('x-goog-upload-url');
+    if (!uploadUrl) {
+        throw new Error('No upload URL received from Gemini');
+    }
+
+    // 2. Perform Upload
+    const uploadResponse = await fetch(uploadUrl, {
+        method: 'POST',
+        headers: {
+            'Content-Length': blob.size.toString(),
+            'X-Goog-Upload-Offset': '0',
+            'X-Goog-Upload-Command': 'upload, finalize'
+        },
+        body: blob
+    });
+
+    if (!uploadResponse.ok) {
+        throw new Error(`Upload failed: ${uploadResponse.statusText}`);
+    }
+
+    const result: GeminiFileResponse = await uploadResponse.json();
+    return result.file.uri;
+};
+
+/**
+ * Transcribe audio file using Gemini API
+ * Updated to use File API for large file support
+ */
 export const transcribeAudio = async (
     meetingId: string,
     audioUrl: string,
@@ -42,12 +105,14 @@ export const transcribeAudio = async (
             dateUpdated: new Date().toISOString()
         });
 
-        // Fetch audio file as base64
+        // 1. Fetch audio file
         const response = await fetch(audioUrl);
         const blob = await response.blob();
-        const base64Audio = await blobToBase64(blob);
 
-        // Prepare Gemini request
+        // 2. Upload to Gemini File API
+        const fileUri = await uploadToGemini(blob, mimeType, `meeting-${meetingId}`);
+
+        // 3. Prepare Gemini request with fileUri
         const geminiRequest = {
             contents: [{
                 parts: [
@@ -67,16 +132,19 @@ Format de sortie:
 [02:00] Intervenant 2: [Suite...]`
                     },
                     {
-                        inlineData: {
+                        fileData: {
                             mimeType: mimeType,
-                            data: base64Audio
+                            fileUri: fileUri
                         }
                     }
                 ]
             }]
         };
 
-        // Call Gemini API
+        // 4. Call Gemini Generate Content API
+        // Note: With File API, the file needs to be processed. 
+        // For audio it's usually fast, but for video it might state 'PROCESSING'.
+        // We optimistically try to generate immediately.
         const geminiResponse = await fetch(`${GEMINI_API_URL}?key=${GEMINI_API_KEY}`, {
             method: 'POST',
             headers: {
