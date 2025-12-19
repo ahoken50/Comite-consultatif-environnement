@@ -47,7 +47,16 @@ export const deleteMeeting = createAsyncThunk(
 const meetingsSlice = createSlice({
     name: 'meetings',
     initialState,
-    reducers: {},
+    reducers: {
+        upsertMeeting: (state, action) => {
+            const index = state.items.findIndex(m => m.id === action.payload.id);
+            if (index !== -1) {
+                state.items[index] = action.payload;
+            } else {
+                state.items.push(action.payload);
+            }
+        }
+    },
     extraReducers: (builder) => {
         builder
             // Fetch
@@ -81,4 +90,5 @@ const meetingsSlice = createSlice({
     },
 });
 
+export const { upsertMeeting } = meetingsSlice.actions;
 export default meetingsSlice.reducer;

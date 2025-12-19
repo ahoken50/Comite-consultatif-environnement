@@ -511,6 +511,16 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
                             setGlobalNotes(content);
                             setHasUnsavedChanges(true);
                         }}
+                        onTranscriptionUpdate={(newTranscription: string) => {
+                            if (meeting.audioRecording) {
+                                onUpdate({
+                                    audioRecording: {
+                                        ...meeting.audioRecording,
+                                        transcription: newTranscription
+                                    }
+                                });
+                            }
+                        }}
                     />
                 )}
             </Paper>

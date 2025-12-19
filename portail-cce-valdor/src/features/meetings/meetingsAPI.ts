@@ -80,8 +80,6 @@ export const meetingsAPI = {
     },
 
     update: async (id: string, updates: Partial<Meeting>): Promise<void> => {
-        console.log('[DEBUG meetingsAPI.update] Starting update for id:', id);
-        console.log('[DEBUG meetingsAPI.update] Updates received:', JSON.stringify(updates, null, 2));
 
         const docRef = doc(db, COLLECTION_NAME, id);
 
@@ -94,24 +92,14 @@ export const meetingsAPI = {
             updatesWithTimestamp.date = Timestamp.fromDate(new Date(updates.date));
         }
 
-        // CRITICAL: Sanitize to remove all undefined values
+        // Crutial: Sanitize to remove all undefined values
         updatesWithTimestamp = sanitizeForFirestore(updatesWithTimestamp);
 
-        console.log('[DEBUG meetingsAPI.update] After sanitization:', JSON.stringify(updatesWithTimestamp, (_, v) => v === undefined ? '__UNDEFINED__' : v, 2));
-
-        // Debug: Log first agenda item if present
-        if (updatesWithTimestamp.agendaItems && updatesWithTimestamp.agendaItems.length > 0) {
-            console.log('[DEBUG meetingsAPI.update] First agenda item after sanitization:', JSON.stringify(updatesWithTimestamp.agendaItems[0], null, 2));
-        }
 
         try {
-            console.log('[DEBUG meetingsAPI.update] Calling updateDoc...');
             await updateDoc(docRef, updatesWithTimestamp);
-            console.log('[DEBUG meetingsAPI.update] updateDoc completed successfully');
         } catch (error: any) {
-            console.error('[DEBUG meetingsAPI.update] ERROR calling updateDoc:', error);
-            console.error('[DEBUG meetingsAPI.update] Error code:', error?.code);
-            console.error('[DEBUG meetingsAPI.update] Error message:', error?.message);
+            console.error('Error calling updateDoc:', error);
             throw error;
         }
     },

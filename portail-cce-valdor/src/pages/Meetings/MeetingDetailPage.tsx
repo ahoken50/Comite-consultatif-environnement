@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
+import { useMeetingSubscription } from '../../hooks/useMeetingSubscription';
 import {
     Box,
     Typography,
@@ -55,6 +56,7 @@ function TabPanel(props: TabPanelProps) {
 
 const MeetingDetailPage: React.FC = () => {
     const { id } = useParams<{ id: string }>();
+    useMeetingSubscription(id);
     const navigate = useNavigate();
     const dispatch = useDispatch<AppDispatch>();
     const meeting = useSelector((state: RootState) =>

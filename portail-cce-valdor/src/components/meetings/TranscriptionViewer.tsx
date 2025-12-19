@@ -14,7 +14,7 @@ import {
     Psychology,
     Edit,
     CheckCircle,
-    ContentCopy
+    ArrowRightAlt
 } from '@mui/icons-material';
 import type { Meeting, MinutesDraft } from '../../types/meeting.types';
 import { generateMinutesDraft, finalizeDraft, isGeminiConfigured } from '../../services/geminiService';
@@ -23,12 +23,14 @@ interface TranscriptionViewerProps {
     meeting: Meeting;
     onDraftGenerated?: (draft: MinutesDraft) => void;
     onApplyToMinutes?: (content: string) => void;
+    onTranscriptionUpdate?: (newTranscription: string) => void;
 }
 
 const TranscriptionViewer: React.FC<TranscriptionViewerProps> = ({
     meeting,
     onDraftGenerated,
-    onApplyToMinutes
+    onApplyToMinutes,
+    onTranscriptionUpdate
 }) => {
     const [isGenerating, setIsGenerating] = useState(false);
     const [isFinalizing, setIsFinalizing] = useState(false);
@@ -36,8 +38,24 @@ const TranscriptionViewer: React.FC<TranscriptionViewerProps> = ({
     const [feedback, setFeedback] = useState('');
     const [showFeedbackForm, setShowFeedbackForm] = useState(false);
 
+    // Speaker Identification State
+    const [showSpeakerMap, setShowSpeakerMap] = useState(false);
+    const [speakerMap, setSpeakerMap] = useState<Record<string, string>>({});
+
     const transcription = meeting.audioRecording?.transcription;
     const draft = meeting.minutesDraft;
+
+    // Extract unique speakers from transcription
+    const detectedSpeakers = React.useMemo(() => {
+        if (!transcription) return [];
+        const regex = /\[\d{2}:\d{2}\] (.*?):/g;
+        const speakers = new Set<string>();
+        let match;
+        while ((match = regex.exec(transcription)) !== null) {
+            speakers.add(match[1]);
+        }
+        return Array.from(speakers).sort();
+    }, [transcription]);
 
     if (!transcription) {
         return null;
@@ -92,6 +110,33 @@ const TranscriptionViewer: React.FC<TranscriptionViewerProps> = ({
 
     const copyToClipboard = (text: string) => {
         navigator.clipboard.writeText(text);
+    };
+
+    const handleApplySpeakerNames = async () => {
+        if (Object.keys(speakerMap).length === 0) return;
+
+        let newTranscription = transcription;
+        Object.entries(speakerMap).forEach(([oldName, newName]) => {
+            if (newName.trim()) {
+                // Replace "OldName:" with "NewName:" globally
+                const regex = new RegExp(oldName + ':', 'g');
+                newTranscription = newTranscription.replace(regex, newName + ':');
+            }
+        });
+
+        // Update in parent/Firestore (assuming we can modify meeting directly or dispatch)
+        // Since we don't have updateMeeting prop directly, we might need to emit an event or use a service.
+        // Wait, current component just displays. We need a way to save back to Firestore.
+        // The best way here is probably to use the updateMeeting from Redux or pass a callback.
+        // But we didn't add onTranscriptionUpdate prop. 
+        // Let's assume for now we can call a service directly or better, add the callback.
+        // For this step, I will use `updateDoc` directly here as 'geminiService' does, 
+        // OR better: add `onTranscriptionUpdate` prop to 'TranscriptionViewer' and let parent handle it.
+        // Let's check props: `onApplyToMinutes` ... no update prop.
+        // I will add `onTranscriptionUpdate` to props.
+        onTranscriptionUpdate?.(newTranscription);
+        setSpeakerMap({});
+        setShowSpeakerMap(false);
     };
 
     const getStatusChip = () => {

@@ -34,16 +34,16 @@ service cloud.firestore {
     // Meetings collection
     match /meetings/{meetingId} {
       allow read: if isAuthenticated();
-      // Temporarily allow any authenticated user to write to meetings to unblock development
-      allow write: if isAuthenticated(); 
+      // Only coordinators can manage meetings
+      allow write: if isCoordinator();
     }
 
     // Documents collection
     match /documents/{documentId} {
       allow read: if isAuthenticated();
       allow create: if isAuthenticated(); // Any authenticated user can upload
-      // Temporarily allow any authenticated user to update/delete to unblock development
-      allow update, delete: if isAuthenticated();
+      // Only owner or coordinator can modify/delete
+      allow update, delete: if isCoordinator() || (isAuthenticated() && resource.data.createdBy == request.auth.uid);
     }
   }
 }

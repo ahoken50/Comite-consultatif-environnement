@@ -19,7 +19,6 @@ const MeetingDetailPage = lazy(() => import('./pages/Meetings/MeetingDetailPage'
 const DocumentsPage = lazy(() => import('./pages/Documents/DocumentsPage'));
 const MembersPage = lazy(() => import('./pages/Members/MembersPage'));
 const SettingsPage = lazy(() => import('./pages/Settings/SettingsPage'));
-const ReportsPage = lazy(() => import('./pages/Reports/ReportsPage'));
 const MinutesPage = lazy(() => import('./pages/Minutes/MinutesPage'));
 
 interface ProtectedRouteProps {
@@ -139,13 +138,6 @@ function App() {
             </ProtectedRoute>
           } />
 
-          <Route path="/reports" element={
-            <ProtectedRoute>
-              <MainLayout>
-                <ReportsPage />
-              </MainLayout>
-            </ProtectedRoute>
-          } />
 
           <Route path="/minutes" element={
             <ProtectedRoute>
