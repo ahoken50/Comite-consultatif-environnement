@@ -341,13 +341,24 @@ export const generateAgendaPDF = async (meeting: Meeting) => {
 </html>
     `;
 
-    // Create a temporary container
+    // Create a temporary container that's visible but hidden from user view
+    // Using opacity: 0 and pointer-events: none instead of off-screen positioning
+    // This ensures html2canvas can properly measure and render the content
     const container = document.createElement('div');
     container.innerHTML = htmlContent;
-    container.style.position = 'absolute';
-    container.style.left = '-9999px';
+    container.style.position = 'fixed';
     container.style.top = '0';
+    container.style.left = '0';
+    container.style.width = '816px'; // Legal width at 96 DPI
+    container.style.minHeight = '1344px'; // Legal height at 96 DPI
+    container.style.zIndex = '-9999';
+    container.style.opacity = '0';
+    container.style.pointerEvents = 'none';
+    container.style.overflow = 'visible';
     document.body.appendChild(container);
+
+    // Wait for images to load and DOM to settle
+    await new Promise(resolve => setTimeout(resolve, 500));
 
     // PDF options
     const opt = {
@@ -357,7 +368,11 @@ export const generateAgendaPDF = async (meeting: Meeting) => {
         html2canvas: {
             scale: 2,
             useCORS: true,
-            letterRendering: true
+            letterRendering: true,
+            width: 816,
+            height: container.scrollHeight || 1344,
+            windowWidth: 816,
+            windowHeight: container.scrollHeight || 1344
         },
         jsPDF: {
             unit: 'in' as const,
