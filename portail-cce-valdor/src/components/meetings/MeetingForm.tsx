@@ -24,9 +24,11 @@ import { parseAgendaPDF } from '../../services/pdfParserService';
 const agendaItemSchema = z.object({
     title: z.string().min(1, 'Le titre est requis'),
     description: z.string().optional(),
-    duration: z.coerce.number().min(1, 'La durée est requise'),
-    presenter: z.string().min(1, 'Le responsable est requis'),
-    objective: z.string().min(1, 'L\'objectif est requis'),
+    // Coerce number, default to 15 if invalid/empty
+    duration: z.coerce.number().optional().default(15),
+    // Allow empty strings, default to standard values
+    presenter: z.string().optional().default('Coordonnateur'),
+    objective: z.string().optional().default('Information'),
     decision: z.string().optional(),
     // Preserve minutes fields to prevent data loss on save
     minuteEntries: z.any().optional(),
