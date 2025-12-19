@@ -51,7 +51,7 @@ export const generateAgendaPDF = async (meeting: Meeting) => {
         item.objective,
         item.duration + ' min',
         item.presenter,
-        item.decision || ''
+        item.description || item.decision || ''
     ]);
 
     autoTable(doc, {
@@ -79,9 +79,9 @@ export const generateAgendaPDF = async (meeting: Meeting) => {
             0: { cellWidth: 10, fontStyle: 'bold' },
             1: { cellWidth: 'auto' },
             2: { cellWidth: 25 },
-            3: { cellWidth: 20 },
-            4: { cellWidth: 30 },
-            5: { cellWidth: 40 }
+            3: { cellWidth: 15 },
+            4: { cellWidth: 35 },
+            5: { cellWidth: 45 }
         },
     });
 

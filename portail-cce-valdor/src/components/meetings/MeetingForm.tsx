@@ -29,12 +29,12 @@ const agendaItemSchema = z.object({
     objective: z.string().min(1, 'L\'objectif est requis'),
     decision: z.string().optional(),
     // Preserve minutes fields to prevent data loss on save
-    minuteEntries: z.array(z.any()).optional(),
-    minuteType: z.string().optional(),
-    minuteNumber: z.string().optional(),
-    proposer: z.string().optional(),
-    seconder: z.string().optional(),
-    linkedProjectId: z.string().optional(),
+    minuteEntries: z.any().optional(),
+    minuteType: z.any().optional(),
+    minuteNumber: z.any().optional(),
+    proposer: z.any().optional(),
+    seconder: z.any().optional(),
+    linkedProjectId: z.any().optional(),
 });
 
 const meetingSchema = z.object({
@@ -63,7 +63,12 @@ const MeetingForm: React.FC<MeetingFormProps> = ({ open, onClose, onSubmit, init
             // Ensure date is in YYYY-MM-DDThh:mm format for datetime-local input
             // Default time: 17:00
             date: initialData?.date
-                ? initialData.date.slice(0, 16)
+                ? (() => {
+                    // Convert UTC ISO string to Local ISO string for datetime-local input
+                    const d = new Date(initialData.date!);
+                    const offset = d.getTimezoneOffset() * 60000;
+                    return (new Date(d.getTime() - offset)).toISOString().slice(0, 16);
+                })()
                 : (() => {
                     const d = new Date();
                     d.setHours(17, 0, 0, 0);
@@ -199,7 +204,7 @@ const MeetingForm: React.FC<MeetingFormProps> = ({ open, onClose, onSubmit, init
                     )}
                 </Box>
             </DialogTitle>
-            <form onSubmit={handleSubmit(handleFormSubmit)}>
+            <form onSubmit={handleSubmit(handleFormSubmit, (errors) => console.error('Validation errors:', errors))}>
                 <DialogContent>
                     <Grid container spacing={2}>
                         <Grid size={{ xs: 12 }}>

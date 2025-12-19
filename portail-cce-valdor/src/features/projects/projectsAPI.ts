@@ -22,10 +22,10 @@ export const projectsAPI = {
             id: doc.id,
             ...doc.data(),
             // Convert Timestamps to ISO strings for Redux serialization
-            dateCreated: doc.data().dateCreated?.toDate().toISOString(),
-            dateUpdated: doc.data().dateUpdated?.toDate().toISOString(),
-            dateCompleted: doc.data().dateCompleted?.toDate().toISOString() || null,
-            estimatedCompletionDate: doc.data().estimatedCompletionDate?.toDate().toISOString() || null,
+            dateCreated: doc.data().dateCreated?.toDate ? doc.data().dateCreated.toDate().toISOString() : doc.data().dateCreated,
+            dateUpdated: doc.data().dateUpdated?.toDate ? doc.data().dateUpdated.toDate().toISOString() : doc.data().dateUpdated,
+            dateCompleted: (doc.data().dateCompleted?.toDate ? doc.data().dateCompleted.toDate().toISOString() : doc.data().dateCompleted) || null,
+            estimatedCompletionDate: (doc.data().estimatedCompletionDate?.toDate ? doc.data().estimatedCompletionDate.toDate().toISOString() : doc.data().estimatedCompletionDate) || null,
         } as Project));
     },
 

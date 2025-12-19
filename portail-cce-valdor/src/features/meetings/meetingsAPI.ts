@@ -61,9 +61,9 @@ export const meetingsAPI = {
             id: doc.id,
             ...doc.data(),
             // Convert Timestamps to ISO strings
-            date: doc.data().date?.toDate().toISOString(),
-            dateCreated: doc.data().dateCreated?.toDate().toISOString(),
-            dateUpdated: doc.data().dateUpdated?.toDate().toISOString(),
+            date: (doc.data().date?.toDate ? doc.data().date.toDate().toISOString() : doc.data().date) || new Date().toISOString(),
+            dateCreated: (doc.data().dateCreated?.toDate ? doc.data().dateCreated.toDate().toISOString() : doc.data().dateCreated),
+            dateUpdated: (doc.data().dateUpdated?.toDate ? doc.data().dateUpdated.toDate().toISOString() : doc.data().dateUpdated),
         } as Meeting));
     },
 

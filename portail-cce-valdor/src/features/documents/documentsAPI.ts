@@ -28,7 +28,7 @@ export const documentsAPI = {
         return snapshot.docs.map(doc => ({
             id: doc.id,
             ...doc.data(),
-            dateUploaded: doc.data().dateUploaded?.toDate().toISOString(),
+            dateUploaded: doc.data().dateUploaded?.toDate ? doc.data().dateUploaded.toDate().toISOString() : doc.data().dateUploaded,
         } as Document));
     },
 
@@ -42,7 +42,7 @@ export const documentsAPI = {
         const docs = snapshot.docs.map(doc => ({
             id: doc.id,
             ...doc.data(),
-            dateUploaded: doc.data().dateUploaded?.toDate().toISOString(),
+            dateUploaded: doc.data().dateUploaded?.toDate ? doc.data().dateUploaded.toDate().toISOString() : doc.data().dateUploaded,
         } as Document));
 
         // Sort in memory to avoid needing a composite index
