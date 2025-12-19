@@ -130,11 +130,13 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
     };
 
     const handleSave = () => {
-        // Merge decisions into agenda items, preserving minuteEntries
+        // Save agenda items WITHOUT overwriting the decision field
+        // decision = ODJ "Note/Décision attendue" (preserved)
+        // minuteEntries = PV resolutions/comments
         const updatedAgendaItems = localAgendaItems.map(item => ({
             ...item,
-            decision: itemDecisions[item.id] || item.decision || '',
-            // Explicitly preserve minuteEntries
+            // IMPORTANT: Do NOT overwrite decision field - it belongs to ODJ
+            // PV content goes in minuteEntries, not decision
             minuteEntries: item.minuteEntries
         }));
 
@@ -153,13 +155,11 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
 
     const handleGeneratePDF = () => {
         // Create a temporary meeting object with current state
+        // Use localAgendaItems directly without overwriting decision
         const meetingForPdf: Meeting = {
             ...meeting,
             minutes: globalNotes,
-            agendaItems: localAgendaItems.map(item => ({
-                ...item,
-                decision: itemDecisions[item.id] || ''
-            }))
+            agendaItems: localAgendaItems
         };
         generateMinutesPDF(meetingForPdf, globalNotes);
     };
