@@ -8,13 +8,16 @@ import {
     CircularProgress,
     Alert,
     Divider,
-    Chip
+    Chip,
+    Grid
 } from '@mui/material';
 import {
     Psychology,
     Edit,
     CheckCircle,
-    ArrowRightAlt
+    ArrowRightAlt,
+    ContentCopy,
+    People
 } from '@mui/icons-material';
 import type { Meeting, MinutesDraft } from '../../types/meeting.types';
 import { generateMinutesDraft, finalizeDraft, isGeminiConfigured } from '../../services/geminiService';
@@ -189,6 +192,57 @@ const TranscriptionViewer: React.FC<TranscriptionViewerProps> = ({
                     {transcription}
                 </Paper>
             </Paper>
+
+            {/* Speaker Identification Section */}
+            <Box sx={{ mb: 3 }}>
+                <Button
+                    variant="outlined"
+                    startIcon={<People />}
+                    onClick={() => setShowSpeakerMap(!showSpeakerMap)}
+                    sx={{ mb: 2 }}
+                >
+                    Identifier les intervenants
+                </Button>
+
+                {showSpeakerMap && (
+                    <Paper variant="outlined" sx={{ p: 2, bgcolor: 'background.default' }}>
+                        <Typography variant="subtitle2" gutterBottom>
+                            Renommer les intervenants détectés :
+                        </Typography>
+                        <Grid container spacing={2} alignItems="center">
+                            {detectedSpeakers.map((speaker) => (
+                                <React.Fragment key={speaker}>
+                                    <Grid size={5}>
+                                        <Typography variant="body2" sx={{ fontWeight: 'bold' }}>{speaker}</Typography>
+                                    </Grid>
+                                    <Grid size={1} sx={{ textAlign: 'center' }}>
+                                        <ArrowRightAlt />
+                                    </Grid>
+                                    <Grid size={6}>
+                                        <TextField
+                                            size="small"
+                                            fullWidth
+                                            placeholder="Nom réel (ex: Mme Lamoureux)"
+                                            value={speakerMap[speaker] || ''}
+                                            onChange={(e) => setSpeakerMap(prev => ({ ...prev, [speaker]: e.target.value }))}
+                                        />
+                                    </Grid>
+                                </React.Fragment>
+                            ))}
+                        </Grid>
+                        <Box sx={{ mt: 2, textAlign: 'right' }}>
+                            <Button
+                                variant="contained"
+                                size="small"
+                                onClick={handleApplySpeakerNames}
+                                disabled={Object.keys(speakerMap).length === 0}
+                            >
+                                Appliquer les noms
+                            </Button>
+                        </Box>
+                    </Paper>
+                )}
+            </Box>
 
             {/* Draft Generation Button */}
             {!draft && (
