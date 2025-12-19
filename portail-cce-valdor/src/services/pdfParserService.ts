@@ -55,10 +55,19 @@ export const parseAgendaPDF = async (file: File): Promise<ParsedMeetingData> => 
     }
 
     // 2. Extract Title
-    // Look for "ASSEMBLÉE"
-    const titleLine = lines.find(line => line.toUpperCase().includes('ASSEMBLÉE'));
-    if (titleLine) {
-        result.title = titleLine;
+    // Look for "ASSEMBLÉE" and potentially the line before (e.g., "COMITÉ...")
+    const titleIndex = lines.findIndex(line => line.toUpperCase().includes('ASSEMBLÉE'));
+    if (titleIndex !== -1) {
+        let fullTitle = lines[titleIndex];
+        // Check if previous line exists and looks like a header (uppercase)
+        if (titleIndex > 0) {
+            const prevLine = lines[titleIndex - 1];
+            // If prev line is mostly uppercase and not a date
+            if (prevLine === prevLine.toUpperCase() && !prevLine.match(/^\d/)) {
+                fullTitle = prevLine + '\n' + fullTitle;
+            }
+        }
+        result.title = fullTitle;
     }
 
     // 3. Extract Agenda Items
@@ -66,19 +75,12 @@ export const parseAgendaPDF = async (file: File): Promise<ParsedMeetingData> => 
     let itemOrder = 1;
 
     for (const line of lines) {
-        // Strict Regex for Agenda Items: 
-        // Must start with a number
-        // Must be followed by a DOT (.) or PARENTHESIS ())
-        // Must NOT be followed by 'e' or 'è' (to avoid "13e Assemblée")
-        // Example matches: "1. Mot", "2) Adoption"
-        // Example NON-matches: "13e Assemblée", "2025"
+        // Strict Regex for Agenda Items
         const itemMatch = line.match(/^(\d+)[.)]\s+(.*)/);
-
-        // Check for specific "pure number" line case "1."
         const isNumberOnly = line.match(/^(\d+)[.)]\s*$/);
 
         if (itemMatch && !isNumberOnly && itemMatch[2].length > 0) {
-            // Standard case: "1. Title"
+            // New Item detected
             if (currentItem && currentItem.title) {
                 result.agendaItems?.push(currentItem as AgendaItem);
             }
@@ -95,7 +97,7 @@ export const parseAgendaPDF = async (file: File): Promise<ParsedMeetingData> => 
             };
             itemOrder++;
         } else if (isNumberOnly) {
-            // Case: "1." on its own line. Prepare for next line to be the title.
+            // New Item with empty title on first line
             if (currentItem && currentItem.title) {
                 result.agendaItems?.push(currentItem as AgendaItem);
             }
@@ -104,7 +106,7 @@ export const parseAgendaPDF = async (file: File): Promise<ParsedMeetingData> => 
             currentItem = {
                 id: `imported-${Date.now()}-${order}`,
                 order: order,
-                title: '', // Will be filled by next line
+                title: '',
                 duration: 15,
                 presenter: 'Coordonnateur',
                 objective: 'Information',
@@ -112,12 +114,30 @@ export const parseAgendaPDF = async (file: File): Promise<ParsedMeetingData> => 
             };
             itemOrder++;
         } else if (currentItem) {
-            // Append to current item title if it looks like continuation
-            // If the title is empty (from NumberOnly case), this line IS the title.
+            // Append continuation line
             if (currentItem.title === '') {
                 currentItem.title = line;
             } else {
-                currentItem.title += ' ' + line;
+                // Heuristic: If line starts with lowercase letter (and isn't a common stop word like 'de', 'le'),
+                // OR if the current title ends with a hyphen,
+                // assume it's a word split and join WITHOUT space.
+                // Otherwise join WITH space.
+
+                const startsWithLower = /^[a-z]/.test(line);
+                const isCommonWord = /^(de|le|la|les|des|du|en|un|une|et|à|au|aux|sur|par|pour|dans)\b/i.test(line);
+                const currentTitle = currentItem.title || '';
+                const endsWithHyphen = currentTitle.trim().endsWith('-');
+
+                if (endsWithHyphen) {
+                    // Remove hyphen if it looks like a soft hyphen? No, just keep hyphen logic simple for now
+                    // Usually "environne-\nment" -> "environnement"
+                    currentItem.title = currentTitle.trim().replace(/-$/, '') + line;
+                } else if (startsWithLower && !isCommonWord) {
+                    // likely a split word like "Ado" + "ption" or "Rev" + "u"
+                    currentItem.title = currentTitle + line;
+                } else {
+                    currentItem.title = currentTitle + ' ' + line;
+                }
             }
         }
     }
