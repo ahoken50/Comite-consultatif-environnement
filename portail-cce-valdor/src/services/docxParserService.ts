@@ -38,7 +38,8 @@ export const parseAgendaDOCX = async (file: File): Promise<ParsedMeetingData> =>
     // 1. Extract Date
     // ============================================================
     const fullText = doc.body.textContent || '';
-    const dateRegex = /(\d{1,2})\s+(janvier|février|mars|avril|mai|juin|juillet|août|septembre|octobre|novembre|décembre)\s+(\d{4})/i;
+    // Regex for French date: Optional DayName, Day, Month, Year
+    const dateRegex = /(?:Lundi|Mardi|Mercredi|Jeudi|Vendredi|Samedi|Dimanche)?\s*(\d{1,2})\s+(janvier|février|mars|avril|mai|juin|juillet|août|septembre|octobre|novembre|décembre)\s+(\d{4})/i;
     const dateMatch = fullText.match(dateRegex);
     if (dateMatch) {
         const months: { [key: string]: string } = {
@@ -51,7 +52,7 @@ export const parseAgendaDOCX = async (file: File): Promise<ParsedMeetingData> =>
         const month = months[monthStr];
 
         if (month) {
-            parsedResult.date = `${year}-${month}-${day}T19:00`;
+            parsedResult.date = `${year}-${month}-${day}T17:00`;
         }
     }
 

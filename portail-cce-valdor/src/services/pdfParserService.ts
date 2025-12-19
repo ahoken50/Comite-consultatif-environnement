@@ -32,9 +32,9 @@ export const parseAgendaPDF = async (file: File): Promise<ParsedMeetingData> => 
 
     const lines = fullText.split('\n').map(line => line.trim()).filter(line => line.length > 0);
 
-    // 1. Extract Date (Look for patterns like "Jeudi 9 juin 2022")
+    // 1. Extract Date (Look for patterns like "Jeudi 9 juin 2022" or "Mardi 25 février 2025")
     // Regex for French date: DayName Day Month Year
-    const dateRegex = /(\w+)\s+(\d{1,2})\s+(\w+)\s+(\d{4})/i;
+    const dateRegex = /(?:Lundi|Mardi|Mercredi|Jeudi|Vendredi|Samedi|Dimanche)?\s*(\d{1,2})\s+(\w+)\s+(\d{4})/i;
     const dateMatch = fullText.match(dateRegex);
     if (dateMatch) {
         // Attempt to parse date. For simplicity, we might just return the string or try to format it.
@@ -44,14 +44,14 @@ export const parseAgendaPDF = async (file: File): Promise<ParsedMeetingData> => 
             'janvier': '01', 'février': '02', 'mars': '03', 'avril': '04', 'mai': '05', 'juin': '06',
             'juillet': '07', 'août': '08', 'septembre': '09', 'octobre': '10', 'novembre': '11', 'décembre': '12'
         };
-        const day = dateMatch[2].padStart(2, '0');
-        const monthStr = dateMatch[3].toLowerCase();
-        const year = dateMatch[4];
+        const day = dateMatch[1].padStart(2, '0');
+        const monthStr = dateMatch[2].toLowerCase();
+        const year = dateMatch[3];
         const month = months[monthStr];
 
         if (month) {
-            // Default time to 19:00 (7 PM) as it's common for committees
-            result.date = `${year}-${month}-${day}T19:00`;
+            // Default time to 17:00 (5 PM) as per user preference
+            result.date = `${year}-${month}-${day}T17:00`;
         }
     }
 
@@ -63,14 +63,13 @@ export const parseAgendaPDF = async (file: File): Promise<ParsedMeetingData> => 
     }
 
     // 3. Extract Agenda Items
-    // Look for lines starting with a number followed by a dot (e.g., "1. ")
+    // Look for lines starting with a number followed by a dot or space (e.g., "1. ", "2 ")
     let currentItem: Partial<AgendaItem> | null = null;
     let itemOrder = 1;
 
     for (const line of lines) {
-        // Regex for item starting with number and dot (e.g. "1. Title")
-        // We also handle the case where the number and dot are on one line, and the text is on the next (handled by state)
         // Relaxed regex: Number, optional dot/paren, optional whitespace, then content
+        // Also supports lines ending in semicolon
         const itemMatch = line.match(/^(\d+)[.)]?\s*(.*)/);
 
         // Check if it's a "pure" number line (e.g. "1." or "1") which suggests the text is on the next line

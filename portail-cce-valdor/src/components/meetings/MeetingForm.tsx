@@ -54,8 +54,18 @@ const MeetingForm: React.FC<MeetingFormProps> = ({ open, onClose, onSubmit, init
         defaultValues: {
             title: initialData?.title || '',
             // Ensure date is in YYYY-MM-DDThh:mm format for datetime-local input
-            date: initialData?.date ? initialData.date.slice(0, 16) : new Date().toISOString().slice(0, 16),
-            location: initialData?.location || 'Salle du conseil',
+            // Default time: 17:00
+            date: initialData?.date
+                ? initialData.date.slice(0, 16)
+                : (() => {
+                    const d = new Date();
+                    d.setHours(17, 0, 0, 0);
+                    // Adjust for local timezone offset manually to align with datetime-local
+                    const offset = d.getTimezoneOffset() * 60000;
+                    const localISOTime = (new Date(d.getTime() - offset)).toISOString().slice(0, 16);
+                    return localISOTime;
+                })(),
+            location: initialData?.location || "Salle de l'urbanisme et de l'environnement",
             type: initialData?.type || MeetingType.REGULAR,
             status: initialData?.status || MeetingStatus.SCHEDULED,
             agendaItems: initialData?.agendaItems || [],
@@ -230,11 +240,19 @@ const MeetingForm: React.FC<MeetingFormProps> = ({ open, onClose, onSubmit, init
                                     <TextField
                                         {...field}
                                         id={`${formId}-location`}
+                                        select
                                         label="Lieu"
                                         fullWidth
                                         error={!!errors.location}
                                         helperText={errors.location?.message}
-                                    />
+                                    >
+                                        <MenuItem value="Salle de l'urbanisme et de l'environnement">
+                                            Salle de l'urbanisme et de l'environnement
+                                        </MenuItem>
+                                        <MenuItem value="Réunion TEAMS">
+                                            Réunion TEAMS
+                                        </MenuItem>
+                                    </TextField>
                                 )}
                             />
                         </Grid>
