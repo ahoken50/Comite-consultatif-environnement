@@ -112,7 +112,7 @@ export const parseAgendaPDF = async (file: File): Promise<ParsedMeetingData> => 
             currentItem = {
                 id: `imported-${Date.now()}-${order}`,
                 order: order,
-                title: '',
+                title: 'Point sans titre',
                 duration: 15,
                 presenter: 'Coordonnateur',
                 objective: 'Information',

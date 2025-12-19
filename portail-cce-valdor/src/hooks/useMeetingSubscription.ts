@@ -20,9 +20,9 @@ export const useMeetingSubscription = (meetingId?: string) => {
                         id: docSnapshot.id,
                         ...data,
                         // Convert Timestamps to ISO strings
-                        date: data.date?.toDate().toISOString(),
-                        dateCreated: data.dateCreated?.toDate().toISOString(),
-                        dateUpdated: data.dateUpdated?.toDate().toISOString(),
+                        date: (data.date?.toDate ? data.date.toDate().toISOString() : data.date),
+                        dateCreated: (data.dateCreated?.toDate ? data.dateCreated.toDate().toISOString() : data.dateCreated),
+                        dateUpdated: (data.dateUpdated?.toDate ? data.dateUpdated.toDate().toISOString() : data.dateUpdated),
                     } as Meeting;
 
                     dispatch(upsertMeeting(meeting));

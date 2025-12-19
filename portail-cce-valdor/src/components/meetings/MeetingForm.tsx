@@ -94,7 +94,18 @@ const MeetingForm: React.FC<MeetingFormProps> = ({ open, onClose, onSubmit, init
 
     const handleFormSubmit = (data: MeetingFormData) => {
         console.log('Form submitted with data:', data);
-        onSubmit(data);
+
+        // Convert local date string (from datetime-local input) back to UTC ISO string
+        // The input value is like "2024-03-20T17:00" (Local)
+        // new Date("2024-03-20T17:00") creates a Date object representing that local time
+        // .toISOString() converts it to UTC (e.g. "2024-03-20T21:00:00.000Z")
+        const localDate = new Date(data.date);
+        const utcDate = localDate.toISOString();
+
+        onSubmit({
+            ...data,
+            date: utcDate
+        });
     };
 
     const handlePrint = () => {
