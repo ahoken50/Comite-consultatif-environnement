@@ -79,9 +79,7 @@ const MeetingDetailPage: React.FC = () => {
         }
     }, [location.state]);
 
-    if (!meeting) {
-        return <Typography>Réunion non trouvée</Typography>;
-    }
+
 
     const handleAgendaUpdate = (newItems: AgendaItem[]) => {
         if (id) {
@@ -120,6 +118,11 @@ const MeetingDetailPage: React.FC = () => {
     }, [meeting, dispatch]);
 
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+
+    // Early return moved to after all hooks to satisfy Rules of Hooks
+    if (!meeting) {
+        return <Typography>Réunion non trouvée</Typography>;
+    }
 
     const handleMeetingUpdate = (updatedData: any) => {
         if (id) {
