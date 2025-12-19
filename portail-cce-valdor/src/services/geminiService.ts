@@ -388,22 +388,7 @@ Génère le procès-verbal final, prêt à être imprimé.`;
     }
 };
 
-/**
- * Convert Blob to base64 string
- */
-const blobToBase64 = (blob: Blob): Promise<string> => {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onloadend = () => {
-            const base64 = reader.result as string;
-            // Remove data URL prefix
-            const base64Data = base64.split(',')[1];
-            resolve(base64Data);
-        };
-        reader.onerror = reject;
-        reader.readAsDataURL(blob);
-    });
-};
+
 
 /**
  * Check if Gemini API is configured
