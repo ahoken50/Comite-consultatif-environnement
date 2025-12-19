@@ -2,6 +2,7 @@ import {
     collection,
     getDocs,
     addDoc,
+    updateDoc,
     deleteDoc,
     doc,
     query,
@@ -104,5 +105,10 @@ export const documentsAPI = {
                 console.error('Failed to delete file from storage:', storageError);
             }
         }
+    },
+
+    update: async (id: string, updates: Partial<Document>): Promise<void> => {
+        const docRef = doc(db, COLLECTION_NAME, id);
+        await updateDoc(docRef, updates as any);
     }
 };

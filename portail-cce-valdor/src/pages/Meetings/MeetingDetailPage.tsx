@@ -16,7 +16,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import type { AppDispatch } from '../../store/store';
 import type { RootState } from '../../store/rootReducer';
 import { updateMeeting } from '../../features/meetings/meetingsSlice';
-import { fetchDocumentsByEntity, deleteDocument } from '../../features/documents/documentsSlice';
+import { fetchDocumentsByEntity, deleteDocument, updateDocument } from '../../features/documents/documentsSlice';
 import AgendaBuilder from '../../components/meetings/AgendaBuilder';
 import MinutesEditor from '../../components/meetings/MinutesEditor';
 import AttendanceManager from '../../components/meetings/AttendanceManager';
@@ -85,6 +85,22 @@ const MeetingDetailPage: React.FC = () => {
         if (id) {
             dispatch(updateMeeting({ id, updates: { agendaItems: newItems } }));
         }
+    };
+
+    const handleDocumentUnlink = (docId: string) => {
+        // Unlink by setting agendaItemId to null (or we could use deleteField if preferred, but null is safer for now if type allows)
+        // Since API uses Partial<Document>, and agendaItemId is string | undefined.
+        // We probably want to update it to be 'undefined' or empty.
+        // However, updating to undefined usually means "no change" in many update logics unless explicit.
+        // Let's rely on the fact that Firestore treats null as a value, or we might need a specific sentinel if we really want to remove the field.
+        // For this app, let's try setting it to null (casted as any if needed, or if the type allows null).
+        // The type is `agendaItemId?: string`. So strictly it shouldn't be null.
+        // But Firestore can store null.
+        dispatch(updateDocument({ id: docId, updates: { agendaItemId: null as any } }));
+    };
+
+    const handleDocumentDelete = (docId: string, storagePath: string) => {
+        dispatch(deleteDocument({ id: docId, storagePath }));
     };
 
     // Patch: Ensure all agenda items have IDs (fixes legacy data issue)
@@ -179,6 +195,8 @@ const MeetingDetailPage: React.FC = () => {
                         documents={documents.filter(d => d.linkedEntityId === meeting.id)}
                         onDocumentUpload={() => dispatch(fetchDocumentsByEntity({ entityId: meeting.id, entityType: 'meeting' }))}
                         initialAgendaItemId={(location.state as any)?.agendaItemId}
+                        onDocumentUnlink={handleDocumentUnlink}
+                        onDocumentDelete={handleDocumentDelete}
                     />
                 </TabPanel>
 
