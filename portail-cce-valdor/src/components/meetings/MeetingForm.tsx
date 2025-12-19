@@ -28,6 +28,13 @@ const agendaItemSchema = z.object({
     presenter: z.string().min(1, 'Le responsable est requis'),
     objective: z.string().min(1, 'L\'objectif est requis'),
     decision: z.string().optional(),
+    // Preserve minutes fields to prevent data loss on save
+    minuteEntries: z.array(z.any()).optional(),
+    minuteType: z.string().optional(),
+    minuteNumber: z.string().optional(),
+    proposer: z.string().optional(),
+    seconder: z.string().optional(),
+    linkedProjectId: z.string().optional(),
 });
 
 const meetingSchema = z.object({
@@ -401,13 +408,13 @@ const MeetingForm: React.FC<MeetingFormProps> = ({ open, onClose, onSubmit, init
                                         </Grid>
                                         <Grid size={{ xs: 12, sm: 6 }}>
                                             <Controller
-                                                name={`agendaItems.${index}.decision`}
+                                                name={`agendaItems.${index}.description`}
                                                 control={control}
                                                 render={({ field }) => (
                                                     <TextField
                                                         {...field}
-                                                        id={`${formId}-agenda-${index}-decision`}
-                                                        label="Note / Décision attendue"
+                                                        id={`${formId}-agenda-${index}-description`}
+                                                        label="Notes / Description (Agenda)"
                                                         fullWidth
                                                         size="small"
                                                     />
