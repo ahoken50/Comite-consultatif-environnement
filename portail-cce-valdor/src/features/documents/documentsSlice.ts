@@ -43,6 +43,14 @@ export const uploadDocument = createAsyncThunk(
     }
 );
 
+export const updateDocument = createAsyncThunk(
+    'documents/update',
+    async ({ id, updates }: { id: string; updates: Partial<Document> }) => {
+        await documentsAPI.update(id, updates);
+        return { id, updates };
+    }
+);
+
 export const deleteDocument = createAsyncThunk(
     'documents/delete',
     async ({ id, storagePath }: { id: string; storagePath: string }) => {
@@ -95,6 +103,13 @@ const documentsSlice = createSlice({
             .addCase(uploadDocument.rejected, (state, action) => {
                 state.uploading = false;
                 state.error = action.error.message || 'Upload failed';
+            })
+            // Update
+            .addCase(updateDocument.fulfilled, (state, action) => {
+                const index = state.items.findIndex(d => d.id === action.payload.id);
+                if (index !== -1) {
+                    state.items[index] = { ...state.items[index], ...action.payload.updates };
+                }
             })
             // Delete
             .addCase(deleteDocument.fulfilled, (state, action) => {

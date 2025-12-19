@@ -16,7 +16,8 @@ import {
     MenuItem,
     Grid,
     Chip,
-    Stack
+    Stack,
+    DialogContentText
 } from '@mui/material';
 import { DragIndicator, Add, Delete, Edit, AttachFile } from '@mui/icons-material';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
@@ -35,6 +36,8 @@ interface AgendaBuilderProps {
     documents?: Document[];
     onDocumentUpload?: () => void;
     initialAgendaItemId?: string;
+    onDocumentUnlink?: (docId: string) => void;
+    onDocumentDelete?: (docId: string, storagePath: string) => void;
 }
 
 const SortableItem = ({ item, onDelete, onEdit, linkedDocuments }: { item: AgendaItem; onDelete: (id: string) => void; onEdit: (item: AgendaItem) => void; linkedDocuments?: Document[] }) => {
@@ -90,10 +93,11 @@ const SortableItem = ({ item, onDelete, onEdit, linkedDocuments }: { item: Agend
     );
 };
 
-const AgendaBuilder: React.FC<AgendaBuilderProps> = ({ items, onItemsChange, meetingId, documents = [], onDocumentUpload, initialAgendaItemId }) => {
+const AgendaBuilder: React.FC<AgendaBuilderProps> = ({ items, onItemsChange, meetingId, documents = [], onDocumentUpload, initialAgendaItemId, onDocumentUnlink, onDocumentDelete }) => {
     const [editingItem, setEditingItem] = useState<AgendaItem | null>(null);
     const [isEditOpen, setIsEditOpen] = useState(false);
     const [previewDoc, setPreviewDoc] = useState<Document | null>(null);
+    const [documentToAction, setDocumentToAction] = useState<Document | null>(null);
 
     // Auto-open edit dialog if initialAgendaItemId is provided
     React.useEffect(() => {
@@ -269,7 +273,7 @@ const AgendaBuilder: React.FC<AgendaBuilderProps> = ({ items, onItemsChange, mee
                                                 icon={<AttachFile />}
                                                 variant="outlined"
                                                 onClick={() => setPreviewDoc(doc)}
-                                                onDelete={() => { /* TODO: Handle unlink/delete */ }}
+                                                onDelete={() => setDocumentToAction(doc)}
                                                 sx={{ cursor: 'pointer' }}
                                             />
                                         ))}
@@ -290,6 +294,56 @@ const AgendaBuilder: React.FC<AgendaBuilderProps> = ({ items, onItemsChange, mee
                 <DialogActions>
                     <Button onClick={() => setIsEditOpen(false)}>Annuler</Button>
                     <Button onClick={handleSaveEdit} variant="contained">Enregistrer</Button>
+                </DialogActions>
+            </Dialog>
+
+            {/* Document Action Dialog */}
+            <Dialog
+                open={!!documentToAction}
+                onClose={() => setDocumentToAction(null)}
+                maxWidth="xs"
+                fullWidth
+            >
+                <DialogTitle>Gérer le document</DialogTitle>
+                <DialogContent>
+                    <DialogContentText>
+                        Que souhaitez-vous faire avec le document "{documentToAction?.name}" ?
+                    </DialogContentText>
+                </DialogContent>
+                <DialogActions sx={{ flexDirection: 'column', gap: 1, alignItems: 'stretch', p: 2 }}>
+                    {onDocumentUnlink && (
+                        <Button
+                            variant="outlined"
+                            onClick={() => {
+                                if (documentToAction) {
+                                    onDocumentUnlink(documentToAction.id);
+                                    setDocumentToAction(null);
+                                }
+                            }}
+                        >
+                            Détacher de ce point
+                        </Button>
+                    )}
+                    {onDocumentDelete && (
+                        <Button
+                            variant="outlined"
+                            color="error"
+                            onClick={() => {
+                                if (documentToAction) {
+                                    onDocumentDelete(documentToAction.id, documentToAction.storagePath);
+                                    setDocumentToAction(null);
+                                }
+                            }}
+                        >
+                            Supprimer définitivement
+                        </Button>
+                    )}
+                    <Button
+                        onClick={() => setDocumentToAction(null)}
+                        color="inherit"
+                    >
+                        Annuler
+                    </Button>
                 </DialogActions>
             </Dialog>
 
