@@ -33,6 +33,7 @@ const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, onClose }) => {
                         <ListItem key={item.text} disablePadding>
                             <ListItemButton
                                 selected={location.pathname === item.path}
+                                aria-current={location.pathname === item.path ? 'page' : undefined}
                                 onClick={() => {
                                     navigate(item.path);
                                     onClose();
