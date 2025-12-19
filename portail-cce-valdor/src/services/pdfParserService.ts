@@ -32,25 +32,24 @@ export const parseAgendaPDF = async (file: File): Promise<ParsedMeetingData> => 
 
     const lines = fullText.split('\n').map(line => line.trim()).filter(line => line.length > 0);
 
-    // 1. Extract Date (Look for patterns like "Jeudi 9 juin 2022" or "Mardi 25 février 2025")
-    // Regex for French date: DayName Day Month Year
-    const dateRegex = /(?:Lundi|Mardi|Mercredi|Jeudi|Vendredi|Samedi|Dimanche)?\s*(\d{1,2})\s+(\w+)\s+(\d{4})/i;
-    const dateMatch = fullText.match(dateRegex);
+    // 1. Extract Date
+    // Improved Regex: Look for Day(optional) + Number + Month + Year
+    // We search across newlines because sometimes text extraction splits them
+    const dateRegex = /(?:Lundi|Mardi|Mercredi|Jeudi|Vendredi|Samedi|Dimanche)?\s*(\d{1,2})\s+(janvier|février|mars|avril|mai|juin|juillet|août|septembre|octobre|novembre|décembre)\s+(\d{4})/i;
+    const dateMatch = fullText.replace(/\n/g, ' ').match(dateRegex);
+
     if (dateMatch) {
-        // Attempt to parse date. For simplicity, we might just return the string or try to format it.
-        // Here we'll try to create a valid ISO string if possible, or just leave it for the user to verify if complex.
-        // A robust implementation would map French month names to numbers.
         const months: { [key: string]: string } = {
             'janvier': '01', 'février': '02', 'mars': '03', 'avril': '04', 'mai': '05', 'juin': '06',
             'juillet': '07', 'août': '08', 'septembre': '09', 'octobre': '10', 'novembre': '11', 'décembre': '12'
         };
+        // match[1] is day, match[2] is month, match[3] is year
         const day = dateMatch[1].padStart(2, '0');
         const monthStr = dateMatch[2].toLowerCase();
         const year = dateMatch[3];
         const month = months[monthStr];
 
         if (month) {
-            // Default time to 17:00 (5 PM) as per user preference
             result.date = `${year}-${month}-${day}T17:00`;
         }
     }
@@ -63,17 +62,20 @@ export const parseAgendaPDF = async (file: File): Promise<ParsedMeetingData> => 
     }
 
     // 3. Extract Agenda Items
-    // Look for lines starting with a number followed by a dot or space (e.g., "1. ", "2 ")
     let currentItem: Partial<AgendaItem> | null = null;
     let itemOrder = 1;
 
     for (const line of lines) {
-        // Relaxed regex: Number, optional dot/paren, optional whitespace, then content
-        // Also supports lines ending in semicolon
-        const itemMatch = line.match(/^(\d+)[.)]?\s*(.*)/);
+        // Strict Regex for Agenda Items: 
+        // Must start with a number
+        // Must be followed by a DOT (.) or PARENTHESIS ())
+        // Must NOT be followed by 'e' or 'è' (to avoid "13e Assemblée")
+        // Example matches: "1. Mot", "2) Adoption"
+        // Example NON-matches: "13e Assemblée", "2025"
+        const itemMatch = line.match(/^(\d+)[.)]\s+(.*)/);
 
-        // Check if it's a "pure" number line (e.g. "1." or "1") which suggests the text is on the next line
-        const isNumberOnly = line.match(/^(\d+)[.)]?\s*$/);
+        // Check for specific "pure number" line case "1."
+        const isNumberOnly = line.match(/^(\d+)[.)]\s*$/);
 
         if (itemMatch && !isNumberOnly && itemMatch[2].length > 0) {
             // Standard case: "1. Title"
