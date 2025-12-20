@@ -43,7 +43,7 @@ const LoginPage: React.FC = () => {
             <Box
                 component="img"
                 src="https://images.unsplash.com/photo-1441974231531-c6227db76b6e?q=80&w=2560&auto=format&fit=crop"
-                alt="Background"
+                alt=""
                 sx={{
                     position: 'absolute',
                     inset: 0,
@@ -91,10 +91,11 @@ const LoginPage: React.FC = () => {
                         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
 
                             <Box>
-                                <Typography variant="caption" sx={{ fontWeight: 600, color: 'grey.800', ml: 0.5, mb: 0.5, display: 'block' }}>
+                                <Typography component="label" htmlFor="email" variant="caption" sx={{ fontWeight: 600, color: 'grey.800', ml: 0.5, mb: 0.5, display: 'block' }}>
                                     Adresse courriel
                                 </Typography>
                                 <TextField
+                                    id="email"
                                     type="email"
                                     fullWidth
                                     placeholder="exemple@ville.valdor.qc.ca"
@@ -122,10 +123,11 @@ const LoginPage: React.FC = () => {
                             </Box>
 
                             <Box>
-                                <Typography variant="caption" sx={{ fontWeight: 600, color: 'grey.800', ml: 0.5, mb: 0.5, display: 'block' }}>
+                                <Typography component="label" htmlFor="password" variant="caption" sx={{ fontWeight: 600, color: 'grey.800', ml: 0.5, mb: 0.5, display: 'block' }}>
                                     Mot de passe
                                 </Typography>
                                 <TextField
+                                    id="password"
                                     type={showPassword ? "text" : "password"}
                                     fullWidth
                                     placeholder="••••••••"
