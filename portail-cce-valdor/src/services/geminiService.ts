@@ -139,7 +139,9 @@ export const transcribeAudio = async (
 
         const response = await fetch(cacheBustUrl, {
             cache: 'no-store',
-            mode: 'cors'
+            mode: 'cors',
+            credentials: 'omit',
+            referrerPolicy: 'no-referrer'
         });
         if (!response.ok) {
             throw new Error(`Failed to fetch audio file: ${response.status} ${response.statusText}`);
