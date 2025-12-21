@@ -75,77 +75,22 @@ function App() {
           <Route path="/login" element={<LoginPage />} />
           <Route path="/signup" element={<SignUpPage />} />
 
-          <Route path="/" element={
+          <Route element={
             <ProtectedRoute>
               <MainLayout />
             </ProtectedRoute>
           }>
-            <Route index element={<Navigate to="/dashboard" replace />} />
-            <Route path="dashboard" element={<Dashboard />} />
+            <Route path="/" element={<Navigate to="/dashboard" replace />} />
+            <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/projects" element={<ProjectsPage />} />
+            <Route path="/projects/:id" element={<ProjectDetailPage />} />
+            <Route path="/meetings" element={<MeetingsPage />} />
+            <Route path="/meetings/:id" element={<MeetingDetailPage />} />
+            <Route path="/documents" element={<DocumentsPage />} />
+            <Route path="/members" element={<MembersPage />} />
+            <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/minutes" element={<MinutesPage />} />
           </Route>
-
-          <Route path="/projects" element={
-            <ProtectedRoute>
-              <MainLayout>
-                <ProjectsPage />
-              </MainLayout>
-            </ProtectedRoute>
-          } />
-          <Route path="/projects/:id" element={
-            <ProtectedRoute>
-              <MainLayout>
-                <ProjectDetailPage />
-              </MainLayout>
-            </ProtectedRoute>
-          } />
-
-          <Route path="/meetings" element={
-            <ProtectedRoute>
-              <MainLayout>
-                <MeetingsPage />
-              </MainLayout>
-            </ProtectedRoute>
-          } />
-          <Route path="/meetings/:id" element={
-            <ProtectedRoute>
-              <MainLayout>
-                <MeetingDetailPage />
-              </MainLayout>
-            </ProtectedRoute>
-          } />
-
-          <Route path="/documents" element={
-            <ProtectedRoute>
-              <MainLayout>
-                <DocumentsPage />
-              </MainLayout>
-            </ProtectedRoute>
-          } />
-
-          <Route path="/members" element={
-            <ProtectedRoute>
-              <MainLayout>
-                <MembersPage />
-              </MainLayout>
-            </ProtectedRoute>
-          } />
-
-          <Route path="/settings" element={
-            <ProtectedRoute>
-              <MainLayout>
-                <SettingsPage />
-              </MainLayout>
-            </ProtectedRoute>
-          } />
-
-
-          <Route path="/minutes" element={
-            <ProtectedRoute>
-              <MainLayout>
-                <MinutesPage />
-              </MainLayout>
-            </ProtectedRoute>
-          } />
 
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>
