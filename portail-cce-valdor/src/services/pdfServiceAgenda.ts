@@ -37,7 +37,13 @@ export const generateAgendaPDF = async (meeting: Meeting) => {
                 </div>
                 <div class="agenda-body">
                     <div class="agenda-details">
-                        ${item.decision ? `<div class="agenda-note-box">${item.decision}</div>` : ''}
+                        ${(() => {
+                // Filter out legacy PV content from ODJ display
+                // PV content typically contains: RÉSOLUTION, CONSIDÉRANT, IL EST RÉSOLU, etc.
+                const note = item.decision || '';
+                const isPVContent = /RÉSOLUTION|CONSIDÉRANT|IL EST RÉSOLU|ATTENDU QUE|ADOPTÉ|UNANIM/i.test(note);
+                return (!isPVContent && note) ? `<div class="agenda-note-box">${note}</div>` : '';
+            })()}
                         <div class="agenda-meta">Responsable : <span>${item.presenter || 'Coordonnateur'}</span></div>
                     </div>
                     <div class="agenda-objective-section">
