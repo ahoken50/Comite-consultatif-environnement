@@ -1,6 +1,6 @@
 import { db, storage } from './firebase';
 import { doc, updateDoc } from 'firebase/firestore';
-import { ref, getBlob } from 'firebase/storage';
+import { ref, getDownloadURL } from 'firebase/storage';
 import type { Meeting, MinutesDraft } from '../types/meeting.types';
 
 // Environment variable for Gemini API key (matches GOOGLE_AI_API GitHub secret)
@@ -128,9 +128,18 @@ export const transcribeAudio = async (
             }
         }
 
-        // Download as Blob using SDK
-        console.log('[Transcription] Downloading via Storage SDK...');
-        const blob = await getBlob(fileRef);
+        // Download as Blob using getDownloadURL + fetch
+        // This avoids getBlob's Range requests which can cause 206 CORS errors
+        console.log('[Transcription] Getting download URL...');
+        const downloadUrl = await getDownloadURL(fileRef);
+        console.log('[Transcription] Fetching from URL:', downloadUrl);
+
+        const response = await fetch(downloadUrl);
+        if (!response.ok) {
+            throw new Error(`Failed to fetch audio file: ${response.status} ${response.statusText}`);
+        }
+
+        const blob = await response.blob();
         console.log('[Transcription] Audio downloaded, size:', blob.size, 'bytes');
 
         // 2. Upload to Gemini File API
