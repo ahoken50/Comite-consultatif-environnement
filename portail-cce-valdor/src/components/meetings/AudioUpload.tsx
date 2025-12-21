@@ -140,7 +140,8 @@ const AudioUpload: React.FC<AudioUploadProps> = ({
         const result = await transcribeAudio(
             meetingId,
             audioRecording.fileUrl,
-            audioRecording.mimeType
+            audioRecording.mimeType,
+            audioRecording.storagePath
         );
 
         if (result.success) {

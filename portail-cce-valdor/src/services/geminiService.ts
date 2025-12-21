@@ -1,5 +1,6 @@
-import { db, auth } from './firebase';
+import { db, storage } from './firebase';
 import { doc, updateDoc } from 'firebase/firestore';
+import { ref, getBlob } from 'firebase/storage';
 import type { Meeting, MinutesDraft } from '../types/meeting.types';
 
 // Environment variable for Gemini API key (matches GOOGLE_AI_API GitHub secret)
@@ -88,7 +89,8 @@ const uploadToGemini = async (blob: Blob, mimeType: string, displayName: string)
 export const transcribeAudio = async (
     meetingId: string,
     audioUrl: string,
-    mimeType: string
+    mimeType: string,
+    storagePath?: string // Optional storage path for direct SDK download
 ): Promise<{ success: boolean; transcription?: string; error?: string }> => {
     if (!GEMINI_API_KEY) {
         return {
@@ -105,34 +107,31 @@ export const transcribeAudio = async (
             dateUpdated: new Date().toISOString()
         });
 
-        // 1. Fetch audio file with Firebase Auth token for secure access
-        // Add timestamp to URL to force fresh request (avoid 304 cache issues)
-        const cacheBustUrl = audioUrl + (audioUrl.includes('?') ? '&' : '?') + '_t=' + Date.now();
-        console.log('[Transcription] Fetching audio from:', cacheBustUrl);
+        // 1. Get audio file using Firebase Storage SDK (handles Auth/CORS natively)
+        // We prefer using the storagePath if available, otherwise try to extract it from URL
+        console.log('[Transcription] Getting audio file...');
 
-        // Get Firebase Auth ID token for authenticated request
-        const currentUser = auth.currentUser;
-        if (!currentUser) {
-            throw new Error('Utilisateur non authentifié. Veuillez vous reconnecter.');
-        }
-        const idToken = await currentUser.getIdToken();
-        console.log('[Transcription] Got Firebase ID token');
-
-        const response = await fetch(cacheBustUrl, {
-            mode: 'cors',
-            credentials: 'omit',
-            cache: 'no-store',
-            headers: {
-                'Authorization': `Bearer ${idToken}`
+        let fileRef;
+        if (storagePath) {
+            console.log('[Transcription] Using provided storage path:', storagePath);
+            fileRef = ref(storage, storagePath);
+        } else {
+            // Fallback: try to create ref from URL
+            console.log('[Transcription] Trying to create ref from URL:', audioUrl);
+            try {
+                fileRef = ref(storage, audioUrl);
+            } catch (e) {
+                console.warn('[Transcription] Could not create ref from URL:', e);
+                // Last resort fallback to fetch if ref creation fails
+                // But this likely won't work if rules require auth, so we just log warning
+                throw new Error('Impossible de récupérer le fichier via le SDK Storage. Chemin de stockage manquant.');
             }
-        });
-
-        if (!response.ok) {
-            throw new Error(`Failed to fetch audio: ${response.status} ${response.statusText}`);
         }
 
-        const blob = await response.blob();
-        console.log('[Transcription] Audio fetched, size:', blob.size, 'bytes');
+        // Download as Blob using SDK
+        console.log('[Transcription] Downloading via Storage SDK...');
+        const blob = await getBlob(fileRef);
+        console.log('[Transcription] Audio downloaded, size:', blob.size, 'bytes');
 
         // 2. Upload to Gemini File API
         const fileUri = await uploadToGemini(blob, mimeType, `meeting-${meetingId}`);
