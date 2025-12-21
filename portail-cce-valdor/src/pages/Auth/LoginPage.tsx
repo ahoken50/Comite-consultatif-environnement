@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Box, Button, Card, CardContent, TextField, Typography, Alert, InputAdornment, IconButton, Link } from '@mui/material';
+import { Box, Button, Card, CardContent, TextField, Typography, Alert, InputAdornment, IconButton, Link, CircularProgress } from '@mui/material';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { auth } from '../../services/firebase';
 import { useNavigate, Link as RouterLink } from 'react-router-dom';
@@ -91,10 +91,11 @@ const LoginPage: React.FC = () => {
                         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
 
                             <Box>
-                                <Typography variant="caption" sx={{ fontWeight: 600, color: 'grey.800', ml: 0.5, mb: 0.5, display: 'block' }}>
+                                <Typography component="label" htmlFor="email" variant="caption" sx={{ fontWeight: 600, color: 'grey.800', ml: 0.5, mb: 0.5, display: 'block' }}>
                                     Adresse courriel
                                 </Typography>
                                 <TextField
+                                    id="email"
                                     type="email"
                                     fullWidth
                                     placeholder="exemple@ville.valdor.qc.ca"
@@ -122,10 +123,11 @@ const LoginPage: React.FC = () => {
                             </Box>
 
                             <Box>
-                                <Typography variant="caption" sx={{ fontWeight: 600, color: 'grey.800', ml: 0.5, mb: 0.5, display: 'block' }}>
+                                <Typography component="label" htmlFor="password" variant="caption" sx={{ fontWeight: 600, color: 'grey.800', ml: 0.5, mb: 0.5, display: 'block' }}>
                                     Mot de passe
                                 </Typography>
                                 <TextField
+                                    id="password"
                                     type={showPassword ? "text" : "password"}
                                     fullWidth
                                     placeholder="••••••••"
@@ -168,6 +170,7 @@ const LoginPage: React.FC = () => {
                                 variant="contained"
                                 fullWidth
                                 disabled={loading}
+                                startIcon={loading ? <CircularProgress size={20} color="inherit" /> : null}
                                 sx={{
                                     mt: 2,
                                     py: 1.5,
