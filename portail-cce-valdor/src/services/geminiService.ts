@@ -105,9 +105,19 @@ export const transcribeAudio = async (
             dateUpdated: new Date().toISOString()
         });
 
-        // 1. Fetch audio file
-        const response = await fetch(audioUrl);
+        // 1. Fetch audio file with CORS mode explicitly set
+        console.log('[Transcription] Fetching audio from:', audioUrl);
+        const response = await fetch(audioUrl, {
+            mode: 'cors',
+            credentials: 'omit' // Don't send cookies, which can cause CORS issues
+        });
+
+        if (!response.ok) {
+            throw new Error(`Failed to fetch audio: ${response.status} ${response.statusText}`);
+        }
+
         const blob = await response.blob();
+        console.log('[Transcription] Audio fetched, size:', blob.size, 'bytes');
 
         // 2. Upload to Gemini File API
         const fileUri = await uploadToGemini(blob, mimeType, `meeting-${meetingId}`);
