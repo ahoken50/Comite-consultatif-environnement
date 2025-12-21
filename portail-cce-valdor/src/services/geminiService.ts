@@ -134,7 +134,13 @@ export const transcribeAudio = async (
         const downloadUrl = await getDownloadURL(fileRef);
         console.log('[Transcription] Fetching from URL:', downloadUrl);
 
-        const response = await fetch(downloadUrl);
+        // Add timestamp to ensure no cache is used even for signed URL
+        const cacheBustUrl = downloadUrl + '&_t=' + Date.now();
+
+        const response = await fetch(cacheBustUrl, {
+            cache: 'no-store',
+            mode: 'cors'
+        });
         if (!response.ok) {
             throw new Error(`Failed to fetch audio file: ${response.status} ${response.statusText}`);
         }
