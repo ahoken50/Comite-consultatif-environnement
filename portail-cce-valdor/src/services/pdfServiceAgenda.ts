@@ -37,27 +37,7 @@ export const generateAgendaPDF = async (meeting: Meeting) => {
                 </div>
                 <div class="agenda-body">
                     <div class="agenda-details">
-                        ${(() => {
-                // Filter out legacy PV content from ODJ display
-                // Detection methods:
-                // 1. Check for PV-style keywords
-                // 2. Check for excessive length (PV content is typically detailed)
-                // 3. Check if minuteEntries exist (indicates PV was added)
-                const note = item.decision || '';
-
-                // Keywords commonly found in PV resolutions/minutes
-                const pvKeywords = /RÉSOLUTION|CONSIDÉRANT|IL EST RÉSOLU|ATTENDU QUE|ADOPTÉ|UNANIM|QU['']IL SOIT|SECONDE|PROPOSÉ PAR|APPUYÉ|membres? présents?|était présent|récurrence|Mme |M\. |Monsieur |Madame /i;
-                const isPVContent = pvKeywords.test(note);
-
-                // Long content (>200 chars) with multiple lines is likely PV content
-                const isLengthy = note.length > 200 && (note.includes('\n') || note.includes('.'));
-
-                // If minuteEntries exist, the decision field likely contains legacy PV data
-                const hasMinuteEntries = item.minuteEntries && item.minuteEntries.length > 0;
-
-                const shouldHide = isPVContent || isLengthy || hasMinuteEntries;
-                return (!shouldHide && note) ? `<div class="agenda-note-box">${note}</div>` : '';
-            })()}
+                        ${(item.agendaNote || item.description) ? `<div class="agenda-note-box">${item.agendaNote || item.description}</div>` : ''}
                         <div class="agenda-meta">Responsable : <span>${item.presenter || 'Coordonnateur'}</span></div>
                     </div>
                     <div class="agenda-objective-section">

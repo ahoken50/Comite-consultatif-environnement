@@ -258,8 +258,8 @@ const AgendaBuilder: React.FC<AgendaBuilderProps> = ({ items, onItemsChange, mee
                                     fullWidth
                                     multiline
                                     rows={2}
-                                    value={editingItem.decision || ''}
-                                    onChange={(e) => setEditingItem({ ...editingItem, decision: e.target.value })}
+                                    value={editingItem.agendaNote || ''}
+                                    onChange={(e) => setEditingItem({ ...editingItem, agendaNote: e.target.value })}
                                 />
                             </Grid>
                             <Grid size={{ xs: 12 }}>

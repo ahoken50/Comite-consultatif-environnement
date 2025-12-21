@@ -23,7 +23,8 @@ export interface AgendaItem {
     duration: number; // in minutes
     presenter: string;
     objective: string; // e.g., 'Information', 'Décision', 'Consultation'
-    decision?: string; // Optional note or decision (legacy - kept for backward compatibility)
+    agendaNote?: string; // Note for ODJ (what will be discussed/decided) - NEW, separate from PV
+    decision?: string; // PV content: actual resolution/decision made during meeting (legacy - kept for backward compatibility)
     linkedProjectId?: string;
     // Legacy minutes fields (kept for backward compatibility)
     minuteType?: 'resolution' | 'comment' | 'other';
