@@ -1,4 +1,4 @@
-import { db } from './firebase';
+import { db, auth } from './firebase';
 import { doc, updateDoc } from 'firebase/firestore';
 import type { Meeting, MinutesDraft } from '../types/meeting.types';
 
@@ -105,14 +105,26 @@ export const transcribeAudio = async (
             dateUpdated: new Date().toISOString()
         });
 
-        // 1. Fetch audio file with CORS mode and cache-busting
+        // 1. Fetch audio file with Firebase Auth token for secure access
         // Add timestamp to URL to force fresh request (avoid 304 cache issues)
         const cacheBustUrl = audioUrl + (audioUrl.includes('?') ? '&' : '?') + '_t=' + Date.now();
         console.log('[Transcription] Fetching audio from:', cacheBustUrl);
+
+        // Get Firebase Auth ID token for authenticated request
+        const currentUser = auth.currentUser;
+        if (!currentUser) {
+            throw new Error('Utilisateur non authentifié. Veuillez vous reconnecter.');
+        }
+        const idToken = await currentUser.getIdToken();
+        console.log('[Transcription] Got Firebase ID token');
+
         const response = await fetch(cacheBustUrl, {
             mode: 'cors',
-            credentials: 'omit', // Don't send cookies
-            cache: 'no-store' // Force fresh request, bypass cache entirely
+            credentials: 'omit',
+            cache: 'no-store',
+            headers: {
+                'Authorization': `Bearer ${idToken}`
+            }
         });
 
         if (!response.ok) {
