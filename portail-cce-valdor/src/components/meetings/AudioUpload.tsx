@@ -16,8 +16,10 @@ import {
     Delete,
     PlayArrow,
     Pause,
-    Psychology
+    Psychology,
+    UploadFile
 } from '@mui/icons-material';
+
 import type { AudioRecording } from '../../types/meeting.types';
 import type { UploadProgress } from '../../services/audioStorageService';
 import {
@@ -27,7 +29,7 @@ import {
     formatFileSize,
     formatDuration
 } from '../../services/audioStorageService';
-import { transcribeAudio, isGeminiConfigured } from '../../services/geminiService';
+import { transcribeAudio, transcribeLocalFile, isGeminiConfigured } from '../../services/geminiService';
 
 interface AudioUploadProps {
     meetingId: string;
@@ -147,7 +149,28 @@ const AudioUpload: React.FC<AudioUploadProps> = ({
         if (result.success) {
             onTranscriptionComplete?.();
         } else {
-            setError(result.error || 'Erreur lors de la transcription');
+            console.error('Auto-transcription failed:', result.error);
+            // Show specific error for manual upload suggestion
+            if (result.error?.includes('Failed to fetch') || result.error?.includes('NetworkError')) {
+                setError('Le téléchargement automatique a échoué (blocage réseau/navigateur). Veuillez utiliser l\'option de transcription manuelle ci-dessous.');
+            } else {
+                setError(result.error || 'Erreur lors de la transcription');
+            }
+        }
+
+        setIsTranscribing(false);
+    };
+
+    const handleManualTranscription = async (file: File) => {
+        setIsTranscribing(true);
+        setError(null);
+
+        const result = await transcribeLocalFile(meetingId, file);
+
+        if (result.success) {
+            onTranscriptionComplete?.();
+        } else {
+            setError(result.error || 'Erreur lors de la transcription manuelle');
         }
 
         setIsTranscribing(false);
@@ -248,8 +271,39 @@ const AudioUpload: React.FC<AudioUploadProps> = ({
                         >
                             Réessayer
                         </Button>
+
+                        {/* Fallback Manual Upload Button */}
+                        <Box sx={{ mt: 2, pt: 2, borderTop: '1px dashed', borderColor: 'divider' }}>
+                            <Typography variant="body2" color="info.main" sx={{ mb: 1 }}>
+                                Si le bouton "Réessayer" échoue (erreur réseau), téléchargez le fichier manuellement ici :
+                            </Typography>
+                            <input
+                                accept="audio/*"
+                                style={{ display: 'none' }}
+                                id="manual-upload-file"
+                                type="file"
+                                onChange={(e) => {
+                                    if (e.target.files && e.target.files[0]) {
+                                        handleManualTranscription(e.target.files[0]);
+                                    }
+                                }}
+                            />
+                            <label htmlFor="manual-upload-file">
+                                <Button
+                                    variant="contained"
+                                    color="secondary"
+                                    component="span"
+                                    fullWidth
+                                    startIcon={<UploadFile />}
+                                    disabled={isTranscribing}
+                                >
+                                    Transcription Manuelle (Upload Local)
+                                </Button>
+                            </label>
+                        </Box>
                     </Box>
                 )}
+
 
                 <audio
                     ref={audioRef}
@@ -257,7 +311,7 @@ const AudioUpload: React.FC<AudioUploadProps> = ({
                     onEnded={() => setIsPlaying(false)}
                     style={{ display: 'none' }}
                 />
-            </Paper>
+            </Paper >
         );
     }
 

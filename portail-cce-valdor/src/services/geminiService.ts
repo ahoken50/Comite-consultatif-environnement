@@ -225,6 +225,68 @@ Format de sortie:
     }
 };
 
+
+/**
+ * Transcribe a local file directly (bypass download)
+ * Used as fallback when auto-fetch fails
+ */
+export const transcribeLocalFile = async (
+    meetingId: string,
+    file: File
+): Promise<{ success: boolean; transcription?: string; error?: string }> => {
+    if (!GEMINI_API_KEY) {
+        return { success: false, error: 'Clé API manquante' };
+    }
+
+    try {
+        const meetingRef = doc(db, 'meetings', meetingId);
+        await updateDoc(meetingRef, {
+            'audioRecording.transcriptionStatus': 'processing',
+            dateUpdated: new Date().toISOString()
+        });
+
+        // Upload local file directly to Gemini
+        const fileUri = await uploadToGemini(file, file.type, `meeting-${meetingId}`);
+
+        // Call Gemini API (same logic as transcribeAudio)
+        const response = await fetch(`${GEMINI_API_URL}?key=${GEMINI_API_KEY}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                contents: [{
+                    parts: [
+                        { text: "Veuillez transcrire cet enregistrement audio de réunion en texte. Identifiez les différents interlocuteurs si possible. Structurez la réponse avec des points clairs." },
+                        { file_data: { mime_type: file.type, file_uri: fileUri } }
+                    ]
+                }]
+            })
+        });
+
+        if (!response.ok) throw new Error('Refus API Gemini');
+        const data = await response.json();
+
+        const transcription = data.candidates?.[0]?.content?.parts?.[0]?.text;
+
+        if (!transcription) throw new Error('Aucune transcription générée');
+
+        await updateDoc(meetingRef, {
+            'audioRecording.transcription': transcription,
+            'audioRecording.transcriptionStatus': 'completed',
+            dateUpdated: new Date().toISOString()
+        });
+
+        return { success: true, transcription };
+
+    } catch (error) {
+        console.error('Local transcription error:', error);
+        await updateDoc(doc(db, 'meetings', meetingId), {
+            'audioRecording.transcriptionStatus': 'error',
+            'audioRecording.transcriptionError': error instanceof Error ? error.message : 'Echec transcription locale'
+        });
+        return { success: false, error: 'Echec transcription locale' };
+    }
+};
+
 /**
  * Generate minutes draft from transcription using Gemini
  */
