@@ -4,11 +4,7 @@ import { Outlet } from 'react-router-dom';
 import Header from './Header';
 import Sidebar from './Sidebar';
 
-interface MainLayoutProps {
-    children?: React.ReactNode;
-}
-
-const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
+const MainLayout: React.FC = () => {
     const [mobileOpen, setMobileOpen] = useState(false);
 
     const handleDrawerToggle = () => {
@@ -22,7 +18,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
             <Sidebar mobileOpen={mobileOpen} onClose={handleDrawerToggle} />
             <Box component="main" sx={{ flexGrow: 1, p: 3, width: { sm: `calc(100% - 240px)` }, overflow: 'auto' }}>
                 <Toolbar /> {/* Spacer for fixed header */}
-                {children || <Outlet />}
+                <Outlet />
             </Box>
         </Box>
     );
