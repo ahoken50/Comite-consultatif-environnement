@@ -1,6 +1,5 @@
-import { db, storage } from './firebase';
+import { db } from './firebase';
 import { doc, updateDoc } from 'firebase/firestore';
-import { ref, getDownloadURL } from 'firebase/storage';
 import type { Meeting, MinutesDraft } from '../types/meeting.types';
 
 // Environment variable for Gemini API key (matches GOOGLE_AI_API GitHub secret)
@@ -23,68 +22,13 @@ interface GeminiResponse {
 /**
  * Transcribe audio file using Gemini API
  */
-const UPLOAD_API_URL = 'https://generativelanguage.googleapis.com/upload/v1beta/files';
 
-interface GeminiFileResponse {
-    file: {
-        name: string;
-        uri: string;
-        mimeType: string;
-        state: string;
-    };
-}
 
-/**
- * Upload file to Gemini using Resumable Upload Protocol
- * Necessary for files > 20MB
- */
-const uploadToGemini = async (blob: Blob, mimeType: string, displayName: string): Promise<string> => {
-    if (!GEMINI_API_KEY) throw new Error('API Key missing');
 
-    // 1. Initiate Resumable Upload
-    const initResponse = await fetch(`${UPLOAD_API_URL}?key=${GEMINI_API_KEY}`, {
-        method: 'POST',
-        headers: {
-            'X-Goog-Upload-Protocol': 'resumable',
-            'X-Goog-Upload-Command': 'start',
-            'X-Goog-Upload-Header-Content-Length': blob.size.toString(),
-            'X-Goog-Upload-Header-Content-Type': mimeType,
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ file: { display_name: displayName } })
-    });
-
-    if (!initResponse.ok) {
-        throw new Error(`Failed to initiate upload: ${initResponse.statusText}`);
-    }
-
-    const uploadUrl = initResponse.headers.get('x-goog-upload-url');
-    if (!uploadUrl) {
-        throw new Error('No upload URL received from Gemini');
-    }
-
-    // 2. Perform Upload
-    const uploadResponse = await fetch(uploadUrl, {
-        method: 'POST',
-        headers: {
-            'Content-Length': blob.size.toString(),
-            'X-Goog-Upload-Offset': '0',
-            'X-Goog-Upload-Command': 'upload, finalize'
-        },
-        body: blob
-    });
-
-    if (!uploadResponse.ok) {
-        throw new Error(`Upload failed: ${uploadResponse.statusText}`);
-    }
-
-    const result: GeminiFileResponse = await uploadResponse.json();
-    return result.file.uri;
-};
 
 /**
  * Transcribe audio file using Gemini API
- * Updated to use File API for large file support
+ * Updated to use Direct GCS URI for large file support
  */
 export const transcribeAudio = async (
     meetingId: string,
@@ -107,46 +51,43 @@ export const transcribeAudio = async (
             dateUpdated: new Date().toISOString()
         });
 
-        // 1. Get audio file using Firebase Storage SDK (handles Auth/CORS natively)
-        // We prefer using the storagePath if available, otherwise try to extract it from URL
-        console.log('[Transcription] Getting audio file...');
+        // 1. Construct GS URI directly (Skip client-side download/upload)
+        // This relies on Gemini API being able to access the GCS bucket directly
+        // Bucket name from logs: comite-cce.firebasestorage.app
+        // URI Format: gs://comite-cce.firebasestorage.app/path/to/file
 
-        let fileRef;
+        let fileUri: string;
+        const bucketName = 'comite-cce.firebasestorage.app';
+
         if (storagePath) {
-            console.log('[Transcription] Using provided storage path:', storagePath);
-            fileRef = ref(storage, storagePath);
+            console.log('[Transcription] Using direct GCS URI strategy with path:', storagePath);
+            fileUri = `gs://${bucketName}/${storagePath}`;
         } else {
-            // Fallback: try to create ref from URL
-            console.log('[Transcription] Trying to create ref from URL:', audioUrl);
+            // Fallback: try to extract path from URL if no storagePath provided
+            // Parsing URL: https://firebasestorage.googleapis.com/v0/b/BUCKET/o/PATH?alt=media...
             try {
-                fileRef = ref(storage, audioUrl);
+                const urlObj = new URL(audioUrl);
+                const pathName = decodeURIComponent(urlObj.pathname);
+                // pathName is something like /v0/b/bucket/o/folder%2Ffile.mp3
+                // We need to extract folder/file.mp3
+                const segments = pathName.split('/o/');
+                if (segments.length > 1) {
+                    const objectPath = segments[1];
+                    fileUri = `gs://${bucketName}/${objectPath}`;
+                    console.log('[Transcription] Extracted GCS URI from URL:', fileUri);
+                } else {
+                    throw new Error('Could not parse storage path from URL');
+                }
             } catch (e) {
-                console.warn('[Transcription] Could not create ref from URL:', e);
-                // Last resort fallback to fetch if ref creation fails
-                // But this likely won't work if rules require auth, so we just log warning
-                throw new Error('Impossible de récupérer le fichier via le SDK Storage. Chemin de stockage manquant.');
+                console.error('[Transcription] Failed to construct GS URI:', e);
+                throw new Error('Impossible de construire l\'URI GCS. Chemin de stockage manquant.');
             }
         }
 
-        // Download as Blob using getDownloadURL + fetch
-        // This avoids getBlob's Range requests which can cause 206 CORS errors
-        console.log('[Transcription] Getting download URL...');
-        const downloadUrl = await getDownloadURL(fileRef);
-        console.log('[Transcription] Fetching from URL:', downloadUrl);
+        console.log('[Transcription] Using file URI for Gemini:', fileUri);
 
-        // Add timestamp to ensure no cache is used even for signed URL
-        const cacheBustUrl = downloadUrl + '&_t=' + Date.now();
+        // Skip fetch and download/upload logic - proceed directly to Gemini request with this URI
 
-        const response = await fetch(cacheBustUrl);
-        if (!response.ok) {
-            throw new Error(`Failed to fetch audio file: ${response.status} ${response.statusText}`);
-        }
-
-        const blob = await response.blob();
-        console.log('[Transcription] Audio downloaded, size:', blob.size, 'bytes');
-
-        // 2. Upload to Gemini File API
-        const fileUri = await uploadToGemini(blob, mimeType, `meeting-${meetingId}`);
 
         // 3. Prepare Gemini request with fileUri
         const geminiRequest = {
