@@ -94,13 +94,28 @@ const ProjectList: React.FC<ProjectListProps> = ({ projects, onView, onEdit, onD
                             </TableCell>
                             <TableCell align="right">
                                 <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
-                                    <IconButton size="small" onClick={() => onView(project.id)} color="info">
+                                    <IconButton
+                                        size="small"
+                                        onClick={() => onView(project.id)}
+                                        color="info"
+                                        aria-label={`Voir le projet ${project.name}`}
+                                    >
                                         <Visibility fontSize="small" />
                                     </IconButton>
-                                    <IconButton size="small" onClick={() => onEdit(project.id)} color="primary">
+                                    <IconButton
+                                        size="small"
+                                        onClick={() => onEdit(project.id)}
+                                        color="primary"
+                                        aria-label={`Modifier le projet ${project.name}`}
+                                    >
                                         <Edit fontSize="small" />
                                     </IconButton>
-                                    <IconButton size="small" onClick={() => onDelete(project.id)} color="error">
+                                    <IconButton
+                                        size="small"
+                                        onClick={() => onDelete(project.id)}
+                                        color="error"
+                                        aria-label={`Supprimer le projet ${project.name}`}
+                                    >
                                         <Delete fontSize="small" />
                                     </IconButton>
                                 </Box>
