@@ -241,11 +241,10 @@ export const generateMinutesDraft = async (
             ?.map((item, i) => `${i + 1}. ${item.title}`)
             .join('\n') || 'Non spécifié';
 
-        const prompt = `Tu es un rédacteur de procès-verbaux professionnel pour le Comité Consultatif en Environnement (CCE) de la Ville de Val-d'Or.
+        const prompt = `Tu es un rédacteur expert de procès-verbaux pour le Comité Consultatif en Environnement (CCE) de la Ville de Val-d'Or.
+OBJECTIF : Rédiger un procès-verbal (PV) professionnel, complet et structuré à partir de la transcription fournie.
 
-À partir de la transcription suivante, génère un brouillon de procès-verbal structuré.
-
-## INFORMATIONS DE LA RÉUNION
+## INFORMATIONS
 Titre: ${meeting.title}
 Date: ${meeting.date}
 Lieu: ${meeting.location || 'Salle de conférence'}
@@ -256,31 +255,30 @@ ${attendeesList}
 ## ORDRE DU JOUR
 ${agendaList}
 
-## TRANSCRIPTION
+## TRANSCRIPTION (Source intégrale)
 ${transcription}
 
-## INSTRUCTIONS DE RÉDACTION
-1. Structure le procès-verbal selon les points de l'ordre du jour
-2. Pour chaque point, utilise ce format:
-   - Discussion (résumé des échanges)
-   - Résolution (si applicable): "RÉSOLUTION XX-XX" avec CONSIDÉRANT et IL EST RÉSOLU
-   - Commentaire (si applicable): "COMMENTAIRE XX-X"
+## DIRECTIVES STRICTES DE RÉDACTION
+1. **EXHAUSTIVITÉ & PRÉCISION** : Ne laisse passer aucune résolution ou décision importante. Relève TOUS les points discutés.
+2. **STYLE FORMEL MUNICIPAL** : Utilise le ton neutre et administratif (ex: "Le comité discute de...", "Il est proposé par...").
+3. **STRUCTURE CLAIRE** :
+   - Pour chaque point de l'ordre du jour, crée une section.
+   - **RÉSUMÉ** : Synthèse claire des délibérations.
+   - **RÉSOLUTION** (Si vote/décision) : Utilise le format "CONSIDÉRANT... IL EST RÉSOLU DE...".
+   - **SUIVI** : Mentionne qui doit faire quoi si spécifié.
+4. **VÉRIFICATION** : Si une information est floue (nom, date, montant), ajoute la mention **[À VALIDER : ...]**.
+5. **NE PAS INVENTER** : Base-toi uniquement sur le texte.
 
-3. Utilise le vocabulaire formel des procès-verbaux municipaux
-4. Marque [À VÉRIFIER] les éléments dont tu n'es pas certain
-5. Identifie les proposeurs et secondeurs des résolutions si mentionnés
-6. Reste factuel, ne pas inventer d'informations non présentes dans la transcription
-
-## FORMAT DE SORTIE
-Génère un texte structuré avec des titres clairs pour chaque section.`;
+## RÉSULTAT ATTENDU
+Un document prêt pour approbation, impeccable et professionnel.`;
 
         const geminiRequest = {
             contents: [{
                 parts: [{ text: prompt }]
             }],
             generationConfig: {
-                temperature: 0.3,
-                maxOutputTokens: 8000
+                temperature: 0.2,
+                maxOutputTokens: 16000
             }
         };
 

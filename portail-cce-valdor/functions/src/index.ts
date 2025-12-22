@@ -81,9 +81,9 @@ export const transcribeAudio = functions
                 });
             }
 
-            console.log(`[Chunking] Starting ${chunks.length} parallel requests (with overlap) using Gemini Pro...`);
+            console.log(`[Chunking] Starting ${chunks.length} parallel requests (with overlap) using Gemini 2.0 Flash...`);
             const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-            const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
+            const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 
             // 4. Parallel Execution
             const promises = chunks.map(async (chunk) => {
