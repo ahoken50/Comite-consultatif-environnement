@@ -49,7 +49,7 @@ jobs:
       if: github.ref == 'refs/heads/main'
       uses: w9jds/firebase-action@master
       with:
-        args: deploy --only functions,hosting
+        args: deploy --only functions,hosting --force
       env:
         GCP_SA_KEY: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_COMITE_CCE }}
         PROJECT_ID: comite-cce
