@@ -110,7 +110,7 @@ export const transcribeAudio = async (
 
         // 1. Call Cloud Function instead of client-side fetch due to CORS issues
         console.log('[Transcription] Calling Cloud Function...');
-        const transcribeFunction = httpsCallable(functions, 'transcribeAudio');
+        const transcribeFunction = httpsCallable(functions, 'transcribeAudio', { timeout: 540000 }); // 9 minutes timeout
 
         const result = await transcribeFunction({
             meetingId,
