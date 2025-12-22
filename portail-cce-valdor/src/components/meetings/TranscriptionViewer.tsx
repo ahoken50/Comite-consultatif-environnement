@@ -51,11 +51,16 @@ const TranscriptionViewer: React.FC<TranscriptionViewerProps> = ({
     // Extract unique speakers from transcription
     const detectedSpeakers = React.useMemo(() => {
         if (!transcription) return [];
-        const regex = /(?:\[\d{2}:\d{2}\]\s+)?\**([^*\n]+?)\s*:\s*\**/g;
+        // Capture all bold text: **Name** or **Name :**
+        const regex = /\*\*([^*]+)\*\*/g;
         const speakers = new Set<string>();
         let match;
         while ((match = regex.exec(transcription)) !== null) {
-            speakers.add(match[1]);
+            // cleanup: remove colons and spaces
+            const cleanName = match[1].replace(/:\s*$/, '').trim();
+            if (cleanName.length > 0 && cleanName.length < 50) { // Safety length check
+                speakers.add(cleanName);
+            }
         }
         return Array.from(speakers).sort();
     }, [transcription]);

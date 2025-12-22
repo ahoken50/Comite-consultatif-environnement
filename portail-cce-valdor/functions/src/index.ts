@@ -1,7 +1,11 @@
 import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
 import { CallableContext } from "firebase-functions/v1/https";
-import axios from "axios";
+import * as fs from "fs";
+import * as path from "path";
+import * as os from "os";
+import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleAIFileManager, FileState } from "@google/generative-ai/server";
 
 // Standard initialization
 try {
@@ -9,8 +13,6 @@ try {
 } catch (e) {
     console.warn('Firebase Admin already initialized or failed init:', e);
 }
-
-const GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
 
 interface TranscriptionRequest {
     meetingId: string;
@@ -24,105 +26,101 @@ export const transcribeAudio = functions
         memory: "2GB"
     })
     .https.onCall(async (data: TranscriptionRequest, context: CallableContext) => {
-        console.log('[Transcription] Function Start. Data:', JSON.stringify(data));
+        console.log('[Plan B] Function Start (File API Mode). Data:', JSON.stringify(data));
 
         try {
-            // 1. Auth Check - STRICT
-            if (!context.auth) {
-                console.warn('[Transcription] Unauthenticated call');
-                throw new functions.https.HttpsError(
-                    "unauthenticated",
-                    "Authentication required."
-                );
-            }
+            // 1. Auth Check
+            if (!context.auth) throw new functions.https.HttpsError("unauthenticated", "Auth required.");
 
-            // 2. Config Check - ROBUST
+            // 2. Config Check
             const config = functions.config();
-            // Try multiple sources for the key
             const GEMINI_API_KEY = config.google?.api_key || process.env.GOOGLE_API_KEY || process.env.VITE_GOOGLE_AI_API;
 
-            if (!GEMINI_API_KEY) {
-                console.error('[Transcription] FATAL: No API Key found in env options.');
-                throw new functions.https.HttpsError(
-                    "failed-precondition",
-                    "Server misconfiguration: API Key missing."
-                );
-            }
+            if (!GEMINI_API_KEY) throw new functions.https.HttpsError("failed-precondition", "API Key missing.");
 
             const { meetingId, storagePath, mimeType } = data;
+            if (!meetingId || !storagePath || !mimeType) throw new functions.https.HttpsError("invalid-argument", "Missing params.");
 
-            if (!meetingId || !storagePath || !mimeType) {
-                throw new functions.https.HttpsError("invalid-argument", "Missing parameters (meetingId, storagePath, mimeType)");
-            }
-
-            // 3. Storage Access
-            console.log(`[Transcription] Accessing storage path: ${storagePath}`);
+            // 3. Download to Temp File (Crucial for File API)
             const bucket = admin.storage().bucket();
-            const file = bucket.file(storagePath);
+            const tempFilePath = path.join(os.tmpdir(), `audio-${meetingId}${path.extname(storagePath)}`);
 
-            const [exists] = await file.exists();
-            if (!exists) {
-                console.error(`[Transcription] File not found: ${storagePath}`);
-                throw new functions.https.HttpsError("not-found", "Audio file not found in storage");
+            console.log(`[Plan B] Downloading gs://${bucket.name}/${storagePath} to ${tempFilePath}...`);
+
+            await bucket.file(storagePath).download({
+                destination: tempFilePath
+            });
+
+            console.log('[Plan B] Download complete. Uploading to Gemini File API...');
+
+            // 4. Upload using SDK
+            const fileManager = new GoogleAIFileManager(GEMINI_API_KEY);
+            const uploadResult = await fileManager.uploadFile(tempFilePath, {
+                mimeType: mimeType,
+                displayName: `Meeting ${meetingId}`
+            });
+
+            const file = uploadResult.file;
+            console.log(`[Plan B] Uploaded file: ${file.name} (${file.uri})`);
+
+            // Wait for processing if video/large audio (usually instant for audio but good practice)
+            let processedFile = await fileManager.getFile(file.name);
+            while (processedFile.state === FileState.PROCESSING) {
+                console.log('[Plan B] Waiting for processing...');
+                await new Promise(resolve => setTimeout(resolve, 2000));
+                processedFile = await fileManager.getFile(file.name);
             }
 
-            // 4. Download
-            const [fileBuffer] = await file.download();
-            const base64Audio = fileBuffer.toString('base64');
-            console.log(`[Transcription] Downloaded ${fileBuffer.length} bytes`);
+            if (processedFile.state === FileState.FAILED) {
+                throw new Error("Gemini File API processing failed.");
+            }
 
-            // 5. Build Prompt (Improved)
-            const prompt = `Tu es un secrétaire de séance expert. Ta tâche est de transcrire cet enregistrement de réunion de manière détaillée et structurée.
+            // 5. Generate Content
+            console.log('[Plan B] Generating transcription...');
+            const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
+            const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 
-RÈGLES DE TRANSCRIPTION :
-1. DÉTAILS : Ne fais PAS de résumé. Transcris les discussions le plus fidèlement possible.
-2. STRUCTURE : Organise la transcription par SUJETS ou POINTS D'ORDRE DU JOUR clairement identifiés.
-3. INTERVENANTS : Identifie qui parle (Intervenant 1, Intervenant 2, etc.).
-4. FORMAT : Utilise du texte suivi et détaillé pour faciliter la rédaction du procès-verbal.
+            const prompt = `Tu es un secrétaire de séance expert. Transcris cet enregistrement DE MANIÈRE EXHAUSTIVE ET COMPLÈTE.
+        
+RÈGLES CRITIQUES :
+1. NE JAMAIS RÉSUMER. Je veux chaque phrase, chaque mot.
+2. Si l'enregistrement est long, CONTINUE jusqu'au bout. Ne t'arrête pas.
+3. Structure par sujets.
+4. Identifie les intervenants **en gras** (ex: **M. Tremblay :**).
+5. Utilise ce format Markdown :
 
-Exemple :
-## [Sujet]
-**Intervenant 1 :** [Propos...]
+## [Sujet / Point de l'ordre du jour]
+**Intervenant 1 :** Propos exacts...
 `;
 
-            // 6. Gemini Call
-            console.log('[Transcription] Sending to Gemini...');
-            const geminiRequest = {
+            const result = await model.generateContent({
                 contents: [{
+                    role: "user",
                     parts: [
-                        { text: prompt },
-                        {
-                            inline_data: {
-                                mime_type: mimeType,
-                                data: base64Audio
-                            }
-                        }
+                        { fileData: { mimeType: file.mimeType, fileUri: file.uri } },
+                        { text: prompt }
                     ]
                 }],
                 generationConfig: {
-                    maxOutputTokens: 100000
+                    maxOutputTokens: 100000, // Max possible
+                    temperature: 0.2
                 }
-            };
-
-            const response = await axios.post(`${GEMINI_API_URL}?key=${GEMINI_API_KEY}`, geminiRequest, {
-                headers: { 'Content-Type': 'application/json' },
-                validateStatus: () => true // Allow handling non-200 responses
             });
 
-            if (response.status !== 200) {
-                console.error('[Gemini Error]', response.data);
-                throw new functions.https.HttpsError("internal", `Gemini API Error: ${response.status} - ${JSON.stringify(response.data)}`);
+            const transcription = result.response.text();
+
+            console.log(`[Plan B] Generation complete. Length: ${transcription.length} chars.`);
+
+            // 6. Cleanup (Delete from Gemini + Local)
+            try {
+                await fileManager.deleteFile(file.name);
+                fs.unlinkSync(tempFilePath);
+                console.log('[Plan B] Cleanup done.');
+            } catch (cleanupErr) {
+                console.warn('Cleanup warning:', cleanupErr);
             }
 
-            const transcription = response.data.candidates?.[0]?.content?.parts?.[0]?.text;
-
-            if (!transcription) {
-                console.error('[Gemini] Empty transcription', response.data);
-                throw new functions.https.HttpsError("internal", "Empty transcription received from AI");
-            }
-
-            // 7. Save Result
-            console.log('[Transcription] Success! Saving to Firestore...');
+            // 7. Save
             await admin.firestore().doc(`meetings/${meetingId}`).update({
                 'audioRecording.transcription': transcription,
                 'audioRecording.transcriptionStatus': 'completed',
@@ -133,21 +131,16 @@ Exemple :
             return { success: true, transcription };
 
         } catch (error) {
-            console.error('[Transcription CRASH HANDLED]', error);
+            console.error('[Plan B CRASH]', error);
 
-            // Attempt to log error to Firestore so user sees it in UI
-            if (data && data.meetingId) {
-                try {
-                    await admin.firestore().doc(`meetings/${data.meetingId}`).update({
-                        'audioRecording.transcriptionStatus': 'error',
-                        'audioRecording.transcriptionError': error instanceof Error ? error.message : String(error)
-                    });
-                } catch (writeErr) {
-                    console.error('Failed to write error status to Firestore', writeErr); // Best effort
-                }
+            // Error logging
+            if (data?.meetingId) {
+                await admin.firestore().doc(`meetings/${data.meetingId}`).update({
+                    'audioRecording.transcriptionStatus': 'error',
+                    'audioRecording.transcriptionError': error instanceof Error ? error.message : String(error)
+                }).catch(console.error);
             }
 
-            if (error instanceof functions.https.HttpsError) throw error;
-            throw new functions.https.HttpsError("internal", error instanceof Error ? error.message : "Unknown server error");
+            throw new functions.https.HttpsError("internal", error instanceof Error ? error.message : "Internal Error");
         }
     });
