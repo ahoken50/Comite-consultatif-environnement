@@ -63,33 +63,36 @@ export const transcribeAudio = functions
             }
             if (processedFile.state === FileState.FAILED) throw new Error("File processing failed.");
 
-            // 3. Define Chunks (20 minutes each)
-            // 1h30 = 90 mins. 5 chunks of 20m covers 100m. Safe.
             const chunkDurationMins = 20;
-            const totalChunks = 6; // Up to 2 hours coverage
+            const totalChunks = 9;
             const chunks = [];
 
             for (let i = 0; i < totalChunks; i++) {
+                // Overlap Strategy: 
+                // Start 1 min earlier (unless first chunk)
+                // End 1 min later
+                const startStr = Math.max(0, i * chunkDurationMins - 1);
+                const endStr = (i + 1) * chunkDurationMins + 1;
+
                 chunks.push({
                     index: i,
-                    start: i * chunkDurationMins,
-                    end: (i + 1) * chunkDurationMins
+                    start: startStr,
+                    end: endStr
                 });
             }
 
-            console.log(`[Chunking] Starting ${chunks.length} parallel requests...`);
+            console.log(`[Chunking] Starting ${chunks.length} parallel requests (with overlap) using Gemini Pro...`);
             const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-            const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+            const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
 
             // 4. Parallel Execution
             const promises = chunks.map(async (chunk) => {
                 const prompt = `Tu es un secrétaire. Transcris EXCLUSIVEMENT la partie de l'audio comprise entre la minute ${chunk.start} et la minute ${chunk.end}.
             
 RÈGLES :
-1. Ignore tout ce qui est avant ${chunk.start}e minute ou après ${chunk.end}e minute.
+1. Ignore ce qui est avant ${chunk.start}m ou après ${chunk.end}m.
 2. Transcris fidèlement mot à mot.
 3. Identifie les intervenants en gras (**Nom :**).
-4. Si c'est la fin du fichier, arrête-toi simplement.
 `;
                 try {
                     const result = await model.generateContent({
@@ -103,37 +106,58 @@ RÈGLES :
                         generationConfig: { maxOutputTokens: 65536, temperature: 0.2 }
                     });
                     const text = result.response.text();
-                    console.log(`[Chunk ${chunk.index}] Completed (${text.length} chars)`);
+                    // Label chunk for debug but keep clean for fusion
                     return { index: chunk.index, text: text };
                 } catch (err) {
                     console.error(`[Chunk ${chunk.index}] Failed`, err);
-                    return { index: chunk.index, text: `[Erreur transcription partie ${chunk.index + 1}]` };
+                    return { index: chunk.index, text: "" };
                 }
             });
 
             const results = await Promise.all(promises);
 
-            // 5. Sort and Join
-            const fullTranscription = results
+            // 5. Sort and Raw Join
+            const rawTranscription = results
                 .sort((a, b) => a.index - b.index)
-                .map(r => `\n\n--- PARTIE ${r.index + 1} (${r.index * 20}m - ${(r.index + 1) * 20}m) ---\n\n` + r.text)
-                .join("");
+                .map(r => r.text)
+                .join("\n\n");
 
-            console.log(`[Chunking] All parts joined. Total length: ${fullTranscription.length}`);
+            console.log(`[Chunking] Raw joined length: ${rawTranscription.length}. Starting AI Fusion...`);
 
-            // 6. Cleanup
+            // 6. AI Fusion / Cleanup
+            // We ask Gemini to merge the overlapping parts
+            const fusionPrompt = `Voici une transcription brute divisée en segments qui se chevauchent (overlap).
+TA MISSION :
+1. FUSIONNE tout en un seul texte fluide et continu.
+2. SUPPRIME les répétitions dues au chevauchement entre les segments.
+3. GARDE absolument tout le contenu (c'est un verbatim exhaustif).
+4. Ne fais AUCUN résumé.
+
+TRANSCRIPTION BRUTE A NETTOYER :
+${rawTranscription}
+`;
+
+            const finalResult = await model.generateContent({
+                contents: [{ role: "user", parts: [{ text: fusionPrompt }] }],
+                generationConfig: { maxOutputTokens: 100000, temperature: 0.1 }
+            });
+
+            const finalTranscription = finalResult.response.text();
+            console.log(`[Fusion] Complete. Final length: ${finalTranscription.length}`);
+
+            // 7. Cleanup
             await fileManager.deleteFile(file.name).catch(e => console.warn('Cleanup error', e));
             fs.unlinkSync(tempFilePath);
 
-            // 7. Save
+            // 8. Save
             await admin.firestore().doc(`meetings/${meetingId}`).update({
-                'audioRecording.transcription': fullTranscription,
+                'audioRecording.transcription': finalTranscription,
                 'audioRecording.transcriptionStatus': 'completed',
                 'audioRecording.transcribedAt': new Date().toISOString(),
                 dateUpdated: new Date().toISOString()
             });
 
-            return { success: true, transcription: fullTranscription };
+            return { success: true, transcription: finalTranscription };
 
         } catch (error) {
             console.error('[Plan B CRASH]', error);
