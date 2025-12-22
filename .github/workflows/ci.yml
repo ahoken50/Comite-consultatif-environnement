@@ -37,13 +37,22 @@ jobs:
         VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID }}
         VITE_GOOGLE_AI_API: ${{ secrets.GOOGLE_AI_API }}
 
-    - name: Deploy to Firebase
+    - name: Install Functions dependencies
+      working-directory: portail-cce-valdor/functions
+      run: npm install
+
+    - name: Build Functions
+      working-directory: portail-cce-valdor/functions
+      run: npm run build
+
+    - name: Deploy to Firebase (Hosting & Functions)
       if: github.ref == 'refs/heads/main'
-      uses: FirebaseExtended/action-hosting-deploy@v0
+      uses: w9jds/firebase-action@master
       with:
-        repoToken: ${{ secrets.GITHUB_TOKEN }}
-        firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_COMITE_CCE }}
-        channelId: live
-        projectId: comite-cce
-        entryPoint: portail-cce-valdor
+        args: deploy --only functions,hosting
+      env:
+        GCP_SA_KEY: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_COMITE_CCE }}
+        PROJECT_ID: comite-cce
+        # We need to be in the project root (subdir) for firebase.json
+        PROJECT_PATH: portail-cce-valdor
 
