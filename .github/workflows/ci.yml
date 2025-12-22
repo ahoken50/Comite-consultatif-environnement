@@ -45,6 +45,10 @@ jobs:
       working-directory: portail-cce-valdor/functions
       run: npm run build
 
+    - name: Create Functions .env
+      working-directory: portail-cce-valdor/functions
+      run: echo "GOOGLE_API_KEY=${{ secrets.GOOGLE_AI_API }}" > .env
+
     - name: Deploy to Firebase (Hosting & Functions)
       if: github.ref == 'refs/heads/main'
       uses: w9jds/firebase-action@master
