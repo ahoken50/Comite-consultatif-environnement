@@ -26,13 +26,11 @@ export const transcribeAudio = functions
         memory: "2GB"
     })
     .https.onCall(async (data: TranscriptionRequest, context: CallableContext) => {
-        console.log('[Plan B] Function Start (File API Mode). Data:', JSON.stringify(data));
+        console.log('[Parallel Chunking] Function Start. Data:', JSON.stringify(data));
 
         try {
-            // 1. Auth Check
             if (!context.auth) throw new functions.https.HttpsError("unauthenticated", "Auth required.");
 
-            // 2. Config Check
             const config = functions.config();
             const GEMINI_API_KEY = config.google?.api_key || process.env.GOOGLE_API_KEY || process.env.VITE_GOOGLE_AI_API;
 
@@ -41,106 +39,104 @@ export const transcribeAudio = functions
             const { meetingId, storagePath, mimeType } = data;
             if (!meetingId || !storagePath || !mimeType) throw new functions.https.HttpsError("invalid-argument", "Missing params.");
 
-            // 3. Download to Temp File (Crucial for File API)
+            // 1. Download
             const bucket = admin.storage().bucket();
             const tempFilePath = path.join(os.tmpdir(), `audio-${meetingId}${path.extname(storagePath)}`);
+            console.log(`[Chunking] Downloading ${storagePath}...`);
+            await bucket.file(storagePath).download({ destination: tempFilePath });
 
-            console.log(`[Plan B] Downloading gs://${bucket.name}/${storagePath} to ${tempFilePath}...`);
-
-            await bucket.file(storagePath).download({
-                destination: tempFilePath
-            });
-
-            console.log('[Plan B] Download complete. Uploading to Gemini File API...');
-
-            // 4. Upload using SDK
+            // 2. Upload to File API
             const fileManager = new GoogleAIFileManager(GEMINI_API_KEY);
             const uploadResult = await fileManager.uploadFile(tempFilePath, {
                 mimeType: mimeType,
                 displayName: `Meeting ${meetingId}`
             });
-
             const file = uploadResult.file;
-            console.log(`[Plan B] Uploaded file: ${file.name} (${file.uri})`);
+            console.log(`[Chunking] File uploaded: ${file.uri}`);
 
-            // Wait for processing if video/large audio (usually instant for audio but good practice)
+            // Wait for processing
             let processedFile = await fileManager.getFile(file.name);
             while (processedFile.state === FileState.PROCESSING) {
-                console.log('[Plan B] Waiting for processing...');
+                console.log('[Chunking] Waiting for processing...');
                 await new Promise(resolve => setTimeout(resolve, 2000));
                 processedFile = await fileManager.getFile(file.name);
             }
+            if (processedFile.state === FileState.FAILED) throw new Error("File processing failed.");
 
-            if (processedFile.state === FileState.FAILED) {
-                throw new Error("Gemini File API processing failed.");
+            // 3. Define Chunks (20 minutes each)
+            // 1h30 = 90 mins. 5 chunks of 20m covers 100m. Safe.
+            const chunkDurationMins = 20;
+            const totalChunks = 6; // Up to 2 hours coverage
+            const chunks = [];
+
+            for (let i = 0; i < totalChunks; i++) {
+                chunks.push({
+                    index: i,
+                    start: i * chunkDurationMins,
+                    end: (i + 1) * chunkDurationMins
+                });
             }
 
-            // 5. Generate Content
-            console.log('[Plan B] Generating transcription...');
+            console.log(`[Chunking] Starting ${chunks.length} parallel requests...`);
             const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
             const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 
-            const prompt = `Tu es un secrétaire de séance expert. Transcris cet enregistrement DE MANIÈRE EXHAUSTIVE ET COMPLÈTE.
-        
-RÈGLES CRITIQUES :
-1. NE JAMAIS RÉSUMER. Je veux chaque phrase, chaque mot.
-2. Si l'enregistrement est long, CONTINUE jusqu'au bout. Ne t'arrête pas.
-3. Structure par sujets.
-4. Identifie les intervenants **en gras** (ex: **M. Tremblay :**).
-5. Utilise ce format Markdown :
-
-## [Sujet / Point de l'ordre du jour]
-**Intervenant 1 :** Propos exacts...
+            // 4. Parallel Execution
+            const promises = chunks.map(async (chunk) => {
+                const prompt = `Tu es un secrétaire. Transcris EXCLUSIVEMENT la partie de l'audio comprise entre la minute ${chunk.start} et la minute ${chunk.end}.
+            
+RÈGLES :
+1. Ignore tout ce qui est avant ${chunk.start}e minute ou après ${chunk.end}e minute.
+2. Transcris fidèlement mot à mot.
+3. Identifie les intervenants en gras (**Nom :**).
+4. Si c'est la fin du fichier, arrête-toi simplement.
 `;
-
-            const result = await model.generateContent({
-                contents: [{
-                    role: "user",
-                    parts: [
-                        { fileData: { mimeType: file.mimeType, fileUri: file.uri } },
-                        { text: prompt }
-                    ]
-                }],
-                generationConfig: {
-                    maxOutputTokens: 100000, // Max possible
-                    temperature: 0.2
+                try {
+                    const result = await model.generateContent({
+                        contents: [{
+                            role: "user",
+                            parts: [
+                                { fileData: { mimeType: file.mimeType, fileUri: file.uri } },
+                                { text: prompt }
+                            ]
+                        }],
+                        generationConfig: { maxOutputTokens: 65536, temperature: 0.2 }
+                    });
+                    const text = result.response.text();
+                    console.log(`[Chunk ${chunk.index}] Completed (${text.length} chars)`);
+                    return { index: chunk.index, text: text };
+                } catch (err) {
+                    console.error(`[Chunk ${chunk.index}] Failed`, err);
+                    return { index: chunk.index, text: `[Erreur transcription partie ${chunk.index + 1}]` };
                 }
             });
 
-            const transcription = result.response.text();
+            const results = await Promise.all(promises);
 
-            console.log(`[Plan B] Generation complete. Length: ${transcription.length} chars.`);
+            // 5. Sort and Join
+            const fullTranscription = results
+                .sort((a, b) => a.index - b.index)
+                .map(r => `\n\n--- PARTIE ${r.index + 1} (${r.index * 20}m - ${(r.index + 1) * 20}m) ---\n\n` + r.text)
+                .join("");
 
-            // 6. Cleanup (Delete from Gemini + Local)
-            try {
-                await fileManager.deleteFile(file.name);
-                fs.unlinkSync(tempFilePath);
-                console.log('[Plan B] Cleanup done.');
-            } catch (cleanupErr) {
-                console.warn('Cleanup warning:', cleanupErr);
-            }
+            console.log(`[Chunking] All parts joined. Total length: ${fullTranscription.length}`);
+
+            // 6. Cleanup
+            await fileManager.deleteFile(file.name).catch(e => console.warn('Cleanup error', e));
+            fs.unlinkSync(tempFilePath);
 
             // 7. Save
             await admin.firestore().doc(`meetings/${meetingId}`).update({
-                'audioRecording.transcription': transcription,
+                'audioRecording.transcription': fullTranscription,
                 'audioRecording.transcriptionStatus': 'completed',
                 'audioRecording.transcribedAt': new Date().toISOString(),
                 dateUpdated: new Date().toISOString()
             });
 
-            return { success: true, transcription };
+            return { success: true, transcription: fullTranscription };
 
         } catch (error) {
             console.error('[Plan B CRASH]', error);
-
-            // Error logging
-            if (data?.meetingId) {
-                await admin.firestore().doc(`meetings/${data.meetingId}`).update({
-                    'audioRecording.transcriptionStatus': 'error',
-                    'audioRecording.transcriptionError': error instanceof Error ? error.message : String(error)
-                }).catch(console.error);
-            }
-
             throw new functions.https.HttpsError("internal", error instanceof Error ? error.message : "Internal Error");
         }
     });
