@@ -1,10 +1,15 @@
-
 import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
 import { CallableContext } from "firebase-functions/v1/https";
+import axios from "axios";
 
-// Lazy initialization variable
-let isInitialized = false;
+// Standard initialization (safe with try-catch in handler if needed, but standard practice is top-level)
+// We will retry init inside handler if it fails somehow, but usually top-level is fine.
+try {
+    admin.initializeApp();
+} catch (e) {
+    console.warn('Firebase Admin already initialized or failed init:', e);
+}
 
 const GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
 
@@ -15,21 +20,10 @@ interface TranscriptionRequest {
 }
 
 export const transcribeAudio = functions.https.onCall(async (data: TranscriptionRequest, context: CallableContext) => {
-    // 1. Defensively load dependencies and init inside request scope
-    // This prevents cold-start crashes if env vars are missing or deps are broken
+    console.log('[Transcription] Function Start. Data:', JSON.stringify(data));
+
     try {
-        if (!isInitialized) {
-            admin.initializeApp();
-            isInitialized = true;
-        }
-
-        // Dynamic import for axios to prevent top-level crash if module is missing
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
-        const axios = require('axios');
-
-        console.log('[Transcription] Function Start. Data:', data);
-
-        // 2. Auth Check
+        // 1. Auth Check - STRICT
         if (!context.auth) {
             console.warn('[Transcription] Unauthenticated call');
             throw new functions.https.HttpsError(
@@ -38,9 +32,9 @@ export const transcribeAudio = functions.https.onCall(async (data: Transcription
             );
         }
 
-        // 3. Config Check
+        // 2. Config Check - ROBUST
+        // Try multiple sources for the key
         const config = functions.config();
-        // Try multiple sources for the key to be robust
         const GEMINI_API_KEY = config.google?.api_key || process.env.GOOGLE_API_KEY || process.env.VITE_GOOGLE_AI_API;
 
         if (!GEMINI_API_KEY) {
@@ -57,7 +51,7 @@ export const transcribeAudio = functions.https.onCall(async (data: Transcription
             throw new functions.https.HttpsError("invalid-argument", "Missing parameters (meetingId, storagePath, mimeType)");
         }
 
-        // 4. Storage Access
+        // 3. Storage Access
         console.log(`[Transcription] Accessing storage path: ${storagePath}`);
         const bucket = admin.storage().bucket();
         const file = bucket.file(storagePath);
@@ -68,27 +62,27 @@ export const transcribeAudio = functions.https.onCall(async (data: Transcription
             throw new functions.https.HttpsError("not-found", "Audio file not found in storage");
         }
 
-        // 5. Download
+        // 4. Download
         const [fileBuffer] = await file.download();
         const base64Audio = fileBuffer.toString('base64');
         console.log(`[Transcription] Downloaded ${fileBuffer.length} bytes`);
 
-        // 6. Gemini Call
-        console.log('[Transcription] Sending to Gemini...');
+        // 5. Build Prompt (Improved)
         const prompt = `Tu es un secrétaire de séance expert. Ta tâche est de transcrire cet enregistrement de réunion de manière détaillée et structurée.
 
 RÈGLES DE TRANSCRIPTION :
 1. DÉTAILS : Ne fais PAS de résumé. Transcris les discussions le plus fidèlement possible.
-2. STRUCTURE : Organise la transcription par SUJETS ou POINTS D'ORDRE DU JOUR clairement identifiés (ex: "1. Ouverture de la séance", "2. Budget", etc.).
-3. INTERVENANTS : Identifie qui parle à chaque fois (Intervenant 1, Intervenant 2, ou les noms si mentionnés).
-4. FORMAT : Utilise du texte suivi pour les discussions, pas seulement des listes à puces. Le but est de pouvoir rédiger un procès-verbal précis ensuite.
+2. STRUCTURE : Organise la transcription par SUJETS ou POINTS D'ORDRE DU JOUR clairement identifiés.
+3. INTERVENANTS : Identifie qui parle (Intervenant 1, Intervenant 2, etc.).
+4. FORMAT : Utilise du texte suivi et détaillé pour faciliter la rédaction du procès-verbal.
 
-Exemple de structure attendue :
-## [Sujet / Point de l'ordre du jour]
-**Intervenant 1 :** [Propos détaillés...]
-**Intervenant 2 :** [Réponse détaillée...]
+Exemple :
+## [Sujet]
+**Intervenant 1 :** [Propos...]
 `;
 
+        // 6. Gemini Call
+        console.log('[Transcription] Sending to Gemini...');
         const geminiRequest = {
             contents: [{
                 parts: [
@@ -105,19 +99,19 @@ Exemple de structure attendue :
 
         const response = await axios.post(`${GEMINI_API_URL}?key=${GEMINI_API_KEY}`, geminiRequest, {
             headers: { 'Content-Type': 'application/json' },
-            validateStatus: () => true // Allow handling non-200 responses
+            validateStatus: () => true // Allow handling non-200 responses manualy
         });
 
         if (response.status !== 200) {
             console.error('[Gemini Error]', response.data);
-            throw new functions.https.HttpsError("internal", `Gemini API Error: ${response.status}`);
+            throw new functions.https.HttpsError("internal", `Gemini API Error: ${response.status} - ${JSON.stringify(response.data)}`);
         }
 
         const transcription = response.data.candidates?.[0]?.content?.parts?.[0]?.text;
 
         if (!transcription) {
             console.error('[Gemini] Empty transcription', response.data);
-            throw new functions.https.HttpsError("internal", "Empty transcription received");
+            throw new functions.https.HttpsError("internal", "Empty transcription received from AI");
         }
 
         // 7. Save Result
@@ -142,7 +136,7 @@ Exemple de structure attendue :
                     'audioRecording.transcriptionError': error instanceof Error ? error.message : String(error)
                 });
             } catch (writeErr) {
-                console.error('Failed to write error status to Firestore', writeErr);
+                console.error('Failed to write error status to Firestore', writeErr); // Best effort
             }
         }
 
