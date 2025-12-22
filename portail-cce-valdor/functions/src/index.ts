@@ -20,7 +20,7 @@ interface TranscriptionRequest {
 
 export const transcribeAudio = functions
     .runWith({
-        timeoutSeconds: 300,
+        timeoutSeconds: 540,
         memory: "2GB"
     })
     .https.onCall(async (data: TranscriptionRequest, context: CallableContext) => {
