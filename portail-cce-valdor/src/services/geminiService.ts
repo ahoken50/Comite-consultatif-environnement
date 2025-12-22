@@ -1,6 +1,7 @@
-import { db, storage } from './firebase';
+import { db, functions } from './firebase';
 import { doc, updateDoc } from 'firebase/firestore';
-import { ref, getDownloadURL } from 'firebase/storage';
+import { httpsCallable } from 'firebase/functions';
+
 import type { Meeting, MinutesDraft } from '../types/meeting.types';
 
 // Environment variable for Gemini API key (matches GOOGLE_AI_API GitHub secret)
@@ -107,121 +108,42 @@ export const transcribeAudio = async (
             dateUpdated: new Date().toISOString()
         });
 
-        // 1. Get audio file using Firebase Storage SDK
-        // We prefer using the storagePath if available, otherwise try to extract it from URL
-        console.log('[Transcription] Getting audio file...');
+        // 1. Call Cloud Function instead of client-side fetch due to CORS issues
+        console.log('[Transcription] Calling Cloud Function...');
+        const transcribeFunction = httpsCallable(functions, 'transcribeAudio');
 
-        let fileRef;
-        if (storagePath) {
-            console.log('[Transcription] Using provided storage path:', storagePath);
-            fileRef = ref(storage, storagePath);
-        } else {
-            // Fallback: try to create ref from URL
-            console.log('[Transcription] Trying to create ref from URL:', audioUrl);
-            try {
-                fileRef = ref(storage, audioUrl);
-            } catch (e) {
-                console.warn('[Transcription] Could not create ref from URL:', e);
-                throw new Error('Impossible de récupérer le fichier via le SDK Storage. Chemin de stockage manquant.');
-            }
-        }
-
-        // Download as Blob using getDownloadURL + fetch
-        console.log('[Transcription] Getting download URL...');
-        const downloadUrl = await getDownloadURL(fileRef);
-        console.log('[Transcription] Fetching from URL:', downloadUrl);
-
-        // Add timestamp to ensure no cache is used even for signed URL
-        const cacheBustUrl = downloadUrl + '&_t=' + Date.now();
-
-        const response = await fetch(cacheBustUrl);
-        if (!response.ok) {
-            throw new Error(`Failed to fetch audio file: ${response.status} ${response.statusText}`);
-        }
-
-        const blob = await response.blob();
-        console.log('[Transcription] Audio downloaded, size:', blob.size, 'bytes');
-
-        // 2. Upload to Gemini File API
-        const fileUri = await uploadToGemini(blob, mimeType, `meeting-${meetingId}`);
-
-
-        // 3. Prepare Gemini request with fileUri
-        const geminiRequest = {
-            contents: [{
-                parts: [
-                    {
-                        text: `Tu es un transcripteur professionnel. Transcris cet enregistrement audio en français québécois.
-
-Instructions:
-- Transcris fidèlement tout ce qui est dit
-- Identifie les différents intervenants si possible (Intervenant 1, Intervenant 2, etc.)
-- Ajoute des horodatages approximatifs toutes les 2-3 minutes [00:00], [02:00], etc.
-- Marque les passages inaudibles avec [INAUDIBLE]
-- Utilise des paragraphes pour séparer les différentes interventions
-- Ne résume pas, transcris mot pour mot
-
-Format de sortie:
-[00:00] Intervenant 1: [Début de la transcription...]
-[02:00] Intervenant 2: [Suite...]`
-                    },
-                    {
-                        fileData: {
-                            mimeType: mimeType,
-                            fileUri: fileUri
-                        }
-                    }
-                ]
-            }]
-        };
-
-        // 4. Call Gemini Generate Content API
-        // Note: With File API, the file needs to be processed. 
-        // For audio it's usually fast, but for video it might state 'PROCESSING'.
-        // We optimistically try to generate immediately.
-        const geminiResponse = await fetch(`${GEMINI_API_URL}?key=${GEMINI_API_KEY}`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(geminiRequest)
+        const result = await transcribeFunction({
+            meetingId,
+            storagePath: storagePath || audioUrl, // Pass storage path if avail, else URL (but function expects path)
+            mimeType
         });
 
-        const result: GeminiResponse = await geminiResponse.json();
+        // The function updates Firestore directly, so we just verify success
+        const data = result.data as { success: boolean; transcription: string; error?: string };
 
-        if (result.error) {
-            throw new Error(result.error.message);
+        if (!data.success) {
+            throw new Error(data.error || 'Unknown error from server');
         }
 
-        const transcription = result.candidates?.[0]?.content?.parts?.[0]?.text;
-
-        if (!transcription) {
-            throw new Error('Aucune transcription générée');
-        }
-
-        // Update meeting with transcription
-        await updateDoc(meetingRef, {
-            'audioRecording.transcription': transcription,
-            'audioRecording.transcriptionStatus': 'completed',
-            'audioRecording.transcribedAt': new Date().toISOString(),
-            dateUpdated: new Date().toISOString()
-        });
-
-        return { success: true, transcription };
+        console.log('[Transcription] Success via Cloud Function!');
+        return { success: true, transcription: data.transcription };
 
     } catch (error) {
-        const err = error as Error;
-        console.error('Transcription error:', err);
+        console.error('Transcription error handling:', error);
 
-        // Update status to error
+        const err = error as Error;
         const meetingRef = doc(db, 'meetings', meetingId);
+
         await updateDoc(meetingRef, {
             'audioRecording.transcriptionStatus': 'error',
             'audioRecording.transcriptionError': err.message,
             dateUpdated: new Date().toISOString()
         });
 
-        return { success: false, error: err.message };
+        return {
+            success: false,
+            error: err.message
+        };
     }
 };
 
