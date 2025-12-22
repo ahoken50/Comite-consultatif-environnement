@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useCallback, useRef } from 'react';
 import { Box, Typography, Paper, Grid, Accordion, AccordionSummary, AccordionDetails, Chip } from '@mui/material';
 import { ExpandMore, Folder } from '@mui/icons-material';
 import { useDispatch, useSelector } from 'react-redux';
@@ -19,24 +19,31 @@ const DocumentsPage: React.FC = () => {
     const { items: meetings } = useSelector((state: RootState) => state.meetings);
     const { items: projects } = useSelector((state: RootState) => state.projects);
 
+    // Use a ref to access the latest meetings in useCallback without adding it to dependencies
+    const meetingsRef = useRef(meetings);
+    useEffect(() => {
+        meetingsRef.current = meetings;
+    }, [meetings]);
+
     useEffect(() => {
         dispatch(fetchDocuments());
         dispatch(fetchMeetings());
         dispatch(fetchProjects());
     }, [dispatch]);
 
-    const handleDelete = async (id: string, storagePath: string) => {
+    const handleDelete = useCallback(async (id: string, storagePath: string) => {
         console.log('[DEBUG] handleDelete called with:', { id, storagePath });
         if (window.confirm('Êtes-vous sûr de vouloir supprimer ce document ?')) {
             console.log('[DEBUG] User confirmed deletion');
             try {
                 // Check if this document is linked as a meeting's minutes file
                 // First try by documentId, then by storagePath as fallback for legacy data
-                let linkedMeeting = meetings.find(m => m.minutesFileDocumentId === id);
+                const currentMeetings = meetingsRef.current;
+                let linkedMeeting = currentMeetings.find(m => m.minutesFileDocumentId === id);
 
                 if (!linkedMeeting) {
                     // Fallback: check by storagePath for documents uploaded before minutesFileDocumentId was added
-                    linkedMeeting = meetings.find(m => m.minutesFileStoragePath === storagePath);
+                    linkedMeeting = currentMeetings.find(m => m.minutesFileStoragePath === storagePath);
                 }
 
                 if (linkedMeeting) {
@@ -64,7 +71,7 @@ const DocumentsPage: React.FC = () => {
         } else {
             console.log('[DEBUG] User cancelled deletion');
         }
-    };
+    }, [dispatch]);
 
     const groupedDocuments = useMemo(() => {
         const groups: Record<string, { title: string; type: 'meeting' | 'project' | 'other'; date: string; documents: Document[]; entityId?: string }> = {};
