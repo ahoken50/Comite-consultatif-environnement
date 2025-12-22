@@ -171,13 +171,22 @@ export const transcribeLocalFile = async (
         const fileUri = await uploadToGemini(file, file.type, `meeting-${meetingId}`);
 
         // Call Gemini API (same logic as transcribeAudio)
+        const prompt = `Tu es un secrétaire de séance expert. Ta tâche est de transcrire cet enregistrement de réunion de manière détaillée et structurée.
+
+RÈGLES DE TRANSCRIPTION :
+1. DÉTAILS : Ne fais PAS de résumé. Transcris les discussions le plus fidèlement possible.
+2. STRUCTURE : Organise la transcription par SUJETS ou POINTS D'ORDRE DU JOUR clairement identifiés.
+3. INTERVENANTS : Identifie qui parle.
+4. FORMAT : Utilise du texte suivi et détaillé pour faciliter la rédaction du procès-verbal.
+`;
+
         const response = await fetch(`${GEMINI_API_URL}?key=${GEMINI_API_KEY}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 contents: [{
                     parts: [
-                        { text: "Veuillez transcrire cet enregistrement audio de réunion en texte. Identifiez les différents interlocuteurs si possible. Structurez la réponse avec des points clairs." },
+                        { text: prompt },
                         { file_data: { mime_type: file.type, file_uri: fileUri } }
                     ]
                 }]
