@@ -98,7 +98,10 @@ Exemple :
                             }
                         }
                     ]
-                }]
+                }],
+                generationConfig: {
+                    maxOutputTokens: 100000
+                }
             };
 
             const response = await axios.post(`${GEMINI_API_URL}?key=${GEMINI_API_KEY}`, geminiRequest, {

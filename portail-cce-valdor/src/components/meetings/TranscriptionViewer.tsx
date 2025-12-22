@@ -51,7 +51,7 @@ const TranscriptionViewer: React.FC<TranscriptionViewerProps> = ({
     // Extract unique speakers from transcription
     const detectedSpeakers = React.useMemo(() => {
         if (!transcription) return [];
-        const regex = /\[\d{2}:\d{2}\] (.*?):/g;
+        const regex = /(?:\[\d{2}:\d{2}\]\s+)?\**([^*\n]+?)\s*:\s*\**/g;
         const speakers = new Set<string>();
         let match;
         while ((match = regex.exec(transcription)) !== null) {
