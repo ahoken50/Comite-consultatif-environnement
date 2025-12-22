@@ -1,10 +1,10 @@
 
 import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
+import { CallableContext } from "firebase-functions/v1/https";
 
 admin.initializeApp();
 
-const GEMINI_API_KEY = functions.config().google.api_key;
 const GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
 
 interface TranscriptionRequest {
@@ -13,7 +13,12 @@ interface TranscriptionRequest {
     mimeType: string;
 }
 
-export const transcribeAudio = functions.https.onCall(async (data: TranscriptionRequest, context) => {
+export const transcribeAudio = functions.https.onCall(async (data: TranscriptionRequest, context: CallableContext) => {
+    // Access config inside the function to prevent cold-start crashes if config is missing
+    const config = functions.config();
+    const GEMINI_API_KEY = config.google?.api_key || process.env.GOOGLE_API_KEY;
+
+    console.log('[Transcription] Function called. Auth present:', !!context.auth);
     // 1. Auth Validation
     if (!context.auth) {
         throw new functions.https.HttpsError(
