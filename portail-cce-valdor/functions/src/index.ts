@@ -81,18 +81,20 @@ export const transcribeAudio = functions
                 });
             }
 
-            console.log(`[Chunking] Starting ${chunks.length} parallel requests (with overlap) using Gemini 2.0 Flash...`);
+            console.log(`[Chunking] Starting ${chunks.length} parallel requests (with overlap) using Gemini 2.5 Flash...`);
             const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-            const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+            // Gemini 2.5 Flash: Latest model with 1M context window and native audio support
+            const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
             // 4. Parallel Execution
             const promises = chunks.map(async (chunk) => {
-                const prompt = `Tu es un secrétaire. Transcris EXCLUSIVEMENT la partie de l'audio comprise entre la minute ${chunk.start} et la minute ${chunk.end}.
-            
-RÈGLES :
-1. Ignore ce qui est avant ${chunk.start}m ou après ${chunk.end}m.
-2. Transcris fidèlement mot à mot.
-3. Identifie les intervenants en gras (**Nom :**).
+                const prompt = `Tu es un secrétaire de séance expert. Transcris INTÉGRALEMENT la partie de l'audio comprise entre la minute ${chunk.start} et la minute ${chunk.end}.
+
+RÈGLES STRICTES :
+1. VERBATIM : Transcris CHAQUE mot prononcé, sans résumer ni omettre.
+2. INTERVENANTS : Identifie chaque personne qui parle avec le format **Intervenant X :** en gras.
+3. CONTINUITÉ : Si une phrase commence avant ${chunk.start}m, commence par "..." et si elle continue après ${chunk.end}m, termine par "..."
+4. Ne fais AUCUN résumé.
 `;
                 try {
                     const result = await model.generateContent({
@@ -103,7 +105,7 @@ RÈGLES :
                                 { text: prompt }
                             ]
                         }],
-                        generationConfig: { maxOutputTokens: 65536, temperature: 0.2 }
+                        generationConfig: { maxOutputTokens: 16384, temperature: 0.1 } // 16k per chunk for 20m of speech
                     });
                     const text = result.response.text();
                     // Label chunk for debug but keep clean for fusion
@@ -125,25 +127,43 @@ RÈGLES :
             console.log(`[Chunking] Raw joined length: ${rawTranscription.length}. Starting AI Fusion...`);
 
             // 6. AI Fusion / Cleanup
-            // We ask Gemini to merge the overlapping parts
-            const fusionPrompt = `Voici une transcription brute divisée en segments qui se chevauchent (overlap).
-TA MISSION :
-1. FUSIONNE tout en un seul texte fluide et continu.
-2. SUPPRIME les répétitions dues au chevauchement entre les segments.
-3. GARDE absolument tout le contenu (c'est un verbatim exhaustif).
-4. Ne fais AUCUN résumé.
+            const fusionPrompt = `Voici une transcription brute divisée en segments qui se chevauchent.
+Objectif : FUSIONNER et NETTOYER sans perdre d'information.
 
-TRANSCRIPTION BRUTE A NETTOYER :
+RÈGLES ABSOLUES :
+1. **INTERVENANTS** : Tu DOIS conserver le format gras : **Intervenant X :**. C'est crucial pour le logiciel.
+2. **INTÉGRALITÉ** : Ne fais AUCUN résumé. Garde chaque phrase.
+3. **FUSION** : Supprime les redondances aux jonctions des segments.
+
+TEXTE A TRAITER :
 ${rawTranscription}
 `;
 
-            const finalResult = await model.generateContent({
-                contents: [{ role: "user", parts: [{ text: fusionPrompt }] }],
-                generationConfig: { maxOutputTokens: 100000, temperature: 0.1 }
-            });
+            let finalTranscription = rawTranscription; // Default to raw if fusion fails
 
-            const finalTranscription = finalResult.response.text();
-            console.log(`[Fusion] Complete. Final length: ${finalTranscription.length}`);
+            try {
+                // Use a larger context model for fusion if possible, or same 1.5 Pro
+                const finalResult = await model.generateContent({
+                    contents: [{ role: "user", parts: [{ text: fusionPrompt }] }],
+                    generationConfig: { maxOutputTokens: 32768, temperature: 0.1 } // Large output for complete fusion
+                });
+
+                const fusedText = finalResult.response.text();
+
+                // Safety Check: If fusion lost more than 20% of content, suspect truncation/summarization -> Revert to RAW
+                if (fusedText.length < rawTranscription.length * 0.8) {
+                    console.warn(`[Fusion Warning] Fused text significantly shorter (${fusedText.length} vs ${rawTranscription.length}). Returning RAW transcription to ensure completeness.`);
+                    finalTranscription = rawTranscription;
+                } else {
+                    console.log(`[Fusion Success] Length: ${fusedText.length}`);
+                    finalTranscription = fusedText;
+                }
+
+            } catch (fusionErr) {
+                console.error('[Fusion Failed]', fusionErr);
+                console.log('Returning raw concatenated transcription.');
+                // finalTranscription is already rawTranscription
+            }
 
             // 7. Cleanup
             await fileManager.deleteFile(file.name).catch(e => console.warn('Cleanup error', e));
