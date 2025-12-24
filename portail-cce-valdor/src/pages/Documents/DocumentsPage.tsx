@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useCallback, useRef } from 'react';
 import { Box, Typography, Paper, Grid, Accordion, AccordionSummary, AccordionDetails, Chip } from '@mui/material';
 import { ExpandMore, Folder } from '@mui/icons-material';
 import { useDispatch, useSelector } from 'react-redux';
@@ -25,18 +25,28 @@ const DocumentsPage: React.FC = () => {
         dispatch(fetchProjects());
     }, [dispatch]);
 
-    const handleDelete = async (id: string, storagePath: string) => {
+    // OPTIMIZATION: Use useRef for meetings to access the latest state in useCallback without re-creating the function.
+    // This allows handleDelete to be stable across renders, preserving React.memo optimization in child components.
+    const meetingsRef = useRef(meetings);
+    useEffect(() => {
+        meetingsRef.current = meetings;
+    }, [meetings]);
+
+    const handleDelete = useCallback(async (id: string, storagePath: string) => {
         console.log('[DEBUG] handleDelete called with:', { id, storagePath });
         if (window.confirm('Êtes-vous sûr de vouloir supprimer ce document ?')) {
             console.log('[DEBUG] User confirmed deletion');
             try {
+                // Access latest meetings from ref
+                const currentMeetings = meetingsRef.current;
+
                 // Check if this document is linked as a meeting's minutes file
                 // First try by documentId, then by storagePath as fallback for legacy data
-                let linkedMeeting = meetings.find(m => m.minutesFileDocumentId === id);
+                let linkedMeeting = currentMeetings.find(m => m.minutesFileDocumentId === id);
 
                 if (!linkedMeeting) {
                     // Fallback: check by storagePath for documents uploaded before minutesFileDocumentId was added
-                    linkedMeeting = meetings.find(m => m.minutesFileStoragePath === storagePath);
+                    linkedMeeting = currentMeetings.find(m => m.minutesFileStoragePath === storagePath);
                 }
 
                 if (linkedMeeting) {
@@ -64,7 +74,11 @@ const DocumentsPage: React.FC = () => {
         } else {
             console.log('[DEBUG] User cancelled deletion');
         }
-    };
+    }, [dispatch]); // Removed 'meetings' dependency
+
+    // OPTIMIZATION: Pre-compute maps for O(1) access to reduce complexity from O(N*M) to O(N+M)
+    const meetingsMap = useMemo(() => new Map(meetings.map(m => [m.id, m])), [meetings]);
+    const projectsMap = useMemo(() => new Map(projects.map(p => [p.id, p])), [projects]);
 
     const groupedDocuments = useMemo(() => {
         const groups: Record<string, { title: string; type: 'meeting' | 'project' | 'other'; date: string; documents: Document[]; entityId?: string }> = {};
@@ -82,7 +96,7 @@ const DocumentsPage: React.FC = () => {
             let entityId = '';
 
             if (doc.linkedEntityType === 'meeting' && doc.linkedEntityId) {
-                const meeting = meetings.find(m => m.id === doc.linkedEntityId);
+                const meeting = meetingsMap.get(doc.linkedEntityId);
                 if (meeting) {
                     key = `meeting-${meeting.id}`;
                     title = `Assemblée: ${meeting.title}`;
@@ -96,7 +110,7 @@ const DocumentsPage: React.FC = () => {
                     key = `meeting-${doc.linkedEntityId}`;
                 }
             } else if (doc.linkedEntityType === 'project' && doc.linkedEntityId) {
-                const project = projects.find(p => p.id === doc.linkedEntityId);
+                const project = projectsMap.get(doc.linkedEntityId);
                 if (project) {
                     key = `project-${project.id}`;
                     title = `Projet: ${project.name}`;
@@ -121,7 +135,7 @@ const DocumentsPage: React.FC = () => {
             if (b.type === 'other') return -1;
             return new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime();
         });
-    }, [documents, meetings, projects]);
+    }, [documents, meetingsMap, projectsMap]);
 
     return (
         <Box>
@@ -166,7 +180,7 @@ const DocumentsPage: React.FC = () => {
                                     <DocumentList
                                         documents={group.documents}
                                         onDelete={handleDelete}
-                                        agendaItems={group.type === 'meeting' ? meetings.find(m => m.id === group.entityId)?.agendaItems : undefined}
+                                        agendaItems={group.type === 'meeting' && group.entityId ? meetingsMap.get(group.entityId)?.agendaItems : undefined}
                                     />
                                 </AccordionDetails>
                             </Accordion>
