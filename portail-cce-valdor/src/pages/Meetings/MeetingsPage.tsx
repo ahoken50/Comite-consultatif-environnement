@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { Box, Typography, Button, Grid, Tabs, Tab } from '@mui/material';
 import { Add } from '@mui/icons-material';
 import { useDispatch, useSelector } from 'react-redux';
@@ -48,17 +48,30 @@ const MeetingsPage: React.FC = () => {
         }
     };
 
-    const handleMeetingClick = (id: string) => {
+    // Optimize: Wrap handlers in useCallback to ensure referential stability
+    const handleMeetingClick = useCallback((id: string) => {
         navigate(`/meetings/${id}`);
-    };
+    }, [navigate]);
 
-    const upcomingMeetings = meetings.filter(m =>
+    const handleDeleteMeeting = useCallback(async (id: string) => {
+        if (window.confirm('Êtes-vous sûr de vouloir supprimer cette réunion ?')) {
+            try {
+                await dispatch(deleteMeeting(id)).unwrap();
+            } catch (err) {
+                console.error('Failed to delete meeting:', err);
+                alert('Erreur lors de la suppression de la réunion.');
+            }
+        }
+    }, [dispatch]);
+
+    // Optimize: Memoize filtered lists to prevent recalculation on every render
+    const upcomingMeetings = useMemo(() => meetings.filter(m =>
         m.status === MeetingStatus.SCHEDULED || m.status === MeetingStatus.IN_PROGRESS
-    );
+    ), [meetings]);
 
-    const pastMeetings = meetings.filter(m =>
+    const pastMeetings = useMemo(() => meetings.filter(m =>
         m.status === MeetingStatus.COMPLETED || m.status === MeetingStatus.CANCELLED
-    );
+    ), [meetings]);
 
     const displayedMeetings = tabValue === 0 ? upcomingMeetings : pastMeetings;
 
@@ -90,17 +103,8 @@ const MeetingsPage: React.FC = () => {
                         <MeetingCard
                             meeting={meeting}
                             onClick={handleMeetingClick}
-                            onEdit={(id) => handleMeetingClick(id)}
-                            onDelete={async (id) => {
-                                if (window.confirm('Êtes-vous sûr de vouloir supprimer cette réunion ?')) {
-                                    try {
-                                        await dispatch(deleteMeeting(id)).unwrap();
-                                    } catch (err) {
-                                        console.error('Failed to delete meeting:', err);
-                                        alert('Erreur lors de la suppression de la réunion.');
-                                    }
-                                }
-                            }}
+                            onEdit={handleMeetingClick}
+                            onDelete={handleDeleteMeeting}
                         />
                     </Grid>
                 ))}

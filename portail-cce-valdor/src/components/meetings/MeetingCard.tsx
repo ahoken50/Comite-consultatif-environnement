@@ -13,7 +13,8 @@ interface MeetingCardProps {
     onDelete?: (id: string) => void;
 }
 
-const MeetingCard: React.FC<MeetingCardProps> = ({ meeting, onClick, onEdit, onDelete }) => {
+// Optimize: Wrap in React.memo to prevent unnecessary re-renders when parent state changes
+const MeetingCard: React.FC<MeetingCardProps> = React.memo(({ meeting, onClick, onEdit, onDelete }) => {
     const getStatusColor = (status: MeetingStatus) => {
         switch (status) {
             case MeetingStatus.SCHEDULED: return 'primary';
@@ -103,6 +104,8 @@ const MeetingCard: React.FC<MeetingCardProps> = ({ meeting, onClick, onEdit, onD
             </CardContent>
         </Card>
     );
-};
+});
+
+MeetingCard.displayName = 'MeetingCard';
 
 export default MeetingCard;
