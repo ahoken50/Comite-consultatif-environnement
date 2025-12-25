@@ -1,5 +1,5 @@
 import React from 'react';
-import { Card, CardContent, Typography, Box, Chip, IconButton } from '@mui/material';
+import { Card, CardContent, Typography, Box, Chip, IconButton, Tooltip } from '@mui/material';
 import { CalendarToday, LocationOn, Edit, Delete } from '@mui/icons-material';
 import type { Meeting } from '../../types/meeting.types';
 import { MeetingStatus, MeetingType } from '../../types/meeting.types';
@@ -68,21 +68,27 @@ const MeetingCard: React.FC<MeetingCardProps> = ({ meeting, onClick, onEdit, onD
                     </Box>
                     <Box>
                         {onEdit && (
-                            <IconButton
-                                size="small"
-                                onClick={(e) => { e.stopPropagation(); onEdit(meeting.id); }}
-                            >
-                                <Edit fontSize="small" />
-                            </IconButton>
+                            <Tooltip title="Modifier la réunion">
+                                <IconButton
+                                    size="small"
+                                    onClick={(e) => { e.stopPropagation(); onEdit(meeting.id); }}
+                                    aria-label={`Modifier la réunion ${meeting.title}`}
+                                >
+                                    <Edit fontSize="small" />
+                                </IconButton>
+                            </Tooltip>
                         )}
                         {onDelete && (
-                            <IconButton
-                                size="small"
-                                color="error"
-                                onClick={(e) => { e.stopPropagation(); onDelete(meeting.id); }}
-                            >
-                                <Delete fontSize="small" />
-                            </IconButton>
+                            <Tooltip title="Supprimer la réunion">
+                                <IconButton
+                                    size="small"
+                                    color="error"
+                                    onClick={(e) => { e.stopPropagation(); onDelete(meeting.id); }}
+                                    aria-label={`Supprimer la réunion ${meeting.title}`}
+                                >
+                                    <Delete fontSize="small" />
+                                </IconButton>
+                            </Tooltip>
                         )}
                     </Box>
                 </Box>
