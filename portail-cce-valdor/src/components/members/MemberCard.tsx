@@ -8,7 +8,8 @@ import {
     Chip,
     IconButton,
     Menu,
-    MenuItem
+    MenuItem,
+    Tooltip
 } from '@mui/material';
 import { MoreVert, Email, Phone } from '@mui/icons-material';
 import type { Member } from '../../types/member.types';
@@ -78,9 +79,14 @@ const MemberCard: React.FC<MemberCardProps> = ({ member, onEdit, onDelete }) => 
                             />
                         </Box>
                     </Box>
-                    <IconButton onClick={handleMenuOpen}>
-                        <MoreVert />
-                    </IconButton>
+                    <Tooltip title="Actions">
+                        <IconButton
+                            onClick={handleMenuOpen}
+                            aria-label={`Actions pour ${member.displayName}`}
+                        >
+                            <MoreVert />
+                        </IconButton>
+                    </Tooltip>
                 </Box>
 
                 <Box sx={{ mt: 2 }}>
