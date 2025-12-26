@@ -11,3 +11,7 @@
 ## 2024-05-24 - Disconnected Custom Labels
 **Learning:** Detected a pattern where `Typography` is used for form labels without `htmlFor` association, decoupling the label from the input for screen readers.
 **Action:** When styling custom labels, ensure `component="label"` and `htmlFor="input-id"` are applied.
+
+## 2024-05-24 - Dynamic Action Labels
+**Learning:** In lists of items, generic labels like "Edit" or "Delete" are ambiguous for screen reader users navigating by buttons. They need context.
+**Action:** Always include the item name in the action's aria-label, e.g., "Edit Project X" instead of just "Edit".
