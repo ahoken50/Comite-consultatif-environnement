@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import {
     Box,
     Typography,
@@ -46,16 +46,16 @@ const ProjectsPage: React.FC = () => {
         }
     };
 
-    const filteredProjects = projects.filter(project =>
+    const filteredProjects = useMemo(() => projects.filter(project =>
         project.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         project.code.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    ), [projects, searchTerm]);
 
-    const handleProjectClick = (id: string) => {
+    const handleProjectClick = useCallback((id: string) => {
         navigate(`/projects/${id}`);
-    };
+    }, [navigate]);
 
-    const handleCreateProject = async (data: any) => {
+    const handleCreateProject = useCallback(async (data: any) => {
         try {
             // Placeholder: Log data to avoid unused var warning
             console.log('Creating project with:', data);
@@ -64,9 +64,9 @@ const ProjectsPage: React.FC = () => {
         } catch (error) {
             console.error('Failed to create project:', error);
         }
-    };
+    }, []);
 
-    const handleStatusChange = async (projectId: string, newStatus: ProjectStatus) => {
+    const handleStatusChange = useCallback(async (projectId: string, newStatus: ProjectStatus) => {
         try {
             // Placeholder: Log data to avoid unused var warning
             console.log('Updating status:', projectId, newStatus);
@@ -74,7 +74,7 @@ const ProjectsPage: React.FC = () => {
         } catch (error) {
             console.error('Failed to update project status:', error);
         }
-    };
+    }, []);
 
     return (
         <Box>

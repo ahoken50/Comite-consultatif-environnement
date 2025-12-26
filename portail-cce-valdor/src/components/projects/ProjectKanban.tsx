@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Box, Typography, Paper } from '@mui/material';
 import { DndContext, useSensor, useSensors, PointerSensor } from '@dnd-kit/core';
 import type { DragEndEvent } from '@dnd-kit/core';
@@ -20,7 +20,7 @@ const columns = [
     { id: ProjectStatus.COMPLETED, title: 'Réalisé', color: '#10b981' },
 ];
 
-const KanbanColumn = ({ id, title, color, projects, onProjectClick }: any) => {
+const KanbanColumn = React.memo(({ id, title, color, projects, onProjectClick }: any) => {
     const { setNodeRef } = useDroppable({ id });
 
     return (
@@ -50,7 +50,7 @@ const KanbanColumn = ({ id, title, color, projects, onProjectClick }: any) => {
             </Box>
         </Paper>
     );
-};
+});
 
 const ProjectKanban: React.FC<ProjectKanbanProps> = ({ projects, onProjectClick }) => {
     const sensors = useSensors(useSensor(PointerSensor));
@@ -69,6 +69,20 @@ const ProjectKanban: React.FC<ProjectKanbanProps> = ({ projects, onProjectClick 
         }
     };
 
+    // Optimization: Group projects by status in one pass (O(N)) instead of filtering for each column (O(N*M))
+    const projectsByStatus = useMemo(() => {
+        const groups: Record<string, Project[]> = {};
+        columns.forEach(col => { groups[col.id] = []; });
+
+        projects.forEach(project => {
+            if (groups[project.status]) {
+                groups[project.status].push(project);
+            }
+        });
+
+        return groups;
+    }, [projects]);
+
     return (
         <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
             <Box sx={{ display: 'flex', gap: 3, overflowX: 'auto', pb: 2, height: 'calc(100vh - 200px)' }}>
@@ -78,7 +92,7 @@ const ProjectKanban: React.FC<ProjectKanbanProps> = ({ projects, onProjectClick 
                         id={col.id}
                         title={col.title}
                         color={col.color}
-                        projects={projects.filter(p => p.status === col.id)}
+                        projects={projectsByStatus[col.id] || []}
                         onProjectClick={onProjectClick}
                     />
                 ))}
@@ -87,4 +101,4 @@ const ProjectKanban: React.FC<ProjectKanbanProps> = ({ projects, onProjectClick 
     );
 };
 
-export default ProjectKanban;
+export default React.memo(ProjectKanban);

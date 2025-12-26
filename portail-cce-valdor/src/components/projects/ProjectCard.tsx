@@ -10,7 +10,7 @@ interface ProjectCardProps {
     onClick: (id: string) => void;
 }
 
-const ProjectCard: React.FC<ProjectCardProps> = ({ project, onClick }) => {
+const ProjectCard: React.FC<ProjectCardProps> = React.memo(({ project, onClick }) => {
     const getStatusColor = (status: ProjectStatus) => {
         switch (status) {
             case ProjectStatus.COMPLETED: return 'success';
@@ -100,6 +100,6 @@ const ProjectCard: React.FC<ProjectCardProps> = ({ project, onClick }) => {
             </CardContent>
         </Card>
     );
-};
+});
 
 export default ProjectCard;
