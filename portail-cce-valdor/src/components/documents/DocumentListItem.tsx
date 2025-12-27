@@ -8,7 +8,8 @@ import {
     Typography,
     Paper,
     Chip,
-    Box
+    Box,
+    Tooltip
 } from '@mui/material';
 import {
     Description,
@@ -62,22 +63,38 @@ const DocumentListItem: React.FC<DocumentListItemProps> = React.memo(({ doc, onP
             <ListItem
                 secondaryAction={
                     <>
-                        <IconButton onClick={() => onPreview(doc)} size="small" title="Prévisualiser">
-                            <Visibility />
-                        </IconButton>
-                        <IconButton href={doc.url} target="_blank" rel="noopener noreferrer" size="small" title="Télécharger">
-                            <Download />
-                        </IconButton>
-                        {onDelete && (
+                        <Tooltip title="Prévisualiser">
                             <IconButton
-                                edge="end"
-                                aria-label="delete"
-                                onClick={() => onDelete(doc.id, doc.storagePath)}
+                                onClick={() => onPreview(doc)}
                                 size="small"
-                                color="error"
+                                aria-label={`Prévisualiser ${doc.name}`}
                             >
-                                <Delete />
+                                <Visibility />
                             </IconButton>
+                        </Tooltip>
+                        <Tooltip title="Télécharger">
+                            <IconButton
+                                href={doc.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                size="small"
+                                aria-label={`Télécharger ${doc.name}`}
+                            >
+                                <Download />
+                            </IconButton>
+                        </Tooltip>
+                        {onDelete && (
+                            <Tooltip title="Supprimer">
+                                <IconButton
+                                    edge="end"
+                                    aria-label={`Supprimer ${doc.name}`}
+                                    onClick={() => onDelete(doc.id, doc.storagePath)}
+                                    size="small"
+                                    color="error"
+                                >
+                                    <Delete />
+                                </IconButton>
+                            </Tooltip>
                         )}
                     </>
                 }
