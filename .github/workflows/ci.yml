@@ -22,6 +22,9 @@ jobs:
 
     - name: Install dependencies
       working-directory: portail-cce-valdor
+      # --legacy-peer-deps required due to react-quill expecting React 18
+      # while project uses React 19. This is safe as react-quill works with React 19.
+      # TODO: Remove flag when react-quill releases React 19 compatible version
       run: npm ci --legacy-peer-deps
 
     - name: Build

@@ -8,15 +8,15 @@ import {
     Divider,
     Grid,
     Alert,
-    Snackbar,
-    MenuItem
+    Snackbar
 } from '@mui/material';
-import { Save, PictureAsPdf, UploadFile, DeleteSweep, Add } from '@mui/icons-material';
+import { Save, PictureAsPdf, UploadFile, DeleteSweep } from '@mui/icons-material';
 import type { Meeting, AgendaItem, AudioRecording, MinutesDraft } from '../../types/meeting.types';
 import { generateMinutesPDF } from '../../services/pdfServiceMinutes';
 import MinutesImportDialog from './MinutesImportDialog';
 import AudioUpload from './AudioUpload';
 import TranscriptionViewer from './TranscriptionViewer';
+import AgendaItemEditor from './AgendaItemEditor';
 import { documentsAPI } from '../../features/documents/documentsAPI';
 // Note: parseAgendaDOCX is imported dynamically when needed
 
@@ -573,138 +573,15 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
                 <Grid container spacing={3}>
                     {localAgendaItems.map((item, index) => (
                         <Grid size={{ xs: 12 }} key={item.id}>
-                            <Box sx={{ bgcolor: 'background.default', p: 2, borderRadius: 1 }}>
-                                <Typography variant="subtitle2" gutterBottom>
-                                    {index + 1}. {item.title}
-                                </Typography>
-                                <Typography variant="caption" color="text.secondary" paragraph>
-                                    {item.objective} - {item.presenter}
-                                </Typography>
-
-                                {/* Editable minute entries (resolutions + comments) */}
-                                {item.minuteEntries && item.minuteEntries.length > 0 && (
-                                    <Box sx={{ mb: 2 }}>
-                                        <Typography variant="caption" fontWeight="bold" color="primary" gutterBottom sx={{ display: 'block', mb: 1 }}>
-                                            {item.minuteEntries.length} entrée(s) du PV :
-                                        </Typography>
-                                        {item.minuteEntries.map((entry, entryIndex) => (
-                                            <Box key={entryIndex} sx={{ mb: 2, p: 2, bgcolor: 'grey.50', borderRadius: 1, border: '1px solid', borderColor: entry.type === 'resolution' ? 'primary.main' : 'warning.main' }}>
-                                                <Grid container spacing={2} sx={{ mb: 1 }}>
-                                                    <Grid size={{ xs: 12, sm: 4 }}>
-                                                        <TextField
-                                                            select
-                                                            fullWidth
-                                                            label="Type"
-                                                            size="small"
-                                                            value={entry.type}
-                                                            onChange={(e) => handleMinuteEntryChange(item.id, entryIndex, 'type', e.target.value)}
-                                                        >
-                                                            <MenuItem value="resolution">📋 Résolution</MenuItem>
-                                                            <MenuItem value="comment">💬 Commentaire</MenuItem>
-                                                        </TextField>
-                                                    </Grid>
-                                                    <Grid size={{ xs: 12, sm: 4 }}>
-                                                        <TextField
-                                                            fullWidth
-                                                            label="Numéro (ex: 09-35)"
-                                                            size="small"
-                                                            value={entry.number || ''}
-                                                            onChange={(e) => handleMinuteEntryChange(item.id, entryIndex, 'number', e.target.value)}
-                                                        />
-                                                    </Grid>
-                                                </Grid>
-                                                <TextField
-                                                    fullWidth
-                                                    multiline
-                                                    rows={4}
-                                                    label={entry.type === 'resolution' ? "Contenu de la résolution" : "Contenu du commentaire"}
-                                                    placeholder={entry.type === 'resolution' ? "CONSIDÉRANT que...\n\nIL EST RÉSOLU..." : "Saisir le commentaire..."}
-                                                    value={entry.content || ''}
-                                                    onChange={(e) => handleMinuteEntryChange(item.id, entryIndex, 'content', e.target.value)}
-                                                    variant="outlined"
-                                                    size="small"
-                                                />
-                                            </Box>
-                                        ))}
-                                    </Box>
-                                )}
-
-                                {/* Button to add new entry */}
-                                <Button
-                                    variant="outlined"
-                                    size="small"
-                                    startIcon={<Add />}
-                                    onClick={() => handleAddMinuteEntry(item.id)}
-                                    sx={{ mb: 2 }}
-                                >
-                                    Ajouter résolution/commentaire
-                                </Button>
-
-                                {/* Legacy form fields - only show if no minuteEntries */}
-                                {(!item.minuteEntries || item.minuteEntries.length === 0) && (
-                                    <>
-                                        <Grid container spacing={2} sx={{ mb: 2 }}>
-                                            <Grid size={{ xs: 12, sm: 4 }}>
-                                                <TextField
-                                                    select
-                                                    fullWidth
-                                                    label="Type de note"
-                                                    size="small"
-                                                    value={item.minuteType || 'other'}
-                                                    onChange={(e) => handleAgendaItemChange(item.id, 'minuteType', e.target.value)}
-                                                >
-                                                    <MenuItem value="other">Note simple</MenuItem>
-                                                    <MenuItem value="resolution">Résolution</MenuItem>
-                                                    <MenuItem value="comment">Commentaire</MenuItem>
-                                                </TextField>
-                                            </Grid>
-                                            <Grid size={{ xs: 12, sm: 4 }}>
-                                                <TextField
-                                                    fullWidth
-                                                    label="Numéro (ex: 09-35)"
-                                                    size="small"
-                                                    value={item.minuteNumber || ''}
-                                                    onChange={(e) => handleAgendaItemChange(item.id, 'minuteNumber', e.target.value)}
-                                                />
-                                            </Grid>
-                                        </Grid>
-
-                                        {item.minuteType === 'resolution' && (
-                                            <Grid container spacing={2} sx={{ mb: 2 }}>
-                                                <Grid size={{ xs: 12, sm: 6 }}>
-                                                    <TextField
-                                                        fullWidth
-                                                        label="Proposé par"
-                                                        size="small"
-                                                        value={item.proposer || ''}
-                                                        onChange={(e) => handleAgendaItemChange(item.id, 'proposer', e.target.value)}
-                                                    />
-                                                </Grid>
-                                                <Grid size={{ xs: 12, sm: 6 }}>
-                                                    <TextField
-                                                        fullWidth
-                                                        label="Appuyé par"
-                                                        size="small"
-                                                        value={item.seconder || ''}
-                                                        onChange={(e) => handleAgendaItemChange(item.id, 'seconder', e.target.value)}
-                                                    />
-                                                </Grid>
-                                            </Grid>
-                                        )}
-
-                                        <TextField
-                                            fullWidth
-                                            multiline
-                                            rows={4}
-                                            label="Contenu du PV"
-                                            placeholder={item.minuteType === 'resolution' ? "CONSIDÉRANT que...\n\nIL EST RÉSOLU..." : "Saisir le commentaire ou la note..."}
-                                            value={itemDecisions[item.id] || ''}
-                                            onChange={(e) => handleDecisionChange(item.id, e.target.value)}
-                                            variant="outlined"
-                                        />
-                                    </>
-                                )}
-                            </Box>
+                            <AgendaItemEditor
+                                item={item}
+                                index={index}
+                                itemDecision={itemDecisions[item.id] || ''}
+                                onAgendaItemChange={handleAgendaItemChange}
+                                onMinuteEntryChange={handleMinuteEntryChange}
+                                onAddMinuteEntry={handleAddMinuteEntry}
+                                onDecisionChange={handleDecisionChange}
+                            />
                         </Grid>
                     ))}
                 </Grid>

@@ -7,6 +7,7 @@ import { auth } from './services/firebase';
 import { setUser, setLoading } from './features/auth/authSlice';
 import type { RootState } from './store/rootReducer';
 import MainLayout from './components/layout/MainLayout';
+import ErrorBoundary from './components/common/ErrorBoundary';
 import LoginPage from './pages/Auth/LoginPage';
 import SignUpPage from './pages/Auth/SignUpPage';
 
@@ -69,33 +70,35 @@ function App() {
   }, [dispatch]);
 
   return (
-    <Router>
-      <Suspense fallback={<LoadingFallback />}>
-        <Routes>
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/signup" element={<SignUpPage />} />
+    <ErrorBoundary>
+      <Router>
+        <Suspense fallback={<LoadingFallback />}>
+          <Routes>
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="/signup" element={<SignUpPage />} />
 
-          <Route path="/" element={
-            <ProtectedRoute>
-              <MainLayout />
-            </ProtectedRoute>
-          }>
-            <Route index element={<Navigate to="/dashboard" replace />} />
-            <Route path="dashboard" element={<Dashboard />} />
-            <Route path="projects" element={<ProjectsPage />} />
-            <Route path="projects/:id" element={<ProjectDetailPage />} />
-            <Route path="meetings" element={<MeetingsPage />} />
-            <Route path="meetings/:id" element={<MeetingDetailPage />} />
-            <Route path="documents" element={<DocumentsPage />} />
-            <Route path="members" element={<MembersPage />} />
-            <Route path="settings" element={<SettingsPage />} />
-            <Route path="minutes" element={<MinutesPage />} />
-          </Route>
+            <Route path="/" element={
+              <ProtectedRoute>
+                <MainLayout />
+              </ProtectedRoute>
+            }>
+              <Route index element={<Navigate to="/dashboard" replace />} />
+              <Route path="dashboard" element={<Dashboard />} />
+              <Route path="projects" element={<ProjectsPage />} />
+              <Route path="projects/:id" element={<ProjectDetailPage />} />
+              <Route path="meetings" element={<MeetingsPage />} />
+              <Route path="meetings/:id" element={<MeetingDetailPage />} />
+              <Route path="documents" element={<DocumentsPage />} />
+              <Route path="members" element={<MembersPage />} />
+              <Route path="settings" element={<SettingsPage />} />
+              <Route path="minutes" element={<MinutesPage />} />
+            </Route>
 
-          <Route path="*" element={<Navigate to="/dashboard" replace />} />
-        </Routes>
-      </Suspense>
-    </Router>
+            <Route path="*" element={<Navigate to="/dashboard" replace />} />
+          </Routes>
+        </Suspense>
+      </Router>
+    </ErrorBoundary>
   );
 }
 
