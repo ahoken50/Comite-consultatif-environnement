@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { Box, Typography, Button, Grid, CircularProgress, Alert, Snackbar } from '@mui/material';
 import { Add } from '@mui/icons-material';
 import { useDispatch, useSelector } from 'react-redux';
@@ -25,21 +25,22 @@ const MembersPage: React.FC = () => {
         setDialogOpen(true);
     };
 
-    const handleEdit = (member: Member) => {
+    const handleEdit = useCallback((member: Member) => {
         setSelectedMember(member);
         setDialogOpen(true);
-    };
+    }, []);
 
-    const handleDelete = async (id: string) => {
+    const handleDelete = useCallback(async (id: string) => {
         if (window.confirm('Êtes-vous sûr de vouloir supprimer ce membre ?')) {
             try {
                 await dispatch(deleteMember(id)).unwrap();
                 setNotification({ message: 'Membre supprimé avec succès', type: 'success' });
-            } catch (err) {
+            } catch (error) {
+                console.error('Failed to delete member:', error);
                 setNotification({ message: 'Erreur lors de la suppression', type: 'error' });
             }
         }
-    };
+    }, [dispatch]);
 
     const handleSave = async (memberData: Partial<Member>) => {
         try {

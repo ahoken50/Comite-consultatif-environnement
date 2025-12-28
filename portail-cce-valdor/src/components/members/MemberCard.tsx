@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { memo } from 'react';
 import {
     Card,
     CardContent,
@@ -19,7 +19,7 @@ interface MemberCardProps {
     onDelete?: (id: string) => void;
 }
 
-const MemberCard: React.FC<MemberCardProps> = ({ member, onEdit, onDelete }) => {
+const MemberCard: React.FC<MemberCardProps> = memo(({ member, onEdit, onDelete }) => {
     const [anchorEl, setAnchorEl] = React.useState<null | HTMLElement>(null);
 
     const handleMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
@@ -78,7 +78,7 @@ const MemberCard: React.FC<MemberCardProps> = ({ member, onEdit, onDelete }) => 
                             />
                         </Box>
                     </Box>
-                    <IconButton onClick={handleMenuOpen}>
+                    <IconButton onClick={handleMenuOpen} aria-label={`Options pour ${member.displayName}`}>
                         <MoreVert />
                     </IconButton>
                 </Box>
@@ -113,6 +113,6 @@ const MemberCard: React.FC<MemberCardProps> = ({ member, onEdit, onDelete }) => 
             </Menu>
         </Card>
     );
-};
+});
 
 export default MemberCard;
