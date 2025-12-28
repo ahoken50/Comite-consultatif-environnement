@@ -1,10 +1,19 @@
 import React from 'react';
-import { Card, CardHeader, CardContent } from '@mui/material';
+import { Card, CardHeader, CardContent, Typography } from '@mui/material';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
 
-const data: Array<{ name: string; value: number; color: string }> = [];
+interface CategoryData {
+    name: string;
+    value: number;
+    color: string;
+    [key: string]: string | number; // Index signature for Recharts compatibility
+}
 
-const CategoryChart: React.FC = () => {
+interface CategoryChartProps {
+    data: CategoryData[];
+}
+
+const CategoryChart: React.FC<CategoryChartProps> = ({ data }) => {
     return (
         <Card sx={{ height: '100%' }}>
             <CardHeader title="Répartition par catégorie" sx={{ borderBottom: 1, borderColor: 'divider' }} />
@@ -21,6 +30,7 @@ const CategoryChart: React.FC = () => {
                                     outerRadius={80}
                                     paddingAngle={5}
                                     dataKey="value"
+                                    label={({ name, value }) => `${name}: ${value}`}
                                 >
                                     {data.map((entry, index) => (
                                         <Cell key={`cell-${index}`} fill={entry.color} />
@@ -31,8 +41,20 @@ const CategoryChart: React.FC = () => {
                             </PieChart>
                         </ResponsiveContainer>
                     ) : (
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#666' }}>
-                            Aucune donnée disponible
+                        <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            height: '100%',
+                            flexDirection: 'column',
+                            gap: 8
+                        }}>
+                            <Typography variant="body2" color="text.secondary">
+                                Aucun projet à afficher
+                            </Typography>
+                            <Typography variant="caption" color="text.disabled">
+                                Créez des projets pour voir la répartition
+                            </Typography>
                         </div>
                     )}
                 </div>

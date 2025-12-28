@@ -45,5 +45,12 @@ service cloud.firestore {
       // Only owner or coordinator can modify/delete
       allow update, delete: if isCoordinator() || (isAuthenticated() && resource.data.createdBy == request.auth.uid);
     }
+
+    // Activity Log collection
+    match /activity_log/{logId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated(); // Any authenticated user can log activities
+      allow update, delete: if false; // Logs are immutable
+    }
   }
 }

@@ -3,11 +3,18 @@ import { Card, CardContent, Typography, Box, Button } from '@mui/material';
 import { Event, AccessTime } from '@mui/icons-material';
 import { format, differenceInDays } from 'date-fns';
 import { fr } from 'date-fns/locale';
+import { useNavigate } from 'react-router-dom';
+import type { Meeting } from '../../types/meeting.types';
 
-const NextMeetingCard: React.FC = () => {
-    // Mock data
-    // Mock data - null for now
-    const nextMeetingDate = null;
+interface NextMeetingCardProps {
+    meeting: Meeting | null;
+}
+
+const NextMeetingCard: React.FC<NextMeetingCardProps> = ({ meeting }) => {
+    const navigate = useNavigate();
+
+    const nextMeetingDate = meeting ? new Date(meeting.date) : null;
+    const daysUntil = nextMeetingDate ? differenceInDays(nextMeetingDate, new Date()) : 0;
 
     return (
         <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
@@ -27,9 +34,14 @@ const NextMeetingCard: React.FC = () => {
                             <Box sx={{ mt: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
                                 <AccessTime color="action" fontSize="small" />
                                 <Typography variant="body2" color="textSecondary">
-                                    {format(nextMeetingDate, 'HH:mm', { locale: fr })} - Salle du Conseil
+                                    {format(nextMeetingDate, 'HH:mm', { locale: fr })} - {meeting?.location || 'Lieu à confirmer'}
                                 </Typography>
                             </Box>
+                            {meeting?.title && (
+                                <Typography variant="body2" color="text.secondary" sx={{ mt: 1, fontStyle: 'italic' }}>
+                                    {meeting.title}
+                                </Typography>
+                            )}
                         </>
                     ) : (
                         <Box sx={{ mt: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -41,18 +53,24 @@ const NextMeetingCard: React.FC = () => {
                     )}
                 </Box>
 
-                {nextMeetingDate && (
+                {nextMeetingDate && daysUntil >= 0 && (
                     <Box sx={{ mt: 4, textAlign: 'center' }}>
                         <Typography variant="h3" color="primary.main" sx={{ fontWeight: 700 }}>
-                            {differenceInDays(nextMeetingDate, new Date())}
+                            {daysUntil}
                         </Typography>
                         <Typography variant="body2" color="textSecondary">
-                            jours restants
+                            {daysUntil === 0 ? "Aujourd'hui!" : daysUntil === 1 ? 'jour restant' : 'jours restants'}
                         </Typography>
                     </Box>
                 )}
 
-                <Button variant="outlined" fullWidth sx={{ mt: 3 }} disabled={!nextMeetingDate}>
+                <Button
+                    variant="outlined"
+                    fullWidth
+                    sx={{ mt: 3 }}
+                    disabled={!meeting}
+                    onClick={() => meeting && navigate(`/meetings/${meeting.id}`)}
+                >
                     Voir l'ordre du jour
                 </Button>
             </CardContent>
