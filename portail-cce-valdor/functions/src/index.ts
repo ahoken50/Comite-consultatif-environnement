@@ -28,15 +28,6 @@ function cleanRepetitions(text: string): string {
     return cleaned;
 }
 
-// Check if text ends mid-sentence (likely truncated)
-function seemsTruncated(text: string): boolean {
-    const lastChars = text.trim().slice(-50);
-    // Doesn't end with punctuation or closing marker
-    return !lastChars.match(/[.!?»"]\s*$/) &&
-        !lastChars.includes('[FIN') &&
-        !lastChars.includes('fin de');
-}
-
 export const transcribeAudio = functions
     .runWith({
         timeoutSeconds: 540,
