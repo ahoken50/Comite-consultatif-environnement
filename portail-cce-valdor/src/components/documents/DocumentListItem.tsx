@@ -8,7 +8,8 @@ import {
     Typography,
     Paper,
     Chip,
-    Box
+    Box,
+    Tooltip
 } from '@mui/material';
 import {
     Description,
@@ -62,22 +63,28 @@ const DocumentListItem: React.FC<DocumentListItemProps> = React.memo(({ doc, onP
             <ListItem
                 secondaryAction={
                     <>
-                        <IconButton onClick={() => onPreview(doc)} size="small" title="Prévisualiser">
-                            <Visibility />
-                        </IconButton>
-                        <IconButton href={doc.url} target="_blank" rel="noopener noreferrer" size="small" title="Télécharger">
-                            <Download />
-                        </IconButton>
-                        {onDelete && (
-                            <IconButton
-                                edge="end"
-                                aria-label="delete"
-                                onClick={() => onDelete(doc.id, doc.storagePath)}
-                                size="small"
-                                color="error"
-                            >
-                                <Delete />
+                        <Tooltip title="Prévisualiser">
+                            <IconButton onClick={() => onPreview(doc)} size="small">
+                                <Visibility />
                             </IconButton>
+                        </Tooltip>
+                        <Tooltip title="Télécharger">
+                            <IconButton href={doc.url} target="_blank" rel="noopener noreferrer" size="small">
+                                <Download />
+                            </IconButton>
+                        </Tooltip>
+                        {onDelete && (
+                            <Tooltip title="Supprimer">
+                                <IconButton
+                                    edge="end"
+                                    aria-label="delete"
+                                    onClick={() => onDelete(doc.id, doc.storagePath)}
+                                    size="small"
+                                    color="error"
+                                >
+                                    <Delete />
+                                </IconButton>
+                            </Tooltip>
                         )}
                     </>
                 }
