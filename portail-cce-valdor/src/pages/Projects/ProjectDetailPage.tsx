@@ -10,16 +10,21 @@ import {
     Grid,
     Chip,
     Divider,
-    IconButton
+    IconButton,
+    LinearProgress
 } from '@mui/material';
 import { ArrowBack, Edit, Delete } from '@mui/icons-material';
 import { useDispatch, useSelector } from 'react-redux';
 import type { AppDispatch } from '../../store/store';
 import type { RootState } from '../../store/rootReducer';
 import { fetchDocumentsByEntity, deleteDocument } from '../../features/documents/documentsSlice';
+import { fetchMembers } from '../../features/members/membersSlice';
+import { updateProject, deleteProject } from '../../features/projects/projectsSlice';
 import DocumentList from '../../components/documents/DocumentList';
 import DocumentUpload from '../../components/documents/DocumentUpload';
 import ProjectTasks from '../../components/projects/ProjectTasks';
+import ProjectForm from '../../components/projects/ProjectForm';
+import type { Project } from '../../types/project.types';
 
 interface TabPanelProps {
     children?: React.ReactNode;
@@ -52,20 +57,23 @@ const ProjectDetailPage: React.FC = () => {
     const navigate = useNavigate();
     const dispatch = useDispatch<AppDispatch>();
     const [tabValue, setTabValue] = useState(0);
+    const [editDialogOpen, setEditDialogOpen] = useState(false);
 
-    // Select project from Redux store (assuming it's already loaded in the list, or we should fetch it)
-    // For now, we'll try to find it in the list. In a real app, we might need a fetchProjectById thunk.
+    // Selectors
     const project = useSelector((state: RootState) =>
         state.projects.items.find(p => p.id === id)
     );
-
     const { items: documents } = useSelector((state: RootState) => state.documents);
+    const { items: members } = useSelector((state: RootState) => state.members);
+    const { user } = useSelector((state: RootState) => state.auth);
+    const tasks = useSelector((state: RootState) => id ? state.projects.tasksByProjectId[id] || [] : []);
 
     useEffect(() => {
         if (id) {
             dispatch(fetchDocumentsByEntity({ entityId: id, entityType: 'project' }));
+            if (members.length === 0) dispatch(fetchMembers());
         }
-    }, [dispatch, id]);
+    }, [dispatch, id, members.length]);
 
     if (!project) {
         return <Typography>Projet non trouvé</Typography>;
@@ -74,6 +82,38 @@ const ProjectDetailPage: React.FC = () => {
     const handleTabChange = (_: React.SyntheticEvent, newValue: number) => {
         setTabValue(newValue);
     };
+
+    const handleUpdateProject = async (data: any) => {
+        if (project && id && user) {
+            await dispatch(updateProject({
+                id,
+                updates: { ...data, dateUpdated: new Date().toISOString() },
+                userId: user.uid,
+                userName: user.displayName || 'Utilisateur',
+                projectName: project.name
+            }));
+            setEditDialogOpen(false);
+        }
+    };
+
+    const handleDeleteProject = async () => {
+        if (window.confirm('Êtes-vous sûr de vouloir supprimer ce projet ?') && user) {
+            await dispatch(deleteProject({
+                id: project.id,
+                userId: user.uid,
+                userName: user.displayName || 'Utilisateur',
+                projectName: project.name
+            }));
+            navigate('/projects');
+        }
+    };
+
+    const coordinator = members.find(m => m.id === project.coordinatorId);
+
+    // Calculate progress
+    const totalTasks = tasks.length;
+    const completedTasks = tasks.filter(t => t.status === 'completed').length;
+    const progressPercentage = totalTasks > 0 ? (completedTasks / totalTasks) * 100 : 0;
 
     return (
         <Box>
@@ -100,10 +140,15 @@ const ProjectDetailPage: React.FC = () => {
                         </Typography>
                     </Box>
                     <Box>
-                        <Button startIcon={<Edit />} variant="outlined" sx={{ mr: 1 }}>
+                        <Button
+                            startIcon={<Edit />}
+                            variant="outlined"
+                            sx={{ mr: 1 }}
+                            onClick={() => setEditDialogOpen(true)}
+                        >
                             Modifier
                         </Button>
-                        <IconButton color="error">
+                        <IconButton color="error" onClick={handleDeleteProject}>
                             <Delete />
                         </IconButton>
                     </Box>
@@ -116,7 +161,6 @@ const ProjectDetailPage: React.FC = () => {
                         <Tab label="Vue d'ensemble" />
                         <Tab label="Tâches" />
                         <Tab label="Documents" />
-                        {/* <Tab label="Historique" /> */}
                     </Tabs>
                 </Box>
 
@@ -126,11 +170,20 @@ const ProjectDetailPage: React.FC = () => {
                             <Typography variant="h6" gutterBottom>Description</Typography>
                             <Typography paragraph>{project.description}</Typography>
 
-                            <Typography variant="h6" gutterBottom sx={{ mt: 3 }}>État d'avancement</Typography>
-                            <Typography paragraph>{project.currentDetails}</Typography>
+                            <Box sx={{ mt: 3, mb: 2 }}>
+                                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                                    <Typography variant="h6">Avancement du projet</Typography>
+                                    <Typography variant="body2" color="textSecondary">
+                                        {completedTasks}/{totalTasks} tâches ({progressPercentage.toFixed(0)}%)
+                                    </Typography>
+                                </Box>
+                                <LinearProgress variant="determinate" value={progressPercentage} sx={{ height: 10, borderRadius: 5 }} />
+                            </Box>
+
+                            <Typography paragraph sx={{ whiteSpace: 'pre-line' }}>{project.currentDetails}</Typography>
 
                             <Typography variant="h6" gutterBottom sx={{ mt: 3 }}>Prochaines étapes</Typography>
-                            <Typography paragraph>{project.nextSteps}</Typography>
+                            <Typography paragraph sx={{ whiteSpace: 'pre-line' }}>{project.nextSteps}</Typography>
                         </Grid>
                         <Grid size={{ xs: 12, md: 4 }}>
                             <Paper variant="outlined" sx={{ p: 2, bgcolor: 'background.default' }}>
@@ -138,7 +191,7 @@ const ProjectDetailPage: React.FC = () => {
                                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
                                     <Typography variant="body2"><strong>Créé le:</strong> {new Date(project.dateCreated).toLocaleDateString()}</Typography>
                                     <Typography variant="body2"><strong>Mis à jour:</strong> {new Date(project.dateUpdated).toLocaleDateString()}</Typography>
-                                    <Typography variant="body2"><strong>Responsable:</strong> {project.coordinatorId}</Typography>
+                                    <Typography variant="body2"><strong>Responsable:</strong> {coordinator?.displayName || project.coordinatorId || 'Non assigné'}</Typography>
                                     {project.resolutionCCE && (
                                         <Typography variant="body2"><strong>Résolution:</strong> {project.resolutionCCE}</Typography>
                                     )}
@@ -174,11 +227,14 @@ const ProjectDetailPage: React.FC = () => {
                         </Grid>
                     </Grid>
                 </TabPanel>
-
-                {/* <TabPanel value={tabValue} index={2}>
-                    <Typography color="textSecondary">Historique des modifications à venir...</Typography>
-                </TabPanel> */}
             </Paper>
+
+            <ProjectForm
+                open={editDialogOpen}
+                initialData={project}
+                onClose={() => setEditDialogOpen(false)}
+                onSubmit={handleUpdateProject}
+            />
         </Box>
     );
 };

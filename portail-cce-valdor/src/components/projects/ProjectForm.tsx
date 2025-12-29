@@ -24,6 +24,8 @@ const projectSchema = z.object({
     priority: z.nativeEnum(Priority),
     status: z.nativeEnum(ProjectStatus),
     description: z.string().optional(),
+    currentDetails: z.string().optional(),
+    nextSteps: z.string().optional(),
     isUrgent: z.boolean().optional(),
 });
 
@@ -46,6 +48,8 @@ const ProjectForm: React.FC<ProjectFormProps> = ({ open, onClose, onSubmit, init
             priority: initialData?.priority || Priority.MEDIUM,
             status: initialData?.status || ProjectStatus.PENDING,
             description: initialData?.description || '',
+            currentDetails: initialData?.currentDetails || '',
+            nextSteps: initialData?.nextSteps || '',
             isUrgent: initialData?.isUrgent || false,
         }
     });
@@ -173,6 +177,39 @@ const ProjectForm: React.FC<ProjectFormProps> = ({ open, onClose, onSubmit, init
                                         multiline
                                         rows={4}
                                         fullWidth
+                                    />
+                                )}
+                            />
+                        </Grid>
+
+                        <Grid size={{ xs: 12, md: 6 }}>
+                            <Controller
+                                name="currentDetails"
+                                control={control}
+                                render={({ field }) => (
+                                    <TextField
+                                        {...field}
+                                        label="Détails de l'avancement (Texte)"
+                                        multiline
+                                        rows={3}
+                                        fullWidth
+                                        placeholder="Décrivez l'état actuel..."
+                                    />
+                                )}
+                            />
+                        </Grid>
+                        <Grid size={{ xs: 12, md: 6 }}>
+                            <Controller
+                                name="nextSteps"
+                                control={control}
+                                render={({ field }) => (
+                                    <TextField
+                                        {...field}
+                                        label="Prochaines étapes"
+                                        multiline
+                                        rows={3}
+                                        fullWidth
+                                        placeholder="Quelles sont les prochaines actions ?"
                                     />
                                 )}
                             />

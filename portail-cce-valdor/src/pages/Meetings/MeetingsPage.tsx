@@ -1,13 +1,15 @@
 import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { Box, Typography, Button, Grid, Tabs, Tab } from '@mui/material';
-import { Add } from '@mui/icons-material';
+import { Add, AutoAwesome } from '@mui/icons-material';
 import { useDispatch, useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 import type { AppDispatch } from '../../store/store';
 import type { RootState } from '../../store/rootReducer';
 import { fetchMeetings, createMeeting, deleteMeeting } from '../../features/meetings/meetingsSlice';
+import { fetchProjects } from '../../features/projects/projectsSlice';
 import MeetingCard from '../../components/meetings/MeetingCard';
 import MeetingForm from '../../components/meetings/MeetingForm';
+import SmartPlanningDialog from '../../components/meetings/SmartPlanningDialog';
 import { MeetingStatus } from '../../types/meeting.types';
 
 const MeetingsPage: React.FC = () => {
@@ -15,6 +17,7 @@ const MeetingsPage: React.FC = () => {
     const navigate = useNavigate();
     const { items: meetings } = useSelector((state: RootState) => state.meetings);
     const [isFormOpen, setIsFormOpen] = useState(false);
+    const [isSmartPlanningOpen, setIsSmartPlanningOpen] = useState(false);
     const [tabValue, setTabValue] = useState(0);
 
     useEffect(() => {
@@ -22,30 +25,31 @@ const MeetingsPage: React.FC = () => {
     }, [dispatch]);
 
     const handleCreateMeeting = async (data: any) => {
-        console.log('MeetingsPage: handleCreateMeeting called with data:', data);
         try {
             const resultAction = await dispatch(createMeeting({
                 ...data,
-                attendees: [],
-                // agendaItems is now part of data
+                // Ensure array even if not provided
+                attendees: data.attendees || [],
+                // agendaItems is part of data from SmartPlanning
                 minutes: '',
             }));
 
             if (createMeeting.fulfilled.match(resultAction)) {
-                console.log('Meeting created successfully:', resultAction.payload);
                 setIsFormOpen(false);
+                setIsSmartPlanningOpen(false);
+                // Optionally navigate to details
             } else {
-                if (resultAction.payload) {
-                    console.error('Failed to create meeting (payload):', resultAction.payload);
-                } else {
-                    console.error('Failed to create meeting (error):', resultAction.error);
-                }
-                alert('Erreur lors de la création de la réunion: ' + (resultAction.error?.message || 'Erreur inconnue'));
+                alert('Erreur lors de la création de la réunion');
             }
         } catch (err) {
             console.error('Unexpected error creating meeting:', err);
             alert('Une erreur inattendue est survenue.');
         }
+    };
+
+    const handleOpenSmartPlanning = () => {
+        dispatch(fetchProjects());
+        setIsSmartPlanningOpen(true);
     };
 
     // Optimize: Wrap handlers in useCallback to ensure referential stability
@@ -81,13 +85,22 @@ const MeetingsPage: React.FC = () => {
                 <Typography variant="h4" sx={{ fontWeight: 700 }}>
                     Réunions
                 </Typography>
-                <Button
-                    variant="contained"
-                    startIcon={<Add />}
-                    onClick={() => setIsFormOpen(true)}
-                >
-                    Nouvelle Réunion
-                </Button>
+                <Box sx={{ display: 'flex', gap: 2 }}>
+                    <Button
+                        variant="outlined"
+                        startIcon={<AutoAwesome />}
+                        onClick={handleOpenSmartPlanning}
+                    >
+                        Assistant Planification
+                    </Button>
+                    <Button
+                        variant="contained"
+                        startIcon={<Add />}
+                        onClick={() => setIsFormOpen(true)}
+                    >
+                        Nouvelle Réunion
+                    </Button>
+                </Box>
             </Box>
 
             <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
@@ -121,6 +134,12 @@ const MeetingsPage: React.FC = () => {
                 open={isFormOpen}
                 onClose={() => setIsFormOpen(false)}
                 onSubmit={handleCreateMeeting}
+            />
+
+            <SmartPlanningDialog
+                open={isSmartPlanningOpen}
+                onClose={() => setIsSmartPlanningOpen(false)}
+                onConfirm={handleCreateMeeting}
             />
         </Box>
     );

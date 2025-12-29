@@ -19,6 +19,7 @@ const MeetingsPage = lazy(() => import('./pages/Meetings/MeetingsPage'));
 const MeetingDetailPage = lazy(() => import('./pages/Meetings/MeetingDetailPage'));
 const DocumentsPage = lazy(() => import('./pages/Documents/DocumentsPage'));
 const MembersPage = lazy(() => import('./pages/Members/MembersPage'));
+const ResolutionsPage = lazy(() => import('./pages/Resolutions/ResolutionsPage'));
 const SettingsPage = lazy(() => import('./pages/Settings/SettingsPage'));
 const MinutesPage = lazy(() => import('./pages/Minutes/MinutesPage'));
 
@@ -90,6 +91,7 @@ function App() {
               <Route path="meetings/:id" element={<MeetingDetailPage />} />
               <Route path="documents" element={<DocumentsPage />} />
               <Route path="members" element={<MembersPage />} />
+              <Route path="resolutions" element={<ResolutionsPage />} />
               <Route path="settings" element={<SettingsPage />} />
               <Route path="minutes" element={<MinutesPage />} />
             </Route>

@@ -3,6 +3,7 @@ import { Box, CssBaseline, Toolbar } from '@mui/material';
 import { Outlet } from 'react-router-dom';
 import Header from './Header';
 import Sidebar from './Sidebar';
+import AssistantChat from '../common/AssistantChat';
 
 interface MainLayoutProps {
     children?: React.ReactNode;
@@ -24,6 +25,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                 <Toolbar /> {/* Spacer for fixed header */}
                 {children || <Outlet />}
             </Box>
+            <AssistantChat />
         </Box>
     );
 };

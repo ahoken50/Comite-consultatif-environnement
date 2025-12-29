@@ -5,6 +5,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import type { AppDispatch } from '../../store/store';
 import type { RootState } from '../../store/rootReducer';
 import { fetchMembers, deleteMember, updateMember, createMember } from '../../features/members/membersSlice';
+import { fetchProjects } from '../../features/projects/projectsSlice';
 import MemberCard from '../../components/members/MemberCard';
 import MemberDialog from '../../components/members/MemberDialog';
 import type { Member } from '../../types/member.types';
@@ -12,13 +13,25 @@ import type { Member } from '../../types/member.types';
 const MembersPage: React.FC = () => {
     const dispatch = useDispatch<AppDispatch>();
     const { items: members, loading, error } = useSelector((state: RootState) => state.members);
+    const { items: projects } = useSelector((state: RootState) => state.projects);
     const [dialogOpen, setDialogOpen] = useState(false);
     const [selectedMember, setSelectedMember] = useState<Member | null>(null);
     const [notification, setNotification] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
     useEffect(() => {
         dispatch(fetchMembers());
+        dispatch(fetchProjects());
     }, [dispatch]);
+
+    const projectCounts = React.useMemo(() => {
+        const counts: Record<string, number> = {};
+        projects.forEach(p => {
+            if (p.coordinatorId) {
+                counts[p.coordinatorId] = (counts[p.coordinatorId] || 0) + 1;
+            }
+        });
+        return counts;
+    }, [projects]);
 
     const handleAdd = () => {
         setSelectedMember(null);
@@ -94,9 +107,10 @@ const MembersPage: React.FC = () => {
 
             <Grid container spacing={3}>
                 {members.map((member) => (
-                    <Grid size={{ xs: 12, md: 6, lg: 4 }} key={member.id}>
+                    <Grid size={{ xs: 12, sm: 6, lg: 4 }} key={member.id}>
                         <MemberCard
                             member={member}
+                            projectCount={projectCounts[member.id] || 0}
                             onEdit={handleEdit}
                             onDelete={handleDelete}
                         />
