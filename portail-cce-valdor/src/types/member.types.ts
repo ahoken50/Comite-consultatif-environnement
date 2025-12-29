@@ -1,4 +1,4 @@
-export type MemberRole = 'coordinator' | 'member' | 'observer';
+export type MemberRole = 'coordinator' | 'member' | 'observer' | 'elected_official';
 
 export interface Member {
     id: string; // Corresponds to Firebase Auth UID

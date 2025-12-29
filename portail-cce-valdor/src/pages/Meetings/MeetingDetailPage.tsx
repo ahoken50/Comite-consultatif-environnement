@@ -55,6 +55,9 @@ function TabPanel(props: TabPanelProps) {
     );
 }
 
+import MeetingApprovalCard from '../../components/meetings/MeetingApprovalCard';
+import { fetchMembers } from '../../features/members/membersSlice';
+
 const MeetingDetailPage: React.FC = () => {
     const { id } = useParams<{ id: string }>();
     useMeetingSubscription(id);
@@ -64,6 +67,10 @@ const MeetingDetailPage: React.FC = () => {
         state.meetings.items.find(m => m.id === id)
     );
     const { items: documents } = useSelector((state: RootState) => state.documents);
+    const { user } = useSelector((state: RootState) => state.auth);
+    const { items: members } = useSelector((state: RootState) => state.members);
+    const currentMember = members.find(m => m.id === user?.uid);
+
     const [tabValue, setTabValue] = useState(0);
 
     const location = useLocation();
@@ -71,6 +78,7 @@ const MeetingDetailPage: React.FC = () => {
     useEffect(() => {
         if (id) {
             dispatch(fetchDocumentsByEntity({ entityId: id, entityType: 'meeting' }));
+            dispatch(fetchMembers());
         }
     }, [dispatch, id]);
 
@@ -131,13 +139,47 @@ const MeetingDetailPage: React.FC = () => {
                 id,
                 updates: {
                     ...updatedData,
-                    // Ensure we don't overwrite agenda items if they weren't part of the form data explicitly, 
-                    // though MeetingForm includes them.
                     agendaItems: updatedData.agendaItems
                 }
             }));
             setIsEditModalOpen(false);
         }
+    };
+
+    const handleApproval = (role: 'president' | 'elected_official') => {
+        if (!id || !currentMember) return;
+
+        const newSignature = {
+            role,
+            signedBy: currentMember.id,
+            signedByName: currentMember.displayName,
+            signedAt: new Date().toISOString()
+        };
+
+        const currentSignatures = meeting.approvalSignatures || [];
+        // Prevent duplicate signatures for same role
+        if (currentSignatures.some(s => s.role === role)) return;
+
+        const updatedSignatures = [...currentSignatures, newSignature];
+
+        let newStatus = meeting.approvalStatus || 'draft';
+        // If both roles have signed (checking new list)
+        const hasPresident = updatedSignatures.some(s => s.role === 'president');
+        const hasElected = updatedSignatures.some(s => s.role === 'elected_official');
+
+        if (hasPresident && hasElected) {
+            newStatus = 'approved';
+        } else if (hasPresident || hasElected) {
+            newStatus = 'waiting_approval';
+        }
+
+        dispatch(updateMeeting({
+            id,
+            updates: {
+                approvalSignatures: updatedSignatures,
+                approvalStatus: newStatus as any
+            }
+        }));
     };
 
     return (
@@ -211,6 +253,12 @@ const MeetingDetailPage: React.FC = () => {
                 </TabPanel>
 
                 <TabPanel value={tabValue} index={1}>
+                    <MeetingApprovalCard
+                        meeting={meeting}
+                        currentUser={currentMember || null}
+                        onApprove={handleApproval}
+                    />
+                    <Divider sx={{ my: 3 }} />
                     <MinutesEditor
                         meeting={meeting}
                         onUpdate={handleMeetingUpdate}

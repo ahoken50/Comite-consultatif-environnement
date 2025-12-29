@@ -15,7 +15,11 @@ import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import type { Project } from '../../types/project.types';
-import { ProjectStatus, Priority, Category } from '../../types/project.types';
+import { ProjectStatus, Priority } from '../../types/project.types';
+import { useDispatch, useSelector } from 'react-redux';
+import { fetchSettings } from '../../features/settings/settingsSlice';
+import type { AppDispatch } from '../../store/store';
+import type { RootState } from '../../store/rootReducer';
 
 const projectSchema = z.object({
     code: z.string().min(1, 'Le code est requis'),
@@ -39,7 +43,14 @@ interface ProjectFormProps {
 }
 
 const ProjectForm: React.FC<ProjectFormProps> = ({ open, onClose, onSubmit, initialData }) => {
-    const { control, handleSubmit, formState: { errors } } = useForm<ProjectFormData>({
+    const dispatch = useDispatch<AppDispatch>();
+    const { categories } = useSelector((state: RootState) => state.settings);
+
+    useEffect(() => {
+        dispatch(fetchSettings());
+    }, [dispatch]);
+
+    const { control, handleSubmit, reset, formState: { errors } } = useForm<ProjectFormData>({
         resolver: zodResolver(projectSchema),
         defaultValues: {
             code: initialData?.code || '',
@@ -173,10 +184,10 @@ const ProjectForm: React.FC<ProjectFormProps> = ({ open, onClose, onSubmit, init
                                 render={({ field }) => (
                                     <TextField
                                         {...field}
-                                        label="Description"
-                                        multiline
-                                        rows={4}
+                                        label="Description du projet"
                                         fullWidth
+                                        multiline
+                                        rows={3}
                                     />
                                 )}
                             />
@@ -189,11 +200,10 @@ const ProjectForm: React.FC<ProjectFormProps> = ({ open, onClose, onSubmit, init
                                 render={({ field }) => (
                                     <TextField
                                         {...field}
-                                        label="Détails de l'avancement (Texte)"
+                                        label="Détails actuels"
+                                        fullWidth
                                         multiline
                                         rows={3}
-                                        fullWidth
-                                        placeholder="Décrivez l'état actuel..."
                                     />
                                 )}
                             />

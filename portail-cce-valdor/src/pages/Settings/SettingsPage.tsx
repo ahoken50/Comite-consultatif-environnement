@@ -23,6 +23,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import type { AppDispatch } from '../../store/store';
 import type { RootState } from '../../store/rootReducer';
 import { updateMember, ensureMemberProfile } from '../../features/members/membersSlice';
+import CategoryManager from '../../components/settings/CategoryManager';
 
 interface TabPanelProps {
     children?: React.ReactNode;
@@ -227,20 +228,23 @@ const SettingsPage: React.FC = () => {
 
                     <Box sx={{ mt: 4 }}>
                         <Typography variant="subtitle1" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                            <Storage fontSize="small" /> Données
+                            <Storage fontSize="small" /> Données du Système
                         </Typography>
-                        <Grid container spacing={2}>
-                            <Grid size={{ xs: 12, sm: 6 }}>
-                                <Button variant="outlined" fullWidth disabled>
-                                    Gérer les types de projets
-                                </Button>
+
+                        <Divider sx={{ mb: 3 }} />
+
+                        <CategoryManager />
+
+                        <Box sx={{ mt: 4 }}>
+                            <Typography variant="subtitle2" gutterBottom>Autres paramètres (À venir)</Typography>
+                            <Grid container spacing={2}>
+                                <Grid size={{ xs: 12, sm: 6 }}>
+                                    <Button variant="outlined" fullWidth disabled>
+                                        Modèles d'Ordre du Jour
+                                    </Button>
+                                </Grid>
                             </Grid>
-                            <Grid size={{ xs: 12, sm: 6 }}>
-                                <Button variant="outlined" fullWidth disabled>
-                                    Modèles d'Ordre du Jour
-                                </Button>
-                            </Grid>
-                        </Grid>
+                        </Box>
                     </Box>
                 </TabPanel>
             </Paper>

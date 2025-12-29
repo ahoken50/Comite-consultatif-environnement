@@ -95,6 +95,18 @@ export interface Meeting {
     // AI Transcription fields
     audioRecording?: AudioRecording;
     minutesDraft?: MinutesDraft;
+
+    // PV Approval Flow
+    approvalStatus?: 'draft' | 'waiting_approval' | 'approved' | 'final';
+    approvalSignatures?: ApprovalSignature[];
+
     dateCreated: string;
     dateUpdated: string;
+}
+
+export interface ApprovalSignature {
+    role: 'president' | 'elected_official';
+    signedBy: string; // User ID
+    signedByName: string;
+    signedAt: string; // ISO string
 }

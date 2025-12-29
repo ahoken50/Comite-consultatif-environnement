@@ -17,6 +17,7 @@ import {
     ViewList,
     ViewKanban,
     Search,
+    CalendarMonth,
     FilterList
 } from '@mui/icons-material';
 import { useDispatch, useSelector } from 'react-redux';
@@ -24,9 +25,11 @@ import { useNavigate } from 'react-router-dom';
 import type { AppDispatch } from '../../store/store';
 import type { RootState } from '../../store/rootReducer';
 import { fetchProjects, createProject, updateProject, deleteProject } from '../../features/projects/projectsSlice';
+import { fetchMeetings } from '../../features/meetings/meetingsSlice';
 import ProjectCard from '../../components/projects/ProjectCard';
 import ProjectList from '../../components/projects/ProjectList';
-import ProjectKanban from '../../components/projects/ProjectKanban';
+import ProjectKanbanBoard from '../../components/projects/ProjectKanbanBoard';
+import ProjectCalendar from '../../components/projects/ProjectCalendar';
 import ProjectForm from '../../components/projects/ProjectForm';
 import { ProjectStatus } from '../../types/project.types';
 import type { Project } from '../../types/project.types';
@@ -35,8 +38,9 @@ const ProjectsPage: React.FC = () => {
     const dispatch = useDispatch<AppDispatch>();
     const navigate = useNavigate();
     const { items: projects, error } = useSelector((state: RootState) => state.projects);
+    const { items: meetings } = useSelector((state: RootState) => state.meetings);
     const { user } = useSelector((state: RootState) => state.auth);
-    const [view, setView] = useState<'grid' | 'list' | 'kanban'>('kanban');
+    const [view, setView] = useState<'grid' | 'list' | 'kanban' | 'calendar'>('kanban');
     const [searchTerm, setSearchTerm] = useState('');
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' }>({
@@ -47,6 +51,7 @@ const ProjectsPage: React.FC = () => {
 
     useEffect(() => {
         dispatch(fetchProjects());
+        dispatch(fetchMeetings());
     }, [dispatch]);
 
     const handleViewChange = (_: React.MouseEvent<HTMLElement>, newView: 'grid' | 'list' | 'kanban' | null) => {
@@ -222,13 +227,15 @@ const ProjectsPage: React.FC = () => {
                     <ToggleButton value="list" aria-label="list view">
                         <ViewList />
                     </ToggleButton>
+                    <ToggleButton value="calendar" aria-label="calendar view">
+                        <CalendarMonth />
+                    </ToggleButton>
                 </ToggleButtonGroup>
             </Box>
 
             {view === 'kanban' && (
-                <ProjectKanban
+                <ProjectKanbanBoard
                     projects={filteredProjects}
-                    onProjectClick={handleProjectClick}
                     onStatusChange={handleStatusChange}
                 />
             )}
@@ -250,6 +257,13 @@ const ProjectsPage: React.FC = () => {
                         </Grid>
                     ))}
                 </Grid>
+            )}
+
+            {view === 'calendar' && (
+                <ProjectCalendar
+                    projects={filteredProjects}
+                    meetings={meetings}
+                />
             )}
 
             <ProjectForm
