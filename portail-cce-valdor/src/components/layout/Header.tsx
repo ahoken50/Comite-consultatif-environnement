@@ -7,6 +7,7 @@ import { auth } from '../../services/firebase';
 import { logout } from '../../features/auth/authSlice';
 import type { RootState } from '../../store/rootReducer';
 import logo from '../../assets/logo-valdor.png';
+import GlobalSearch from '../common/GlobalSearch';
 
 interface HeaderProps {
     onMenuClick: () => void;
@@ -53,11 +54,15 @@ const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
                     <MenuIcon />
                 </IconButton>
 
-                <Box sx={{ flexGrow: 1, display: 'flex', alignItems: 'center' }}>
+                <Box sx={{ display: 'flex', alignItems: 'center' }}>
                     <img src={logo} alt="Val-d'Or" style={{ height: 40, marginRight: 16 }} />
                     <Typography variant="h6" noWrap component="div" sx={{ display: { xs: 'none', sm: 'block' }, color: 'text.primary', fontWeight: 600 }}>
                         Portail CCE
                     </Typography>
+                </Box>
+
+                <Box sx={{ flexGrow: 1, display: 'flex', justifyContent: 'center', mx: 2 }}>
+                    <GlobalSearch />
                 </Box>
 
                 <Box sx={{ display: 'flex', alignItems: 'center' }}>

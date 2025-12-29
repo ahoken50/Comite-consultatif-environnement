@@ -129,7 +129,7 @@ export const deleteTask = createAsyncThunk(
         projectName: string;
     }) => {
         await projectsAPI.deleteTask(projectId, taskId);
-        // Log not always needed for delete task to reduce noise, but good for consistency
+        await logProjectActivity('task_deleted', userId, userName, projectId, `${projectName} (Tâche supprimée)`);
         return { projectId, taskId };
     }
 );
