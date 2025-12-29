@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useCallback, useRef } from 'react';
 import { Box, Typography, Paper, Grid, Accordion, AccordionSummary, AccordionDetails, Chip } from '@mui/material';
 import { ExpandMore, Folder } from '@mui/icons-material';
 import { useDispatch, useSelector } from 'react-redux';
@@ -19,24 +19,38 @@ const DocumentsPage: React.FC = () => {
     const { items: meetings } = useSelector((state: RootState) => state.meetings);
     const { items: projects } = useSelector((state: RootState) => state.projects);
 
+    // Refs to access latest state in callbacks without triggering re-renders or recreating callbacks
+    const meetingsRef = useRef(meetings);
+
+    useEffect(() => {
+        meetingsRef.current = meetings;
+    }, [meetings]);
+
     useEffect(() => {
         dispatch(fetchDocuments());
         dispatch(fetchMeetings());
         dispatch(fetchProjects());
     }, [dispatch]);
 
-    const handleDelete = async (id: string, storagePath: string) => {
+    // Optimize lookups by creating Maps (O(1) access) instead of using find() in loops (O(N))
+    const meetingsMap = useMemo(() => new Map(meetings.map(m => [m.id, m])), [meetings]);
+    const projectsMap = useMemo(() => new Map(projects.map(p => [p.id, p])), [projects]);
+
+    const handleDelete = useCallback(async (id: string, storagePath: string) => {
         console.log('[DEBUG] handleDelete called with:', { id, storagePath });
         if (window.confirm('Êtes-vous sûr de vouloir supprimer ce document ?')) {
             console.log('[DEBUG] User confirmed deletion');
             try {
                 // Check if this document is linked as a meeting's minutes file
+                // Access current meetings from ref to avoid adding meetings to dependency array
+                const currentMeetings = meetingsRef.current;
+
                 // First try by documentId, then by storagePath as fallback for legacy data
-                let linkedMeeting = meetings.find(m => m.minutesFileDocumentId === id);
+                let linkedMeeting = currentMeetings.find(m => m.minutesFileDocumentId === id);
 
                 if (!linkedMeeting) {
                     // Fallback: check by storagePath for documents uploaded before minutesFileDocumentId was added
-                    linkedMeeting = meetings.find(m => m.minutesFileStoragePath === storagePath);
+                    linkedMeeting = currentMeetings.find(m => m.minutesFileStoragePath === storagePath);
                 }
 
                 if (linkedMeeting) {
@@ -64,15 +78,10 @@ const DocumentsPage: React.FC = () => {
         } else {
             console.log('[DEBUG] User cancelled deletion');
         }
-    };
+    }, [dispatch]); // Stable callback, depends only on dispatch
 
     const groupedDocuments = useMemo(() => {
         const groups: Record<string, { title: string; type: 'meeting' | 'project' | 'other'; date: string; documents: Document[]; entityId?: string }> = {};
-
-        // Initialize groups for all meetings (even empty ones, optional, but user might want to see them)
-        // For now, let's only show groups that have documents OR just iterate documents.
-        // Actually, usually better to show folders for existing entities if we want to "file" things, 
-        // but here we are viewing existing documents. Let's group existing documents.
 
         documents.forEach(doc => {
             let key = 'other';
@@ -82,7 +91,8 @@ const DocumentsPage: React.FC = () => {
             let entityId = '';
 
             if (doc.linkedEntityType === 'meeting' && doc.linkedEntityId) {
-                const meeting = meetings.find(m => m.id === doc.linkedEntityId);
+                // O(1) Lookup
+                const meeting = meetingsMap.get(doc.linkedEntityId);
                 if (meeting) {
                     key = `meeting-${meeting.id}`;
                     title = `Assemblée: ${meeting.title}`;
@@ -90,18 +100,17 @@ const DocumentsPage: React.FC = () => {
                     date = meeting.date;
                     entityId = meeting.id;
                 } else {
-                    // Meeting not found (maybe deleted), keep as other or separate group?
-                    // Let's keep in a "Orphaned" or just fallback to Other for now, or display ID.
                     title = `Assemblée (Introuvable: ${doc.linkedEntityId})`;
                     key = `meeting-${doc.linkedEntityId}`;
                 }
             } else if (doc.linkedEntityType === 'project' && doc.linkedEntityId) {
-                const project = projects.find(p => p.id === doc.linkedEntityId);
+                // O(1) Lookup
+                const project = projectsMap.get(doc.linkedEntityId);
                 if (project) {
                     key = `project-${project.id}`;
                     title = `Projet: ${project.name}`;
                     type = 'project';
-                    date = project.dateCreated; // Assuming createdAt exists, or updated...
+                    date = project.dateCreated;
                     entityId = project.id;
                 } else {
                     title = `Projet (Introuvable: ${doc.linkedEntityId})`;
@@ -121,7 +130,7 @@ const DocumentsPage: React.FC = () => {
             if (b.type === 'other') return -1;
             return new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime();
         });
-    }, [documents, meetings, projects]);
+    }, [documents, meetingsMap, projectsMap]); // Dependencies updated to use Maps
 
     return (
         <Box>
@@ -166,7 +175,7 @@ const DocumentsPage: React.FC = () => {
                                     <DocumentList
                                         documents={group.documents}
                                         onDelete={handleDelete}
-                                        agendaItems={group.type === 'meeting' ? meetings.find(m => m.id === group.entityId)?.agendaItems : undefined}
+                                        agendaItems={group.type === 'meeting' && group.entityId ? meetingsMap.get(group.entityId)?.agendaItems : undefined}
                                     />
                                 </AccordionDetails>
                             </Accordion>
