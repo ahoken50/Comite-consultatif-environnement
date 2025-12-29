@@ -24,7 +24,6 @@ import DocumentList from '../../components/documents/DocumentList';
 import DocumentUpload from '../../components/documents/DocumentUpload';
 import ProjectTasks from '../../components/projects/ProjectTasks';
 import ProjectForm from '../../components/projects/ProjectForm';
-import type { Project } from '../../types/project.types';
 
 interface TabPanelProps {
     children?: React.ReactNode;

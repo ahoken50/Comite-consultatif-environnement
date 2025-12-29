@@ -17,7 +17,7 @@ import {
 } from '@mui/material';
 import { Search, Gavel, Assignment } from '@mui/icons-material';
 import { useDispatch, useSelector } from 'react-redux';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import type { AppDispatch } from '../../store/store';
 import type { RootState } from '../../store/rootReducer';
 import { fetchMeetings } from '../../features/meetings/meetingsSlice';
