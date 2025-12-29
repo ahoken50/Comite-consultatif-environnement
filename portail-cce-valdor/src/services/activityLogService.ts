@@ -21,7 +21,7 @@ export const logActivity = async (
     userName: string,
     targetId: string,
     targetName: string,
-    targetType: 'project' | 'meeting' | 'document' | 'member',
+    targetType: 'project' | 'meeting' | 'document' | 'member' | 'task',
     details?: string
 ): Promise<void> => {
     try {
@@ -65,7 +65,7 @@ export const getRecentActivities = async (maxCount: number = 10): Promise<Activi
  * Helper to log project activities
  */
 export const logProjectActivity = (
-    type: 'project_created' | 'project_updated' | 'project_completed' | 'project_deleted',
+    type: ActivityType,
     userId: string,
     userName: string,
     projectId: string,
@@ -93,3 +93,14 @@ export const logDocumentActivity = (
     documentId: string,
     documentName: string
 ) => logActivity(type, userId, userName, documentId, documentName, 'document');
+
+/**
+ * Helper to log task activities
+ */
+export const logTaskActivity = (
+    type: 'task_created' | 'task_updated' | 'task_completed' | 'task_deleted',
+    userId: string,
+    userName: string,
+    taskId: string,
+    taskTitle: string
+) => logActivity(type, userId, userName, taskId, taskTitle, 'task');

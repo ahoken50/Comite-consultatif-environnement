@@ -29,6 +29,11 @@ service cloud.firestore {
     match /projects/{projectId} {
       allow read: if isAuthenticated();
       allow write: if isAuthenticated(); // Temporary: allow any auth user
+      
+      // Tasks sub-collection
+      match /tasks/{taskId} {
+        allow read, write: if isAuthenticated();
+      }
     }
 
     // Meetings collection

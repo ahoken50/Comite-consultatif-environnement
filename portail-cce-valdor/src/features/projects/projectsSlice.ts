@@ -1,16 +1,19 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import type { Project } from '../../types/project.types';
+import type { ProjectTask } from '../../types/task.types';
 import { projectsAPI } from './projectsAPI';
 import { logProjectActivity } from '../../services/activityLogService';
 
 interface ProjectsState {
     items: Project[];
+    tasksByProjectId: Record<string, ProjectTask[]>;
     loading: boolean;
     error: string | null;
 }
 
 const initialState: ProjectsState = {
     items: [],
+    tasksByProjectId: {},
     loading: false,
     error: null,
 };
@@ -72,13 +75,72 @@ export const deleteProject = createAsyncThunk(
     }
 );
 
+// Task Thunks
+export const fetchProjectTasks = createAsyncThunk(
+    'projects/fetchTasks',
+    async (projectId: string) => {
+        const tasks = await projectsAPI.fetchTasks(projectId);
+        return { projectId, tasks };
+    }
+);
+
+export const addTask = createAsyncThunk(
+    'projects/addTask',
+    async ({ projectId, task, userId, userName, projectName }: {
+        projectId: string;
+        task: Omit<ProjectTask, 'id' | 'projectId' | 'dateCreated'>;
+        userId: string;
+        userName: string;
+        projectName: string;
+    }) => {
+        const created = await projectsAPI.addTask(projectId, task);
+        // Log activity
+        await logProjectActivity('task_created', userId, userName, projectId, `${projectName}: ${task.description}`);
+        return created;
+    }
+);
+
+export const updateTask = createAsyncThunk(
+    'projects/updateTask',
+    async ({ projectId, taskId, updates, userId, userName, projectName }: {
+        projectId: string;
+        taskId: string;
+        updates: Partial<ProjectTask>;
+        userId: string;
+        userName: string;
+        projectName: string;
+    }) => {
+        await projectsAPI.updateTask(projectId, taskId, updates);
+        // Log if completed
+        if (updates.status === 'completed') {
+            await logProjectActivity('task_completed', userId, userName, projectId, `${projectName} (Tâche terminée)`);
+        }
+        return { projectId, taskId, updates };
+    }
+);
+
+export const deleteTask = createAsyncThunk(
+    'projects/deleteTask',
+    async ({ projectId, taskId, userId, userName, projectName }: {
+        projectId: string;
+        taskId: string;
+        userId: string;
+        userName: string;
+        projectName: string;
+    }) => {
+        await projectsAPI.deleteTask(projectId, taskId);
+        // Log not always needed for delete task to reduce noise, but good for consistency
+        return { projectId, taskId };
+    }
+);
+
 const projectsSlice = createSlice({
     name: 'projects',
     initialState,
     reducers: {},
     extraReducers: (builder) => {
         builder
-            // Fetch
+            // Fetch Projects
             .addCase(fetchProjects.pending, (state) => {
                 state.loading = true;
                 state.error = null;
@@ -91,19 +153,19 @@ const projectsSlice = createSlice({
                 state.loading = false;
                 state.error = action.error.message || 'Failed to fetch projects';
             })
-            // Create
+            // Create Project
             .addCase(createProject.pending, (state) => {
                 state.loading = true;
             })
             .addCase(createProject.fulfilled, (state, action) => {
                 state.loading = false;
-                state.items.unshift(action.payload); // Add to beginning
+                state.items.unshift(action.payload);
             })
             .addCase(createProject.rejected, (state, action) => {
                 state.loading = false;
                 state.error = action.error.message || 'Failed to create project';
             })
-            // Update
+            // Update Project
             .addCase(updateProject.fulfilled, (state, action) => {
                 const { id, updates } = action.payload;
                 const index = state.items.findIndex(p => p.id === id);
@@ -111,9 +173,39 @@ const projectsSlice = createSlice({
                     state.items[index] = { ...state.items[index], ...updates };
                 }
             })
-            // Delete
+            // Delete Project
             .addCase(deleteProject.fulfilled, (state, action) => {
                 state.items = state.items.filter(p => p.id !== action.payload);
+            })
+            // Fetch Tasks
+            .addCase(fetchProjectTasks.fulfilled, (state, action) => {
+                state.tasksByProjectId[action.payload.projectId] = action.payload.tasks;
+            })
+            // Add Task
+            .addCase(addTask.fulfilled, (state, action) => {
+                const { projectId } = action.payload;
+                if (!state.tasksByProjectId[projectId]) {
+                    state.tasksByProjectId[projectId] = [];
+                }
+                state.tasksByProjectId[projectId].push(action.payload);
+            })
+            // Update Task
+            .addCase(updateTask.fulfilled, (state, action) => {
+                const { projectId, taskId, updates } = action.payload;
+                const tasks = state.tasksByProjectId[projectId];
+                if (tasks) {
+                    const index = tasks.findIndex(t => t.id === taskId);
+                    if (index !== -1) {
+                        tasks[index] = { ...tasks[index], ...updates };
+                    }
+                }
+            })
+            // Delete Task
+            .addCase(deleteTask.fulfilled, (state, action) => {
+                const { projectId, taskId } = action.payload;
+                if (state.tasksByProjectId[projectId]) {
+                    state.tasksByProjectId[projectId] = state.tasksByProjectId[projectId].filter(t => t.id !== taskId);
+                }
             });
     },
 });

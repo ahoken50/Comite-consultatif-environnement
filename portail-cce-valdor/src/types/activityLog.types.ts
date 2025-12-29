@@ -16,7 +16,11 @@ export type ActivityType =
     | 'member_joined'
     | 'member_updated'
     | 'transcription_completed'
-    | 'minutes_generated';
+    | 'minutes_generated'
+    | 'task_created'
+    | 'task_updated'
+    | 'task_completed'
+    | 'task_deleted';
 
 export interface ActivityLog {
     id: string;
@@ -25,7 +29,7 @@ export interface ActivityLog {
     userName: string;
     targetId: string;      // ID of the affected entity (project, meeting, etc.)
     targetName: string;    // Name/title of the affected entity
-    targetType: 'project' | 'meeting' | 'document' | 'member';
+    targetType: 'project' | 'meeting' | 'document' | 'member' | 'task';
     details?: string;      // Optional additional details
     timestamp: string;     // ISO string
 }
@@ -44,5 +48,9 @@ export const ActivityTypeLabels: Record<ActivityType, string> = {
     member_joined: 'a rejoint le comité',
     member_updated: 'a mis à jour le profil de',
     transcription_completed: 'a transcrit l\'enregistrement de',
-    minutes_generated: 'a généré le PV de'
+    minutes_generated: 'a généré le PV de',
+    task_created: 'a ajouté une tâche à',
+    task_updated: 'a mis à jour une tâche de',
+    task_completed: 'a complété une tâche de',
+    task_deleted: 'a supprimé une tâche de'
 };

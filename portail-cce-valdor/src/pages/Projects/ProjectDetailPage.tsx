@@ -19,6 +19,7 @@ import type { RootState } from '../../store/rootReducer';
 import { fetchDocumentsByEntity, deleteDocument } from '../../features/documents/documentsSlice';
 import DocumentList from '../../components/documents/DocumentList';
 import DocumentUpload from '../../components/documents/DocumentUpload';
+import ProjectTasks from '../../components/projects/ProjectTasks';
 
 interface TabPanelProps {
     children?: React.ReactNode;
@@ -113,9 +114,9 @@ const ProjectDetailPage: React.FC = () => {
                 <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
                     <Tabs value={tabValue} onChange={handleTabChange} aria-label="project tabs">
                         <Tab label="Vue d'ensemble" />
-                        <Tab label="Commentaires" />
-                        <Tab label="Historique" />
+                        <Tab label="Tâches" />
                         <Tab label="Documents" />
+                        {/* <Tab label="Historique" /> */}
                     </Tabs>
                 </Box>
 
@@ -138,6 +139,12 @@ const ProjectDetailPage: React.FC = () => {
                                     <Typography variant="body2"><strong>Créé le:</strong> {new Date(project.dateCreated).toLocaleDateString()}</Typography>
                                     <Typography variant="body2"><strong>Mis à jour:</strong> {new Date(project.dateUpdated).toLocaleDateString()}</Typography>
                                     <Typography variant="body2"><strong>Responsable:</strong> {project.coordinatorId}</Typography>
+                                    {project.resolutionCCE && (
+                                        <Typography variant="body2"><strong>Résolution:</strong> {project.resolutionCCE}</Typography>
+                                    )}
+                                    {project.linkedMeetingIds && project.linkedMeetingIds.length > 0 && (
+                                        <Typography variant="body2"><strong>Réunion:</strong> {project.linkedMeetingIds.length} liée(s)</Typography>
+                                    )}
                                 </Box>
                             </Paper>
                         </Grid>
@@ -145,14 +152,10 @@ const ProjectDetailPage: React.FC = () => {
                 </TabPanel>
 
                 <TabPanel value={tabValue} index={1}>
-                    <Typography color="textSecondary">Section commentaires à venir...</Typography>
+                    <ProjectTasks project={project} />
                 </TabPanel>
 
                 <TabPanel value={tabValue} index={2}>
-                    <Typography color="textSecondary">Historique des modifications à venir...</Typography>
-                </TabPanel>
-
-                <TabPanel value={tabValue} index={3}>
                     <Grid container spacing={3}>
                         <Grid size={{ xs: 12, md: 8 }}>
                             <Typography variant="h6" gutterBottom>Documents du projet</Typography>
@@ -171,6 +174,10 @@ const ProjectDetailPage: React.FC = () => {
                         </Grid>
                     </Grid>
                 </TabPanel>
+
+                {/* <TabPanel value={tabValue} index={2}>
+                    <Typography color="textSecondary">Historique des modifications à venir...</Typography>
+                </TabPanel> */}
             </Paper>
         </Box>
     );

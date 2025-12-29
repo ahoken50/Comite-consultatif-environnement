@@ -11,6 +11,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../../services/firebase';
 import type { Project } from '../../types/project.types';
+import type { ProjectTask } from '../../types/task.types';
 
 const COLLECTION_NAME = 'projects';
 
@@ -48,5 +49,44 @@ export const projectsAPI = {
 
     delete: async (id: string): Promise<void> => {
         await deleteDoc(doc(db, COLLECTION_NAME, id));
+    },
+
+    // Tasks Sub-collection
+    fetchTasks: async (projectId: string): Promise<ProjectTask[]> => {
+        const q = query(
+            collection(db, COLLECTION_NAME, projectId, 'tasks'),
+            orderBy('dateCreated', 'asc')
+        );
+        const snapshot = await getDocs(q);
+        return snapshot.docs.map(doc => ({
+            id: doc.id,
+            projectId,
+            ...doc.data(),
+            dateCreated: doc.data().dateCreated?.toDate ? doc.data().dateCreated.toDate().toISOString() : doc.data().dateCreated,
+            dateCompleted: (doc.data().dateCompleted?.toDate ? doc.data().dateCompleted.toDate().toISOString() : doc.data().dateCompleted) || undefined,
+        } as ProjectTask));
+    },
+
+    addTask: async (projectId: string, task: Omit<ProjectTask, 'id' | 'projectId' | 'dateCreated'>): Promise<ProjectTask> => {
+        const docRef = await addDoc(collection(db, COLLECTION_NAME, projectId, 'tasks'), {
+            ...task,
+            projectId,
+            dateCreated: Timestamp.now(),
+        });
+        return {
+            id: docRef.id,
+            projectId,
+            ...task,
+            dateCreated: new Date().toISOString()
+        } as ProjectTask;
+    },
+
+    updateTask: async (projectId: string, taskId: string, updates: Partial<ProjectTask>): Promise<void> => {
+        const docRef = doc(db, COLLECTION_NAME, projectId, 'tasks', taskId);
+        await updateDoc(docRef, updates);
+    },
+
+    deleteTask: async (projectId: string, taskId: string): Promise<void> => {
+        await deleteDoc(doc(db, COLLECTION_NAME, projectId, 'tasks', taskId));
     }
 };
