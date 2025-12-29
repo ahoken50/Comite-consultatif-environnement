@@ -34,6 +34,12 @@ const ProjectTasks: React.FC<ProjectTasksProps> = ({ project }) => {
     const { user } = useSelector((state: RootState) => state.auth);
     const tasks = useSelector((state: RootState) => state.projects.tasksByProjectId[project.id] || []);
     const members = useSelector((state: RootState) => state.members.items);
+    // Add Task State
+    const [newTaskDescription, setNewTaskDescription] = useState('');
+    const [dueDate, setDueDate] = useState('');
+    const [assigneeId, setAssigneeId] = useState('');
+    const [isAdding, setIsAdding] = useState(false);
+
     // Edit State
     const [editingTask, setEditingTask] = useState<ProjectTask | null>(null);
     const [editDescription, setEditDescription] = useState('');
