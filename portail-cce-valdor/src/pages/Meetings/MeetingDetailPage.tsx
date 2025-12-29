@@ -86,7 +86,25 @@ const MeetingDetailPage: React.FC = () => {
         if (location.state && (location.state as any).tab !== undefined) {
             setTabValue((location.state as any).tab);
         }
-    }, [location.state]);
+
+        // Handle hash scrolling
+        if (location.hash) {
+            // Slight delay to ensure content is rendered
+            setTimeout(() => {
+                const id = location.hash.substring(1);
+                const element = document.getElementById(id);
+                if (element) {
+                    element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    // Highlight effect
+                    element.style.transition = 'background-color 1s';
+                    element.style.backgroundColor = '#e3f2fd'; // Light blue highlight
+                    setTimeout(() => {
+                        element.style.backgroundColor = '';
+                    }, 2000);
+                }
+            }, 500);
+        }
+    }, [location.state, location.hash, tabValue, meeting?.minutes]); // Depend on content loaded
 
 
 

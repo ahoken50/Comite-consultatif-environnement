@@ -39,19 +39,24 @@ const ProjectCalendar: React.FC<ProjectCalendarProps> = ({ projects, meetings })
 
     const events = useMemo(() => {
         const projectEvents: CalendarEvent[] = projects
-            .filter(p => p.estimatedCompletionDate)
-            .map(p => ({
-                id: p.id,
-                title: `Échéance: ${p.name}`,
-                start: new Date(p.estimatedCompletionDate!),
-                end: new Date(p.estimatedCompletionDate!),
-                type: 'project_deadline',
-                resource: p
-            }));
+            .filter(p => p.estimatedCompletionDate || p.startDate)
+            .map(p => {
+                const start = p.startDate ? new Date(p.startDate) : (p.estimatedCompletionDate ? new Date(p.estimatedCompletionDate) : new Date());
+                const end = p.estimatedCompletionDate ? new Date(p.estimatedCompletionDate) : start;
+
+                return {
+                    id: p.id,
+                    title: `${p.code} - ${p.name}`,
+                    start,
+                    end,
+                    type: 'project_deadline',
+                    resource: p
+                };
+            });
 
         const meetingEvents: CalendarEvent[] = meetings.map(m => {
             const startDate = new Date(m.date);
-            // Default duration 2h if not parsed (assuming logic exists elsewhere, simplified here)
+            // Default duration 2h if not parsed 
             const endDate = new Date(startDate.getTime() + 2 * 60 * 60 * 1000);
 
             return {

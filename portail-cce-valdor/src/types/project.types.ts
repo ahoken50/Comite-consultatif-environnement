@@ -56,6 +56,8 @@ export interface Project {
     createdBy: string;
     updatedBy: string;
     comments?: Comment[];
+    startDate?: string; // ISO Date
+    caucusDecisions?: CaucusDecision[];
 }
 
 export interface Comment {
@@ -64,4 +66,13 @@ export interface Comment {
     userName: string;
     content: string;
     createdAt: string; // ISO string
+}
+
+export interface CaucusDecision {
+    id: string;
+    date: string;
+    description: string;
+    fileUrl?: string;
+    fileName?: string;
+    createdBy: string;
 }

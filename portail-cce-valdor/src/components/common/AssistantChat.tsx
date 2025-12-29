@@ -3,22 +3,18 @@ import {
     Box,
     Paper,
     Typography,
-    IconButton,
     TextField,
     Fab,
     List,
     ListItem,
     Avatar,
-    Divider,
+    IconButton,
     Fade,
-    Link
+    Divider
 } from '@mui/material';
-import { Chat, Close, Send, SmartToy } from '@mui/icons-material';
+import { SmartToy, Send, Close, Chat } from '@mui/icons-material';
 import { useSelector } from 'react-redux';
-import { useNavigate } from 'react-router-dom';
 import type { RootState } from '../../store/rootReducer';
-import { format } from 'date-fns';
-import { fr } from 'date-fns/locale';
 
 interface Message {
     id: string;
@@ -29,21 +25,15 @@ interface Message {
 
 const AssistantChat: React.FC = () => {
     const [isOpen, setIsOpen] = useState(false);
-    const [input, setInput] = useState('');
     const [messages, setMessages] = useState<Message[]>([
-        {
-            id: '1',
-            text: 'Bonjour ! Je suis l\'assistant virtuel du CCE. Je peux chercher des projets ou vous lister les prochaines réunions.',
-            sender: 'ai',
-            timestamp: new Date()
-        }
+        { id: '1', text: 'Bonjour ! Je suis l\'assistant IA du CCE. Comment puis-je vous aider aujourd\'hui ?', sender: 'ai', timestamp: new Date() }
     ]);
+    const [input, setInput] = useState('');
     const messagesEndRef = useRef<HTMLDivElement>(null);
-    const navigate = useNavigate();
 
-    // Data Access
-    const projects = useSelector((state: RootState) => state.projects.items);
-    const meetings = useSelector((state: RootState) => state.meetings.items);
+    // Data context
+    const { items: projects } = useSelector((state: RootState) => state.projects);
+    const { items: meetings } = useSelector((state: RootState) => state.meetings);
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -53,7 +43,7 @@ const AssistantChat: React.FC = () => {
         scrollToBottom();
     }, [messages, isOpen]);
 
-    const handleSend = () => {
+    const handleSend = async () => {
         if (!input.trim()) return;
 
         const userText = input.trim();
@@ -67,107 +57,81 @@ const AssistantChat: React.FC = () => {
         setMessages(prev => [...prev, userMsg]);
         setInput('');
 
-        // AI Logic
-        setTimeout(() => {
-            let aiResponseText: React.ReactNode = "Je ne suis pas sûr de comprendre. Essayez 'Cherche projet [x]' ou 'Prochaines réunions'.";
-            const lowerInput = userText.toLowerCase();
+        // AI Logic with Vertex AI
+        setMessages(prev => [...prev, {
+            id: 'loading',
+            text: 'Réflexion en cours...',
+            sender: 'ai',
+            timestamp: new Date()
+        }]);
 
-            // Intent: List Meetings
-            if (lowerInput.includes('réunion') || lowerInput.includes('agenda')) {
-                const now = new Date();
-                const upcoming = meetings
-                    .filter(m => new Date(m.date) >= now)
-                    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-                    .slice(0, 3);
+        try {
+            // @ts-ignore - Initialization of Vertex AI
+            const { getGenerativeModel } = await import('firebase/vertexai');
+            const { vertexAI } = await import('../../services/firebase');
 
-                if (upcoming.length > 0) {
-                    aiResponseText = (
-                        <Box>
-                            <Typography variant="body2" gutterBottom>Voici les prochaines réunions :</Typography>
-                            <ul style={{ paddingLeft: 20, margin: 0 }}>
-                                {upcoming.map(m => (
-                                    <li key={m.id}>
-                                        <Link
-                                            component="button"
-                                            variant="body2"
-                                            onClick={() => {
-                                                navigate(`/meetings/${m.id}`);
-                                                setIsOpen(false);
-                                            }}
-                                            sx={{ textAlign: 'left' }}
-                                        >
-                                            {format(new Date(m.date), "d MMM à HH:mm", { locale: fr })}
-                                        </Link>
-                                    </li>
-                                ))}
-                            </ul>
-                        </Box>
-                    );
-                } else {
-                    aiResponseText = "Aucune réunion future trouvée.";
-                }
-            }
-            // Intent: Search Projects
-            else if (lowerInput.includes('cherche') || lowerInput.includes('projet')) {
-                const keyword = lowerInput.replace('cherche', '').replace('projet', '').trim();
-                if (keyword.length < 2 && !lowerInput.includes('projet')) {
-                    aiResponseText = "Pour chercher un projet, précisez un mot-clé (ex: 'Projet Eau').";
-                } else {
-                    const results = projects.filter(p =>
-                        p.name.toLowerCase().includes(keyword) ||
-                        p.code.toLowerCase().includes(keyword)
-                    ).slice(0, 3);
+            const model = getGenerativeModel(vertexAI, { model: 'gemini-2.0-flash' });
 
-                    if (results.length > 0) {
-                        aiResponseText = (
-                            <Box>
-                                <Typography variant="body2" gutterBottom>Voici des projets correspondants :</Typography>
-                                <ul style={{ paddingLeft: 20, margin: 0 }}>
-                                    {results.map(p => (
-                                        <li key={p.id}>
-                                            <Link
-                                                component="button"
-                                                variant="body2"
-                                                onClick={() => {
-                                                    navigate(`/projects/${p.id}`);
-                                                    setIsOpen(false);
-                                                }}
-                                                sx={{ textAlign: 'left' }}
-                                            >
-                                                {p.code} - {p.name}
-                                            </Link>
-                                        </li>
-                                    ))}
-                                </ul>
-                            </Box>
-                        );
-                    } else {
-                        aiResponseText = `Aucun projet trouvé pour "${keyword}".`;
-                    }
-                }
-            }
-            // Intent: Help
-            else if (lowerInput.includes('aide') || lowerInput.includes('peux')) {
-                aiResponseText = (
-                    <Box>
-                        <Typography variant="body2" gutterBottom>Je peux vous aider à :</Typography>
-                        <ul style={{ paddingLeft: 20, margin: 0 }}>
-                            <li>Voir les réunions : "Prochaines réunions"</li>
-                            <li>Chercher un projet : "Cherche projet [nom]"</li>
-                            <li>(Bientôt) Rédiger des PVs</li>
-                        </ul>
-                    </Box>
-                );
-            }
-
-            const aiMsg: Message = {
-                id: (Date.now() + 1).toString(),
-                text: aiResponseText,
-                sender: 'ai',
-                timestamp: new Date()
+            // Prepare Context
+            const contextData = {
+                currentDate: new Date().toISOString(),
+                projects: projects.map(p => ({
+                    id: p.id,
+                    code: p.code,
+                    name: p.name,
+                    status: p.status,
+                    priority: p.priority,
+                    category: p.category,
+                    nextSteps: p.nextSteps
+                })),
+                meetings: meetings.map(m => ({
+                    id: m.id,
+                    date: m.date,
+                    location: m.location
+                }))
             };
-            setMessages(prev => [...prev, aiMsg]);
-        }, 600);
+
+            const prompt = `
+            Tu es l'assistant virtuel du Comité Consultatif en Environnement (CCE).
+            
+            Contexte actuel (JSON):
+            ${JSON.stringify(contextData)}
+
+            Instructions:
+            1. Réponds de manière concise et utile en français.
+            2. Utilise le contexte fourni pour répondre aux questions sur les projets et réunions.
+            3. Si on te demande de chercher un projet, donne son statut et ses prochaines étapes.
+            4. Si on te demande les prochaines réunions, liste-les.
+            
+            Question de l'utilisateur: "${userText}"
+            `;
+
+            const result = await model.generateContent(prompt);
+            const response = result.response;
+            const text = response.text();
+
+            setMessages(prev => {
+                const filtered = prev.filter(m => m.id !== 'loading');
+                return [...filtered, {
+                    id: (Date.now() + 1).toString(),
+                    text: text, // Gemini returns Markdown, plain text for now or need a parser
+                    sender: 'ai',
+                    timestamp: new Date()
+                }];
+            });
+
+        } catch (error) {
+            console.error("Vertex AI Error:", error);
+            setMessages(prev => {
+                const filtered = prev.filter(m => m.id !== 'loading');
+                return [...filtered, {
+                    id: (Date.now() + 1).toString(),
+                    text: "Désolé, je rencontre des difficultés pour accéder à mon cerveau numérique (Vertex AI).",
+                    sender: 'ai',
+                    timestamp: new Date()
+                }];
+            });
+        }
     };
 
     const handleKeyPress = (e: React.KeyboardEvent) => {

@@ -25,6 +25,7 @@ import DocumentUpload from '../../components/documents/DocumentUpload';
 import ProjectTasks from '../../components/projects/ProjectTasks';
 import ProjectForm from '../../components/projects/ProjectForm';
 import ProjectComments from '../../components/projects/ProjectComments';
+import ProjectDecisions from '../../components/projects/ProjectDecisions';
 
 interface TabPanelProps {
     children?: React.ReactNode;
@@ -160,6 +161,7 @@ const ProjectDetailPage: React.FC = () => {
                     <Tabs value={tabValue} onChange={handleTabChange} aria-label="project tabs">
                         <Tab label="Vue d'ensemble" />
                         <Tab label="Tâches" />
+                        <Tab label="Décisions Caucus" />
                         <Tab label="Documents" />
                         <Tab label="Commentaires" />
                     </Tabs>
@@ -210,6 +212,10 @@ const ProjectDetailPage: React.FC = () => {
                 </TabPanel>
 
                 <TabPanel value={tabValue} index={2}>
+                    <ProjectDecisions project={project} />
+                </TabPanel>
+
+                <TabPanel value={tabValue} index={3}>
                     <Grid container spacing={3}>
                         <Grid size={{ xs: 12, md: 8 }}>
                             <Typography variant="h6" gutterBottom>Documents du projet</Typography>
@@ -229,7 +235,7 @@ const ProjectDetailPage: React.FC = () => {
                     </Grid>
                 </TabPanel>
 
-                <TabPanel value={tabValue} index={3}>
+                <TabPanel value={tabValue} index={4}>
                     <ProjectComments project={project} />
                 </TabPanel>
             </Paper>

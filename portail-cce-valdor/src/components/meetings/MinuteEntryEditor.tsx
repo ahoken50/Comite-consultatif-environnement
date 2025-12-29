@@ -33,6 +33,7 @@ const MinuteEntryEditor: React.FC<MinuteEntryEditorProps> = ({
 
     return (
         <Box
+            id={`resolution-${itemId}-${entryIndex}`}
             sx={{
                 mb: 2,
                 p: 2,

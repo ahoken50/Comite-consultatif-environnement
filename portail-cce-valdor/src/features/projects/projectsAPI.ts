@@ -96,5 +96,12 @@ export const projectsAPI = {
         await updateDoc(docRef, {
             comments: arrayUnion(comment)
         });
+    },
+
+    addCaucusDecision: async (projectId: string, decision: any): Promise<void> => {
+        const docRef = doc(db, COLLECTION_NAME, projectId);
+        await updateDoc(docRef, {
+            caucusDecisions: arrayUnion(decision)
+        });
     }
 };

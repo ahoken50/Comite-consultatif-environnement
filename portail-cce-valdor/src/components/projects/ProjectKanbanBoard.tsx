@@ -113,6 +113,8 @@ const ProjectKanbanBoard: React.FC<ProjectKanbanBoardProps> = ({ projects, onSta
             [ProjectStatus.IN_PROGRESS]: projects.filter(p => p.status === ProjectStatus.IN_PROGRESS),
             [ProjectStatus.TO_CLARIFY]: projects.filter(p => p.status === ProjectStatus.TO_CLARIFY),
             [ProjectStatus.COMPLETED]: projects.filter(p => p.status === ProjectStatus.COMPLETED),
+            [ProjectStatus.BLOCKED]: projects.filter(p => p.status === ProjectStatus.BLOCKED),
+            [ProjectStatus.FINANCING_RECEIVED]: projects.filter(p => p.status === ProjectStatus.FINANCING_RECEIVED),
         };
     }, [projects]);
 
@@ -135,25 +137,37 @@ const ProjectKanbanBoard: React.FC<ProjectKanbanBoardProps> = ({ projects, onSta
             <Box sx={{ display: 'flex', gap: 3, overflowX: 'auto', pb: 2, alignItems: 'flex-start' }}>
                 <KanbanColumn
                     id={ProjectStatus.PENDING}
-                    title="Nouveaux"
+                    title="En attente"
                     projects={columns[ProjectStatus.PENDING]}
-                    color="#ed6c02" // Warning/Orange
+                    color="#ed6c02" // Orange
                 />
                 <KanbanColumn
                     id={ProjectStatus.TO_CLARIFY}
-                    title="À Clarifier"
+                    title="À clarifier"
                     projects={columns[ProjectStatus.TO_CLARIFY]}
                     color="#9c27b0" // Purple
                 />
                 <KanbanColumn
+                    id={ProjectStatus.BLOCKED}
+                    title="Bloqué"
+                    projects={columns[ProjectStatus.BLOCKED]}
+                    color="#d32f2f" // Red
+                />
+                <KanbanColumn
+                    id={ProjectStatus.FINANCING_RECEIVED}
+                    title="Financement reçu"
+                    projects={columns[ProjectStatus.FINANCING_RECEIVED]}
+                    color="#0288d1" // Light Blue
+                />
+                <KanbanColumn
                     id={ProjectStatus.IN_PROGRESS}
-                    title="En Cours"
+                    title="En cours"
                     projects={columns[ProjectStatus.IN_PROGRESS]}
                     color="#1976d2" // Blue
                 />
                 <KanbanColumn
                     id={ProjectStatus.COMPLETED}
-                    title="Terminés"
+                    title="Terminé"
                     projects={columns[ProjectStatus.COMPLETED]}
                     color="#2e7d32" // Green
                 />

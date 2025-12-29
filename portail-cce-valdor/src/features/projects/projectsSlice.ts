@@ -149,6 +149,21 @@ export const addComment = createAsyncThunk(
     }
 );
 
+export const addCaucusDecision = createAsyncThunk(
+    'projects/addCaucusDecision',
+    async ({ projectId, decision, projectName, userId, userName }: {
+        projectId: string;
+        decision: any;
+        projectName: string;
+        userId: string;
+        userName: string;
+    }) => {
+        await projectsAPI.addCaucusDecision(projectId, decision);
+        await logProjectActivity('project_updated', userId, userName, projectId, `${projectName}: Nouvelle décision caucus`);
+        return { projectId, decision };
+    }
+);
+
 const projectsSlice = createSlice({
     name: 'projects',
     initialState,
@@ -228,6 +243,14 @@ const projectsSlice = createSlice({
                 if (project) {
                     if (!project.comments) project.comments = [];
                     project.comments.push(comment);
+                }
+            })
+            .addCase(addCaucusDecision.fulfilled, (state, action) => {
+                const { projectId, decision } = action.payload;
+                const project = state.items.find(p => p.id === projectId);
+                if (project) {
+                    if (!project.caucusDecisions) project.caucusDecisions = [];
+                    project.caucusDecisions.push(decision);
                 }
             });
     },

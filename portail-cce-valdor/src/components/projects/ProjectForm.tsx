@@ -31,6 +31,7 @@ const projectSchema = z.object({
     description: z.string().optional(),
     currentDetails: z.string().optional(),
     nextSteps: z.string().optional(),
+    startDate: z.string().optional(),
     isUrgent: z.boolean(),
 });
 
@@ -61,6 +62,7 @@ const ProjectForm: React.FC<ProjectFormProps> = ({ open, onClose, onSubmit, init
             category: initialData?.category || '',
             coordinatorId: initialData?.coordinatorId || '',
             description: initialData?.description || '',
+            startDate: initialData?.startDate || '',
             currentDetails: initialData?.currentDetails || '',
             nextSteps: initialData?.nextSteps || '',
             isUrgent: initialData?.isUrgent || false,
@@ -196,6 +198,25 @@ const ProjectForm: React.FC<ProjectFormProps> = ({ open, onClose, onSubmit, init
                                     />
                                 )}
                             />
+                        </Grid>
+
+                        <Grid size={{ xs: 12, sm: 6 }}>
+                            <Controller
+                                name="startDate"
+                                control={control}
+                                render={({ field }) => (
+                                    <TextField
+                                        {...field}
+                                        label="Date de début"
+                                        type="date"
+                                        fullWidth
+                                        InputLabelProps={{ shrink: true }}
+                                    />
+                                )}
+                            />
+                        </Grid>
+                        <Grid size={{ xs: 12, sm: 6 }}>
+                            {/* Placeholder for Estimated Completion Date if needed to be moved here */}
                         </Grid>
 
                         <Grid size={{ xs: 12, md: 6 }}>

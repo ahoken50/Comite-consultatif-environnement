@@ -186,7 +186,7 @@ const ResolutionsPage: React.FC = () => {
                                     <TableCell align="right">
                                         <Button
                                             size="small"
-                                            onClick={() => navigate(`/meetings/${row.meetingId}`)}
+                                            onClick={() => navigate(`/meetings/${row.meetingId}#resolution-${row.id.split('-').slice(1).join('-')}`, { state: { tab: 1 } })}
                                         >
                                             Voir
                                         </Button>

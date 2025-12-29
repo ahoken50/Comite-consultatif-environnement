@@ -33,7 +33,10 @@ const ProjectTasks: React.FC<ProjectTasksProps> = ({ project }) => {
     const dispatch = useDispatch<AppDispatch>();
     const { user } = useSelector((state: RootState) => state.auth);
     const tasks = useSelector((state: RootState) => state.projects.tasksByProjectId[project.id] || []);
+    const members = useSelector((state: RootState) => state.members.items);
     const [newTaskDescription, setNewTaskDescription] = useState('');
+    const [dueDate, setDueDate] = useState('');
+    const [assigneeId, setAssigneeId] = useState('');
     const [isAdding, setIsAdding] = useState(false);
 
     useEffect(() => {
@@ -52,13 +55,16 @@ const ProjectTasks: React.FC<ProjectTasksProps> = ({ project }) => {
                     description: newTaskDescription,
                     status: 'pending',
                     createdBy: user.uid,
-                    assigneeId: user.uid // Default to self for now
+                    assigneeId: assigneeId || user.uid,
+                    dueDate: dueDate || undefined
                 },
                 userId: user.uid,
                 userName: user.displayName || user.email || 'Utilisateur',
                 projectName: project.name
             })).unwrap();
             setNewTaskDescription('');
+            setDueDate('');
+            setAssigneeId('');
         } catch (error) {
             console.error('Failed to add task:', error);
         } finally {
@@ -120,23 +126,53 @@ const ProjectTasks: React.FC<ProjectTasksProps> = ({ project }) => {
                 sx={{ mb: 3, height: 8, borderRadius: 4 }}
             />
 
-            <Paper component="form" onSubmit={handleAddTask} sx={{ p: 2, mb: 3, display: 'flex', gap: 2 }}>
-                <TextField
-                    fullWidth
-                    size="small"
-                    value={newTaskDescription}
-                    onChange={(e) => setNewTaskDescription(e.target.value)}
-                    placeholder="Nouvelle tâche..."
-                    disabled={isAdding}
-                />
-                <Button
-                    type="submit"
-                    variant="contained"
-                    disabled={!newTaskDescription.trim() || isAdding}
-                    startIcon={<Add />}
-                >
-                    Ajouter
-                </Button>
+            <Paper component="form" onSubmit={handleAddTask} sx={{ p: 2, mb: 3 }}>
+                <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
+                    <TextField
+                        fullWidth
+                        size="small"
+                        value={newTaskDescription}
+                        onChange={(e) => setNewTaskDescription(e.target.value)}
+                        placeholder="Nouvelle tâche..."
+                        disabled={isAdding}
+                    />
+                </Box>
+                <Box sx={{ display: 'flex', gap: 2 }}>
+                    <TextField
+                        type="date"
+                        size="small"
+                        label="Échéance"
+                        value={dueDate}
+                        onChange={(e) => setDueDate(e.target.value)}
+                        InputLabelProps={{ shrink: true }}
+                        sx={{ width: 150 }}
+                    />
+                    <TextField
+                        select
+                        size="small"
+                        label="Assigné à"
+                        value={assigneeId}
+                        onChange={(e) => setAssigneeId(e.target.value)}
+                        SelectProps={{ native: true }}
+                        sx={{ width: 200 }}
+                    >
+                        <option value="">Moi-même</option>
+                        {members.map(m => (
+                            <option key={m.id} value={m.id}>
+                                {m.displayName}
+                            </option>
+                        ))}
+                    </TextField>
+                    <Button
+                        type="submit"
+                        variant="contained"
+                        disabled={!newTaskDescription.trim() || isAdding}
+                        startIcon={<Add />}
+                        sx={{ ml: 'auto' }}
+                    >
+                        Ajouter
+                    </Button>
+                </Box>
             </Paper>
 
             <List sx={{ bgcolor: 'background.paper', borderRadius: 1 }}>
@@ -180,10 +216,20 @@ const ProjectTasks: React.FC<ProjectTasksProps> = ({ project }) => {
                                     }
                                     secondary={
                                         task.dateCreated && (
-                                            <Typography variant="caption" color="text.secondary" sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.5 }}>
-                                                <CalendarToday fontSize="inherit" />
-                                                Ajouté le {format(new Date(task.dateCreated), 'd MMM yyyy', { locale: fr })}
-                                            </Typography>
+                                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mt: 0.5 }}>
+                                                <Typography variant="caption" color="text.secondary" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                                    <CalendarToday fontSize="inherit" />
+                                                    Créé le {format(new Date(task.dateCreated), 'd MMM', { locale: fr })}
+                                                </Typography>
+                                                {task.dueDate && (
+                                                    <Typography variant="caption" color={new Date(task.dueDate) < new Date() && task.status !== 'completed' ? 'error.main' : 'text.secondary'} sx={{ fontWeight: 'bold' }}>
+                                                        Échéance : {format(new Date(task.dueDate), 'd MMM', { locale: fr })}
+                                                    </Typography>
+                                                )}
+                                                {task.assigneeId && (
+                                                    <Chip label={members.find(m => m.id === task.assigneeId)?.displayName || 'Inconnu'} size="small" sx={{ height: 20, fontSize: '0.7rem' }} />
+                                                )}
+                                            </Box>
                                         )
                                     }
                                 />
