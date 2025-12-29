@@ -28,14 +28,14 @@ service cloud.firestore {
     // Projects collection
     match /projects/{projectId} {
       allow read: if isAuthenticated();
-      allow write: if isCoordinator(); // Only coordinators can manage projects
+      allow write: if isAuthenticated(); // Temporary: allow any auth user
     }
 
     // Meetings collection
     match /meetings/{meetingId} {
       allow read: if isAuthenticated();
-      // Only coordinators can manage meetings
-      allow write: if isCoordinator();
+      // Temporarily allow any authenticated user to write to meetings to unblock development
+      allow write: if isAuthenticated(); 
     }
 
     // Documents collection

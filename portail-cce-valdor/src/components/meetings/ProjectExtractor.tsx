@@ -139,6 +139,11 @@ const ProjectExtractor: React.FC<ProjectExtractorProps> = ({ meeting, onComplete
                 created++;
             } catch (err) {
                 console.error('Failed to create project:', err);
+                if (err instanceof Error) {
+                    console.error('Error details:', err.message);
+                } else {
+                    console.error('Unknown error:', JSON.stringify(err));
+                }
             }
         }
 
