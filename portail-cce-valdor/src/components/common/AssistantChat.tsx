@@ -66,8 +66,9 @@ const AssistantChat: React.FC = () => {
         }]);
 
         try {
-            // @ts-ignore - Initialization of Vertex AI
-            const { getGenerativeModel } = await import('firebase/vertexai');
+            // Dynamic import to avoid SSR/Initial load issues
+            // @ts-ignore
+            const { getGenerativeModel } = await import('firebase/ai');
             const { vertexAI } = await import('../../services/firebase');
 
             const model = getGenerativeModel(vertexAI, { model: 'gemini-2.0-flash' });
