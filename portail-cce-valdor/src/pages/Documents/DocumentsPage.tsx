@@ -66,6 +66,21 @@ const DocumentsPage: React.FC = () => {
         }
     };
 
+    // Bolt: Optimized lookups to O(1) using Maps
+    const meetingsMap = useMemo(() => {
+        return meetings.reduce((acc, meeting) => {
+            acc[meeting.id] = meeting;
+            return acc;
+        }, {} as Record<string, typeof meetings[0]>);
+    }, [meetings]);
+
+    const projectsMap = useMemo(() => {
+        return projects.reduce((acc, project) => {
+            acc[project.id] = project;
+            return acc;
+        }, {} as Record<string, typeof projects[0]>);
+    }, [projects]);
+
     const groupedDocuments = useMemo(() => {
         const groups: Record<string, { title: string; type: 'meeting' | 'project' | 'other'; date: string; documents: Document[]; entityId?: string }> = {};
 
@@ -82,7 +97,7 @@ const DocumentsPage: React.FC = () => {
             let entityId = '';
 
             if (doc.linkedEntityType === 'meeting' && doc.linkedEntityId) {
-                const meeting = meetings.find(m => m.id === doc.linkedEntityId);
+                const meeting = meetingsMap[doc.linkedEntityId];
                 if (meeting) {
                     key = `meeting-${meeting.id}`;
                     title = `Assemblée: ${meeting.title}`;
@@ -96,7 +111,7 @@ const DocumentsPage: React.FC = () => {
                     key = `meeting-${doc.linkedEntityId}`;
                 }
             } else if (doc.linkedEntityType === 'project' && doc.linkedEntityId) {
-                const project = projects.find(p => p.id === doc.linkedEntityId);
+                const project = projectsMap[doc.linkedEntityId];
                 if (project) {
                     key = `project-${project.id}`;
                     title = `Projet: ${project.name}`;
@@ -121,7 +136,7 @@ const DocumentsPage: React.FC = () => {
             if (b.type === 'other') return -1;
             return new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime();
         });
-    }, [documents, meetings, projects]);
+    }, [documents, meetingsMap, projectsMap]);
 
     return (
         <Box>
