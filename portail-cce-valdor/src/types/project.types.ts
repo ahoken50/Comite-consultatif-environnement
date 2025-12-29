@@ -37,7 +37,7 @@ export interface Project {
     name: string;
     status: ProjectStatus;
     priority: Priority;
-    category: Category;
+    category: string;
     resolutionCCE: string | null;
     dateCreated: string; // Serialized Timestamp
     dateUpdated: string; // Serialized Timestamp

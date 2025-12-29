@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import {
     Dialog,
     DialogTitle,
@@ -31,6 +31,7 @@ const projectSchema = z.object({
     description: z.string().optional(),
     currentDetails: z.string().optional(),
     nextSteps: z.string().optional(),
+    isUrgent: z.boolean(),
 });
 
 type ProjectFormData = z.infer<typeof projectSchema>;
@@ -62,13 +63,14 @@ const ProjectForm: React.FC<ProjectFormProps> = ({ open, onClose, onSubmit, init
             description: initialData?.description || '',
             currentDetails: initialData?.currentDetails || '',
             nextSteps: initialData?.nextSteps || '',
+            isUrgent: initialData?.isUrgent || false,
         }
     });
 
     return (
         <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
             <DialogTitle>{initialData ? 'Modifier le projet' : 'Nouveau projet'}</DialogTitle>
-            <form onSubmit={handleSubmit(onSubmit)}>
+            <form onSubmit={handleSubmit(onSubmit as any)}>
                 <DialogContent>
                     <Grid container spacing={2}>
                         <Grid size={{ xs: 12, sm: 4 }}>
@@ -112,19 +114,22 @@ const ProjectForm: React.FC<ProjectFormProps> = ({ open, onClose, onSubmit, init
                                         select
                                         label="Catégorie"
                                         fullWidth
+                                        error={!!errors.category}
+                                        helperText={errors.category?.message}
                                     >
-                                        {Object.values(Category).map((option) => (
-                                            <MenuItem key={option} value={option}>
-                                                {option === Category.WATER ? 'Eau' :
-                                                    option === Category.WASTE ? 'Matières résiduelles' :
-                                                        option === Category.BIODIVERSITY ? 'Biodiversité' :
-                                                            option === Category.CLIMATE ? 'Climat' :
-                                                                option === Category.REGULATION ? 'Réglementation' :
-                                                                    option === Category.EMERGENCY ? 'Urgence' :
-                                                                        option === Category.INNOVATION ? 'Innovation' :
-                                                                            option === Category.OPERATIONS ? 'Opérations' : option}
-                                            </MenuItem>
-                                        ))}
+                                        {categories && categories.length > 0 ? (
+                                            categories.map((cat) => (
+                                                <MenuItem key={cat} value={cat}>
+                                                    {cat}
+                                                </MenuItem>
+                                            ))
+                                        ) : (
+                                            Object.values(Category).map((option) => (
+                                                <MenuItem key={option} value={option}>
+                                                    {option}
+                                                </MenuItem>
+                                            ))
+                                        )}
                                     </TextField>
                                 )}
                             />
@@ -237,14 +242,14 @@ const ProjectForm: React.FC<ProjectFormProps> = ({ open, onClose, onSubmit, init
                                 )}
                             />
                         </Grid>
-                    </Grid>
-                </DialogContent>
+                    </Grid >
+                </DialogContent >
                 <DialogActions>
                     <Button onClick={onClose}>Annuler</Button>
                     <Button type="submit" variant="contained">Enregistrer</Button>
                 </DialogActions>
-            </form>
-        </Dialog>
+            </form >
+        </Dialog >
     );
 };
 
