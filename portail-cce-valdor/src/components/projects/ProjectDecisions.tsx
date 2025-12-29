@@ -28,7 +28,15 @@ const ProjectDecisions: React.FC<ProjectDecisionsProps> = ({ project }) => {
     const { user } = useSelector((state: RootState) => state.auth);
     const [description, setDescription] = useState('');
     const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+    const [selectedFile, setSelectedFile] = useState<File | null>(null);
     const [isAdding, setIsAdding] = useState(false);
+    const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+    const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.files && e.target.files[0]) {
+            setSelectedFile(e.target.files[0]);
+        }
+    };
 
     const handleAddDecision = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -36,11 +44,27 @@ const ProjectDecisions: React.FC<ProjectDecisionsProps> = ({ project }) => {
 
         setIsAdding(true);
         try {
+            let fileUrl = undefined;
+            let fileName = undefined;
+
+            if (selectedFile) {
+                // Dynamic import for storage to avoid issues if not initialized
+                const { ref, uploadBytes, getDownloadURL } = await import('firebase/storage');
+                const { storage } = await import('../../services/firebase');
+
+                const storageRef = ref(storage, `projects/${project.id}/decisions/${Date.now()}_${selectedFile.name}`);
+                const snapshot = await uploadBytes(storageRef, selectedFile);
+                fileUrl = await getDownloadURL(snapshot.ref);
+                fileName = selectedFile.name;
+            }
+
             const decision: CaucusDecision = {
                 id: Date.now().toString(),
                 date: new Date(date).toISOString(),
                 description: description,
-                createdBy: user.uid
+                createdBy: user.uid,
+                fileUrl,
+                fileName
             };
 
             await dispatch(addCaucusDecision({
@@ -53,6 +77,8 @@ const ProjectDecisions: React.FC<ProjectDecisionsProps> = ({ project }) => {
 
             setDescription('');
             setDate(new Date().toISOString().split('T')[0]);
+            setSelectedFile(null);
+            if (fileInputRef.current) fileInputRef.current.value = '';
         } catch (error) {
             console.error('Failed to add decision:', error);
         } finally {
@@ -88,14 +114,37 @@ const ProjectDecisions: React.FC<ProjectDecisionsProps> = ({ project }) => {
                         placeholder="Contenu de la décision ou du suivi..."
                         disabled={isAdding}
                     />
+
+                    {selectedFile && (
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, bgcolor: 'action.hover', p: 1, borderRadius: 1 }}>
+                            <AttachFile fontSize="small" color="primary" />
+                            <Typography variant="caption" sx={{ flexGrow: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {selectedFile.name}
+                            </Typography>
+                            <Button size="small" color="error" onClick={() => {
+                                setSelectedFile(null);
+                                if (fileInputRef.current) fileInputRef.current.value = '';
+                            }}>
+                                Supprimer
+                            </Button>
+                        </Box>
+                    )}
+
                     <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
+                        <input
+                            type="file"
+                            ref={fileInputRef}
+                            style={{ display: 'none' }}
+                            onChange={handleFileSelect}
+                        />
                         <Button
                             variant="outlined"
                             startIcon={<AttachFile />}
-                            disabled
                             size="small"
+                            onClick={() => fileInputRef.current?.click()}
+                            disabled={isAdding}
                         >
-                            Joindre fichier (Bientôt)
+                            Joindre fichier
                         </Button>
                         <Button
                             type="submit"
@@ -104,7 +153,7 @@ const ProjectDecisions: React.FC<ProjectDecisionsProps> = ({ project }) => {
                             startIcon={<Add />}
                             size="small"
                         >
-                            Ajouter
+                            {isAdding ? 'Envoi...' : 'Ajouter'}
                         </Button>
                     </Box>
                 </Box>
@@ -134,10 +183,25 @@ const ProjectDecisions: React.FC<ProjectDecisionsProps> = ({ project }) => {
                                             <Typography variant="body1" color="text.primary" sx={{ whiteSpace: 'pre-wrap' }}>
                                                 {decision.description}
                                             </Typography>
-                                            {decision.fileName && (
-                                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 1, color: 'primary.main', cursor: 'pointer' }}>
+                                            {decision.fileName && decision.fileUrl && (
+                                                <Box
+                                                    component="a"
+                                                    href={decision.fileUrl}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    sx={{
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: 1,
+                                                        mt: 1,
+                                                        color: 'primary.main',
+                                                        cursor: 'pointer',
+                                                        textDecoration: 'none',
+                                                        '&:hover': { textDecoration: 'underline' }
+                                                    }}
+                                                >
                                                     <AttachFile fontSize="small" />
-                                                    <Typography variant="caption" sx={{ textDecoration: 'underline' }}>
+                                                    <Typography variant="caption">
                                                         {decision.fileName}
                                                     </Typography>
                                                 </Box>

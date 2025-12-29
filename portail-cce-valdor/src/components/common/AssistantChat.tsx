@@ -13,7 +13,8 @@ import {
     Divider
 } from '@mui/material';
 import { SmartToy, Send, Close, Chat } from '@mui/icons-material';
-import { useSelector } from 'react-redux';
+import { useDispatch, useSelector } from 'react-redux';
+import type { AppDispatch } from '../../store/store';
 import type { RootState } from '../../store/rootReducer';
 
 interface Message {
@@ -24,6 +25,7 @@ interface Message {
 }
 
 const AssistantChat: React.FC = () => {
+    const dispatch = useDispatch<AppDispatch>();
     const [isOpen, setIsOpen] = useState(false);
     const [messages, setMessages] = useState<Message[]>([
         { id: '1', text: 'Bonjour ! Je suis l\'assistant IA du CCE. Comment puis-je vous aider aujourd\'hui ?', sender: 'ai', timestamp: new Date() }
@@ -42,6 +44,22 @@ const AssistantChat: React.FC = () => {
     useEffect(() => {
         scrollToBottom();
     }, [messages, isOpen]);
+
+    // Ensure data is loaded for AI context
+    useEffect(() => {
+        if (isOpen) {
+            if (projects.length === 0) {
+                import('../../features/projects/projectsSlice').then(({ fetchProjects }) => {
+                    dispatch(fetchProjects());
+                });
+            }
+            if (meetings.length === 0) {
+                import('../../features/meetings/meetingsSlice').then(({ fetchMeetings }) => {
+                    dispatch(fetchMeetings());
+                });
+            }
+        }
+    }, [isOpen, dispatch, projects.length, meetings.length]);
 
     const handleSend = async () => {
         if (!input.trim()) return;
