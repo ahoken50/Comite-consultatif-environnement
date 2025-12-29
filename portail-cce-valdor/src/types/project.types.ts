@@ -55,4 +55,13 @@ export interface Project {
     completionPercentage: number;
     createdBy: string;
     updatedBy: string;
+    comments?: Comment[];
+}
+
+export interface Comment {
+    id: string;
+    userId: string;
+    userName: string;
+    content: string;
+    createdAt: string; // ISO string
 }

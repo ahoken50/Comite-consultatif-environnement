@@ -6,27 +6,20 @@ import {
     PointerSensor,
     useSensor,
     useSensors,
-    DragOverlay,
-    defaultDropAnimationSideEffects,
-    DragStartEvent,
-    DragEndEvent,
+    useDroppable,
+    useDraggable
 } from '@dnd-kit/core';
+import type { DragEndEvent } from '@dnd-kit/core';
 import {
-    arrayMove,
-    SortableContext,
-    sortableKeyboardCoordinates,
-    verticalListSortingStrategy,
-    useSortable
+    sortableKeyboardCoordinates
 } from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
-import { Box, Paper, Typography, Chip, IconButton } from '@mui/material';
-import { MoreVert } from '@mui/icons-material';
-import { Project, ProjectStatus, Priority } from '../../types/project.types';
+import { Box, Paper, Typography, Chip } from '@mui/material';
+import type { Project } from '../../types/project.types';
+import { ProjectStatus } from '../../types/project.types';
 import { useNavigate } from 'react-router-dom';
 
 const KanbanColumn = ({ id, title, projects, color }: { id: string, title: string, projects: Project[], color: string }) => {
     const { setNodeRef } = useDroppable({ id });
-    const navigate = useNavigate();
 
     return (
         <Paper
@@ -56,9 +49,6 @@ const KanbanColumn = ({ id, title, projects, color }: { id: string, title: strin
         </Paper>
     );
 };
-
-// Helper hook for Droppable
-import { useDroppable } from '@dnd-kit/core';
 
 const DraggableProjectCard = ({ project, color }: { project: Project, color: string }) => {
     const { attributes, listeners, setNodeRef, transform } = useDraggable({
@@ -91,7 +81,7 @@ const DraggableProjectCard = ({ project, color }: { project: Project, color: str
                 <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.75rem' }}>
                     {project.code}
                 </Typography>
-                {project.priority === 'urgent' && (
+                {project.isUrgent && (
                     <Chip label="Urgent" color="error" size="small" sx={{ height: 20, fontSize: '0.65rem' }} />
                 )}
             </Box>

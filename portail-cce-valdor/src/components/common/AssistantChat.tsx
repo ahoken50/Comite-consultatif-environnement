@@ -10,13 +10,19 @@ import {
     ListItem,
     Avatar,
     Divider,
-    Fade
+    Fade,
+    Link
 } from '@mui/material';
 import { Chat, Close, Send, SmartToy } from '@mui/icons-material';
+import { useSelector } from 'react-redux';
+import { useNavigate } from 'react-router-dom';
+import type { RootState } from '../../store/rootReducer';
+import { format } from 'date-fns';
+import { fr } from 'date-fns/locale';
 
 interface Message {
     id: string;
-    text: string;
+    text: React.ReactNode;
     sender: 'user' | 'ai';
     timestamp: Date;
 }
@@ -27,12 +33,17 @@ const AssistantChat: React.FC = () => {
     const [messages, setMessages] = useState<Message[]>([
         {
             id: '1',
-            text: 'Bonjour ! Je suis l\'assistant virtuel du CCE. Comment puis-je vous aider aujourd\'hui ?',
+            text: 'Bonjour ! Je suis l\'assistant virtuel du CCE. Je peux chercher des projets ou vous lister les prochaines réunions.',
             sender: 'ai',
             timestamp: new Date()
         }
     ]);
     const messagesEndRef = useRef<HTMLDivElement>(null);
+    const navigate = useNavigate();
+
+    // Data Access
+    const projects = useSelector((state: RootState) => state.projects.items);
+    const meetings = useSelector((state: RootState) => state.meetings.items);
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -45,9 +56,10 @@ const AssistantChat: React.FC = () => {
     const handleSend = () => {
         if (!input.trim()) return;
 
+        const userText = input.trim();
         const userMsg: Message = {
             id: Date.now().toString(),
-            text: input,
+            text: userText,
             sender: 'user',
             timestamp: new Date()
         };
@@ -55,16 +67,107 @@ const AssistantChat: React.FC = () => {
         setMessages(prev => [...prev, userMsg]);
         setInput('');
 
-        // Simulate AI response
+        // AI Logic
         setTimeout(() => {
+            let aiResponseText: React.ReactNode = "Je ne suis pas sûr de comprendre. Essayez 'Cherche projet [x]' ou 'Prochaines réunions'.";
+            const lowerInput = userText.toLowerCase();
+
+            // Intent: List Meetings
+            if (lowerInput.includes('réunion') || lowerInput.includes('agenda')) {
+                const now = new Date();
+                const upcoming = meetings
+                    .filter(m => new Date(m.date) >= now)
+                    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+                    .slice(0, 3);
+
+                if (upcoming.length > 0) {
+                    aiResponseText = (
+                        <Box>
+                            <Typography variant="body2" gutterBottom>Voici les prochaines réunions :</Typography>
+                            <ul style={{ paddingLeft: 20, margin: 0 }}>
+                                {upcoming.map(m => (
+                                    <li key={m.id}>
+                                        <Link
+                                            component="button"
+                                            variant="body2"
+                                            onClick={() => {
+                                                navigate(`/meetings/${m.id}`);
+                                                setIsOpen(false);
+                                            }}
+                                            sx={{ textAlign: 'left' }}
+                                        >
+                                            {format(new Date(m.date), "d MMM à HH:mm", { locale: fr })}
+                                        </Link>
+                                    </li>
+                                ))}
+                            </ul>
+                        </Box>
+                    );
+                } else {
+                    aiResponseText = "Aucune réunion future trouvée.";
+                }
+            }
+            // Intent: Search Projects
+            else if (lowerInput.includes('cherche') || lowerInput.includes('projet')) {
+                const keyword = lowerInput.replace('cherche', '').replace('projet', '').trim();
+                if (keyword.length < 2 && !lowerInput.includes('projet')) {
+                    aiResponseText = "Pour chercher un projet, précisez un mot-clé (ex: 'Projet Eau').";
+                } else {
+                    const results = projects.filter(p =>
+                        p.name.toLowerCase().includes(keyword) ||
+                        p.code.toLowerCase().includes(keyword)
+                    ).slice(0, 3);
+
+                    if (results.length > 0) {
+                        aiResponseText = (
+                            <Box>
+                                <Typography variant="body2" gutterBottom>Voici des projets correspondants :</Typography>
+                                <ul style={{ paddingLeft: 20, margin: 0 }}>
+                                    {results.map(p => (
+                                        <li key={p.id}>
+                                            <Link
+                                                component="button"
+                                                variant="body2"
+                                                onClick={() => {
+                                                    navigate(`/projects/${p.id}`);
+                                                    setIsOpen(false);
+                                                }}
+                                                sx={{ textAlign: 'left' }}
+                                            >
+                                                {p.code} - {p.name}
+                                            </Link>
+                                        </li>
+                                    ))}
+                                </ul>
+                            </Box>
+                        );
+                    } else {
+                        aiResponseText = `Aucun projet trouvé pour "${keyword}".`;
+                    }
+                }
+            }
+            // Intent: Help
+            else if (lowerInput.includes('aide') || lowerInput.includes('peux')) {
+                aiResponseText = (
+                    <Box>
+                        <Typography variant="body2" gutterBottom>Je peux vous aider à :</Typography>
+                        <ul style={{ paddingLeft: 20, margin: 0 }}>
+                            <li>Voir les réunions : "Prochaines réunions"</li>
+                            <li>Chercher un projet : "Cherche projet [nom]"</li>
+                            <li>(Bientôt) Rédiger des PVs</li>
+                        </ul>
+                    </Box>
+                );
+            }
+
             const aiMsg: Message = {
                 id: (Date.now() + 1).toString(),
-                text: "Je suis une version de démonstration pour l'instant. Bientôt, je pourrai vous aider à rédiger des PV, analyser des documents et planifier vos réunions !",
+                text: aiResponseText,
                 sender: 'ai',
                 timestamp: new Date()
             };
             setMessages(prev => [...prev, aiMsg]);
-        }, 1000);
+        }, 600);
     };
 
     const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -151,7 +254,7 @@ const AssistantChat: React.FC = () => {
                                             borderBottomLeftRadius: msg.sender === 'ai' ? 0 : 2
                                         }}
                                     >
-                                        <Typography variant="body2">{msg.text}</Typography>
+                                        <Typography component="div" variant="body2">{msg.text}</Typography>
                                     </Paper>
                                     <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, px: 1 }}>
                                         {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}

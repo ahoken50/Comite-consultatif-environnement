@@ -134,6 +134,21 @@ export const deleteTask = createAsyncThunk(
     }
 );
 
+export const addComment = createAsyncThunk(
+    'projects/addComment',
+    async ({ projectId, comment, projectName, userId, userName }: {
+        projectId: string;
+        comment: any;
+        projectName: string;
+        userId: string;
+        userName: string;
+    }) => {
+        await projectsAPI.addComment(projectId, comment);
+        await logProjectActivity('comment_added', userId, userName, projectId, `${projectName}: Nouveau commentaire`);
+        return { projectId, comment };
+    }
+);
+
 const projectsSlice = createSlice({
     name: 'projects',
     initialState,
@@ -205,6 +220,14 @@ const projectsSlice = createSlice({
                 const { projectId, taskId } = action.payload;
                 if (state.tasksByProjectId[projectId]) {
                     state.tasksByProjectId[projectId] = state.tasksByProjectId[projectId].filter(t => t.id !== taskId);
+                }
+            })
+            .addCase(addComment.fulfilled, (state, action) => {
+                const { projectId, comment } = action.payload;
+                const project = state.items.find(p => p.id === projectId);
+                if (project) {
+                    if (!project.comments) project.comments = [];
+                    project.comments.push(comment);
                 }
             });
     },

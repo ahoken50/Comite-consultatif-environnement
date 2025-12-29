@@ -20,7 +20,8 @@ export type ActivityType =
     | 'task_created'
     | 'task_updated'
     | 'task_completed'
-    | 'task_deleted';
+    | 'task_deleted'
+    | 'comment_added';
 
 export interface ActivityLog {
     id: string;
@@ -52,5 +53,6 @@ export const ActivityTypeLabels: Record<ActivityType, string> = {
     task_created: 'a ajouté une tâche à',
     task_updated: 'a mis à jour une tâche de',
     task_completed: 'a complété une tâche de',
-    task_deleted: 'a supprimé une tâche de'
+    task_deleted: 'a supprimé une tâche de',
+    comment_added: 'a commenté sur'
 };

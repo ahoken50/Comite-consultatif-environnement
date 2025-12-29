@@ -1,12 +1,13 @@
 import {
     collection,
     getDocs,
-    addDoc,
+    doc,
     updateDoc,
     deleteDoc,
-    doc,
     query,
     orderBy,
+    addDoc,
+    arrayUnion,
     Timestamp
 } from 'firebase/firestore';
 import { db } from '../../services/firebase';
@@ -88,5 +89,12 @@ export const projectsAPI = {
 
     deleteTask: async (projectId: string, taskId: string): Promise<void> => {
         await deleteDoc(doc(db, COLLECTION_NAME, projectId, 'tasks', taskId));
+    },
+
+    addComment: async (projectId: string, comment: any): Promise<void> => {
+        const docRef = doc(db, COLLECTION_NAME, projectId);
+        await updateDoc(docRef, {
+            comments: arrayUnion(comment)
+        });
     }
 };

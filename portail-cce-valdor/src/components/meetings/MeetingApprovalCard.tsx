@@ -1,8 +1,8 @@
 import React from 'react';
 import { Box, Paper, Typography, Button, Stepper, Step, StepLabel, Chip } from '@mui/material';
 import { Gavel, VerifiedUser, HowToReg } from '@mui/icons-material';
-import { Member } from '../../types/member.types';
-import { Meeting } from '../../types/meeting.types';
+import type { Member } from '../../types/member.types';
+import type { Meeting } from '../../types/meeting.types';
 
 interface MeetingApprovalCardProps {
     meeting: Meeting;

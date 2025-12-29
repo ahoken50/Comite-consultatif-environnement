@@ -15,7 +15,7 @@ import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import type { Project } from '../../types/project.types';
-import { ProjectStatus, Priority } from '../../types/project.types';
+import { ProjectStatus, Priority, Category } from '../../types/project.types';
 import { useDispatch, useSelector } from 'react-redux';
 import { fetchSettings } from '../../features/settings/settingsSlice';
 import type { AppDispatch } from '../../store/store';
@@ -23,14 +23,14 @@ import type { RootState } from '../../store/rootReducer';
 
 const projectSchema = z.object({
     code: z.string().min(1, 'Le code est requis'),
-    name: z.string().min(3, 'Le nom doit contenir au moins 3 caractères'),
-    category: z.nativeEnum(Category),
-    priority: z.nativeEnum(Priority),
+    name: z.string().min(1, 'Le nom est requis'),
     status: z.nativeEnum(ProjectStatus),
+    priority: z.nativeEnum(Priority),
+    category: z.string().min(1, 'La catégorie est requise'),
+    coordinatorId: z.string().min(1, 'Le responsable est requis'),
     description: z.string().optional(),
     currentDetails: z.string().optional(),
     nextSteps: z.string().optional(),
-    isUrgent: z.boolean().optional(),
 });
 
 type ProjectFormData = z.infer<typeof projectSchema>;
@@ -50,18 +50,18 @@ const ProjectForm: React.FC<ProjectFormProps> = ({ open, onClose, onSubmit, init
         dispatch(fetchSettings());
     }, [dispatch]);
 
-    const { control, handleSubmit, reset, formState: { errors } } = useForm<ProjectFormData>({
+    const { control, handleSubmit, formState: { errors } } = useForm<ProjectFormData>({
         resolver: zodResolver(projectSchema),
         defaultValues: {
             code: initialData?.code || '',
             name: initialData?.name || '',
-            category: initialData?.category || Category.WATER,
-            priority: initialData?.priority || Priority.MEDIUM,
             status: initialData?.status || ProjectStatus.PENDING,
+            priority: initialData?.priority || Priority.MEDIUM,
+            category: initialData?.category || '',
+            coordinatorId: initialData?.coordinatorId || '',
             description: initialData?.description || '',
             currentDetails: initialData?.currentDetails || '',
             nextSteps: initialData?.nextSteps || '',
-            isUrgent: initialData?.isUrgent || false,
         }
     });
 

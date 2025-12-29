@@ -24,6 +24,7 @@ import DocumentList from '../../components/documents/DocumentList';
 import DocumentUpload from '../../components/documents/DocumentUpload';
 import ProjectTasks from '../../components/projects/ProjectTasks';
 import ProjectForm from '../../components/projects/ProjectForm';
+import ProjectComments from '../../components/projects/ProjectComments';
 
 interface TabPanelProps {
     children?: React.ReactNode;
@@ -160,6 +161,7 @@ const ProjectDetailPage: React.FC = () => {
                         <Tab label="Vue d'ensemble" />
                         <Tab label="Tâches" />
                         <Tab label="Documents" />
+                        <Tab label="Commentaires" />
                     </Tabs>
                 </Box>
 
@@ -225,6 +227,10 @@ const ProjectDetailPage: React.FC = () => {
                             />
                         </Grid>
                     </Grid>
+                </TabPanel>
+
+                <TabPanel value={tabValue} index={3}>
+                    <ProjectComments project={project} />
                 </TabPanel>
             </Paper>
 

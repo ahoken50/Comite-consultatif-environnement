@@ -98,7 +98,8 @@ export const logDocumentActivity = (
  * Helper to log task activities
  */
 export const logTaskActivity = (
-    type: 'task_created' | 'task_updated' | 'task_completed' | 'task_deleted',
+    type: 'task_created' | 'task_updated' | 'task_completed' | 'task_deleted'
+        | 'comment_added',
     userId: string,
     userName: string,
     taskId: string,
