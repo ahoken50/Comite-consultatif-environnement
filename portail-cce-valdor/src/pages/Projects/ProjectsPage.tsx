@@ -34,7 +34,7 @@ import type { Project } from '../../types/project.types';
 const ProjectsPage: React.FC = () => {
     const dispatch = useDispatch<AppDispatch>();
     const navigate = useNavigate();
-    const { items: projects, loading, error } = useSelector((state: RootState) => state.projects);
+    const { items: projects, error } = useSelector((state: RootState) => state.projects);
     const { user } = useSelector((state: RootState) => state.auth);
     const [view, setView] = useState<'grid' | 'list' | 'kanban'>('kanban');
     const [searchTerm, setSearchTerm] = useState('');
