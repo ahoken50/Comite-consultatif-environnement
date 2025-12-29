@@ -15,7 +15,7 @@ import {
     Chip,
     Divider
 } from '@mui/material';
-import { Add, Delete, CalendarToday } from '@mui/icons-material';
+import { Add, Delete, CalendarToday, Edit } from '@mui/icons-material';
 import { useDispatch, useSelector } from 'react-redux';
 import type { AppDispatch } from '../../store/store';
 import type { RootState } from '../../store/rootReducer';
@@ -34,16 +34,18 @@ const ProjectTasks: React.FC<ProjectTasksProps> = ({ project }) => {
     const { user } = useSelector((state: RootState) => state.auth);
     const tasks = useSelector((state: RootState) => state.projects.tasksByProjectId[project.id] || []);
     const members = useSelector((state: RootState) => state.members.items);
-    const [newTaskDescription, setNewTaskDescription] = useState('');
-    const [dueDate, setDueDate] = useState('');
-    const [assigneeId, setAssigneeId] = useState('');
-    const [isAdding, setIsAdding] = useState(false);
+    // Edit State
+    const [editingTask, setEditingTask] = useState<ProjectTask | null>(null);
+    const [editDescription, setEditDescription] = useState('');
+    const [editDueDate, setEditDueDate] = useState('');
+    const [editAssigneeId, setEditAssigneeId] = useState('');
 
     useEffect(() => {
         dispatch(fetchProjectTasks(project.id));
     }, [dispatch, project.id]);
 
     const handleAddTask = async (e: React.FormEvent) => {
+        // ... (existing handleAddTask logic) ...
         e.preventDefault();
         if (!newTaskDescription.trim() || !user) return;
 
@@ -72,7 +74,39 @@ const ProjectTasks: React.FC<ProjectTasksProps> = ({ project }) => {
         }
     };
 
+    const handleOpenEdit = (task: ProjectTask) => {
+        setEditingTask(task);
+        setEditDescription(task.description);
+        setEditDueDate(task.dueDate || '');
+        setEditAssigneeId(task.assigneeId || '');
+    };
+
+    const handleUpdateTaskDetails = async () => {
+        if (!editingTask || !user || !editDescription.trim()) return;
+
+        const updates: Partial<ProjectTask> = {
+            description: editDescription,
+            dueDate: editDueDate || undefined,
+            assigneeId: editAssigneeId || undefined
+        };
+
+        try {
+            await dispatch(updateTask({
+                projectId: project.id,
+                taskId: editingTask.id,
+                updates,
+                userId: user.uid,
+                userName: user.displayName || user.email || 'Utilisateur',
+                projectName: project.name
+            })).unwrap();
+            setEditingTask(null);
+        } catch (error) {
+            console.error('Failed to update task:', error);
+        }
+    };
+
     const handleToggleTask = (task: ProjectTask) => {
+        // ... (existing logic)
         if (!user) return;
 
         const newStatus = task.status === 'completed' ? 'pending' : 'completed';
@@ -92,6 +126,7 @@ const ProjectTasks: React.FC<ProjectTasksProps> = ({ project }) => {
     };
 
     const handleDeleteTask = (taskId: string) => {
+        // ... (existing logic)
         if (!user || !window.confirm('Voulez-vous vraiment supprimer cette tâche?')) return;
 
         dispatch(deleteTask({
@@ -109,7 +144,52 @@ const ProjectTasks: React.FC<ProjectTasksProps> = ({ project }) => {
 
     return (
         <Box>
+            {/* Edit Dialog */}
+            {editingTask && (
+                <Paper sx={{ p: 2, mb: 3, border: '1px solid', borderColor: 'primary.main', bgcolor: 'background.default' }}>
+                    <Typography variant="subtitle2" gutterBottom>Modifier la tâche</Typography>
+                    <TextField
+                        fullWidth
+                        size="small"
+                        value={editDescription}
+                        onChange={(e) => setEditDescription(e.target.value)}
+                        sx={{ mb: 2 }}
+                    />
+                    <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
+                        <TextField
+                            type="date"
+                            size="small"
+                            label="Échéance"
+                            value={editDueDate}
+                            onChange={(e) => setEditDueDate(e.target.value)}
+                            InputLabelProps={{ shrink: true }}
+                        />
+                        <TextField
+                            select
+                            size="small"
+                            label="Assigné à"
+                            value={editAssigneeId}
+                            onChange={(e) => setEditAssigneeId(e.target.value)}
+                            SelectProps={{ native: true }}
+                            sx={{ minWidth: 150 }}
+                        >
+                            <option value="">Non assigné</option>
+                            {members.map(m => (
+                                <option key={m.id} value={m.id}>
+                                    {m.displayName}
+                                </option>
+                            ))}
+                        </TextField>
+                    </Box>
+                    <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
+                        <Button size="small" onClick={() => setEditingTask(null)}>Annuler</Button>
+                        <Button size="small" variant="contained" onClick={handleUpdateTaskDetails}>Enregistrer</Button>
+                    </Box>
+                </Paper>
+            )}
+
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+                {/* ... rest of the component ... */}
                 <Typography variant="h6">
                     Tâches ({tasks.length})
                 </Typography>
@@ -127,6 +207,7 @@ const ProjectTasks: React.FC<ProjectTasksProps> = ({ project }) => {
             />
 
             <Paper component="form" onSubmit={handleAddTask} sx={{ p: 2, mb: 3 }}>
+                {/* ... Add Task Form ... */}
                 <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
                     <TextField
                         fullWidth
@@ -186,13 +267,19 @@ const ProjectTasks: React.FC<ProjectTasksProps> = ({ project }) => {
                             {index > 0 && <Divider />}
                             <ListItem
                                 secondaryAction={
-                                    <IconButton edge="end" aria-label="delete" onClick={() => handleDeleteTask(task.id)}>
-                                        <Delete color="action" />
-                                    </IconButton>
+                                    <Box>
+                                        <IconButton edge="end" aria-label="edit" onClick={() => handleOpenEdit(task)} sx={{ mr: 1 }}>
+                                            <Edit color="action" fontSize="small" />
+                                        </IconButton>
+                                        <IconButton edge="end" aria-label="delete" onClick={() => handleDeleteTask(task.id)}>
+                                            <Delete color="action" />
+                                        </IconButton>
+                                    </Box>
                                 }
                                 disablePadding
                                 sx={{ py: 1, px: 2 }}
                             >
+                                {/* ... Task Item Content ... */}
                                 <ListItemIcon sx={{ minWidth: 40 }}>
                                     <Checkbox
                                         edge="start"

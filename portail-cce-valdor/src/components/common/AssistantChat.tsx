@@ -83,26 +83,37 @@ const AssistantChat: React.FC = () => {
                     status: p.status,
                     priority: p.priority,
                     category: p.category,
+                    description: p.description,
+                    resolution: p.resolutionCCE,
+                    caucusDecisions: p.caucusDecisions?.map(d => ({ date: d.date, text: d.description })),
                     nextSteps: p.nextSteps
                 })),
                 meetings: meetings.map(m => ({
                     id: m.id,
                     date: m.date,
-                    location: m.location
+                    location: m.location,
+                    agenda: m.agendaItems?.map(i => ({
+                        title: i.title,
+                        description: i.description,
+                        // Extract resolutions and comments from minutes
+                        resolutions: i.minuteEntries?.filter(e => e.type === 'resolution').map(e => ({ number: e.number, content: e.content })),
+                        comments: i.minuteEntries?.filter(e => e.type === 'comment').map(e => ({ content: e.content }))
+                    })) || []
                 }))
             };
 
             const prompt = `
             Tu es l'assistant virtuel du Comité Consultatif en Environnement (CCE).
             
-            Contexte actuel (JSON):
+            Contexte actuel complet (JSON):
             ${JSON.stringify(contextData)}
 
             Instructions:
             1. Réponds de manière concise et utile en français.
-            2. Utilise le contexte fourni pour répondre aux questions sur les projets et réunions.
-            3. Si on te demande de chercher un projet, donne son statut et ses prochaines étapes.
-            4. Si on te demande les prochaines réunions, liste-les.
+            2. Tu as maintenant accès aux détails complets : descriptions des projets, décisions du caucus, résolutions passées (numéros et contenu), et sujets des réunions (ordre du jour détaillé).
+            3. Si on te demande de chercher une résolution, cherche dans 'meetings.agenda.resolutions' ou 'projects.resolution'.
+            4. Si on te demande des détails sur un projet, utilise sa description, ses décisions de caucus et ses prochaines étapes.
+            5. Si on te demande les sujets d'une réunion, liste les titres de l'agenda.
             
             Question de l'utilisateur: "${userText}"
             `;
