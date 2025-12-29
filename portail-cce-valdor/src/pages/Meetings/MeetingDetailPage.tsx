@@ -24,6 +24,7 @@ import AttendanceManager from '../../components/meetings/AttendanceManager';
 import MeetingForm from '../../components/meetings/MeetingForm';
 import DocumentList from '../../components/documents/DocumentList';
 import DocumentUpload from '../../components/documents/DocumentUpload';
+import ProjectExtractor from '../../components/meetings/ProjectExtractor';
 import type { AgendaItem } from '../../types/meeting.types';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -148,12 +149,15 @@ const MeetingDetailPage: React.FC = () => {
                 >
                     Retour aux réunions
                 </Button>
-                <Button
-                    variant="contained"
-                    onClick={() => setIsEditModalOpen(true)}
-                >
-                    Modifier la réunion
-                </Button>
+                <Box sx={{ display: 'flex', gap: 2 }}>
+                    <ProjectExtractor meeting={meeting} />
+                    <Button
+                        variant="contained"
+                        onClick={() => setIsEditModalOpen(true)}
+                    >
+                        Modifier la réunion
+                    </Button>
+                </Box>
             </Box>
 
             <Paper sx={{ p: 3, mb: 3 }}>

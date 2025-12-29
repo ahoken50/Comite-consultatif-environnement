@@ -421,3 +421,130 @@ Génère le procès-verbal final, prêt à être imprimé.`;
 export const isGeminiConfigured = (): boolean => {
     return !!GEMINI_API_KEY;
 };
+
+/**
+ * Suggested project from AI extraction
+ */
+export interface SuggestedProject {
+    name: string;
+    category: 'water' | 'biodiversity' | 'regulation' | 'waste' | 'emergency' | 'innovation' | 'operations' | 'climate';
+    priority: 'low' | 'medium' | 'high' | 'critical';
+    description: string;
+    nextSteps: string;
+    isUrgent: boolean;
+    sourceResolution?: string;
+    estimatedEffort?: string;
+}
+
+/**
+ * Extract actionable projects from a meeting's completed PV using AI
+ */
+export const extractProjectsFromPV = async (
+    meeting: Meeting
+): Promise<{ success: boolean; projects?: SuggestedProject[]; error?: string }> => {
+    if (!GEMINI_API_KEY) {
+        return { success: false, error: 'Clé API Gemini non configurée.' };
+    }
+
+    // Format agenda items with their resolutions
+    const agendaItemsFormatted = (meeting.agendaItems || []).map((item, index) => {
+        let itemText = `### Point ${index + 1}: ${item.title}\n`;
+        itemText += `- Objectif: ${item.objective || 'Non spécifié'}\n`;
+
+        if (item.decision) {
+            itemText += `- Décision: ${item.decision}\n`;
+        }
+
+        if (item.minuteEntries && item.minuteEntries.length > 0) {
+            itemText += `- Résolutions/Commentaires:\n`;
+            item.minuteEntries.forEach(entry => {
+                const prefix = entry.type === 'resolution' ? '📋 Résolution' : '💬 Commentaire';
+                itemText += `  - ${prefix} ${entry.number || ''}: ${entry.content}\n`;
+            });
+        }
+
+        return itemText;
+    }).join('\n');
+
+    const prompt = `Tu es un assistant expert en gestion de comités consultatifs environnementaux municipaux.
+
+Analyse le procès-verbal suivant et extrait les **projets actionnables** qui nécessitent un suivi.
+
+## Réunion: ${meeting.title}
+## Date: ${meeting.date}
+## Type: ${meeting.type}
+
+## Notes générales:
+${meeting.minutes || 'Aucune note générale'}
+
+## Points de l'ordre du jour:
+${agendaItemsFormatted || 'Aucun point à l\'ordre du jour'}
+
+---
+
+## Instructions:
+1. Identifie chaque action, engagement ou projet mentionné dans les résolutions
+2. Ignore les points purement informatifs sans action requise (ex: approbation de l'ordre du jour, adoption du PV précédent)
+3. Regroupe les actions similaires en un seul projet
+4. Utilise les catégories: water, biodiversity, regulation, waste, emergency, innovation, operations, climate
+
+## Format de réponse (JSON uniquement, sans markdown):
+{
+  "projects": [
+    {
+      "name": "Titre clair et concis du projet",
+      "category": "water",
+      "priority": "medium",
+      "description": "Description détaillée de ce qui doit être fait",
+      "nextSteps": "Prochaines étapes immédiates",
+      "isUrgent": false,
+      "sourceResolution": "CCE-2024-15",
+      "estimatedEffort": "Court terme"
+    }
+  ]
+}
+
+Si aucun projet actionnable n'est trouvé, retourne: {"projects": []}`;
+
+    try {
+        const response = await fetch(`${GEMINI_API_URL}?key=${GEMINI_API_KEY}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                contents: [{ parts: [{ text: prompt }] }],
+                generationConfig: {
+                    temperature: 0.3,
+                    maxOutputTokens: 4096
+                }
+            })
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json();
+            return { success: false, error: errorData.error?.message || 'Erreur API Gemini' };
+        }
+
+        const data: GeminiResponse = await response.json();
+        const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+
+        if (!text) {
+            return { success: false, error: 'Réponse vide de l\'IA' };
+        }
+
+        // Parse JSON from response (remove markdown code blocks if present)
+        const jsonMatch = text.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) {
+            return { success: false, error: 'Format de réponse invalide' };
+        }
+
+        const parsed = JSON.parse(jsonMatch[0]);
+        const projects: SuggestedProject[] = parsed.projects || [];
+
+        return { success: true, projects };
+
+    } catch (error) {
+        const err = error as Error;
+        console.error('AI extraction error:', err);
+        return { success: false, error: err.message };
+    }
+};
