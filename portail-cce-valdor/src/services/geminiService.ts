@@ -610,3 +610,68 @@ Retourne uniquement le texte traité.`;
         return { success: false, error: err.message };
     }
 };
+
+/**
+ * Generate speaking points for a council recommendation
+ */
+export const generateSpeakingPoints = async (
+    recommendation: any
+): Promise<{ success: boolean; speakingPoints?: string; error?: string }> => {
+    if (!GEMINI_API_KEY) {
+        return { success: false, error: 'Clé API Gemini non configurée' };
+    }
+
+    try {
+        const prompt = `Tu es un conseiller politique expert. Ta tâche est de préparer des "Speaking Points" (points de discussion) pour un élu municipal qui doit présenter cette recommandation au conseil de ville.
+
+TITRE : ${recommendation.projectName || 'Non spécifié'}
+DESCRIPTION : ${recommendation.description || 'Non spécifié'}
+IMPACT ENVIRONNEMENTAL : ${recommendation.impactAnalysis?.environmentalImpact || 'Non spécifié'}
+EFFORT DE MISE EN OEUVRE : ${recommendation.impactAnalysis?.implementationEffort || 'Non spécifié'}
+COÛT ESTIMÉ : ${recommendation.impactAnalysis?.financial || 'Non spécifié'}
+
+PRODUIS 3 à 5 POINTS CLÉS (Bullet points) :
+1. Pourquoi c'est important (L'accroche)
+2. Quel est l'bénéfice direct pour la ville/citoyens (L'argument fort)
+3. Pourquoi la mise en oeuvre est réaliste (La faisabilité)
+
+Ton ton doit être convaincant, clair et concis. Prêt à être lu à l'oral.`;
+
+        const geminiRequest = {
+            contents: [{
+                parts: [{ text: prompt }]
+            }],
+            generationConfig: {
+                temperature: 0.4,
+                maxOutputTokens: 1000
+            }
+        };
+
+        const response = await fetch(`${GEMINI_API_URL}?key=${GEMINI_API_KEY}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(geminiRequest)
+        });
+
+        const result: GeminiResponse = await response.json();
+
+        if (result.error) {
+            throw new Error(result.error.message);
+        }
+
+        const speakingPoints = result.candidates?.[0]?.content?.parts?.[0]?.text;
+
+        if (!speakingPoints) {
+            throw new Error('Aucun contenu généré');
+        }
+
+        return { success: true, speakingPoints };
+
+    } catch (error) {
+        const err = error as Error;
+        console.error('Speaking points generation error:', err);
+        return { success: false, error: err.message };
+    }
+};
