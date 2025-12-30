@@ -34,7 +34,6 @@ import {
     Add,
     Delete,
     RecordVoiceOver,
-    Download,
     FileDownload,
     Psychology,
     CheckCircle,
@@ -117,9 +116,9 @@ const RecommendationBuilder: React.FC<RecommendationBuilderProps> = ({ onClose }
     const formatMeetingForAI = (meeting: Meeting): string => {
         let text = `PROCÈS-VERBAL: ${meeting.title || 'Sans titre'}\n`;
         text += `DATE: ${new Date(meeting.date).toLocaleDateString()}\n\n`;
-        if (meeting.globalNotes) {
-            text += `NOTES GÉNÉRALES:\n${meeting.globalNotes}\n\n`;
-        }
+
+        // Removed globalNotes check as it does not exist on Meeting type
+
         meeting.agendaItems?.forEach(item => {
             text += `POINT ${item.order}: ${item.title}\n`;
             if (item.description) text += `  DESCRIPTION: ${item.description}\n`;
