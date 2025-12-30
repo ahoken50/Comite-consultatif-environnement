@@ -490,7 +490,8 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
                         color="secondary"
                         startIcon={<Shield />}
                         onClick={handleSanitize}
-                        disabled={!globalNotes}
+                        disabled={!globalNotes && (!localAgendaItems || localAgendaItems.length === 0)}
+                        title="Masquer les données sensibles dans les notes générales (IA)"
                     >
                         Masquer (IA)
                     </Button>

@@ -468,6 +468,24 @@ const generateHTMLDocument = (meeting: Meeting, _globalNotes?: string): string =
             left: 0;
         }
 
+        /* FILIGRANE BROUILLON */
+        .watermark {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%) rotate(-45deg);
+            font-size: 100px;
+            color: rgba(200, 0, 0, 0.15);
+            font-family: 'Montserrat', sans-serif;
+            font-weight: 700;
+            text-transform: uppercase;
+            white-space: nowrap;
+            pointer-events: none;
+            z-index: 1000;
+            border: 5px solid rgba(200, 0, 0, 0.15);
+            padding: 20px;
+        }
+
         /* SIGNATURES */
         .signatures {
             margin-top: 60px;
@@ -485,6 +503,18 @@ const generateHTMLDocument = (meeting: Meeting, _globalNotes?: string): string =
             border-bottom: 1px solid #000;
             height: 50px;
             margin-bottom: 10px;
+            position: relative;
+        }
+
+        .digital-signature {
+            position: absolute;
+            bottom: 5px;
+            left: 0;
+            right: 0;
+            font-family: 'Courier New', monospace;
+            font-size: 10px;
+            color: var(--primary-color);
+            background-color: rgba(255, 255, 255, 0.8);
         }
 
         .signature-name {
@@ -517,6 +547,12 @@ const generateHTMLDocument = (meeting: Meeting, _globalNotes?: string): string =
                 width: 100%;
                 padding: 0;
                 box-shadow: none;
+            }
+            
+            .watermark {
+                display: block !important;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
             }
 
             .resolution-block {
@@ -557,6 +593,12 @@ const generateHTMLDocument = (meeting: Meeting, _globalNotes?: string): string =
 </head>
 <body>
     <div class="document-page">
+        <!-- MARQUEUR BROUILLON SI NON APPROUVÉ -->
+        ${meeting.approvalStatus !== 'approved' && meeting.approvalStatus !== 'final'
+            ? '<div class="watermark">BROUILLON<br>CONFIDENTIEL</div>'
+            : ''
+        }
+
         <!-- EN-TÊTE -->
         <header>
             <img src="/logo-valdor.png" alt="Logo Ville de Val-d'Or" class="logo-placeholder" onerror="this.style.display='none';">
@@ -598,14 +640,33 @@ const generateHTMLDocument = (meeting: Meeting, _globalNotes?: string): string =
         <!-- SIGNATURES -->
         <section class="signatures">
             <div class="signature-block">
-                <div class="signature-line"></div>
-                <div class="signature-name">${presidentName}</div>
-                <div class="signature-role">Président(e)</div>
+                <div class="signature-line">
+                    ${(() => {
+            const sig = meeting.approvalSignatures?.find(s => s.role === 'president' || s.role === 'elected_official');
+            if (sig) {
+                return `<div class="digital-signature">Signé numériquement<br>${new Date(sig.signedAt).toLocaleDateString(fr)}</div>`;
+            }
+            return '';
+        })()}
+                </div>
+                <div class="signature-name">${(() => {
+            const sig = meeting.approvalSignatures?.find(s => s.role === 'president' || s.role === 'elected_official');
+            return sig ? sig.signedByName : presidentName;
+        })()}</div>
+                <div class="signature-role">Président(e) / Élu(e) Responsable</div>
             </div>
             <div class="signature-block">
-                <div class="signature-line"></div>
+                <div class="signature-line">
+                     ${(() => {
+            const sig = meeting.approvalSignatures?.find(s => s.role === 'coordinator'); // Assuming coordinator signs as secretary for now, or validation
+            if (sig) {
+                return `<div class="digital-signature">Validé administrativement<br>${new Date(sig.signedAt).toLocaleDateString(fr)}</div>`;
+            }
+            return '';
+        })()}
+                </div>
                 <div class="signature-name">${secretaryName}</div>
-                <div class="signature-role">Secrétaire</div>
+                <div class="signature-role">Secrétaire / Coordonnateur</div>
             </div>
         </section>
     </div>
