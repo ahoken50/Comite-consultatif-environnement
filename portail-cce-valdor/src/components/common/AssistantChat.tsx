@@ -16,6 +16,11 @@ import { SmartToy, Send, Close, Chat } from '@mui/icons-material';
 import { useDispatch, useSelector } from 'react-redux';
 import type { AppDispatch } from '../../store/store';
 import type { RootState } from '../../store/rootReducer';
+import { fetchProjects } from '../../features/projects/projectsSlice';
+import { fetchMeetings } from '../../features/meetings/meetingsSlice';
+// @ts-ignore
+import { getGenerativeModel } from 'firebase/ai';
+import { vertexAI } from '../../services/firebase';
 
 interface Message {
     id: string;
@@ -48,16 +53,8 @@ const AssistantChat: React.FC = () => {
     // Ensure data is loaded for AI context
     useEffect(() => {
         if (isOpen) {
-            if (projects.length === 0) {
-                import('../../features/projects/projectsSlice').then(({ fetchProjects }) => {
-                    dispatch(fetchProjects());
-                });
-            }
-            if (meetings.length === 0) {
-                import('../../features/meetings/meetingsSlice').then(({ fetchMeetings }) => {
-                    dispatch(fetchMeetings());
-                });
-            }
+            if (projects.length === 0) dispatch(fetchProjects());
+            if (meetings.length === 0) dispatch(fetchMeetings());
         }
     }, [isOpen, dispatch, projects.length, meetings.length]);
 
@@ -84,11 +81,6 @@ const AssistantChat: React.FC = () => {
         }]);
 
         try {
-            // Dynamic import to avoid SSR/Initial load issues
-            // @ts-ignore
-            const { getGenerativeModel } = await import('firebase/ai');
-            const { vertexAI } = await import('../../services/firebase');
-
             const model = getGenerativeModel(vertexAI, { model: 'gemini-2.0-flash' });
 
             // Prepare Context
@@ -113,7 +105,6 @@ const AssistantChat: React.FC = () => {
                     agenda: m.agendaItems?.map(i => ({
                         title: i.title,
                         description: i.description,
-                        // Extract resolutions and comments from minutes
                         resolutions: i.minuteEntries?.filter(e => e.type === 'resolution').map(e => ({ number: e.number, content: e.content })),
                         comments: i.minuteEntries?.filter(e => e.type === 'comment').map(e => ({ content: e.content }))
                     })) || []
@@ -144,7 +135,7 @@ const AssistantChat: React.FC = () => {
                 const filtered = prev.filter(m => m.id !== 'loading');
                 return [...filtered, {
                     id: (Date.now() + 1).toString(),
-                    text: text, // Gemini returns Markdown, plain text for now or need a parser
+                    text: text,
                     sender: 'ai',
                     timestamp: new Date()
                 }];
