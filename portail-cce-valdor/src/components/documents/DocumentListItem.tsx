@@ -64,12 +64,22 @@ const DocumentListItem: React.FC<DocumentListItemProps> = React.memo(({ doc, onP
                 secondaryAction={
                     <>
                         <Tooltip title="Prévisualiser">
-                            <IconButton onClick={() => onPreview(doc)} size="small">
+                            <IconButton
+                                onClick={() => onPreview(doc)}
+                                size="small"
+                                aria-label={`Prévisualiser ${doc.name}`}
+                            >
                                 <Visibility />
                             </IconButton>
                         </Tooltip>
                         <Tooltip title="Télécharger">
-                            <IconButton href={doc.url} target="_blank" rel="noopener noreferrer" size="small">
+                            <IconButton
+                                href={doc.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                size="small"
+                                aria-label={`Télécharger ${doc.name}`}
+                            >
                                 <Download />
                             </IconButton>
                         </Tooltip>
@@ -77,7 +87,7 @@ const DocumentListItem: React.FC<DocumentListItemProps> = React.memo(({ doc, onP
                             <Tooltip title="Supprimer">
                                 <IconButton
                                     edge="end"
-                                    aria-label="delete"
+                                    aria-label={`Supprimer ${doc.name}`}
                                     onClick={() => onDelete(doc.id, doc.storagePath)}
                                     size="small"
                                     color="error"
