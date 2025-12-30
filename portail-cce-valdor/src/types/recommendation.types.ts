@@ -10,6 +10,8 @@ export interface CouncilRecommendation {
     dateSent: string; // ISO Date string
     councilMeetingDate?: string; // ISO Date string
     councilResolutionNumber?: string;
+    sourceResolutionNumber?: string; // from CCE minutes
+    sourceResolutionContent?: string; // from CCE minutes
     status: RecommendationStatus;
     notes?: string;
     createdBy: string;

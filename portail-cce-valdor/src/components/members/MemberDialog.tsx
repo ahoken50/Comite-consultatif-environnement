@@ -85,6 +85,8 @@ const MemberDialog: React.FC<MemberDialogProps> = ({ open, member, onClose, onSa
         }
     };
 
+    const formId = React.useId();
+
     return (
         <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
             <DialogTitle>
@@ -94,6 +96,7 @@ const MemberDialog: React.FC<MemberDialogProps> = ({ open, member, onClose, onSa
                 <Grid container spacing={2}>
                     <Grid size={12}>
                         <TextField
+                            id={`${formId}-displayName`}
                             name="displayName"
                             label="Nom complet"
                             value={formData.displayName}
@@ -106,6 +109,7 @@ const MemberDialog: React.FC<MemberDialogProps> = ({ open, member, onClose, onSa
                     </Grid>
                     <Grid size={12}>
                         <TextField
+                            id={`${formId}-email`}
                             name="email"
                             label="Email"
                             value={formData.email}
@@ -120,6 +124,7 @@ const MemberDialog: React.FC<MemberDialogProps> = ({ open, member, onClose, onSa
                     </Grid>
                     <Grid size={{ xs: 12, sm: 6 }}>
                         <TextField
+                            id={`${formId}-role`}
                             name="role"
                             select
                             label="Rôle"
@@ -135,6 +140,7 @@ const MemberDialog: React.FC<MemberDialogProps> = ({ open, member, onClose, onSa
                     </Grid>
                     <Grid size={{ xs: 12, sm: 6 }}>
                         <TextField
+                            id={`${formId}-phone`}
                             name="phone"
                             label="Téléphone"
                             value={formData.phone}
@@ -144,6 +150,7 @@ const MemberDialog: React.FC<MemberDialogProps> = ({ open, member, onClose, onSa
                     </Grid>
                     <Grid size={12}>
                         <TextField
+                            id={`${formId}-bio`}
                             name="bio"
                             label="Biographie / Notes"
                             value={formData.bio}
@@ -157,6 +164,7 @@ const MemberDialog: React.FC<MemberDialogProps> = ({ open, member, onClose, onSa
                         <FormControlLabel
                             control={
                                 <Switch
+                                    id={`${formId}-isActive`}
                                     checked={formData.isActive}
                                     onChange={handleSwitchChange}
                                     color="primary"
@@ -174,6 +182,7 @@ const MemberDialog: React.FC<MemberDialogProps> = ({ open, member, onClose, onSa
 
                     <Grid size={{ xs: 12, sm: 6 }}>
                         <TextField
+                            id={`${formId}-mandateStart`}
                             name="mandateStart"
                             label="Début du mandat"
                             type="date"
@@ -185,6 +194,7 @@ const MemberDialog: React.FC<MemberDialogProps> = ({ open, member, onClose, onSa
                     </Grid>
                     <Grid size={{ xs: 12, sm: 6 }}>
                         <TextField
+                            id={`${formId}-mandateEnd`}
                             name="mandateEnd"
                             label="Fin du mandat"
                             type="date"
@@ -196,6 +206,7 @@ const MemberDialog: React.FC<MemberDialogProps> = ({ open, member, onClose, onSa
                     </Grid>
                     <Grid size={{ xs: 12, sm: 12 }}>
                         <TextField
+                            id={`${formId}-appointedByResolution`}
                             name="appointedByResolution"
                             label="Résolution de nomination (ex: 2024-123)"
                             value={formData.appointedByResolution || ''}
@@ -208,6 +219,7 @@ const MemberDialog: React.FC<MemberDialogProps> = ({ open, member, onClose, onSa
                         <FormControlLabel
                             control={
                                 <Switch
+                                    id={`${formId}-isSubstitute`}
                                     checked={!!formData.isSubstitute}
                                     onChange={(e) => setFormData(prev => ({ ...prev, isSubstitute: e.target.checked }))}
                                     color="default"

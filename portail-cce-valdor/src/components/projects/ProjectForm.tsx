@@ -69,6 +69,8 @@ const ProjectForm: React.FC<ProjectFormProps> = ({ open, onClose, onSubmit, init
         }
     });
 
+    const formId = React.useId();
+
     return (
         <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
             <DialogTitle>{initialData ? 'Modifier le projet' : 'Nouveau projet'}</DialogTitle>
@@ -82,6 +84,7 @@ const ProjectForm: React.FC<ProjectFormProps> = ({ open, onClose, onSubmit, init
                                 render={({ field }) => (
                                     <TextField
                                         {...field}
+                                        id={`${formId}-code`}
                                         label="Code (ex: EC-01)"
                                         fullWidth
                                         error={!!errors.code}
@@ -97,6 +100,7 @@ const ProjectForm: React.FC<ProjectFormProps> = ({ open, onClose, onSubmit, init
                                 render={({ field }) => (
                                     <TextField
                                         {...field}
+                                        id={`${formId}-name`}
                                         label="Nom du projet"
                                         fullWidth
                                         error={!!errors.name}
@@ -113,6 +117,7 @@ const ProjectForm: React.FC<ProjectFormProps> = ({ open, onClose, onSubmit, init
                                 render={({ field }) => (
                                     <TextField
                                         {...field}
+                                        id={`${formId}-category`}
                                         select
                                         label="Catégorie"
                                         fullWidth
@@ -143,6 +148,7 @@ const ProjectForm: React.FC<ProjectFormProps> = ({ open, onClose, onSubmit, init
                                 render={({ field }) => (
                                     <TextField
                                         {...field}
+                                        id={`${formId}-priority`}
                                         select
                                         label="Priorité"
                                         fullWidth
@@ -166,6 +172,7 @@ const ProjectForm: React.FC<ProjectFormProps> = ({ open, onClose, onSubmit, init
                                 render={({ field }) => (
                                     <TextField
                                         {...field}
+                                        id={`${formId}-status`}
                                         select
                                         label="Statut"
                                         fullWidth
@@ -191,6 +198,7 @@ const ProjectForm: React.FC<ProjectFormProps> = ({ open, onClose, onSubmit, init
                                 render={({ field }) => (
                                     <TextField
                                         {...field}
+                                        id={`${formId}-description`}
                                         label="Description du projet"
                                         fullWidth
                                         multiline
@@ -207,6 +215,7 @@ const ProjectForm: React.FC<ProjectFormProps> = ({ open, onClose, onSubmit, init
                                 render={({ field }) => (
                                     <TextField
                                         {...field}
+                                        id={`${formId}-startDate`}
                                         label="Date de début"
                                         type="date"
                                         fullWidth
@@ -226,6 +235,7 @@ const ProjectForm: React.FC<ProjectFormProps> = ({ open, onClose, onSubmit, init
                                 render={({ field }) => (
                                     <TextField
                                         {...field}
+                                        id={`${formId}-currentDetails`}
                                         label="Détails actuels"
                                         fullWidth
                                         multiline
@@ -241,6 +251,7 @@ const ProjectForm: React.FC<ProjectFormProps> = ({ open, onClose, onSubmit, init
                                 render={({ field }) => (
                                     <TextField
                                         {...field}
+                                        id={`${formId}-nextSteps`}
                                         label="Prochaines étapes"
                                         multiline
                                         rows={3}
@@ -257,7 +268,7 @@ const ProjectForm: React.FC<ProjectFormProps> = ({ open, onClose, onSubmit, init
                                 control={control}
                                 render={({ field }) => (
                                     <FormControlLabel
-                                        control={<Checkbox {...field} checked={field.value} />}
+                                        control={<Checkbox {...field} checked={field.value} id={`${formId}-isUrgent`} />}
                                         label="Marquer comme URGENT"
                                     />
                                 )}
