@@ -644,7 +644,7 @@ const generateHTMLDocument = (meeting: Meeting, _globalNotes?: string): string =
                     ${(() => {
             const sig = meeting.approvalSignatures?.find(s => s.role === 'president' || s.role === 'elected_official');
             if (sig) {
-                return `<div class="digital-signature">Signé numériquement<br>${new Date(sig.signedAt).toLocaleDateString(fr)}</div>`;
+                return `<div class="digital-signature">Signé numériquement<br>${new Date(sig.signedAt).toLocaleDateString('fr-CA')}</div>`;
             }
             return '';
         })()}
@@ -660,7 +660,7 @@ const generateHTMLDocument = (meeting: Meeting, _globalNotes?: string): string =
                      ${(() => {
             const sig = meeting.approvalSignatures?.find(s => s.role === 'coordinator'); // Assuming coordinator signs as secretary for now, or validation
             if (sig) {
-                return `<div class="digital-signature">Validé administrativement<br>${new Date(sig.signedAt).toLocaleDateString(fr)}</div>`;
+                return `<div class="digital-signature">Validé administrativement<br>${new Date(sig.signedAt).toLocaleDateString('fr-CA')}</div>`;
             }
             return '';
         })()}
