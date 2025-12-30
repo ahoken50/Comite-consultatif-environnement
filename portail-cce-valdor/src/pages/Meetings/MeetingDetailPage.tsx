@@ -164,7 +164,7 @@ const MeetingDetailPage: React.FC = () => {
         }
     };
 
-    const handleApproval = (role: 'president' | 'elected_official') => {
+    const handleApproval = (role: 'president' | 'elected_official' | 'coordinator') => {
         if (!id || !currentMember) return;
 
         const newSignature = {
@@ -185,7 +185,9 @@ const MeetingDetailPage: React.FC = () => {
         const hasPresident = updatedSignatures.some(s => s.role === 'president');
         const hasElected = updatedSignatures.some(s => s.role === 'elected_official');
 
-        if (hasPresident && hasElected) {
+        if (role === 'coordinator') {
+            newStatus = 'approved';
+        } else if (hasPresident && hasElected) {
             newStatus = 'approved';
         } else if (hasPresident || hasElected) {
             newStatus = 'waiting_approval';

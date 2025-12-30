@@ -7,7 +7,7 @@ import type { Meeting } from '../../types/meeting.types';
 interface MeetingApprovalCardProps {
     meeting: Meeting;
     currentUser: Member | null;
-    onApprove: (role: 'president' | 'elected_official') => void;
+    onApprove: (role: 'president' | 'elected_official' | 'coordinator') => void;
 }
 
 const MeetingApprovalCard: React.FC<MeetingApprovalCardProps> = ({ meeting, currentUser, onApprove }) => {
@@ -23,21 +23,30 @@ const MeetingApprovalCard: React.FC<MeetingApprovalCardProps> = ({ meeting, curr
     const signatures = meeting.approvalSignatures || [];
     const hasPresidentSigned = signatures.some(s => s.role === 'president');
     const hasElectedSigned = signatures.some(s => s.role === 'elected_official');
+    const hasCoordinatorSigned = signatures.some(s => s.role === 'coordinator');
 
     let activeStep = 0;
     if (signatures.length > 0) activeStep = 1;
     if (hasPresidentSigned && hasElectedSigned) activeStep = 3; // Finished
+    if (hasCoordinatorSigned) activeStep = 3; // Coordinator override
 
-    const handleSign = () => {
+    const handleSign = (role?: 'president' | 'elected_official' | 'coordinator') => {
         if (!currentUser) return;
+
+        // If explicitly passed a role (e.g. from button), use it
+        if (role) {
+            onApprove(role);
+            return;
+        }
 
         // Auto-detect role for demo purposes. Real logic should verify actual roles.
         // Assuming current user is authorized if this component is enabled for them.
         if (currentUser.role === 'elected_official') {
             onApprove('elected_official');
+        } else if (currentUser.role === 'coordinator') {
+            onApprove('coordinator');
         } else {
             // Default to president (usually a member role, need logic to identify president)
-            // For now, let's assume coordinator acts as verifying authority or president mock
             onApprove('president');
         }
     };
@@ -46,8 +55,9 @@ const MeetingApprovalCard: React.FC<MeetingApprovalCardProps> = ({ meeting, curr
         if (!currentUser) return false;
         if (activeStep === 3) return false;
 
+        if (currentUser.role === 'coordinator') return true; // Coordinator can always sign to validate
         if (currentUser.role === 'elected_official' && !hasElectedSigned) return true;
-        // Mock logic: Anyone else is treated as President for this demo if not elected official
+        // Mock logic: Others treat as President if not elected official
         if (currentUser.role !== 'elected_official' && !hasPresidentSigned) return true;
 
         return false;
@@ -96,11 +106,34 @@ const MeetingApprovalCard: React.FC<MeetingApprovalCardProps> = ({ meeting, curr
                 </Paper>
             </Box>
 
+            {/* Coordinator Override Section */}
+            {hasCoordinatorSigned && (
+                <Paper variant="outlined" sx={{ mt: 2, p: 2, bgcolor: '#e8f5e9', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 2 }}>
+                    <VerifiedUser color="success" />
+                    <Box>
+                        <Typography variant="subtitle2">Validé par le Coordonnateur</Typography>
+                        <Typography variant="caption">Le PV a été approuvé administrativement.</Typography>
+                    </Box>
+                </Paper>
+            )}
+
             {canSign() && (
                 <Box sx={{ mt: 3, display: 'flex', justifyContent: 'center' }}>
-                    <Button variant="contained" color="secondary" size="large" onClick={handleSign} startIcon={<Gavel />}>
-                        Signer et Approuver le PV
-                    </Button>
+                    {currentUser?.role === 'coordinator' ? (
+                        <Button
+                            variant="contained"
+                            color="warning"
+                            size="large"
+                            onClick={() => handleSign('coordinator')}
+                            startIcon={<Gavel />}
+                        >
+                            Valider administrativement le PV
+                        </Button>
+                    ) : (
+                        <Button variant="contained" color="secondary" size="large" onClick={() => handleSign()} startIcon={<Gavel />}>
+                            Signer et Approuver le PV
+                        </Button>
+                    )}
                 </Box>
             )}
         </Paper>

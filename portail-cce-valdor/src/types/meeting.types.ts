@@ -116,7 +116,7 @@ export interface Meeting {
 }
 
 export interface ApprovalSignature {
-    role: 'president' | 'elected_official';
+    role: 'president' | 'elected_official' | 'coordinator';
     signedBy: string; // User ID
     signedByName: string;
     signedAt: string; // ISO string
