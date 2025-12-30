@@ -50,6 +50,11 @@ const ResolutionsPage: React.FC = () => {
         if (projects.length === 0) dispatch(fetchProjects());
     }, [dispatch, meetings.length, projects.length]);
 
+    // Optimize: Create a Map for O(1) project lookup instead of O(N) find inside the loop
+    const projectsMap = useMemo(() => {
+        return new Map(projects.map(p => [p.id, p]));
+    }, [projects]);
+
     const resolutions: ResolutionRow[] = useMemo(() => {
         const rows: ResolutionRow[] = [];
 
@@ -58,8 +63,9 @@ const ResolutionsPage: React.FC = () => {
                 if (item.minuteEntries) {
                     item.minuteEntries.forEach((entry, index) => {
                         if (entry.type === 'resolution') {
-                            // Find linked project
-                            const project = projects.find(p => p.id === item.linkedProjectId);
+                            // Find linked project - optimized with O(1) lookup
+                            // Previously O(P) inside O(M*A*E) loop, now O(1)
+                            const project = item.linkedProjectId ? projectsMap.get(item.linkedProjectId) : undefined;
 
                             rows.push({
                                 id: `${meeting.id}-${item.id}-${index}`,
@@ -80,7 +86,7 @@ const ResolutionsPage: React.FC = () => {
 
         // Sort by date desc
         return rows.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-    }, [meetings, projects]);
+    }, [meetings, projectsMap]);
 
     const filteredResolutions = useMemo(() => {
         return resolutions.filter(r =>
