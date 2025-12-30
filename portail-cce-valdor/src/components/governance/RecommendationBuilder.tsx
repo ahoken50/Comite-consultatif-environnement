@@ -94,6 +94,12 @@ const RecommendationBuilder: React.FC<RecommendationBuilderProps> = ({ onClose }
         // Extract resolution info
         const resolutionEntry = item.minuteEntries?.find(e => e.type === 'resolution');
 
+        // Extract comments for AI context
+        const comments = item.minuteEntries
+            ?.filter(e => e.type === 'comment')
+            .map(e => e.content)
+            .join('\n\n') || '';
+
         // Use resolution content if available, otherwise decision, otherwise description
         const rawContent = resolutionEntry?.content || item.decision || item.description || '';
         const resolutionNumber = resolutionEntry?.number || item.minuteNumber || '';
@@ -101,18 +107,11 @@ const RecommendationBuilder: React.FC<RecommendationBuilderProps> = ({ onClose }
         // Extract title
         const title = item.title;
 
-        // Extract considerants (rudimentary)
-        // If content has "CONSIDÉRANT", we might want to parse it better, 
-        // but for now let's just put the whole text in description and maybe try to split it
+        // Extract considerants
         const extractedConsiderants = extractConsiderants(rawContent);
 
-        // Remove considerants from description for cleaner view?
-        // Ideally description is "IL EST RÉSOLU..." part.
-        let mainDescription = rawContent;
-        const resoluMatch = rawContent.match(/IL EST R[ÉE]SOLU\s*:?\s*(.*)/i);
-        if (resoluMatch) {
-            mainDescription = resoluMatch[1].trim();
-        }
+        // description matches resolution content fully as per user request
+        const mainDescription = rawContent;
 
         setFormData(prev => ({
             ...prev,
@@ -121,7 +120,9 @@ const RecommendationBuilder: React.FC<RecommendationBuilderProps> = ({ onClose }
             meetingDate: meeting.date,
             sourceResolutionNumber: resolutionNumber,
             sourceResolutionContent: rawContent,
-            description: mainDescription
+            description: mainDescription,
+            // Store comments in notes for AI use
+            notes: comments ? `[Commentaires du PV]:\n${comments}` : ''
         }));
 
         if (extractedConsiderants.length > 0 && extractedConsiderants[0] !== '') {
@@ -412,11 +413,16 @@ const RecommendationBuilder: React.FC<RecommendationBuilderProps> = ({ onClose }
                                 onClick={async () => {
                                     const tempRec = {
                                         ...formData,
-                                        description: `${formData.description || ''}\n\nCONSIDÉRANTS:\n${considerants.map(c => `- ${c}`).join('\n')}`
+                                        description: `${formData.description || ''}\n\nCONSIDÉRANTS:\n${considerants.map(c => `- ${c}`).join('\n')}`,
+                                        // Pass notes (which contain metadata/comments) as context
+                                        notes: formData.notes
                                     };
                                     const result = await generateSpeakingPoints(tempRec);
                                     if (result.success && result.speakingPoints) {
-                                        setFormData(prev => ({ ...prev, notes: result.speakingPoints }));
+                                        // Append generated points to existing notes
+                                        const currentNotes = formData.notes || '';
+                                        const separator = currentNotes ? '\n\n---\n\n' : '';
+                                        setFormData(prev => ({ ...prev, notes: `${currentNotes}${separator}${result.speakingPoints}` }));
                                     }
                                 }}
                             >

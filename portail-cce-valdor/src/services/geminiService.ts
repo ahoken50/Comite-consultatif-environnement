@@ -630,9 +630,12 @@ IMPACT ENVIRONNEMENTAL : ${recommendation.impactAnalysis?.environmentalImpact ||
 EFFORT DE MISE EN OEUVRE : ${recommendation.impactAnalysis?.implementationEffort || 'Non spécifié'}
 COÛT ESTIMÉ : ${recommendation.impactAnalysis?.financial || 'Non spécifié'}
 
+CONTEXTE SUPPLÉMENTAIRE (Commentaires du PV, Discussions précédentes) :
+${recommendation.notes || 'Aucun contexte supplémentaire'}
+
 PRODUIS 3 à 5 POINTS CLÉS (Bullet points) :
 1. Pourquoi c'est important (L'accroche)
-2. Quel est l'bénéfice direct pour la ville/citoyens (L'argument fort)
+2. Quel est l'bénéfice direct pour la ville/citoyens (L'argument fort) - Utilise les commentaires du PV si pertinents pour appuyer l'argument.
 3. Pourquoi la mise en oeuvre est réaliste (La faisabilité)
 
 Ton ton doit être convaincant, clair et concis. Prêt à être lu à l'oral.`;
