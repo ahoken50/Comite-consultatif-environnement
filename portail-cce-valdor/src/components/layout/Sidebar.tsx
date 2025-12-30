@@ -17,6 +17,7 @@ const menuItems = [
     { text: 'Résolutions', icon: <Gavel />, path: '/resolutions' },
     { text: 'Documents', icon: <Description />, path: '/documents' },
     { text: 'Procès-verbaux', icon: <BarChart />, path: '/minutes' },
+    { text: 'Recommandations', icon: <Gavel />, path: '/recommendations' },
     { text: 'Rapports', icon: <Description />, path: '/reports' },
     { text: 'Membres', icon: <People />, path: '/members' },
     { text: 'Paramètres', icon: <Settings />, path: '/settings' },
