@@ -37,13 +37,13 @@ const formatResolutionHTML = (text: string): string => {
     for (const line of lines) {
         const trimmed = line.trim();
 
-        // CONSIDÉRANT / ATTENDU
-        if (/^(CONSID[ÉE]RANT|ATTENDU)/i.test(trimmed)) {
+        // CONSIDÉRANT / ATTENDU / RECONNAISSANT
+        if (/^(CONSID[ÉE]RANT|ATTENDU|RECONNAISSANT)/i.test(trimmed)) {
             if (inResolvedList) {
                 html += '</ul>';
                 inResolvedList = false;
             }
-            const match = trimmed.match(/^((?:CONSID[ÉE]RANT|ATTENDU)(?:\s+QUE)?)\s*(.*)/i);
+            const match = trimmed.match(/^((?:CONSID[ÉE]RANT|ATTENDU|RECONNAISSANT)(?:\s+QUE)?)\s*(.*)/i);
             if (match) {
                 html += `<div class="considerant"><span class="considerant-keyword">${match[1].toUpperCase()}</span> ${match[2] || ''}</div>`;
             } else {
@@ -56,7 +56,8 @@ const formatResolutionHTML = (text: string): string => {
                 html += '</ul>';
                 inResolvedList = false;
             }
-            const match = trimmed.match(/^(IL EST R[ÉE]SOLU\s*:?)\s*(.*)/i);
+            // Capture "IL EST RÉSOLU" optionally followed by "QUE"
+            const match = trimmed.match(/^(IL EST R[ÉE]SOLU(?:\s+QUE)?\s*:?)\s*(.*)/i);
             if (match) {
                 html += `<div class="il-est-resolu">${match[1]}</div>`;
                 if (match[2]) html += `<div class="resolution-text">${match[2]}</div>`;

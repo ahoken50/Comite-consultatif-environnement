@@ -59,13 +59,13 @@ const formatDecisionHTML = (decision: string): string => {
                 html += `<span class="considerant"><strong>${match[1].toUpperCase()}</strong> ${match[2] || ''}</span>`;
             }
         }
-        // ATTENDU
-        else if (/^ATTENDU/i.test(trimmed)) {
+        // ATTENDU / RECONNAISSANT
+        else if (/^(ATTENDU|RECONNAISSANT)/i.test(trimmed)) {
             if (inResolvedList) {
                 html += '</ul>';
                 inResolvedList = false;
             }
-            const match = trimmed.match(/^(ATTENDU)\s*(.*)/i);
+            const match = trimmed.match(/^((?:ATTENDU|RECONNAISSANT)(?:\s+QUE)?)\s*(.*)/i);
             if (match) {
                 html += `<span class="considerant"><strong>${match[1].toUpperCase()}</strong> ${match[2] || ''}</span>`;
             }
@@ -76,7 +76,7 @@ const formatDecisionHTML = (decision: string): string => {
                 html += '</ul>';
                 inResolvedList = false;
             }
-            const match = trimmed.match(/^(IL EST R[ÉE]SOLU\s*:?)\s*(.*)/i);
+            const match = trimmed.match(/^(IL EST R[ÉE]SOLU(?:\s+QUE)?\s*:?)\s*(.*)/i);
             if (match) {
                 html += `<span class="il-est-resolu">${match[1]}</span>`;
                 if (match[2]) {

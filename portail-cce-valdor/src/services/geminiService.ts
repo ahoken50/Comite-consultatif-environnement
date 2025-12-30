@@ -678,3 +678,175 @@ Ton ton doit être convaincant, clair et concis. Prêt à être lu à l'oral.`;
         return { success: false, error: err.message };
     }
 };
+
+// --- NEW AI WORKFLOW FUNCTIONS ---
+
+import type { PVStructure, VerificationResult, DraftRecommendation } from '../types/ai-workflow.types';
+
+const JSON_MODEL = 'gemini-1.5-flash'; // Better for structured output
+
+export const analyzePVStructure = async (pvText: string): Promise<{ success: boolean; data?: PVStructure; error?: string }> => {
+    if (!GEMINI_API_KEY) return { success: false, error: 'API Key missing' };
+
+    try {
+        const prompt = `Tu es un expert en analyse de Procès-Verbaux municipaux.
+Ta mission est d'analyser le texte suivant et d'extraire une structure JSON stricte.
+
+TEXTE DU PV :
+${pvText.substring(0, 30000)} // Limit context to avoid token errors
+
+INSTRUCTIONS :
+Extrais les éléments suivants au format JSON uniquement (sans markdown) :
+1. "summary": Bref résumé du PV.
+2. "agendaItems": Liste des points (id, title, resolutionNumber, content).
+3. "resolutions": Liste des résolutions formelles (number, text).
+4. "deadlines": Échéances mentionnées (date, task, responsible).
+5. "departments": Départements responsables cités.
+6. "laws": Lois et règlements cités (reference, description, context).
+
+FORMAT JSON ATTENDU :
+{
+  "summary": "...",
+  "agendaItems": [...],
+  "resolutions": [...],
+  "deadlines": [...],
+  "departments": [...],
+  "laws": [...]
+}
+`;
+
+        const response = await fetch(`${GEMINI_API_URL.replace('gemini-pro', JSON_MODEL)}?key=${GEMINI_API_KEY}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                contents: [{ parts: [{ text: prompt }] }],
+                generationConfig: {
+                    response_mime_type: "application/json",
+                    temperature: 0.2
+                }
+            })
+        });
+
+        const result = await response.json();
+        if (result.error) throw new Error(result.error.message);
+
+        const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (!text) throw new Error('No content');
+
+        const data = JSON.parse(text) as PVStructure;
+        return { success: true, data };
+
+    } catch (error) {
+        console.error('Structure analysis failed:', error);
+        return { success: false, error: (error as Error).message };
+    }
+};
+
+export const verifyPVClaims = async (laws: any[], deadlines: any[]): Promise<{ success: boolean; results?: VerificationResult[]; error?: string }> => {
+    if (!GEMINI_API_KEY) return { success: false, error: 'API Key missing' };
+
+    try {
+        // Note: Real web search requires "google_search_retrieval" tool in newer API versions.
+        // For standard keys without billing enabling search, this might rely on internal knowledge.
+        // We will TRY to request search grounding if supported.
+
+        const claimsText = JSON.stringify({ laws, deadlines }, null, 2);
+        const prompt = `Tu es un assistant juridique et administratif expert (Québec/Canada).
+Vérifie la validité des références légales et des échéances suivantes extraites d'un PV.
+
+CONTEXTE À VÉRIFIER :
+${claimsText}
+
+TÂCHE :
+Pour chaque loi ou échéance, vérifie si elle semble conforme aux normes actuelles (LQE, MELCCFP, etc.).
+Si tu as accès à la recherche, utilise-la. Sinon, utilise tes connaissances.
+
+FORMAT JSON ATTENDU (Liste d'objets) :
+[
+  {
+    "claim": "Référence à l'article 22 LQE",
+    "status": "verified" | "warning" | "info",
+    "analysis": "L'article 22 est bien pertinent pour...",
+    "source": "Loi sur la qualité de l'environnement"
+  }
+]
+`;
+
+        const response = await fetch(`${GEMINI_API_URL.replace('gemini-pro', JSON_MODEL)}?key=${GEMINI_API_KEY}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                contents: [{ parts: [{ text: prompt }] }],
+                // Try to enable tools if possible (requires specific model version)
+                // tools: [{ google_search_retrieval: {} }], 
+                generationConfig: {
+                    response_mime_type: "application/json",
+                    temperature: 0.3
+                }
+            })
+        });
+
+        const result = await response.json();
+        if (result.error) throw new Error(result.error.message);
+
+        const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
+        const results = JSON.parse(text) as VerificationResult[];
+        return { success: true, results };
+
+    } catch (error) {
+        return { success: false, error: (error as Error).message };
+    }
+};
+
+export const draftAIRecommendations = async (structure: PVStructure, verification: VerificationResult[]): Promise<{ success: boolean; recommendations?: DraftRecommendation[]; error?: string }> => {
+    if (!GEMINI_API_KEY) return { success: false, error: 'API Key missing' };
+
+    try {
+        const prompt = `Basé sur l'analyse suivante d'un PV et les vérifications effectuées, rédige des recommandations d'action concrètes.
+
+STRUCTURE DU PV :
+${JSON.stringify(structure).substring(0, 15000)}
+
+VÉRIFICATIONS :
+${JSON.stringify(verification).substring(0, 5000)}
+
+TÂCHE :
+Rédige des recommandations courtes et orientées vers l'action (ex: "Mettre à jour...", "Budgéter...").
+Lie chaque recommandation à une résolution source si possible.
+
+FORMAT JSON ATTENDU :
+[
+  {
+    "id": "rec_1",
+    "title": "Action courte",
+    "description": "Détail de l'action...",
+    "priority": "Haute" | "Moyenne" | "Basse",
+    "rationale": "Justification...",
+    "sourceResolutionNumber": "2024-..."
+  }
+]
+`;
+
+        const response = await fetch(`${GEMINI_API_URL.replace('gemini-pro', JSON_MODEL)}?key=${GEMINI_API_KEY}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                contents: [{ parts: [{ text: prompt }] }],
+                generationConfig: {
+                    response_mime_type: "application/json",
+                    temperature: 0.5
+                }
+            })
+        });
+
+        const result = await response.json();
+        if (result.error) throw new Error(result.error.message);
+
+        const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
+        const recommendations = JSON.parse(text) as DraftRecommendation[];
+        return { success: true, recommendations };
+
+    } catch (error) {
+        return { success: false, error: (error as Error).message };
+    }
+};

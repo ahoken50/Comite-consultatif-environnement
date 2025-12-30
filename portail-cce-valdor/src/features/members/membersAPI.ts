@@ -62,3 +62,14 @@ export const ensureMemberProfile = async (user: any): Promise<Member> => {
 
     return await createMember(newMember);
 };
+
+export const uploadMemberSignature = async (file: File, memberId: string): Promise<string> => {
+    const { ref, uploadBytes, getDownloadURL } = await import('firebase/storage');
+    const { storage } = await import('../../services/firebase');
+
+    const storagePath = `signatures/${memberId}_${Date.now()}_${file.name}`;
+    const storageRef = ref(storage, storagePath);
+
+    await uploadBytes(storageRef, file);
+    return await getDownloadURL(storageRef);
+};

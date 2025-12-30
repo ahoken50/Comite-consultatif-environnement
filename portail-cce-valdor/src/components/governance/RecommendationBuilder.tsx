@@ -23,12 +23,28 @@ import {
     DialogActions,
     List,
     ListItemText,
-    ListItemButton
+    ListItemButton,
+    Card,
+    CardContent,
+    ListItem,
+    ListItemIcon,
+    CircularProgress
 } from '@mui/material';
-import { Add, Delete, RecordVoiceOver, Download, FileDownload } from '@mui/icons-material';
+import {
+    Add,
+    Delete,
+    RecordVoiceOver,
+    Download,
+    FileDownload,
+    Psychology,
+    CheckCircle,
+    Warning,
+    Info,
+    Gavel
+} from '@mui/icons-material';
 import { useDispatch, useSelector } from 'react-redux';
 import { addRecommendation } from '../../features/governance/governanceSlice';
-import { generateSpeakingPoints } from '../../services/geminiService';
+import { generateSpeakingPoints, analyzePVStructure, verifyPVClaims, draftAIRecommendations } from '../../services/geminiService';
 import type { AppDispatch } from '../../store/store';
 import type { RootState } from '../../store/rootReducer';
 import { fetchMeetings } from '../../features/meetings/meetingsSlice';
@@ -36,6 +52,7 @@ import type { CouncilRecommendation } from '../../types/recommendation.types';
 import type { Meeting, AgendaItem } from '../../types/meeting.types';
 import { useNavigate } from 'react-router-dom';
 import { generateResolutionPDF } from '../../services/pdfServiceResolution';
+import type { PVStructure, VerificationResult, DraftRecommendation } from '../../types/ai-workflow.types';
 
 const steps = ['Détails de base', 'Considérants & Analyse', 'Liaisons Stratégiques', 'Révision'];
 
@@ -75,43 +92,133 @@ const RecommendationBuilder: React.FC<RecommendationBuilderProps> = ({ onClose }
     const [considerants, setConsiderants] = useState<string[]>(['']);
     const [newLink, setNewLink] = useState({ policyName: '', regulationArticle: '' });
 
+    // AI Workflow State
+    const [aiWizardOpen, setAiWizardOpen] = useState(false);
+    const [aiStep, setAiStep] = useState(0); // 0: Input, 1: Structure, 2: Verification, 3: Recommendation
+    const [aiLoading, setAiLoading] = useState(false);
+    const [pvText, setPvText] = useState('');
+    const [structureData, setStructureData] = useState<PVStructure | null>(null);
+    const [verificationResults, setVerificationResults] = useState<VerificationResult[]>([]);
+    const [draftedRecommendations, setDraftedRecommendations] = useState<DraftRecommendation[]>([]);
+    const [aiError, setAiError] = useState<string | null>(null);
+
     // Helper to extract keywords for considerants from text
     const extractConsiderants = (text: string) => {
         if (!text) return [''];
-
-        // Try to split by "CONSIDÉRANT QUE" or similar patterns
         const regex = /(?:CONSID[ÉE]RANT|ATTENDU)(?:\s+QUE)?\s+((?:(?!CONSID[ÉE]RANT|ATTENDU|IL EST R[ÉE]SOLU).)+)/gi;
         const matches = [...text.matchAll(regex)];
-
         if (matches.length > 0) {
             return matches.map(m => m[1].trim());
         }
+        return [''];
+    };
 
-        return ['']; // Return empty if no clear structure found
+    // Helper to format meeting into text for AI
+    const formatMeetingForAI = (meeting: Meeting): string => {
+        let text = `PROCÈS-VERBAL: ${meeting.title || 'Sans titre'}\n`;
+        text += `DATE: ${new Date(meeting.date).toLocaleDateString()}\n\n`;
+        if (meeting.globalNotes) {
+            text += `NOTES GÉNÉRALES:\n${meeting.globalNotes}\n\n`;
+        }
+        meeting.agendaItems?.forEach(item => {
+            text += `POINT ${item.order}: ${item.title}\n`;
+            if (item.description) text += `  DESCRIPTION: ${item.description}\n`;
+            item.minuteEntries?.forEach(entry => {
+                const typeLabel = entry.type === 'resolution' ? 'RÉSOLUTION' : 'COMMENTAIRE';
+                text += `  [${typeLabel}] ${entry.content}\n`;
+                if (entry.type === 'resolution' && entry.number) {
+                    text += `  (No. Résolution: ${entry.number})\n`;
+                }
+            });
+            if (item.decision) text += `  DÉCISION: ${item.decision}\n`;
+            text += '\n';
+        });
+        return text;
+    };
+
+    // AI Workflow Handlers
+    const handleAnalyze = async () => {
+        if (!pvText.trim()) return;
+        setAiLoading(true);
+        setAiError(null);
+        try {
+            const result = await analyzePVStructure(pvText);
+            if (result.success && result.data) {
+                setStructureData(result.data);
+                setAiStep(1);
+            } else {
+                setAiError(result.error || 'Erreur lors de l\'analyse');
+            }
+        } catch (e) {
+            setAiError('Erreur inattendue');
+        } finally {
+            setAiLoading(false);
+        }
+    };
+
+    const handleVerifySchema = async () => {
+        if (!structureData) return;
+        setAiLoading(true);
+        setAiError(null);
+        try {
+            const result = await verifyPVClaims(structureData.laws, structureData.deadlines);
+            if (result.success && result.results) {
+                setVerificationResults(result.results);
+                setAiStep(2);
+            } else {
+                setAiError(result.error || 'Erreur de vérification');
+            }
+        } catch (e) {
+            setAiError('Erreur inattendue');
+        } finally {
+            setAiLoading(false);
+        }
+    };
+
+    const handleDraftRecs = async () => {
+        if (!structureData) return;
+        setAiLoading(true);
+        setAiError(null);
+        try {
+            const result = await draftAIRecommendations(structureData, verificationResults);
+            if (result.success && result.recommendations) {
+                setDraftedRecommendations(result.recommendations);
+                setAiStep(3);
+            } else {
+                setAiError(result.error || 'Erreur de rédaction');
+            }
+        } catch (e) {
+            setAiError('Erreur inattendue');
+        } finally {
+            setAiLoading(false);
+        }
+    };
+
+    const handleApplyRecommendation = (rec: DraftRecommendation) => {
+        setFormData(prev => ({
+            ...prev,
+            projectName: rec.title,
+            description: rec.description,
+            sourceResolutionNumber: rec.sourceResolutionNumber || '',
+            priority: rec.priority === 'Haute' ? 'high' : rec.priority === 'Moyenne' ? 'medium' : 'low',
+            notes: `RATIONALE IA: ${rec.rationale}`
+        }));
+        setAiWizardOpen(false);
+        setAiStep(0);
+        setPvText('');
     };
 
     const handleImportSelection = (meeting: Meeting, item: AgendaItem) => {
-        // Extract resolution info
         const resolutionEntry = item.minuteEntries?.find(e => e.type === 'resolution');
-
-        // Extract comments for AI context
         const comments = item.minuteEntries
             ?.filter(e => e.type === 'comment')
             .map(e => e.content)
             .join('\n\n') || '';
 
-        // Use resolution content if available, otherwise decision, otherwise description
         const rawContent = resolutionEntry?.content || item.decision || item.description || '';
         const resolutionNumber = resolutionEntry?.number || item.minuteNumber || '';
-
-        // Extract title
         const title = item.title;
-
-        // Extract considerants
         const extractedConsiderants = extractConsiderants(rawContent);
-
-        // description matches resolution content fully as per user request
-        const mainDescription = rawContent;
 
         setFormData(prev => ({
             ...prev,
@@ -120,8 +227,7 @@ const RecommendationBuilder: React.FC<RecommendationBuilderProps> = ({ onClose }
             meetingDate: meeting.date,
             sourceResolutionNumber: resolutionNumber,
             sourceResolutionContent: rawContent,
-            description: mainDescription,
-            // Store comments in notes for AI use
+            description: rawContent,
             notes: comments ? `[Commentaires du PV]:\n${comments}` : ''
         }));
 
@@ -159,13 +265,11 @@ const RecommendationBuilder: React.FC<RecommendationBuilderProps> = ({ onClose }
         newConsiderants[index] = value;
         setConsiderants(newConsiderants);
     };
-
     const addConsiderant = () => setConsiderants([...considerants, '']);
     const removeConsiderant = (index: number) => {
         const newConsiderants = considerants.filter((_, i) => i !== index);
         setConsiderants(newConsiderants);
     };
-
     const addStrategicLink = () => {
         if (newLink.policyName) {
             setFormData(prev => ({
@@ -177,16 +281,10 @@ const RecommendationBuilder: React.FC<RecommendationBuilderProps> = ({ onClose }
     };
 
     const handleGenerateExtractPDF = async () => {
-        // Create a temporary object linking the current form data to a "meeting" structure
-        // Since we might not have the full meeting object here if it wasn't imported or if we are just creating from scratch
-        // We'll do a "best effort" using the imported meeting info if available
-
         let meetingContext: Meeting | undefined;
         if (formData.meetingId) {
             meetingContext = meetings.find(m => m.id === formData.meetingId);
             if (!meetingContext) {
-                // Try to fetch or just stub it?
-                // For now, if missing, we can stub meaningful parts
                 meetingContext = {
                     id: formData.meetingId,
                     date: formData.meetingDate || new Date().toISOString(),
@@ -194,16 +292,177 @@ const RecommendationBuilder: React.FC<RecommendationBuilderProps> = ({ onClose }
                     type: 'regular',
                     status: 'completed',
                     agendaItems: [],
-                    attendees: [] // Signatures might be missing if meeting not found
+                    attendees: []
                 } as any;
             }
         } else {
             alert("Veuillez lier une réunion (Import) pour générer l'extrait officiel.");
             return;
         }
-
         if (meetingContext) {
             await generateResolutionPDF(meetingContext, formData as CouncilRecommendation, 'recommendation');
+        }
+    };
+
+    const renderAiStep = () => {
+        switch (aiStep) {
+            case 0:
+                return (
+                    <Box sx={{ p: 2 }}>
+                        <Typography variant="body2" gutterBottom>
+                            Sélectionnez un Procès-Verbal existant pour démarrer l'analyse.
+                        </Typography>
+                        <FormControl fullWidth sx={{ mb: 2 }}>
+                            <InputLabel>Choisir un Procès-Verbal</InputLabel>
+                            <Select
+                                label="Choisir un Procès-Verbal"
+                                value={selectedMeetingId}
+                                onChange={(e) => {
+                                    const mId = e.target.value;
+                                    setSelectedMeetingId(mId);
+                                    const meeting = meetings.find(m => m.id === mId);
+                                    if (meeting) {
+                                        setPvText(formatMeetingForAI(meeting));
+                                    }
+                                }}
+                            >
+                                {meetings
+                                    .filter(m => m.minutes || (m.agendaItems && m.agendaItems.length > 0))
+                                    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+                                    .map(meeting => (
+                                        <MenuItem key={meeting.id} value={meeting.id}>
+                                            {new Date(meeting.date).toLocaleDateString()} - {meeting.title}
+                                        </MenuItem>
+                                    ))
+                                }
+                            </Select>
+                        </FormControl>
+                        {pvText && (
+                            <>
+                                <Typography variant="caption" color="textSecondary">Aperçu du texte extrait :</Typography>
+                                <Paper variant="outlined" sx={{ p: 1, maxHeight: 150, overflow: 'auto', bgcolor: '#f5f5f5', mb: 2 }}>
+                                    <pre style={{ margin: 0, whiteSpace: 'pre-wrap', fontSize: '11px' }}>{pvText.substring(0, 500)}...</pre>
+                                </Paper>
+                            </>
+                        )}
+                        <Button
+                            variant="contained"
+                            onClick={handleAnalyze}
+                            disabled={aiLoading || !pvText.trim()}
+                            startIcon={aiLoading ? <CircularProgress size={20} /> : <Psychology />}
+                            fullWidth
+                        >
+                            {aiLoading ? 'Analyse en cours...' : 'Lancer l\'Analyse Automatique'}
+                        </Button>
+                    </Box>
+                );
+            case 1:
+                return (
+                    <Box sx={{ p: 2 }}>
+                        <Typography variant="h6" gutterBottom>Structure Identifiée</Typography>
+                        <Alert severity="info" sx={{ mb: 2 }}>
+                            Vérifiez que les données extraites sont correctes avant de procéder à la vérification normative.
+                        </Alert>
+                        {structureData && (
+                            <Box sx={{ maxHeight: 400, overflow: 'auto' }}>
+                                <Typography variant="subtitle2">Résumé:</Typography>
+                                <Typography paragraph variant="body2">{structureData.summary}</Typography>
+
+                                <Divider sx={{ my: 1 }} />
+                                <Typography variant="subtitle2">Résolutions ({structureData.resolutions.length}):</Typography>
+                                <List dense>
+                                    {structureData.resolutions.map((r, i) => (
+                                        <ListItem key={i}>
+                                            <ListItemIcon><Gavel fontSize="small" /></ListItemIcon>
+                                            <ListItemText primary={`Rés. ${r.number}`} secondary={r.text.substring(0, 100) + '...'} />
+                                        </ListItem>
+                                    ))}
+                                </List>
+
+                                <Divider sx={{ my: 1 }} />
+                                <Typography variant="subtitle2">Lois Citées ({structureData.laws.length}):</Typography>
+                                <List dense>
+                                    {structureData.laws.map((l, i) => (
+                                        <ListItem key={i}>
+                                            <ListItemIcon><Info fontSize="small" /></ListItemIcon>
+                                            <ListItemText primary={l.reference} secondary={l.description} />
+                                        </ListItem>
+                                    ))}
+                                </List>
+                            </Box>
+                        )}
+                        <Box sx={{ mt: 2, display: 'flex', gap: 2 }}>
+                            <Button onClick={() => setAiStep(0)}>Retour</Button>
+                            <Button variant="contained" onClick={handleVerifySchema} disabled={aiLoading}>
+                                {aiLoading ? 'Vérification...' : 'Vérifier Conformité (IA)'}
+                            </Button>
+                        </Box>
+                    </Box>
+                );
+            case 2:
+                return (
+                    <Box sx={{ p: 2 }}>
+                        <Typography variant="h6" gutterBottom>Vérification Normative</Typography>
+                        <Alert severity="warning" sx={{ mb: 2 }}>
+                            L'IA a vérifié les références légales et les échéances.
+                        </Alert>
+                        <List>
+                            {verificationResults.map((res, i) => (
+                                <ListItem key={i}>
+                                    <ListItemIcon>
+                                        {res.status === 'verified' ? <CheckCircle color="success" /> :
+                                            res.status === 'warning' ? <Warning color="warning" /> : <Info color="info" />}
+                                    </ListItemIcon>
+                                    <ListItemText
+                                        primary={res.claim}
+                                        secondary={
+                                            <>
+                                                <Typography component="span" variant="body2" display="block">{res.analysis}</Typography>
+                                                {res.source && <Typography component="span" variant="caption" color="textSecondary">Source: {res.source}</Typography>}
+                                            </>
+                                        }
+                                    />
+                                </ListItem>
+                            ))}
+                        </List>
+                        <Box sx={{ mt: 2, display: 'flex', gap: 2 }}>
+                            <Button onClick={() => setAiStep(1)}>Retour</Button>
+                            <Button variant="contained" onClick={handleDraftRecs} disabled={aiLoading}>
+                                {aiLoading ? 'Rédaction...' : 'Rédiger Recommandations (IA)'}
+                            </Button>
+                        </Box>
+                    </Box>
+                );
+            case 3:
+                return (
+                    <Box sx={{ p: 2 }}>
+                        <Typography variant="h6" gutterBottom>Propositions de Recommandations</Typography>
+                        <Grid container spacing={2}>
+                            {draftedRecommendations.map((rec) => (
+                                <Grid size={12} key={rec.id}>
+                                    <Card variant="outlined">
+                                        <CardContent>
+                                            <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                <Typography variant="h6">{rec.title}</Typography>
+                                                <Chip label={rec.priority} color={rec.priority === 'Haute' ? 'error' : 'default'} size="small" />
+                                            </Box>
+                                            <Typography variant="body2" paragraph sx={{ mt: 1 }}>{rec.description}</Typography>
+                                            <Typography variant="caption" color="textSecondary">Rationale: {rec.rationale}</Typography>
+                                            <Box sx={{ mt: 2, textAlign: 'right' }}>
+                                                <Button size="small" variant="contained" onClick={() => handleApplyRecommendation(rec)}>Utiliser cette recommandation</Button>
+                                            </Box>
+                                        </CardContent>
+                                    </Card>
+                                </Grid>
+                            ))}
+                        </Grid>
+                        <Box sx={{ mt: 2 }}>
+                            <Button onClick={() => setAiStep(2)}>Retour</Button>
+                        </Box>
+                    </Box>
+                );
+            default:
+                return null;
         }
     };
 
@@ -212,14 +471,23 @@ const RecommendationBuilder: React.FC<RecommendationBuilderProps> = ({ onClose }
             case 0:
                 return (
                     <Box sx={{ mt: 2 }}>
-                        <Button
-                            variant="outlined"
-                            startIcon={<Download />}
-                            onClick={() => setImportOpen(true)}
-                            sx={{ mb: 2, width: '100%' }}
-                        >
-                            Importer d'un Procès-Verbal Existant
-                        </Button>
+                        <Box sx={{ mb: 3, display: 'flex', gap: 2, justifyContent: 'center' }}>
+                            <Button
+                                variant="outlined"
+                                startIcon={<FileDownload />}
+                                onClick={() => setImportOpen(true)}
+                            >
+                                Importer d'un PV
+                            </Button>
+                            <Button
+                                variant="outlined"
+                                color="secondary"
+                                startIcon={<Psychology />}
+                                onClick={() => setAiWizardOpen(true)}
+                            >
+                                Assistant IA (Workflow)
+                            </Button>
+                        </Box>
 
                         {formData.sourceResolutionNumber && (
                             <Alert severity="success" sx={{ mb: 2 }}>
@@ -414,12 +682,10 @@ const RecommendationBuilder: React.FC<RecommendationBuilderProps> = ({ onClose }
                                     const tempRec = {
                                         ...formData,
                                         description: `${formData.description || ''}\n\nCONSIDÉRANTS:\n${considerants.map(c => `- ${c}`).join('\n')}`,
-                                        // Pass notes (which contain metadata/comments) as context
                                         notes: formData.notes
                                     };
                                     const result = await generateSpeakingPoints(tempRec);
                                     if (result.success && result.speakingPoints) {
-                                        // Append generated points to existing notes
                                         const currentNotes = formData.notes || '';
                                         const separator = currentNotes ? '\n\n---\n\n' : '';
                                         setFormData(prev => ({ ...prev, notes: `${currentNotes}${separator}${result.speakingPoints}` }));
@@ -476,14 +742,14 @@ const RecommendationBuilder: React.FC<RecommendationBuilderProps> = ({ onClose }
                 )}
             </Box>
 
-            {/* Impot Dialog */}
+            {/* Import Dialog */}
             <Dialog open={importOpen} onClose={() => setImportOpen(false)} maxWidth="md" fullWidth>
                 <DialogTitle>Importer d'un Procès-Verbal</DialogTitle>
                 <DialogContent>
                     {!selectedMeetingId ? (
                         <List>
                             {meetings
-                                .filter(m => m.minutes || (m.agendaItems && m.agendaItems.some(i => i.decision))) // Filter meetings with content
+                                .filter(m => m.minutes || (m.agendaItems && m.agendaItems.some(i => i.decision)))
                                 .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
                                 .map(meeting => (
                                     <ListItemButton key={meeting.id} onClick={() => setSelectedMeetingId(meeting.id)}>
@@ -502,7 +768,7 @@ const RecommendationBuilder: React.FC<RecommendationBuilderProps> = ({ onClose }
                             <Typography variant="subtitle2" gutterBottom>Sélectionnez une résolution :</Typography>
                             <List>
                                 {meetings.find(m => m.id === selectedMeetingId)?.agendaItems
-                                    ?.filter(i => i.decision || i.minuteEntries?.length) // Show mostly resolved items
+                                    ?.filter(i => i.decision || i.minuteEntries?.length)
                                     .map(item => (
                                         <ListItemButton key={item.id} onClick={() => handleImportSelection(meetings.find(m => m.id === selectedMeetingId)!, item)}>
                                             <ListItemText
@@ -518,6 +784,26 @@ const RecommendationBuilder: React.FC<RecommendationBuilderProps> = ({ onClose }
                 </DialogContent>
                 <DialogActions>
                     <Button onClick={() => setImportOpen(false)}>Annuler</Button>
+                </DialogActions>
+            </Dialog>
+
+            {/* AI Wizard Dialog */}
+            <Dialog open={aiWizardOpen} onClose={() => setAiWizardOpen(false)} maxWidth="md" fullWidth>
+                <DialogTitle>Assistant IA - Analyse et Recommandation</DialogTitle>
+                <DialogContent dividers>
+                    <Stepper activeStep={aiStep} sx={{ mb: 3 }}>
+                        <Step><StepLabel>Source</StepLabel></Step>
+                        <Step><StepLabel>Structure</StepLabel></Step>
+                        <Step><StepLabel>Normes</StepLabel></Step>
+                        <Step><StepLabel>Recommandations</StepLabel></Step>
+                    </Stepper>
+
+                    {aiError && <Alert severity="error" sx={{ mb: 2 }}>{aiError}</Alert>}
+
+                    {renderAiStep()}
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={() => setAiWizardOpen(false)}>Fermer</Button>
                 </DialogActions>
             </Dialog>
         </Paper>

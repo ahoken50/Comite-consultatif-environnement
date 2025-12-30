@@ -5,6 +5,7 @@ export interface Member {
     displayName: string;
     email: string;
     photoURL?: string;
+    signatureUrl?: string;
     role: MemberRole;
     phone?: string;
     bio?: string;
@@ -26,6 +27,7 @@ export interface Member {
 export interface MemberUpdateData {
     displayName?: string;
     photoURL?: string;
+    signatureUrl?: string;
     role?: MemberRole;
     phone?: string;
     bio?: string;
