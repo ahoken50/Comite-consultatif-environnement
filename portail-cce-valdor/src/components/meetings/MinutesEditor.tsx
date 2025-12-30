@@ -10,9 +10,10 @@ import {
     Alert,
     Snackbar
 } from '@mui/material';
-import { Save, PictureAsPdf, UploadFile, DeleteSweep } from '@mui/icons-material';
+import { Save, PictureAsPdf, UploadFile, DeleteSweep, Shield } from '@mui/icons-material';
 import type { Meeting, AgendaItem, AudioRecording, MinutesDraft } from '../../types/meeting.types';
 import { generateMinutesPDF } from '../../services/pdfServiceMinutes';
+import { sanitizeMinutes } from '../../services/geminiService';
 import MinutesImportDialog from './MinutesImportDialog';
 import AudioUpload from './AudioUpload';
 import TranscriptionViewer from './TranscriptionViewer';
@@ -162,6 +163,24 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
             agendaItems: localAgendaItems
         };
         generateMinutesPDF(meetingForPdf, globalNotes);
+    };
+
+    const handleSanitize = async () => {
+        if (!window.confirm('Ceci enverra le contenu du PV à l\'IA pour masquer les noms de citoyens et données sensibles. Voulez-vous continuer ?')) return;
+
+        try {
+            const result = await sanitizeMinutes(globalNotes);
+            if (result.success && result.sanitizedContent) {
+                setGlobalNotes(result.sanitizedContent);
+                setHasUnsavedChanges(true);
+                alert('Anonymisation effectuée. Veuillez relire avant d\'enregistrer.');
+            } else {
+                alert('Erreur lors de l\'anonymisation: ' + (result.error || 'Inconnue'));
+            }
+        } catch (error) {
+            console.error('Sanitization failed:', error);
+            alert('Erreur technique lors de l\'appel IA');
+        }
     };
 
     const handleImport = (parsedItems: Partial<AgendaItem>[]) => {
@@ -465,6 +484,15 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
                         onClick={handleGeneratePDF}
                     >
                         Générer PDF
+                    </Button>
+                    <Button
+                        variant="outlined"
+                        color="secondary"
+                        startIcon={<Shield />}
+                        onClick={handleSanitize}
+                        disabled={!globalNotes}
+                    >
+                        Masquer (IA)
                     </Button>
                     <Button
                         variant="contained"

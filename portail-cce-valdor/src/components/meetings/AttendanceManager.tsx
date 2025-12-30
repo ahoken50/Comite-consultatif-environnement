@@ -59,6 +59,36 @@ const AttendanceManager: React.FC<AttendanceManagerProps> = ({ meeting, onUpdate
         <Box>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
                 <Typography variant="h6">Gestion des présences</Typography>
+                <Box sx={{ textAlign: 'right' }}>
+                    <Typography variant="subtitle2" color="text.secondary">
+                        Quorum: {meeting.attendees?.filter(a => a.isPresent).length || 0} / {meeting.quorumRequired || 4}
+                    </Typography>
+                </Box>
+            </Box>
+
+            {/* Quorum Progress Bar */}
+            <Box sx={{ mb: 4, display: 'flex', alignItems: 'center', gap: 2 }}>
+                <Box sx={{ width: '100%', mr: 1 }}>
+                    <Box sx={{
+                        height: 10,
+                        bgcolor: 'grey.200',
+                        borderRadius: 5,
+                        overflow: 'hidden',
+                        position: 'relative'
+                    }}>
+                        <Box sx={{
+                            width: `${Math.min(100, ((meeting.attendees?.filter(a => a.isPresent).length || 0) / (meeting.quorumRequired || 4)) * 100)}%`,
+                            height: '100%',
+                            bgcolor: (meeting.attendees?.filter(a => a.isPresent).length || 0) >= (meeting.quorumRequired || 4) ? 'success.main' : 'warning.main',
+                            transition: 'width 0.5s ease-in-out'
+                        }} />
+                    </Box>
+                </Box>
+                <Chip
+                    label={(meeting.attendees?.filter(a => a.isPresent).length || 0) >= (meeting.quorumRequired || 4) ? "QUORUM ATTEINT" : "QUORUM NON ATTEINT"}
+                    color={(meeting.attendees?.filter(a => a.isPresent).length || 0) >= (meeting.quorumRequired || 4) ? "success" : "warning"}
+                    size="small"
+                />
             </Box>
 
             <TableContainer component={Paper} variant="outlined" sx={{ mb: 4 }}>

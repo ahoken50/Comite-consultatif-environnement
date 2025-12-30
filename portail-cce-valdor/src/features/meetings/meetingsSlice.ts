@@ -44,6 +44,14 @@ export const deleteMeeting = createAsyncThunk(
     }
 );
 
+export const updateMeetingRSVP = createAsyncThunk(
+    'meetings/updateRSVP',
+    async ({ meetingId, userId, status, reason }: { meetingId: string; userId: string; status: 'present' | 'absent' | 'uncertain'; reason?: string }) => {
+        await meetingsAPI.updateRSVP(meetingId, userId, status, reason);
+        return { meetingId, userId, status, reason };
+    }
+);
+
 const meetingsSlice = createSlice({
     name: 'meetings',
     initialState,
@@ -86,6 +94,22 @@ const meetingsSlice = createSlice({
             // Delete
             .addCase(deleteMeeting.fulfilled, (state, action) => {
                 state.items = state.items.filter(m => m.id !== action.payload);
+            })
+            // RSVP
+            .addCase(updateMeetingRSVP.fulfilled, (state, action) => {
+                const index = state.items.findIndex(m => m.id === action.payload.meetingId);
+                if (index !== -1) {
+                    const meeting = state.items[index];
+                    const rsvps = meeting.rsvps || [];
+                    const otherRSVPs = rsvps.filter(r => r.userId !== action.payload.userId);
+                    const newRSVP = {
+                        userId: action.payload.userId,
+                        status: action.payload.status,
+                        reason: action.payload.reason,
+                        updatedAt: new Date().toISOString()
+                    };
+                    state.items[index] = { ...meeting, rsvps: [...otherRSVPs, newRSVP] };
+                }
             });
     },
 });

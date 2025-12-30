@@ -58,7 +58,7 @@ const MemberCard: React.FC<MemberCardProps> = memo(({ member, projectCount = 0, 
         switch (role) {
             case 'coordinator': return 'Coordonnateur';
             case 'member': return 'Membre';
-            case 'elected_official': return 'Élu Responsable';
+            case 'elected_official': return 'Élu(e) municipal';
             case 'observer': return 'Observateur';
             default: return role;
         }

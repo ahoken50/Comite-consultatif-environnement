@@ -43,6 +43,13 @@ service cloud.firestore {
       allow write: if isAuthenticated(); 
     }
 
+    // Council Recommendations collection
+    match /council_recommendations/{recommendationId} {
+      allow read: if isAuthenticated();
+      // Allow any auth user to create/manage for now (dev mode)
+      allow write: if isAuthenticated();
+    }
+
     // Documents collection
     match /documents/{documentId} {
       allow read: if isAuthenticated();

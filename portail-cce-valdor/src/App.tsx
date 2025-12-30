@@ -22,6 +22,8 @@ const MembersPage = lazy(() => import('./pages/Members/MembersPage'));
 const ResolutionsPage = lazy(() => import('./pages/Resolutions/ResolutionsPage'));
 const SettingsPage = lazy(() => import('./pages/Settings/SettingsPage'));
 const MinutesPage = lazy(() => import('./pages/Minutes/MinutesPage'));
+const CouncilTrackingPage = lazy(() => import('./pages/Governance/CouncilTrackingPage'));
+const AnnualReportPage = lazy(() => import('./pages/Reports/AnnualReportPage'));
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -92,6 +94,8 @@ function App() {
               <Route path="documents" element={<DocumentsPage />} />
               <Route path="members" element={<MembersPage />} />
               <Route path="resolutions" element={<ResolutionsPage />} />
+              <Route path="recommendations" element={<CouncilTrackingPage />} />
+              <Route path="reports" element={<AnnualReportPage />} />
               <Route path="settings" element={<SettingsPage />} />
               <Route path="minutes" element={<MinutesPage />} />
             </Route>

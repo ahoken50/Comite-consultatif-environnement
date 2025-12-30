@@ -548,3 +548,65 @@ Si aucun projet actionnable n'est trouvé, retourne: {"projects": []}`;
         return { success: false, error: err.message };
     }
 };
+
+/**
+ * Sanitize minutes for public release (remove personal info)
+ */
+export const sanitizeMinutes = async (
+    minutesContent: string
+): Promise<{ success: boolean; sanitizedContent?: string; error?: string }> => {
+    if (!GEMINI_API_KEY) {
+        return { success: false, error: 'Clé API Gemini non configurée' };
+    }
+
+    try {
+        const prompt = `Tu es un expert en conformité et protection de la vie privée pour une administration municipale.
+TA MISSIONS : Anonymiser le procès-verbal suivant pour qu'il soit conforme à la Loi sur'accès à l'information.
+
+RÈGLES D'ANONYMISATION :
+1. CITOYENS : Remplace les noms complets des citoyens privés par "[NOM MASQUÉ]" ou "un citoyen".
+2. ADRESSES : Remplace les adresses civiques privées complètes par le nom de la rue seulement (ex: "123 rue Principale" -> "rue Principale"). 
+3. DONNÉES SENSIBLES : Masque les numéros de téléphone, courriels personnels, ou détails financiers privés.
+4. ÉLUS ET FONCTIONNAIRES : NE MASQUE PAS les noms des élus municipaux, employés de la ville, ou promoteurs d'entreprises (personnes morales). Ils sont publics.
+5. CONTEXTE : Garde le reste du texte intact pour la compréhension.
+
+TEXTE À TRAITER :
+${minutesContent}
+
+FORMAT DE SORTIE :
+Retourne uniquement le texte traité.`;
+
+        const geminiRequest = {
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: {
+                temperature: 0.1,
+                maxOutputTokens: 8000
+            }
+        };
+
+        const response = await fetch(`${GEMINI_API_URL}?key=${GEMINI_API_KEY}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(geminiRequest)
+        });
+
+        const result: GeminiResponse = await response.json();
+
+        if (result.error) {
+            throw new Error(result.error.message);
+        }
+
+        const sanitizedContent = result.candidates?.[0]?.content?.parts?.[0]?.text;
+
+        if (!sanitizedContent) {
+            throw new Error('Aucun contenu généré');
+        }
+
+        return { success: true, sanitizedContent };
+
+    } catch (error) {
+        const err = error as Error;
+        console.error('Sanitization error:', err);
+        return { success: false, error: err.message };
+    }
+};

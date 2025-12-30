@@ -210,6 +210,13 @@ const MeetingDetailPage: React.FC = () => {
                     Retour aux réunions
                 </Button>
                 <Box sx={{ display: 'flex', gap: 2 }}>
+                    <Button
+                        variant="outlined"
+                        startIcon={<CalendarToday />}
+                        onClick={() => alert("Fonctionnalité de convocation (envoi courriel) à venir")}
+                    >
+                        Convoquer
+                    </Button>
                     <ProjectExtractor meeting={meeting} />
                     <Button
                         variant="contained"

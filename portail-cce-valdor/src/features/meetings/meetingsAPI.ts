@@ -7,7 +7,9 @@ import {
     doc,
     query,
     orderBy,
-    Timestamp
+    where,
+    Timestamp,
+    getDoc
 } from 'firebase/firestore';
 import { db } from '../../services/firebase';
 import type { Meeting } from '../../types/meeting.types';
@@ -106,5 +108,48 @@ export const meetingsAPI = {
 
     delete: async (id: string): Promise<void> => {
         await deleteDoc(doc(db, COLLECTION_NAME, id));
+    },
+
+    // Extended Functionality for Module A (Cockpit)
+
+    updateRSVP: async (meetingId: string, userId: string, status: 'present' | 'absent' | 'uncertain', reason?: string): Promise<void> => {
+        try {
+            const meetingRef = doc(db, COLLECTION_NAME, meetingId);
+            const meetingSnap = await getDoc(meetingRef);
+
+            if (!meetingSnap.exists()) {
+                throw new Error('Meeting not found');
+            }
+
+            const meetingData = meetingSnap.data();
+            const currentRSVPs = meetingData.rsvps || [];
+
+            // Remove existing RSVP from this user if exists
+            const otherRSVPs = currentRSVPs.filter((r: any) => r.userId !== userId);
+
+            // Add new RSVP
+            const newRSVP = {
+                userId,
+                status,
+                reason: reason || '',
+                updatedAt: new Date().toISOString()
+            };
+
+            await updateDoc(meetingRef, {
+                rsvps: [...otherRSVPs, newRSVP],
+                dateUpdated: Timestamp.now()
+            });
+        } catch (error) {
+            console.error('Error updating RSVP:', error);
+            throw error;
+        }
+    },
+
+    updateStatus: async (id: string, status: Meeting['status']): Promise<void> => {
+        await meetingsAPI.update(id, { status });
+    },
+
+    toggleConfidentiality: async (id: string, isConfidential: boolean): Promise<void> => {
+        await meetingsAPI.update(id, { isConfidential });
     }
 };

@@ -85,13 +85,24 @@ export interface Meeting {
     location: string;
     type: MeetingType;
     status: MeetingStatus;
-    attendees: Attendee[];
+
+    // Privacy & Access
+    isConfidential?: boolean; // Huis clos vs Public
+
+    attendees: Attendee[]; // Actual attendance (during meeting)
     agendaItems: AgendaItem[];
+
+    // RSVP & Quorum
+    rsvps?: MeetingRSVP[];
+    quorumRequired?: number;
+    projectedQuorum?: number; // Calculated from RSVPs
+
     minutes: string; // HTML content for PV
     minutesFileUrl?: string; // URL of the uploaded signed PV
     minutesFileName?: string; // Name of the uploaded file
     minutesFileStoragePath?: string; // Storage path of the uploaded file
     minutesFileDocumentId?: string; // ID of the document in Documents collection
+
     // AI Transcription fields
     audioRecording?: AudioRecording;
     minutesDraft?: MinutesDraft;
@@ -110,3 +121,14 @@ export interface ApprovalSignature {
     signedByName: string;
     signedAt: string; // ISO string
 }
+
+// RSVP and Quorum types
+export type RSVPStatus = 'present' | 'absent' | 'uncertain' | 'pending';
+
+export interface MeetingRSVP {
+    userId: string;
+    status: RSVPStatus;
+    reason?: string; // If absent
+    updatedAt: string;
+}
+

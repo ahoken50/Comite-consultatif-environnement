@@ -1,0 +1,32 @@
+export type RecommendationStatus = 'pending' | 'accepted' | 'rejected' | 'modified' | 'deferred';
+
+export interface CouncilRecommendation {
+    id: string;
+    projectId?: string; // Optional link to a project
+    projectName?: string; // Denormalized for easier display
+    meetingId?: string; // Optional link to a CCE meeting
+    meetingDate?: string; // Date of the CCE meeting
+    description: string;
+    dateSent: string; // ISO Date string
+    councilMeetingDate?: string; // ISO Date string
+    councilResolutionNumber?: string;
+    status: RecommendationStatus;
+    notes?: string;
+    createdBy: string;
+    createdAt: string;
+    updatedAt: string;
+
+    // Advisory Content (Aide à la Décision)
+    impactAnalysis?: {
+        financial?: string; // Estimated cost or impact
+        social?: 'low' | 'medium' | 'high';
+        implementationEffort?: 'low' | 'medium' | 'high';
+        environmentalImpact?: 'positive' | 'neutral' | 'negative';
+    };
+
+    strategicLinks?: {
+        policyId?: string; // Link to a strategic policy
+        policyName?: string; // e.g. "Politique de l'Arbre 2023"
+        regulationArticle?: string; // e.g. "Article 4.3"
+    }[];
+}

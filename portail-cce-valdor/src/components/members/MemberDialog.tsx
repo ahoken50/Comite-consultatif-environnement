@@ -9,7 +9,9 @@ import {
     MenuItem,
     Grid,
     FormControlLabel,
-    Switch
+    Switch,
+    Divider,
+    Typography
 } from '@mui/material';
 import type { Member, MemberRole } from '../../types/member.types';
 
@@ -126,6 +128,7 @@ const MemberDialog: React.FC<MemberDialogProps> = ({ open, member, onClose, onSa
                             fullWidth
                         >
                             <MenuItem value="member">Membre</MenuItem>
+                            <MenuItem value="elected_official">Élu(e) municipal</MenuItem>
                             <MenuItem value="coordinator">Coordonnateur</MenuItem>
                             <MenuItem value="observer">Observateur</MenuItem>
                         </TextField>
@@ -160,6 +163,57 @@ const MemberDialog: React.FC<MemberDialogProps> = ({ open, member, onClose, onSa
                                 />
                             }
                             label="Membre actif"
+                        />
+                    </Grid>
+
+                    <Grid size={12}>
+                        <Divider sx={{ my: 1 }} >
+                            <Typography variant="caption" color="textSecondary">MANDAT & STATUT</Typography>
+                        </Divider>
+                    </Grid>
+
+                    <Grid size={{ xs: 12, sm: 6 }}>
+                        <TextField
+                            name="mandateStart"
+                            label="Début du mandat"
+                            type="date"
+                            value={formData.mandateStart || ''}
+                            onChange={handleChange}
+                            fullWidth
+                            InputLabelProps={{ shrink: true }}
+                        />
+                    </Grid>
+                    <Grid size={{ xs: 12, sm: 6 }}>
+                        <TextField
+                            name="mandateEnd"
+                            label="Fin du mandat"
+                            type="date"
+                            value={formData.mandateEnd || ''}
+                            onChange={handleChange}
+                            fullWidth
+                            InputLabelProps={{ shrink: true }}
+                        />
+                    </Grid>
+                    <Grid size={{ xs: 12, sm: 12 }}>
+                        <TextField
+                            name="appointedByResolution"
+                            label="Résolution de nomination (ex: 2024-123)"
+                            value={formData.appointedByResolution || ''}
+                            onChange={handleChange}
+                            fullWidth
+                        />
+                    </Grid>
+
+                    <Grid size={12}>
+                        <FormControlLabel
+                            control={
+                                <Switch
+                                    checked={!!formData.isSubstitute}
+                                    onChange={(e) => setFormData(prev => ({ ...prev, isSubstitute: e.target.checked }))}
+                                    color="default"
+                                />
+                            }
+                            label="Ce membre est un suppléant"
                         />
                     </Grid>
                 </Grid>
