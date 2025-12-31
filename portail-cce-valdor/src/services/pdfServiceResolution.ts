@@ -92,10 +92,16 @@ const formatResolutionHTML = (text: string): string => {
  * Generate PDF for a Single Resolution Extract
  * source: Can be an AgendaItem (from Minutes) or a CouncilRecommendation object
  */
+/**
+ * Generate PDF for a Single Resolution Extract
+ * source: Can be an AgendaItem (from Minutes) or a CouncilRecommendation object
+ * mode: 'official' (legal extract) or 'campaign' (presentation with arguments)
+ */
 export const generateResolutionPDF = async (
     meeting: Meeting,
     itemOrRec: AgendaItem | CouncilRecommendation,
-    type: 'agendaItem' | 'recommendation'
+    type: 'agendaItem' | 'recommendation',
+    mode: 'official' | 'campaign' = 'official'
 ) => {
 
     // Extract Data
@@ -110,6 +116,7 @@ export const generateResolutionPDF = async (
     let content = '';
     let proposer = '';
     let seconder = '';
+    let notes = '';
 
     if (type === 'agendaItem') {
         const item = itemOrRec as AgendaItem;
@@ -126,6 +133,7 @@ export const generateResolutionPDF = async (
         resolutionNumber = rec.councilResolutionNumber || rec.sourceResolutionNumber || 'PROJET';
         title = rec.projectName || 'Recommandation';
         content = rec.description; // In Recommendation builder, description contains the full text
+        notes = rec.notes || '';
     }
 
     // Signatures (President & Secretary only for Extracts)
@@ -191,6 +199,29 @@ export const generateResolutionPDF = async (
             font-style: italic;
             margin-bottom: 30px;
         }
+        
+        /* Campaign Mode Styles */
+        .campaign-box {
+            background-color: #f0f4f4;
+            border: 1px solid #d0e0e0;
+            padding: 20px;
+            margin-bottom: 30px;
+            border-radius: 4px;
+        }
+        .campaign-title {
+            font-family: 'Montserrat', sans-serif;
+            font-size: 16px;
+            font-weight: 700;
+            color: var(--primary-color);
+            margin-bottom: 10px;
+            text-transform: uppercase;
+        }
+        .campaign-content {
+            font-size: 14px;
+            line-height: 1.5;
+            white-space: pre-wrap;
+        }
+
         .resolution-box {
             background-color: #fdfcf8;
             border: 1px solid #e0e0e0;
@@ -276,12 +307,19 @@ export const generateResolutionPDF = async (
 <body>
     <div class="header">
         <img src="/logo-valdor.png" alt="Logo" class="logo" onerror="this.style.display='none'">
-        <h1>Extrait du Procès-Verbal</h1>
+        <h1>${mode === 'official' ? 'Extrait du Procès-Verbal' : 'Présentation de Projet'}</h1>
         <h2>Comité Consultatif en Environnement</h2>
         <div class="meta-info">
             Séance du ${dayName} ${dayOfMonth} ${monthName} ${year}
         </div>
     </div>
+
+    ${mode === 'campaign' && notes ? `
+    <div class="campaign-box">
+        <div class="campaign-title">Argumentaire / Contexte</div>
+        <div class="campaign-content">${formattedNotes(notes)}</div>
+    </div>
+    ` : ''}
 
     <div class="resolution-box">
         <div class="res-header">
@@ -314,9 +352,11 @@ export const generateResolutionPDF = async (
         </div>
     </div>
 
+    ${mode === 'official' ? `
     <div class="cert">
         Copie certifiée conforme tirée du livre des délibérations du Comité Consultatif en Environnement de la Ville de Val-d'Or.
     </div>
+    ` : ''}
 
 </body>
 </html>`;
@@ -334,4 +374,8 @@ export const generateResolutionPDF = async (
     // Wait for resources
     await new Promise(resolve => setTimeout(resolve, 1000));
     printWindow.print();
+};
+
+const formattedNotes = (text: string) => {
+    return text.replace(/\n/g, '<br>');
 };

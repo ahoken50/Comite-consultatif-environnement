@@ -15,9 +15,13 @@ import {
     Chip,
     Divider,
     Grid,
-    CircularProgress
+    CircularProgress,
+    Menu,
+    MenuItem,
+    ListItemIcon,
+    ListItemText
 } from '@mui/material';
-import { AttachmentOutlined, CloudUpload } from '@mui/icons-material';
+import { AttachmentOutlined, CloudUpload, Print, Gavel, Campaign } from '@mui/icons-material';
 import { useDispatch } from 'react-redux';
 import { updateRecommendation } from '../../features/governance/governanceSlice';
 import { documentsAPI } from '../../features/documents/documentsAPI';
@@ -90,6 +94,45 @@ const RecommendationDetailsDialog: React.FC<RecommendationDetailsDialogProps> = 
 
     if (!recommendation) return null;
 
+    const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
+    const openMenu = Boolean(anchorEl);
+
+    const handlePrintClick = (event: React.MouseEvent<HTMLButtonElement>) => {
+        setAnchorEl(event.currentTarget);
+    };
+
+    const handlePrintClose = () => {
+        setAnchorEl(null);
+    };
+
+    const handleGeneratePdf = async (mode: 'official' | 'campaign') => {
+        handlePrintClose();
+        if (recommendation) {
+            // Fetch meeting to get details for PDF
+            let meetingForPdf = null;
+            if (recommendation.meetingId) {
+                try {
+                    const { meetingsAPI } = await import('../../features/meetings/meetingsAPI');
+                    meetingForPdf = await meetingsAPI.fetchById(recommendation.meetingId);
+                } catch (e) {
+                    console.error("Failed to fetch meeting for PDF", e);
+                }
+            }
+
+            // Fallback if no meeting found
+            if (!meetingForPdf) {
+                meetingForPdf = {
+                    id: 'temp',
+                    date: recommendation.meetingDate || new Date().toISOString(),
+                    attendees: []
+                } as any;
+            }
+
+            const { generateResolutionPDF } = await import('../../services/pdfServiceResolution');
+            await generateResolutionPDF(meetingForPdf as any, recommendation, 'recommendation', mode);
+        }
+    };
+
     return (
         <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
             <DialogTitle>
@@ -109,13 +152,13 @@ const RecommendationDetailsDialog: React.FC<RecommendationDetailsDialogProps> = 
                     <Typography variant="body1" paragraph>{recommendation.description}</Typography>
 
                     <Grid container spacing={2} sx={{ mb: 2 }}>
-                        <Grid size={{ xs: 6 }}>
+                        <Grid item xs={6}>
                             <Typography variant="caption" color="textSecondary">Date CCE</Typography>
                             <Typography variant="body2">
                                 {recommendation.meetingDate ? new Date(recommendation.meetingDate).toLocaleDateString() : 'N/A'}
                             </Typography>
                         </Grid>
-                        <Grid size={{ xs: 6 }}>
+                        <Grid item xs={6}>
                             <Typography variant="caption" color="textSecondary">Date d'envoi</Typography>
                             <Typography variant="body2">{recommendation.dateSent}</Typography>
                         </Grid>
@@ -140,7 +183,7 @@ const RecommendationDetailsDialog: React.FC<RecommendationDetailsDialogProps> = 
                 {!editMode ? (
                     <Box>
                         <Grid container spacing={2}>
-                            <Grid size={{ xs: 12, sm: 6 }}>
+                            <Grid item xs={12} sm={6}>
                                 <Typography variant="subtitle2">Statut Actuel</Typography>
                                 <Chip
                                     label={getStatusLabel(recommendation.status)}
@@ -148,11 +191,11 @@ const RecommendationDetailsDialog: React.FC<RecommendationDetailsDialogProps> = 
                                     sx={{ mt: 0.5 }}
                                 />
                             </Grid>
-                            <Grid size={{ xs: 12, sm: 6 }}>
+                            <Grid item xs={12} sm={6}>
                                 <Typography variant="subtitle2">Résolution Conseil</Typography>
                                 <Typography variant="body2">{recommendation.councilResolutionNumber || '-'}</Typography>
                             </Grid>
-                            <Grid size={{ xs: 12 }}>
+                            <Grid item xs={12}>
                                 <Typography variant="subtitle2">Retour du Caucus (PDF / Notes)</Typography>
                                 <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', bgcolor: 'grey.50', p: 1, borderRadius: 1, mb: 1 }}>
                                     {recommendation.notes || 'Aucune note.'}
@@ -237,35 +280,34 @@ const RecommendationDetailsDialog: React.FC<RecommendationDetailsDialogProps> = 
             </DialogContent>
             <DialogActions>
                 <Button
-                    onClick={async () => {
-                        if (recommendation) {
-                            // Fetch meeting to get details for PDF
-                            let meetingForPdf = null;
-                            if (recommendation.meetingId) {
-                                try {
-                                    const { meetingsAPI } = await import('../../features/meetings/meetingsAPI');
-                                    meetingForPdf = await meetingsAPI.fetchById(recommendation.meetingId);
-                                } catch (e) {
-                                    console.error("Failed to fetch meeting for PDF", e);
-                                }
-                            }
-
-                            // Fallback if no meeting found
-                            if (!meetingForPdf) {
-                                meetingForPdf = {
-                                    id: 'temp',
-                                    date: recommendation.meetingDate || new Date().toISOString(),
-                                    attendees: []
-                                } as any;
-                            }
-
-                            const { generateResolutionPDF } = await import('../../services/pdfServiceResolution');
-                            await generateResolutionPDF(meetingForPdf as any, recommendation, 'recommendation');
-                        }
-                    }}
+                    id="print-button"
+                    aria-controls={openMenu ? 'print-menu' : undefined}
+                    aria-haspopup="true"
+                    aria-expanded={openMenu ? 'true' : undefined}
+                    onClick={handlePrintClick}
+                    startIcon={<Print />}
                 >
                     Imprimer / PDF
                 </Button>
+                <Menu
+                    id="print-menu"
+                    anchorEl={anchorEl}
+                    open={openMenu}
+                    onClose={handlePrintClose}
+                    MenuListProps={{
+                        'aria-labelledby': 'print-button',
+                    }}
+                >
+                    <MenuItem onClick={() => handleGeneratePdf('official')}>
+                        <ListItemIcon><Gavel fontSize="small" /></ListItemIcon>
+                        <ListItemText>Extrait Officiel (Strict)</ListItemText>
+                    </MenuItem>
+                    <MenuItem onClick={() => handleGeneratePdf('campaign')}>
+                        <ListItemIcon><Campaign fontSize="small" /></ListItemIcon>
+                        <ListItemText>Présentation Projet (Argumentaire)</ListItemText>
+                    </MenuItem>
+                </Menu>
+
                 {!editMode ? (
                     <>
                         <Button onClick={onClose}>Fermer</Button>
