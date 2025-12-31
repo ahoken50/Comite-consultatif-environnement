@@ -22,11 +22,16 @@ import type { AppDispatch } from '../../store/store';
 import { fetchRecommendations, selectRecommendations } from '../../features/governance/governanceSlice';
 import type { CouncilRecommendation } from '../../types/recommendation.types';
 import RecommendationBuilder from '../../components/governance/RecommendationBuilder';
+import RecommendationDetailsDialog from '../../components/governance/RecommendationDetailsDialog';
 
 const CouncilTrackingPage: React.FC = () => {
     const dispatch = useDispatch<AppDispatch>();
     const recommendations = useSelector(selectRecommendations);
     const [isBuilderOpen, setIsBuilderOpen] = useState(false);
+
+    // Details Dialog State
+    const [selectedRec, setSelectedRec] = useState<CouncilRecommendation | null>(null);
+    const [isDetailsOpen, setIsDetailsOpen] = useState(false);
 
     useEffect(() => {
         dispatch(fetchRecommendations());
@@ -40,6 +45,11 @@ const CouncilTrackingPage: React.FC = () => {
             case 'deferred': return 'info';
             default: return 'default';
         }
+    };
+
+    const handleOpenDetails = (rec: CouncilRecommendation) => {
+        setSelectedRec(rec);
+        setIsDetailsOpen(true);
     };
 
     // Calculate stats
@@ -95,6 +105,7 @@ const CouncilTrackingPage: React.FC = () => {
                     <TableHead>
                         <TableRow>
                             <TableCell>Date CCE</TableCell>
+                            <TableCell>Réf. Extrait</TableCell>
                             <TableCell>Description</TableCell>
                             <TableCell>Projet Lié</TableCell>
                             <TableCell>Envoyé le</TableCell>
@@ -105,14 +116,21 @@ const CouncilTrackingPage: React.FC = () => {
                     <TableBody>
                         {recommendations.length === 0 ? (
                             <TableRow>
-                                <TableCell colSpan={6} align="center">
+                                <TableCell colSpan={7} align="center">
                                     Aucune recommandation trouvée.
                                 </TableCell>
                             </TableRow>
                         ) : (
                             recommendations.map((rec: CouncilRecommendation) => (
                                 <TableRow key={rec.id}>
-                                    <TableCell>{rec.meetingDate || '-'}</TableCell>
+                                    <TableCell>
+                                        {rec.meetingDate ? new Date(rec.meetingDate).toLocaleDateString() : '-'}
+                                    </TableCell>
+                                    <TableCell>
+                                        {rec.sourceResolutionNumber ? (
+                                            <Chip label={rec.sourceResolutionNumber} size="small" variant="outlined" />
+                                        ) : '-'}
+                                    </TableCell>
                                     <TableCell>
                                         <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
                                             {rec.description.length > 60 ? rec.description.substring(0, 60) + '...' : rec.description}
@@ -128,7 +146,7 @@ const CouncilTrackingPage: React.FC = () => {
                                         />
                                     </TableCell>
                                     <TableCell align="right">
-                                        <Button size="small">Détails</Button>
+                                        <Button size="small" onClick={() => handleOpenDetails(rec)}>Détails</Button>
                                     </TableCell>
                                 </TableRow>
                             ))
@@ -149,6 +167,11 @@ const CouncilTrackingPage: React.FC = () => {
                 }} />
             </Dialog>
 
+            <RecommendationDetailsDialog
+                open={isDetailsOpen}
+                onClose={() => setIsDetailsOpen(false)}
+                recommendation={selectedRec}
+            />
         </Box>
     );
 };

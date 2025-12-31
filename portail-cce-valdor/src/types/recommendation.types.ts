@@ -14,6 +14,11 @@ export interface CouncilRecommendation {
     sourceResolutionContent?: string; // from CCE minutes
     status: RecommendationStatus;
     notes?: string;
+    councilFeedbackAttachment?: {
+        url: string;
+        name: string;
+        uploadedAt: string;
+    };
     createdBy: string;
     createdAt: string;
     updatedAt: string;
