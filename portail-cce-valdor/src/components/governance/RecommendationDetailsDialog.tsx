@@ -236,6 +236,36 @@ const RecommendationDetailsDialog: React.FC<RecommendationDetailsDialogProps> = 
                 )}
             </DialogContent>
             <DialogActions>
+                <Button
+                    onClick={async () => {
+                        if (recommendation) {
+                            // Fetch meeting to get details for PDF
+                            let meetingForPdf = null;
+                            if (recommendation.meetingId) {
+                                try {
+                                    const { meetingsAPI } = await import('../../features/meetings/meetingsAPI');
+                                    meetingForPdf = await meetingsAPI.fetchById(recommendation.meetingId);
+                                } catch (e) {
+                                    console.error("Failed to fetch meeting for PDF", e);
+                                }
+                            }
+
+                            // Fallback if no meeting found
+                            if (!meetingForPdf) {
+                                meetingForPdf = {
+                                    id: 'temp',
+                                    date: recommendation.meetingDate || new Date().toISOString(),
+                                    attendees: []
+                                } as any;
+                            }
+
+                            const { generateResolutionPDF } = await import('../../services/pdfServiceResolution');
+                            await generateResolutionPDF(meetingForPdf as any, recommendation, 'recommendation');
+                        }
+                    }}
+                >
+                    Imprimer / PDF
+                </Button>
                 {!editMode ? (
                     <>
                         <Button onClick={onClose}>Fermer</Button>

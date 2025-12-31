@@ -68,6 +68,24 @@ export const meetingsAPI = {
         } as Meeting));
     },
 
+    fetchById: async (id: string): Promise<Meeting | null> => {
+        const docRef = doc(db, COLLECTION_NAME, id);
+        const docSnap = await getDoc(docRef);
+
+        if (!docSnap.exists()) {
+            return null;
+        }
+
+        const data = docSnap.data();
+        return {
+            id: docSnap.id,
+            ...data,
+            date: (data.date?.toDate ? data.date.toDate().toISOString() : data.date) || new Date().toISOString(),
+            dateCreated: (data.dateCreated?.toDate ? data.dateCreated.toDate().toISOString() : data.dateCreated),
+            dateUpdated: (data.dateUpdated?.toDate ? data.dateUpdated.toDate().toISOString() : data.dateUpdated),
+        } as Meeting;
+    },
+
     create: async (meeting: Omit<Meeting, 'id'>): Promise<Meeting> => {
         // Sanitize before creating
         const sanitizedMeeting = sanitizeForFirestore(meeting);
