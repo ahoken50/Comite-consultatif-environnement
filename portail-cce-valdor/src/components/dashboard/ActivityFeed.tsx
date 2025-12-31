@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useCallback, memo } from 'react';
 import { Card, CardHeader, List, ListItem, ListItemAvatar, ListItemText, Avatar, Typography, Box, ListItemButton } from '@mui/material';
 import {
     Add,
@@ -49,10 +49,57 @@ const getActivityIcon = (type: ActivityType): { icon: React.ReactElement; color:
     }
 };
 
-const ActivityFeed: React.FC<ActivityFeedProps> = ({ activities }) => {
+interface ActivityItemProps {
+    activity: ActivityLog;
+    isLast: boolean;
+    onActivityClick: (activity: ActivityLog) => void;
+}
+
+// Optimization: Memoize list items to prevent re-renders when other items change
+const ActivityItem = memo<ActivityItemProps>(({ activity, isLast, onActivityClick }) => {
+    const { icon, color } = getActivityIcon(activity.type);
+    const timeAgo = formatDistanceToNow(new Date(activity.timestamp), {
+        addSuffix: true,
+        locale: fr
+    });
+
+    return (
+        <ListItem
+            divider={!isLast}
+            disablePadding
+        >
+            <ListItemButton onClick={() => onActivityClick(activity)}>
+                <ListItemAvatar>
+                    <Avatar sx={{ bgcolor: 'transparent', color }}>
+                        {icon}
+                    </Avatar>
+                </ListItemAvatar>
+                <ListItemText
+                    primary={
+                        <Typography variant="body2">
+                            <Box component="span" sx={{ fontWeight: 600 }}>
+                                {activity.userName}
+                            </Box>{' '}
+                            {ActivityTypeLabels[activity.type]}{' '}
+                            <Box component="span" sx={{ fontWeight: 600, color: 'primary.main' }}>
+                                {activity.targetName}
+                            </Box>
+                        </Typography>
+                    }
+                    secondary={timeAgo}
+                />
+            </ListItemButton>
+        </ListItem>
+    );
+});
+ActivityItem.displayName = 'ActivityItem';
+
+// Optimization: Memoize the entire feed component
+const ActivityFeed: React.FC<ActivityFeedProps> = memo(({ activities }) => {
     const navigate = useNavigate();
 
-    const handleActivityClick = (activity: ActivityLog) => {
+    // Optimization: Stable handler for item clicks
+    const handleActivityClick = useCallback((activity: ActivityLog) => {
         switch (activity.targetType) {
             case 'project':
                 navigate(`/projects/${activity.targetId}`);
@@ -67,7 +114,7 @@ const ActivityFeed: React.FC<ActivityFeedProps> = ({ activities }) => {
                 navigate('/members');
                 break;
         }
-    };
+    }, [navigate]);
 
     return (
         <Card sx={{ height: '100%' }}>
@@ -89,47 +136,19 @@ const ActivityFeed: React.FC<ActivityFeedProps> = ({ activities }) => {
                         />
                     </ListItem>
                 ) : (
-                    activities.map((activity, index) => {
-                        const { icon, color } = getActivityIcon(activity.type);
-                        const timeAgo = formatDistanceToNow(new Date(activity.timestamp), {
-                            addSuffix: true,
-                            locale: fr
-                        });
-
-                        return (
-                            <ListItem
-                                key={activity.id}
-                                divider={index < activities.length - 1}
-                                disablePadding
-                            >
-                                <ListItemButton onClick={() => handleActivityClick(activity)}>
-                                    <ListItemAvatar>
-                                        <Avatar sx={{ bgcolor: 'transparent', color }}>
-                                            {icon}
-                                        </Avatar>
-                                    </ListItemAvatar>
-                                    <ListItemText
-                                        primary={
-                                            <Typography variant="body2">
-                                                <Box component="span" sx={{ fontWeight: 600 }}>
-                                                    {activity.userName}
-                                                </Box>{' '}
-                                                {ActivityTypeLabels[activity.type]}{' '}
-                                                <Box component="span" sx={{ fontWeight: 600, color: 'primary.main' }}>
-                                                    {activity.targetName}
-                                                </Box>
-                                            </Typography>
-                                        }
-                                        secondary={timeAgo}
-                                    />
-                                </ListItemButton>
-                            </ListItem>
-                        );
-                    })
+                    activities.map((activity, index) => (
+                        <ActivityItem
+                            key={activity.id}
+                            activity={activity}
+                            isLast={index === activities.length - 1}
+                            onActivityClick={handleActivityClick}
+                        />
+                    ))
                 )}
             </List>
         </Card>
     );
-};
+});
+ActivityFeed.displayName = 'ActivityFeed';
 
 export default ActivityFeed;
