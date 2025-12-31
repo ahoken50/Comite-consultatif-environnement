@@ -133,6 +133,13 @@ export const generateResolutionPDF = async (
         resolutionNumber = rec.councilResolutionNumber || rec.sourceResolutionNumber || 'PROJET';
         title = rec.projectName || 'Recommandation';
         content = rec.description; // In Recommendation builder, description contains the full text
+
+        // Remove the appended list of considerants (redundant in PDF as they are formatted in main text)
+        const parts = content.split(/\n\s*CONSIDÉRANTS\s*[:;]?\s*\n/i);
+        if (parts.length > 0) {
+            content = parts[0].trim();
+        }
+
         notes = rec.notes || '';
     }
 
