@@ -15,12 +15,11 @@ import {
     Chip,
     Divider,
     Grid,
-    IconButton,
     CircularProgress
 } from '@mui/material';
-import { AttachmentOutlined, CloudUpload, Delete } from '@mui/icons-material';
+import { AttachmentOutlined, CloudUpload } from '@mui/icons-material';
 import { useDispatch } from 'react-redux';
-import { updateRecommendationStatus } from '../../features/governance/governanceSlice';
+import { updateRecommendation } from '../../features/governance/governanceSlice';
 import { documentsAPI } from '../../features/documents/documentsAPI';
 import type { AppDispatch } from '../../store/store';
 import type { CouncilRecommendation } from '../../types/recommendation.types';
@@ -57,13 +56,15 @@ const RecommendationDetailsDialog: React.FC<RecommendationDetailsDialogProps> = 
     const handleSave = async () => {
         if (!recommendation) return;
 
-        await dispatch(updateRecommendationStatus({
+        await dispatch(updateRecommendation({
             id: recommendation.id,
-            status: status as any,
-            councilResolutionNumber: councilResolution,
-            notes: feedback,
-            councilFeedbackAttachment: attachment
-        }) as any); // Use as any to bypass thunk type mismatch temporary if needed
+            updates: {
+                status: status as any,
+                councilResolutionNumber: councilResolution,
+                notes: feedback,
+                councilFeedbackAttachment: attachment
+            }
+        }));
         setEditMode(false);
         onClose();
     };
@@ -108,13 +109,13 @@ const RecommendationDetailsDialog: React.FC<RecommendationDetailsDialogProps> = 
                     <Typography variant="body1" paragraph>{recommendation.description}</Typography>
 
                     <Grid container spacing={2} sx={{ mb: 2 }}>
-                        <Grid item xs={6}>
+                        <Grid size={{ xs: 6 }}>
                             <Typography variant="caption" color="textSecondary">Date CCE</Typography>
                             <Typography variant="body2">
                                 {recommendation.meetingDate ? new Date(recommendation.meetingDate).toLocaleDateString() : 'N/A'}
                             </Typography>
                         </Grid>
-                        <Grid item xs={6}>
+                        <Grid size={{ xs: 6 }}>
                             <Typography variant="caption" color="textSecondary">Date d'envoi</Typography>
                             <Typography variant="body2">{recommendation.dateSent}</Typography>
                         </Grid>
@@ -139,7 +140,7 @@ const RecommendationDetailsDialog: React.FC<RecommendationDetailsDialogProps> = 
                 {!editMode ? (
                     <Box>
                         <Grid container spacing={2}>
-                            <Grid item xs={12} sm={6}>
+                            <Grid size={{ xs: 12, sm: 6 }}>
                                 <Typography variant="subtitle2">Statut Actuel</Typography>
                                 <Chip
                                     label={getStatusLabel(recommendation.status)}
@@ -147,11 +148,11 @@ const RecommendationDetailsDialog: React.FC<RecommendationDetailsDialogProps> = 
                                     sx={{ mt: 0.5 }}
                                 />
                             </Grid>
-                            <Grid item xs={12} sm={6}>
+                            <Grid size={{ xs: 12, sm: 6 }}>
                                 <Typography variant="subtitle2">Résolution Conseil</Typography>
                                 <Typography variant="body2">{recommendation.councilResolutionNumber || '-'}</Typography>
                             </Grid>
-                            <Grid item xs={12}>
+                            <Grid size={{ xs: 12 }}>
                                 <Typography variant="subtitle2">Retour du Caucus (PDF / Notes)</Typography>
                                 <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', bgcolor: 'grey.50', p: 1, borderRadius: 1, mb: 1 }}>
                                     {recommendation.notes || 'Aucune note.'}
