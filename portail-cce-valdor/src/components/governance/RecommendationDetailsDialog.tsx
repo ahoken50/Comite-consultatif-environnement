@@ -40,21 +40,11 @@ const RecommendationDetailsDialog: React.FC<RecommendationDetailsDialogProps> = 
 }) => {
     const dispatch = useDispatch<AppDispatch>();
     const [editMode, setEditMode] = useState(false);
-    const [status, setStatus] = useState<string>('');
-    const [councilResolution, setCouncilResolution] = useState('');
-    const [feedback, setFeedback] = useState('');
-    const [attachment, setAttachment] = useState<{ url: string, name: string, uploadedAt: string } | undefined>(undefined);
+    const [status, setStatus] = useState<string>(recommendation?.status || '');
+    const [councilResolution, setCouncilResolution] = useState(recommendation?.councilResolutionNumber || '');
+    const [feedback, setFeedback] = useState(recommendation?.notes || '');
+    const [attachment, setAttachment] = useState<{ url: string, name: string, uploadedAt: string } | undefined>(recommendation?.councilFeedbackAttachment);
     const [isUploading, setIsUploading] = useState(false);
-
-    // Reset state when opening
-    React.useEffect(() => {
-        if (recommendation) {
-            setStatus(recommendation.status);
-            setCouncilResolution(recommendation.councilResolutionNumber || '');
-            setFeedback(recommendation.notes || '');
-            setAttachment(recommendation.councilFeedbackAttachment);
-        }
-    }, [recommendation]);
 
     const handleSave = async () => {
         if (!recommendation) return;

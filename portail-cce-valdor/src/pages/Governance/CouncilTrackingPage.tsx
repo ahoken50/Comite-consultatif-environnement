@@ -168,6 +168,7 @@ const CouncilTrackingPage: React.FC = () => {
             </Dialog>
 
             <RecommendationDetailsDialog
+                key={selectedRec?.id || 'dialog'}
                 open={isDetailsOpen}
                 onClose={() => setIsDetailsOpen(false)}
                 recommendation={selectedRec}
