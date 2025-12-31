@@ -17,7 +17,6 @@ import {
     Grid,
     CircularProgress,
     Menu,
-    MenuItem,
     ListItemIcon,
     ListItemText
 } from '@mui/material';
@@ -152,13 +151,13 @@ const RecommendationDetailsDialog: React.FC<RecommendationDetailsDialogProps> = 
                     <Typography variant="body1" paragraph>{recommendation.description}</Typography>
 
                     <Grid container spacing={2} sx={{ mb: 2 }}>
-                        <Grid item xs={6}>
+                        <Grid size={{ xs: 6 }}>
                             <Typography variant="caption" color="textSecondary">Date CCE</Typography>
                             <Typography variant="body2">
                                 {recommendation.meetingDate ? new Date(recommendation.meetingDate).toLocaleDateString() : 'N/A'}
                             </Typography>
                         </Grid>
-                        <Grid item xs={6}>
+                        <Grid size={{ xs: 6 }}>
                             <Typography variant="caption" color="textSecondary">Date d'envoi</Typography>
                             <Typography variant="body2">{recommendation.dateSent}</Typography>
                         </Grid>
@@ -183,7 +182,7 @@ const RecommendationDetailsDialog: React.FC<RecommendationDetailsDialogProps> = 
                 {!editMode ? (
                     <Box>
                         <Grid container spacing={2}>
-                            <Grid item xs={12} sm={6}>
+                            <Grid size={{ xs: 12, sm: 6 }}>
                                 <Typography variant="subtitle2">Statut Actuel</Typography>
                                 <Chip
                                     label={getStatusLabel(recommendation.status)}
@@ -191,11 +190,11 @@ const RecommendationDetailsDialog: React.FC<RecommendationDetailsDialogProps> = 
                                     sx={{ mt: 0.5 }}
                                 />
                             </Grid>
-                            <Grid item xs={12} sm={6}>
+                            <Grid size={{ xs: 12, sm: 6 }}>
                                 <Typography variant="subtitle2">Résolution Conseil</Typography>
                                 <Typography variant="body2">{recommendation.councilResolutionNumber || '-'}</Typography>
                             </Grid>
-                            <Grid item xs={12}>
+                            <Grid size={{ xs: 12 }}>
                                 <Typography variant="subtitle2">Retour du Caucus (PDF / Notes)</Typography>
                                 <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', bgcolor: 'grey.50', p: 1, borderRadius: 1, mb: 1 }}>
                                     {recommendation.notes || 'Aucune note.'}
