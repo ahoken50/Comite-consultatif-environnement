@@ -13,7 +13,8 @@ import {
     Popper,
     ClickAwayListener,
     Fade,
-    ListItemIcon
+    ListItemIcon,
+    Tooltip
 } from '@mui/material';
 import {
     Search as SearchIcon,
@@ -219,16 +220,19 @@ const GlobalSearch: React.FC = () => {
                         onFocus={handleFocus}
                     />
                     {query && (
-                        <IconButton
-                            size="small"
-                            sx={{ position: 'absolute', right: 4, top: 4, color: 'white' }}
-                            onClick={() => {
-                                setQuery('');
-                                setShowResults(false);
-                            }}
-                        >
-                            <CloseIcon fontSize="small" />
-                        </IconButton>
+                        <Tooltip title="Effacer la recherche">
+                            <IconButton
+                                size="small"
+                                aria-label="Effacer la recherche"
+                                sx={{ position: 'absolute', right: 4, top: 4, color: 'white' }}
+                                onClick={() => {
+                                    setQuery('');
+                                    setShowResults(false);
+                                }}
+                            >
+                                <CloseIcon fontSize="small" />
+                            </IconButton>
+                        </Tooltip>
                     )}
                 </Search>
 
