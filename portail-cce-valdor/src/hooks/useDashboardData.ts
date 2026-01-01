@@ -125,26 +125,52 @@ export const useDashboardData = (): DashboardData => {
                 // 5. Calculate monthly progress (last 6 months)
                 const now = new Date();
                 const monthNames = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Août', 'Sep', 'Oct', 'Nov', 'Déc'];
-                const progressData: ProgressData[] = [];
 
-                for (let i = 5; i >= 0; i--) {
-                    const monthDate = new Date(now.getFullYear(), now.getMonth() - i, 1);
-                    const monthEnd = new Date(now.getFullYear(), now.getMonth() - i + 1, 0);
-                    const monthName = monthNames[monthDate.getMonth()];
+                // Optimization: Pre-calculate buckets and iterate projects once (O(N)) instead of filtering inside loop (O(N*M))
+                const buckets = Array(6).fill(null).map((_, index) => {
+                    const i = 5 - index; // 5 down to 0
+                    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+                    return {
+                        name: monthNames[d.getMonth()],
+                        completed: 0,
+                        new: 0,
+                    };
+                });
 
-                    const completed = projects.filter(p => {
-                        if (!p.dateCompleted) return false;
-                        const completedDate = new Date(p.dateCompleted);
-                        return completedDate >= monthDate && completedDate <= monthEnd;
-                    }).length;
+                const currentYear = now.getFullYear();
+                const currentMonth = now.getMonth();
 
-                    const newProjects = projects.filter(p => {
-                        const createdDate = new Date(p.dateCreated);
-                        return createdDate >= monthDate && createdDate <= monthEnd;
-                    }).length;
+                // Helper to safely parse dates (handles Strings and Firestore Timestamps)
+                const getDate = (dateField: any): Date | null => {
+                    if (!dateField) return null;
+                    if (dateField.toDate) return dateField.toDate();
+                    return new Date(dateField);
+                };
 
-                    progressData.push({ name: monthName, completed, new: newProjects });
-                }
+                const getBucketIndex = (dateField: any) => {
+                    const date = getDate(dateField);
+                    if (!date) return -1;
+
+                    const diff = (currentYear - date.getFullYear()) * 12 + (currentMonth - date.getMonth());
+                    if (diff >= 0 && diff <= 5) {
+                        return 5 - diff;
+                    }
+                    return -1;
+                };
+
+                projects.forEach(p => {
+                    const completedIndex = getBucketIndex(p.dateCompleted);
+                    if (completedIndex !== -1) {
+                        buckets[completedIndex].completed++;
+                    }
+
+                    const createdIndex = getBucketIndex(p.dateCreated);
+                    if (createdIndex !== -1) {
+                        buckets[createdIndex].new++;
+                    }
+                });
+
+                const progressData: ProgressData[] = buckets;
 
                 // 6. Fetch next scheduled meeting
                 let nextMeeting: Meeting | null = null;
