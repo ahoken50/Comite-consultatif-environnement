@@ -237,7 +237,7 @@ const GlobalSearch: React.FC = () => {
                 </Search>
 
                 <Popper
-                    open={showResults && results.length > 0}
+                    open={showResults && query.trim() !== ''}
                     anchorEl={anchorEl}
                     placement="bottom-start"
                     transition
@@ -253,29 +253,46 @@ const GlobalSearch: React.FC = () => {
                                         </Typography>
                                     </ListItem>
                                     <Divider />
-                                    {results.map((result) => (
-                                        <ListItem
-                                            key={`${result.type}-${result.id}`}
-                                            disablePadding
-                                        >
-                                            <ListItemButton onClick={() => handleResultClick(result)}>
-                                                <ListItemIcon sx={{ minWidth: 40 }}>
-                                                    {getIcon(result.type)}
-                                                </ListItemIcon>
-                                                <ListItemText
-                                                    primary={result.title}
-                                                    secondary={
-                                                        <Box component="span" sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                                                            <span>{result.subtitle}</span>
-                                                            {result.date && (
-                                                                <span>{format(new Date(result.date), 'dd/MM/yyyy')}</span>
-                                                            )}
-                                                        </Box>
-                                                    }
-                                                />
-                                            </ListItemButton>
+                                    {results.length > 0 ? (
+                                        results.map((result) => (
+                                            <ListItem
+                                                key={`${result.type}-${result.id}`}
+                                                disablePadding
+                                            >
+                                                <ListItemButton onClick={() => handleResultClick(result)}>
+                                                    <ListItemIcon sx={{ minWidth: 40 }}>
+                                                        {getIcon(result.type)}
+                                                    </ListItemIcon>
+                                                    <ListItemText
+                                                        primary={result.title}
+                                                        secondary={
+                                                            <Box component="span" sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                                <span>{result.subtitle}</span>
+                                                                {result.date && (
+                                                                    <span>{format(new Date(result.date), 'dd/MM/yyyy')}</span>
+                                                                )}
+                                                            </Box>
+                                                        }
+                                                    />
+                                                </ListItemButton>
+                                            </ListItem>
+                                        ))
+                                    ) : (
+                                        <ListItem>
+                                            <ListItemText
+                                                primary={
+                                                    <Typography variant="body2" color="text.secondary" align="center" sx={{ py: 2 }}>
+                                                        Aucun résultat trouvé
+                                                    </Typography>
+                                                }
+                                                secondary={
+                                                    <Typography variant="caption" color="text.disabled" align="center" display="block">
+                                                        Essayez d'autres mots-clés
+                                                    </Typography>
+                                                }
+                                            />
                                         </ListItem>
-                                    ))}
+                                    )}
                                 </List>
                             </Paper>
                         </Fade>
