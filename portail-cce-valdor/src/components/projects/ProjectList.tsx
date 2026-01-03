@@ -10,7 +10,8 @@ import {
     Chip,
     IconButton,
     Typography,
-    Box
+    Box,
+    Tooltip
 } from '@mui/material';
 import { Edit, Delete, Visibility } from '@mui/icons-material';
 import type { Project } from '../../types/project.types';
@@ -94,30 +95,36 @@ const ProjectList: React.FC<ProjectListProps> = ({ projects, onView, onEdit, onD
                             </TableCell>
                             <TableCell align="right">
                                 <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
-                                    <IconButton
-                                        size="small"
-                                        onClick={() => onView(project.id)}
-                                        color="info"
-                                        aria-label={`Voir le projet ${project.name}`}
-                                    >
-                                        <Visibility fontSize="small" />
-                                    </IconButton>
-                                    <IconButton
-                                        size="small"
-                                        onClick={() => onEdit(project.id)}
-                                        color="primary"
-                                        aria-label={`Modifier le projet ${project.name}`}
-                                    >
-                                        <Edit fontSize="small" />
-                                    </IconButton>
-                                    <IconButton
-                                        size="small"
-                                        onClick={() => onDelete(project.id)}
-                                        color="error"
-                                        aria-label={`Supprimer le projet ${project.name}`}
-                                    >
-                                        <Delete fontSize="small" />
-                                    </IconButton>
+                                    <Tooltip title="Voir le projet">
+                                        <IconButton
+                                            size="small"
+                                            onClick={() => onView(project.id)}
+                                            color="info"
+                                            aria-label={`Voir le projet ${project.name}`}
+                                        >
+                                            <Visibility fontSize="small" />
+                                        </IconButton>
+                                    </Tooltip>
+                                    <Tooltip title="Modifier le projet">
+                                        <IconButton
+                                            size="small"
+                                            onClick={() => onEdit(project.id)}
+                                            color="primary"
+                                            aria-label={`Modifier le projet ${project.name}`}
+                                        >
+                                            <Edit fontSize="small" />
+                                        </IconButton>
+                                    </Tooltip>
+                                    <Tooltip title="Supprimer le projet">
+                                        <IconButton
+                                            size="small"
+                                            onClick={() => onDelete(project.id)}
+                                            color="error"
+                                            aria-label={`Supprimer le projet ${project.name}`}
+                                        >
+                                            <Delete fontSize="small" />
+                                        </IconButton>
+                                    </Tooltip>
                                 </Box>
                             </TableCell>
                         </TableRow>
