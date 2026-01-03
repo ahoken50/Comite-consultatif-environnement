@@ -70,4 +70,4 @@ const ProgressChart: React.FC<ProgressChartProps> = ({ data }) => {
     );
 };
 
-export default ProgressChart;
+export default React.memo(ProgressChart);

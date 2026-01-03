@@ -63,4 +63,4 @@ const CategoryChart: React.FC<CategoryChartProps> = ({ data }) => {
     );
 };
 
-export default CategoryChart;
+export default React.memo(CategoryChart);

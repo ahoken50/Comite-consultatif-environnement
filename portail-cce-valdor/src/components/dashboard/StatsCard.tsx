@@ -52,4 +52,4 @@ const StatsCard: React.FC<StatsCardProps> = ({ title, value, icon: Icon, color }
     );
 };
 
-export default StatsCard;
+export default React.memo(StatsCard);
