@@ -90,6 +90,7 @@ const GlobalSearch: React.FC = () => {
     const [query, setQuery] = useState('');
     const [showResults, setShowResults] = useState(false);
     const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
+    const [selectedIndex, setSelectedIndex] = useState(-1);
 
     // Get data from Redux
     const projects = useSelector((state: RootState) => state.projects.items);
@@ -164,6 +165,7 @@ const GlobalSearch: React.FC = () => {
 
     const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         setQuery(e.target.value);
+        setSelectedIndex(-1);
         if (e.target.value.trim()) {
             setAnchorEl(e.currentTarget);
             setShowResults(true);
@@ -193,6 +195,24 @@ const GlobalSearch: React.FC = () => {
         }
         setShowResults(false);
         setQuery('');
+        setSelectedIndex(-1);
+    };
+
+    const handleKeyDown = (e: React.KeyboardEvent) => {
+        if (!showResults || results.length === 0) return;
+
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            setSelectedIndex(prev => (prev < results.length - 1 ? prev + 1 : prev));
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            setSelectedIndex(prev => (prev > 0 ? prev - 1 : -1));
+        } else if (e.key === 'Enter' && selectedIndex >= 0) {
+            e.preventDefault();
+            handleResultClick(results[selectedIndex]);
+        } else if (e.key === 'Escape') {
+            setShowResults(false);
+        }
     };
 
     const getIcon = (type: string) => {
@@ -218,6 +238,7 @@ const GlobalSearch: React.FC = () => {
                         value={query}
                         onChange={handleSearchChange}
                         onFocus={handleFocus}
+                        onKeyDown={handleKeyDown}
                     />
                     {query && (
                         <Tooltip title="Effacer la recherche">
@@ -254,12 +275,15 @@ const GlobalSearch: React.FC = () => {
                                     </ListItem>
                                     <Divider />
                                     {results.length > 0 ? (
-                                        results.map((result) => (
+                                        results.map((result, index) => (
                                             <ListItem
                                                 key={`${result.type}-${result.id}`}
                                                 disablePadding
                                             >
-                                                <ListItemButton onClick={() => handleResultClick(result)}>
+                                                <ListItemButton
+                                                    selected={index === selectedIndex}
+                                                    onClick={() => handleResultClick(result)}
+                                                >
                                                     <ListItemIcon sx={{ minWidth: 40 }}>
                                                         {getIcon(result.type)}
                                                     </ListItemIcon>
