@@ -146,13 +146,10 @@ const ProjectsPage: React.FC = () => {
         }
     }, [dispatch, user, projects]);
 
-    const handleDeleteProject = useCallback(async (id: string) => {
+    const handleDeleteProject = useCallback(async (id: string, projectName: string) => {
         if (!user) return;
 
-        const project = projects.find(p => p.id === id);
-        if (!project) return;
-
-        if (!window.confirm(`Voulez-vous vraiment supprimer le projet "${project.name}"?`)) {
+        if (!window.confirm(`Voulez-vous vraiment supprimer le projet "${projectName}"?`)) {
             return;
         }
 
@@ -161,7 +158,7 @@ const ProjectsPage: React.FC = () => {
                 id,
                 userId: user.uid,
                 userName: user.displayName || user.email || 'Utilisateur',
-                projectName: project.name
+                projectName: projectName
             })).unwrap();
 
             setSnackbar({ open: true, message: 'Projet supprimé', severity: 'success' });
@@ -169,7 +166,7 @@ const ProjectsPage: React.FC = () => {
             console.error('Failed to delete project:', err);
             setSnackbar({ open: true, message: 'Erreur lors de la suppression', severity: 'error' });
         }
-    }, [dispatch, user, projects]);
+    }, [dispatch, user]);
 
     return (
         <Box>
