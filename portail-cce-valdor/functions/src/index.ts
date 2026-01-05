@@ -34,7 +34,7 @@ import { setGlobalOptions } from "firebase-functions/v2";
 // Global options for Gen 2
 setGlobalOptions({ maxInstances: 10 });
 
-export const transcribeAudio = onCall({
+export const transcribeAudioV2 = onCall({
     timeoutSeconds: 3600, // 1 hour timeout (Gen 2 supports up to 60m)
     memory: "4GiB",       // Increases memory to 4GB
 }, async (request: CallableRequest<TranscriptionRequest>) => {
