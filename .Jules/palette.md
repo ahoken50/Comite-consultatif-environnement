@@ -15,3 +15,7 @@
 ## 2024-05-24 - Dynamic Action Labels
 **Learning:** In lists of items, generic labels like "Edit" or "Delete" are ambiguous for screen reader users navigating by buttons. They need context.
 **Action:** Always include the item name in the action's aria-label, e.g., "Edit Project X" instead of just "Edit".
+
+## 2024-05-25 - Search Loading State
+**Learning:** When using global search that triggers data fetching on focus/input, users perceive "No results" as a failure if data is still loading.
+**Action:** Always show a loading indicator (spinner) in the search dropdown during the fetching state to reassure the user that the system is working.

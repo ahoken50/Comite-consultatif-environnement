@@ -14,7 +14,8 @@ import {
     ClickAwayListener,
     Fade,
     ListItemIcon,
-    Tooltip
+    Tooltip,
+    CircularProgress
 } from '@mui/material';
 import {
     Search as SearchIcon,
@@ -96,6 +97,13 @@ const GlobalSearch: React.FC = () => {
     const meetings = useSelector((state: RootState) => state.meetings.items);
     const documents = useSelector((state: RootState) => state.documents.items);
     const members = useSelector((state: RootState) => state.members.items);
+
+    const projectsLoading = useSelector((state: RootState) => state.projects.loading);
+    const meetingsLoading = useSelector((state: RootState) => state.meetings.loading);
+    const documentsLoading = useSelector((state: RootState) => state.documents.loading);
+    const membersLoading = useSelector((state: RootState) => state.members.loading);
+
+    const isLoading = projectsLoading || meetingsLoading || documentsLoading || membersLoading;
 
     // Filter results
     const results: SearchResult[] = React.useMemo(() => {
@@ -253,7 +261,11 @@ const GlobalSearch: React.FC = () => {
                                         </Typography>
                                     </ListItem>
                                     <Divider />
-                                    {results.length > 0 ? (
+                                    {isLoading ? (
+                                        <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
+                                            <CircularProgress size={24} />
+                                        </Box>
+                                    ) : results.length > 0 ? (
                                         results.map((result) => (
                                             <ListItem
                                                 key={`${result.type}-${result.id}`}
