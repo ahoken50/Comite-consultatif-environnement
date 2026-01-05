@@ -11,6 +11,7 @@ interface ParsedMeetingData {
     title?: string;
     date?: string;
     agendaItems?: AgendaItem[];
+    rawText?: string;
 }
 
 export const parseAgendaPDF = async (file: File): Promise<ParsedMeetingData> => {
@@ -27,7 +28,8 @@ export const parseAgendaPDF = async (file: File): Promise<ParsedMeetingData> => 
     }
 
     const result: ParsedMeetingData = {
-        agendaItems: []
+        agendaItems: [],
+        rawText: fullText
     };
 
     const lines = fullText.split('\n').map(line => line.trim()).filter(line => line.length > 0);

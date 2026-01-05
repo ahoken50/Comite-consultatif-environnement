@@ -220,10 +220,14 @@ RÈGLES DE TRANSCRIPTION :
 
 /**
  * Generate minutes draft from transcription using Gemini
+ * @param meeting - The current meeting
+ * @param transcription - The audio transcription
+ * @param historicalContext - Optional formatted historical context (past resolutions)
  */
 export const generateMinutesDraft = async (
     meeting: Meeting,
-    transcription: string
+    transcription: string,
+    historicalContext?: string
 ): Promise<{ success: boolean; draft?: MinutesDraft; error?: string }> => {
     if (!GEMINI_API_KEY) {
         return {
@@ -244,7 +248,7 @@ export const generateMinutesDraft = async (
         const prompt = `Tu es un rédacteur expert de procès-verbaux pour le Comité Consultatif en Environnement (CCE) de la Ville de Val-d'Or.
 OBJECTIF : Rédiger un procès-verbal (PV) professionnel, complet et structuré à partir de la transcription fournie.
 
-## INFORMATIONS
+## INFORMATIONS DE LA RÉUNION
 Titre: ${meeting.title}
 Date: ${meeting.date}
 Lieu: ${meeting.location || 'Salle de conférence'}
@@ -252,25 +256,51 @@ Lieu: ${meeting.location || 'Salle de conférence'}
 ## PARTICIPANTS
 ${attendeesList}
 
-## ORDRE DU JOUR
+## ORDRE DU JOUR (STRUCTURE À SUIVRE EXACTEMENT)
 ${agendaList}
 
 ## TRANSCRIPTION (Source intégrale)
 ${transcription}
 
-## DIRECTIVES STRICTES DE RÉDACTION
-1. **EXHAUSTIVITÉ & PRÉCISION** : Ne laisse passer aucune résolution ou décision importante. Relève TOUS les points discutés.
-2. **STYLE FORMEL MUNICIPAL** : Utilise le ton neutre et administratif (ex: "Le comité discute de...", "Il est proposé par...").
-3. **STRUCTURE CLAIRE** :
-   - Pour chaque point de l'ordre du jour, crée une section.
-   - **RÉSUMÉ** : Synthèse claire des délibérations.
-   - **RÉSOLUTION** (Si vote/décision) : Utilise le format "CONSIDÉRANT... IL EST RÉSOLU DE...".
-   - **SUIVI** : Mentionne qui doit faire quoi si spécifié.
-4. **VÉRIFICATION** : Si une information est floue (nom, date, montant), ajoute la mention **[À VALIDER : ...]**.
-5. **NE PAS INVENTER** : Base-toi uniquement sur le texte.
+## DIRECTIVES DE RÉDACTION IMPORTANTES
 
+### 1. STRUCTURE - Suivre l'ordre du jour
+- Suis EXACTEMENT la structure et numérotation de l'ordre du jour ci-dessus
+- Pour CHAQUE point de l'ordre du jour, crée une section correspondante avec le même numéro et titre
+- N'invente pas de nouveaux points, suis uniquement ceux listés
+
+### 2. ORGANISATION THÉMATIQUE
+- Au sein de chaque point, regroupe les interventions par THÈME plutôt que chronologiquement
+- Si plusieurs personnes parlent du même aspect, synthétise leurs points ensemble
+- Utilise des sous-sections si un point contient plusieurs thèmes distincts
+
+### 3. DISTINCTION PAROLE / DÉCISION
+Pour chaque point, sépare clairement:
+
+**A) DÉLIBÉRATIONS** (ce qui a été dit/discuté)
+- Utilise: "Le Comité discute de...", "Il est mentionné que...", "Les membres échangent sur..."
+- Résume les positions et arguments exprimés
+
+**B) DÉCISIONS** (ce qui a été voté/résolu)
+- Encadre dans une section "RÉSOLUTION" avec format:
+  "CONSIDÉRANT que...
+   IL EST RÉSOLU DE..."
+- Indique proposeur, secondeur, et résultat du vote (unanimité/majorité)
+
+### 4. COHÉRENCE TERMINOLOGIQUE
+Utilise TOUJOURS ces termes de façon cohérente:
+- "le Comité" (pas "CCE", "le comité", "le CCE", "le conseil")
+- "procès-verbal" ou "PV" (pas "minutes")
+- "résolution" (pas "motion")
+- "Il est résolu" (pas "il est décidé")
+- "appuyé par" (pas "secondé par")
+
+### 5. VÉRIFICATION
+- Si une information est floue, utilise **[À VALIDER : ...]**
+- Base-toi UNIQUEMENT sur la transcription, n'invente rien
+${historicalContext || ''}
 ## RÉSULTAT ATTENDU
-Un document prêt pour approbation, impeccable et professionnel.`;
+Un document prêt pour approbation, structuré selon l'ordre du jour, avec délibérations et décisions clairement distinguées.`;
 
         const geminiRequest = {
             contents: [{
@@ -849,4 +879,88 @@ FORMAT JSON ATTENDU :
     } catch (error) {
         return { success: false, error: (error as Error).message };
     }
+};
+
+/**
+ * Historical context for PV generation
+ * Provides previous decisions related to agenda topics
+ */
+export interface HistoricalContext {
+    resolutions: Array<{
+        number: string;
+        date: string;
+        title: string;
+        summary: string;
+    }>;
+    relatedProjects: Array<{
+        code: string;
+        name: string;
+        status: string;
+    }>;
+}
+
+/**
+ * Build historical context from previous meetings
+ * Used to enrich AI-generated PV with references to past decisions
+ */
+export const buildHistoricalContext = (
+    previousMeetings: Meeting[],
+    currentAgendaItems: Array<{ title: string }>
+): HistoricalContext => {
+    const resolutions: HistoricalContext['resolutions'] = [];
+
+    // Extract keywords from current agenda for matching
+    const keywords = currentAgendaItems
+        .map(item => item.title.toLowerCase().split(/\s+/))
+        .flat()
+        .filter(word => word.length > 3);
+
+    // Search previous meetings for related resolutions
+    previousMeetings.forEach(meeting => {
+        meeting.agendaItems?.forEach(item => {
+            const itemText = item.title.toLowerCase();
+            const hasRelatedKeyword = keywords.some(kw => itemText.includes(kw));
+
+            if (hasRelatedKeyword && item.minuteEntries) {
+                item.minuteEntries
+                    .filter(entry => entry.type === 'resolution' && entry.number)
+                    .forEach(entry => {
+                        resolutions.push({
+                            number: entry.number || '',
+                            date: meeting.date,
+                            title: item.title,
+                            summary: (entry.content || '').substring(0, 200)
+                        });
+                    });
+            }
+        });
+    });
+
+    return {
+        resolutions: resolutions.slice(0, 10), // Limit to 10 most relevant
+        relatedProjects: [] // Can be populated from project store if needed
+    };
+};
+
+/**
+ * Format historical context for inclusion in AI prompt
+ */
+export const formatHistoricalContextForPrompt = (context: HistoricalContext): string => {
+    if (context.resolutions.length === 0) {
+        return '';
+    }
+
+    let text = '\n\n## CONTEXTE HISTORIQUE (Décisions passées liées)\n';
+    text += 'Les résolutions suivantes des réunions précédentes peuvent être pertinentes:\n\n';
+
+    context.resolutions.forEach(res => {
+        text += `- **${res.number}** (${res.date}): ${res.title}\n`;
+        if (res.summary) {
+            text += `  Résumé: ${res.summary}...\n`;
+        }
+    });
+
+    text += '\n> Note: Mentionner ces références si le sujet est rediscuté.\n';
+
+    return text;
 };

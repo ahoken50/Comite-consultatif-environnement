@@ -18,8 +18,10 @@ import MinutesImportDialog from './MinutesImportDialog';
 import AudioUpload from './AudioUpload';
 import TranscriptionViewer from './TranscriptionViewer';
 import AgendaItemEditor from './AgendaItemEditor';
+import CrossValidationPanel from './CrossValidationPanel';
 import { documentsAPI } from '../../features/documents/documentsAPI';
 import { useToast } from '../../hooks/useToast';
+import { generateNextResolutionNumber } from '../../utils/resolutionUtils';
 // Note: parseAgendaDOCX is imported dynamically when needed
 
 interface MinutesEditorProps {
@@ -117,18 +119,28 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
 
     // Handler for adding a new minuteEntry
     const handleAddMinuteEntry = (itemId: string) => {
-        setLocalAgendaItems(prev => prev.map(item => {
-            if (item.id === itemId) {
-                const entries = item.minuteEntries || [];
-                const newEntry = {
-                    type: 'comment' as const,
-                    number: '',
-                    content: ''
-                };
-                return { ...item, minuteEntries: [...entries, newEntry] };
-            }
-            return item;
-        }));
+        setLocalAgendaItems(prev => {
+            // Calculate next resolution number based on all existing entries in the meeting
+            const existingNumbers = prev
+                .flatMap(i => i.minuteEntries || [])
+                .map(e => e.number || '')
+                .filter(n => n !== '');
+
+            const nextNumber = generateNextResolutionNumber(meeting.date, existingNumbers);
+
+            return prev.map(item => {
+                if (item.id === itemId) {
+                    const entries = item.minuteEntries || [];
+                    const newEntry = {
+                        type: 'resolution' as const, // Default to resolution for convenience
+                        number: nextNumber,
+                        content: ''
+                    };
+                    return { ...item, minuteEntries: [...entries, newEntry] };
+                }
+                return item;
+            });
+        });
         setHasUnsavedChanges(true);
     };
 
@@ -584,6 +596,20 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
                 onClose={() => setIsImportOpen(false)}
                 onImport={handleImport}
             />
+
+            {/* Cross Validation Panel - Compare ODJ with PV */}
+            {meeting.agendaItems && meeting.agendaItems.length > 0 && localAgendaItems.length > 0 && (
+                <CrossValidationPanel
+                    odjItems={meeting.agendaItems}
+                    pvItems={localAgendaItems}
+                    onSync={(missingItems) => {
+                        // Add missing items to local agenda
+                        const newItems = [...localAgendaItems, ...missingItems];
+                        setLocalAgendaItems(newItems);
+                        setHasUnsavedChanges(true);
+                    }}
+                />
+            )}
 
             <Paper sx={{ p: 3, mb: 3 }}>
                 <Typography variant="subtitle1" gutterBottom fontWeight="bold">Notes Générales / Introduction</Typography>

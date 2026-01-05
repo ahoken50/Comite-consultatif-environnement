@@ -19,8 +19,10 @@ import {
     ContentCopy,
     People
 } from '@mui/icons-material';
+import { useSelector } from 'react-redux';
 import type { Meeting, MinutesDraft } from '../../types/meeting.types';
-import { generateMinutesDraft, finalizeDraft, isGeminiConfigured } from '../../services/geminiService';
+import { generateMinutesDraft, finalizeDraft, isGeminiConfigured, buildHistoricalContext, formatHistoricalContextForPrompt } from '../../services/geminiService';
+import { selectAllMeetings } from '../../features/meetings/meetingsSlice';
 
 interface TranscriptionViewerProps {
     meeting: Meeting;
@@ -44,6 +46,10 @@ const TranscriptionViewer: React.FC<TranscriptionViewerProps> = ({
     // Speaker Identification State
     const [showSpeakerMap, setShowSpeakerMap] = useState(false);
     const [speakerMap, setSpeakerMap] = useState<Record<string, string>>({});
+
+    // Get past meetings for historical context
+    const allMeetings = useSelector(selectAllMeetings);
+    const pastMeetings = allMeetings.filter(m => m.id !== meeting.id && m.date < meeting.date);
 
     const transcription = meeting.audioRecording?.transcription;
     const draft = meeting.minutesDraft;
@@ -78,7 +84,11 @@ const TranscriptionViewer: React.FC<TranscriptionViewerProps> = ({
         setIsGenerating(true);
         setError(null);
 
-        const result = await generateMinutesDraft(meeting, transcription);
+        // Build historical context from past meetings
+        const context = buildHistoricalContext(pastMeetings, meeting.agendaItems || []);
+        const historicalContextText = formatHistoricalContextForPrompt(context);
+
+        const result = await generateMinutesDraft(meeting, transcription, historicalContextText);
 
         if (result.success && result.draft) {
             onDraftGenerated?.(result.draft);

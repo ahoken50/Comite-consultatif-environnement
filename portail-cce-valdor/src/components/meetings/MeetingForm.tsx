@@ -21,6 +21,7 @@ import { MeetingType, MeetingStatus } from '../../types/meeting.types';
 import { generateAgendaPDF } from '../../services/pdfServiceAgenda';
 import { parseAgendaPDF } from '../../services/pdfParserService';
 import { useToast } from '../../hooks/useToast';
+import { detectDocumentType } from '../../services/documentTypeDetector';
 
 const agendaItemSchema = z.object({
     title: z.string().min(1, 'Le titre est requis'),
@@ -147,6 +148,13 @@ const MeetingForm: React.FC<MeetingFormProps> = ({ open, onClose, onSubmit, init
             } else {
                 showWarning('Format de fichier non supporté. Veuillez utiliser PDF ou DOCX.');
                 return;
+            }
+
+            if (parsedData.rawText) {
+                const detection = detectDocumentType(parsedData.rawText);
+                if (detection.type !== 'agenda' && detection.confidence > 70) {
+                    showWarning(`Attention: Ce document semble être de type "${detection.type}" plutôt qu'un ordre du jour.`);
+                }
             }
 
             if (parsedData.title) {

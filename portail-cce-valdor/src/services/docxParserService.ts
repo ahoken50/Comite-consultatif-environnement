@@ -7,6 +7,7 @@ interface ParsedMeetingData {
     agendaItems?: AgendaItem[];
     meetingNumber?: string;
     attendees?: Attendee[]; // Parsed attendance info
+    rawText?: string;
 }
 
 interface ParsedPVItem {
@@ -446,6 +447,9 @@ export const parseAgendaDOCX = async (file: File): Promise<ParsedMeetingData> =>
             });
         }
     }
+
+    // Include raw text for document type detection
+    parsedResult.rawText = fullText;
 
     console.log('[docxParserService] Final parsed result:', parsedResult);
     return parsedResult;

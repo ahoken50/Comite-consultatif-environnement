@@ -115,4 +115,14 @@ const meetingsSlice = createSlice({
 });
 
 export const { upsertMeeting } = meetingsSlice.actions;
+
+// Selectors
+export const selectAllMeetings = (state: { meetings: MeetingsState }) => state.meetings.items;
+export const selectMeetingsLoading = (state: { meetings: MeetingsState }) => state.meetings.loading;
+export const selectPastMeetings = (state: { meetings: MeetingsState }) => {
+    const now = new Date().toISOString();
+    return state.meetings.items.filter(m => m.date < now);
+};
+
 export default meetingsSlice.reducer;
+
