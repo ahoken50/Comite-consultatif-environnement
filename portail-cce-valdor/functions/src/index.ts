@@ -31,7 +31,7 @@ import { onCall, HttpsError, CallableRequest } from "firebase-functions/v2/https
 import { setGlobalOptions } from "firebase-functions/v2";
 import { defineSecret } from "firebase-functions/params";
 
-const googleApiKey = defineSecret("GOOGLE_API_KEY");
+const googleApiKey = defineSecret("GEMINI_BRIEFING_KEY");
 
 // Global options for Gen 2
 setGlobalOptions({ maxInstances: 10 });

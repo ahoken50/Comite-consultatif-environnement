@@ -24,7 +24,7 @@ function cleanRepetitions(text) {
 const https_1 = require("firebase-functions/v2/https");
 const v2_1 = require("firebase-functions/v2");
 const params_1 = require("firebase-functions/params");
-const googleApiKey = (0, params_1.defineSecret)("GOOGLE_API_KEY");
+const googleApiKey = (0, params_1.defineSecret)("GEMINI_BRIEFING_KEY");
 // Global options for Gen 2
 (0, v2_1.setGlobalOptions)({ maxInstances: 10 });
 exports.transcribeAudioV2 = (0, https_1.onCall)({
