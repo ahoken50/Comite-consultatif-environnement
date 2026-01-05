@@ -2,10 +2,15 @@ import type { Meeting } from '../types/meeting.types';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
+export interface PDFGenerationResult {
+    success: boolean;
+    error?: string;
+}
+
 /**
  * Generates a beautifully styled Agenda PDF from meeting data using HTML template.
  */
-export const generateAgendaPDF = async (meeting: Meeting) => {
+export const generateAgendaPDF = async (meeting: Meeting): Promise<PDFGenerationResult> => {
     // Format date
     const meetingDate = new Date(meeting.date);
     const dateStr = format(meetingDate, 'EEEE d MMMM yyyy', { locale: fr });
@@ -340,8 +345,7 @@ export const generateAgendaPDF = async (meeting: Meeting) => {
     const printWindow = window.open('', '_blank', 'width=816,height=1056');
 
     if (!printWindow) {
-        alert('Veuillez autoriser les pop-ups pour générer le PDF.');
-        return;
+        return { success: false, error: 'Veuillez autoriser les pop-ups pour générer le PDF.' };
     }
 
     // Write the HTML content
@@ -355,4 +359,5 @@ export const generateAgendaPDF = async (meeting: Meeting) => {
     printWindow.print();
 
     // Note: Window closes automatically in most browsers after print dialog
+    return { success: true };
 };

@@ -20,6 +20,7 @@ import { Add, Delete, Print, UploadFile } from '@mui/icons-material';
 import { MeetingType, MeetingStatus } from '../../types/meeting.types';
 import { generateAgendaPDF } from '../../services/pdfServiceAgenda';
 import { parseAgendaPDF } from '../../services/pdfParserService';
+import { useToast } from '../../hooks/useToast';
 
 const agendaItemSchema = z.object({
     title: z.string().min(1, 'Le titre est requis'),
@@ -58,6 +59,7 @@ interface MeetingFormProps {
 }
 
 const MeetingForm: React.FC<MeetingFormProps> = ({ open, onClose, onSubmit, initialData }) => {
+    const { showWarning, showError } = useToast();
     const { control, handleSubmit, formState: { errors }, watch, setValue } = useForm<MeetingFormData>({
         resolver: zodResolver(meetingSchema) as any,
         defaultValues: {
@@ -143,7 +145,7 @@ const MeetingForm: React.FC<MeetingFormProps> = ({ open, onClose, onSubmit, init
                 const { parseAgendaDOCX } = await import('../../services/docxParserService');
                 parsedData = await parseAgendaDOCX(file);
             } else {
-                alert('Format de fichier non supporté. Veuillez utiliser PDF ou DOCX.');
+                showWarning('Format de fichier non supporté. Veuillez utiliser PDF ou DOCX.');
                 return;
             }
 
@@ -167,7 +169,7 @@ const MeetingForm: React.FC<MeetingFormProps> = ({ open, onClose, onSubmit, init
             }
         } catch (error) {
             console.error('Error parsing file:', error);
-            alert('Erreur lors de la lecture du fichier.');
+            showError('Erreur lors de la lecture du fichier.');
         }
     };
 

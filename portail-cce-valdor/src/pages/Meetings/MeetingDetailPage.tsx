@@ -28,6 +28,7 @@ import ProjectExtractor from '../../components/meetings/ProjectExtractor';
 import type { AgendaItem } from '../../types/meeting.types';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
+import { useToast } from '../../hooks/useToast';
 
 interface TabPanelProps {
     children?: React.ReactNode;
@@ -63,6 +64,7 @@ const MeetingDetailPage: React.FC = () => {
     useMeetingSubscription(id);
     const navigate = useNavigate();
     const dispatch = useDispatch<AppDispatch>();
+    const { showInfo } = useToast();
     const meeting = useSelector((state: RootState) =>
         state.meetings.items.find(m => m.id === id)
     );
@@ -215,7 +217,7 @@ const MeetingDetailPage: React.FC = () => {
                     <Button
                         variant="outlined"
                         startIcon={<CalendarToday />}
-                        onClick={() => alert("Fonctionnalité de convocation (envoi courriel) à venir")}
+                        onClick={() => showInfo("Fonctionnalité de convocation (à venir)")}
                     >
                         Convoquer
                     </Button>

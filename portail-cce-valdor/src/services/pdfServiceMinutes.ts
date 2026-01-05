@@ -2,6 +2,11 @@ import type { Meeting } from '../types/meeting.types';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
+export interface PDFGenerationResult {
+    success: boolean;
+    error?: string;
+}
+
 /**
  * Sanitize text from Word documents to remove special characters
  */
@@ -678,15 +683,14 @@ const generateHTMLDocument = (meeting: Meeting, _globalNotes?: string): string =
  * Generate PDF from HTML using native browser print
  * This approach respects CSS page-break rules for resolution blocks
  */
-export const generateMinutesPDF = async (meeting: Meeting, globalNotes?: string) => {
+export const generateMinutesPDF = async (meeting: Meeting, globalNotes?: string): Promise<PDFGenerationResult> => {
     const html = generateHTMLDocument(meeting, globalNotes);
 
     // Open a new window for printing
     const printWindow = window.open('', '_blank', 'width=816,height=1056');
 
     if (!printWindow) {
-        alert('Veuillez autoriser les pop-ups pour générer le PDF.');
-        return;
+        return { success: false, error: 'Veuillez autoriser les pop-ups pour générer le PDF.' };
     }
 
     // Write the HTML content
@@ -701,4 +705,5 @@ export const generateMinutesPDF = async (meeting: Meeting, globalNotes?: string)
 
     // Optional: close the window after print (some browsers may not allow this)
     // printWindow.close();
+    return { success: true };
 };

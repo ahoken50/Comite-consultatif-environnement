@@ -19,6 +19,7 @@ import AudioUpload from './AudioUpload';
 import TranscriptionViewer from './TranscriptionViewer';
 import AgendaItemEditor from './AgendaItemEditor';
 import { documentsAPI } from '../../features/documents/documentsAPI';
+import { useToast } from '../../hooks/useToast';
 // Note: parseAgendaDOCX is imported dynamically when needed
 
 interface MinutesEditorProps {
@@ -27,6 +28,7 @@ interface MinutesEditorProps {
 }
 
 const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
+    const { showSuccess, showError } = useToast();
     const [globalNotes, setGlobalNotes] = useState(meeting.minutes || '');
     const [itemDecisions, setItemDecisions] = useState<Record<string, string>>({});
     const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
@@ -173,13 +175,13 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
             if (result.success && result.sanitizedContent) {
                 setGlobalNotes(result.sanitizedContent);
                 setHasUnsavedChanges(true);
-                alert('Anonymisation effectuée. Veuillez relire avant d\'enregistrer.');
+                showSuccess('Anonymisation effectuée. Veuillez relire avant d\'enregistrer.');
             } else {
-                alert('Erreur lors de l\'anonymisation: ' + (result.error || 'Inconnue'));
+                showError('Erreur lors de l\'anonymisation: ' + (result.error || 'Inconnue'));
             }
         } catch (error) {
             console.error('Sanitization failed:', error);
-            alert('Erreur technique lors de l\'appel IA');
+            showError('Erreur technique lors de l\'appel IA');
         }
     };
 

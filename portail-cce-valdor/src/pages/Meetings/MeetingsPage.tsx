@@ -11,10 +11,12 @@ import MeetingCard from '../../components/meetings/MeetingCard';
 import MeetingForm from '../../components/meetings/MeetingForm';
 import SmartPlanningDialog from '../../components/meetings/SmartPlanningDialog';
 import { MeetingStatus } from '../../types/meeting.types';
+import { useToast } from '../../hooks/useToast';
 
 const MeetingsPage: React.FC = () => {
     const dispatch = useDispatch<AppDispatch>();
     const navigate = useNavigate();
+    const { showError } = useToast();
     const { items: meetings } = useSelector((state: RootState) => state.meetings);
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [isSmartPlanningOpen, setIsSmartPlanningOpen] = useState(false);
@@ -37,13 +39,12 @@ const MeetingsPage: React.FC = () => {
             if (createMeeting.fulfilled.match(resultAction)) {
                 setIsFormOpen(false);
                 setIsSmartPlanningOpen(false);
-                // Optionally navigate to details
             } else {
-                alert('Erreur lors de la création de la réunion');
+                showError('Erreur lors de la création de la réunion');
             }
         } catch (err) {
             console.error('Unexpected error creating meeting:', err);
-            alert('Une erreur inattendue est survenue.');
+            showError('Une erreur inattendue est survenue.');
         }
     };
 
@@ -63,10 +64,10 @@ const MeetingsPage: React.FC = () => {
                 await dispatch(deleteMeeting(id)).unwrap();
             } catch (err) {
                 console.error('Failed to delete meeting:', err);
-                alert('Erreur lors de la suppression de la réunion.');
+                showError('Erreur lors de la suppression de la réunion.');
             }
         }
-    }, [dispatch]);
+    }, [dispatch, showError]);
 
     // Optimize: Memoize filtered lists to prevent recalculation on every render
     const upcomingMeetings = useMemo(() => meetings.filter(m =>

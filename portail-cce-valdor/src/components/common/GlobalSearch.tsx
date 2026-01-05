@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
     Box,
     InputBase,
@@ -14,7 +14,9 @@ import {
     ClickAwayListener,
     Fade,
     ListItemIcon,
-    Tooltip
+    Tooltip,
+    Chip,
+    Stack
 } from '@mui/material';
 import {
     Search as SearchIcon,
@@ -23,7 +25,8 @@ import {
     Event,
     Description,
     Person,
-    Article
+    Article,
+    History as HistoryIcon
 } from '@mui/icons-material';
 import { styled, alpha } from '@mui/material/styles';
 import { useNavigate } from 'react-router-dom';
@@ -84,12 +87,64 @@ interface SearchResult {
     date?: string;
 }
 
+type CategoryFilter = 'all' | 'project' | 'meeting' | 'document' | 'member';
+
+const RECENT_SEARCHES_KEY = 'cce-recent-searches';
+const MAX_RECENT_SEARCHES = 5;
+
+// Debounce hook
+function useDebounce<T>(value: T, delay: number): T {
+    const [debouncedValue, setDebouncedValue] = useState<T>(value);
+
+    useEffect(() => {
+        const handler = setTimeout(() => {
+            setDebouncedValue(value);
+        }, delay);
+
+        return () => {
+            clearTimeout(handler);
+        };
+    }, [value, delay]);
+
+    return debouncedValue;
+}
+
+// Highlight matching terms
+const HighlightText: React.FC<{ text: string; highlight: string }> = ({ text, highlight }) => {
+    if (!highlight.trim()) return <>{text}</>;
+
+    const regex = new RegExp(`(${highlight.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+    const parts = text.split(regex);
+
+    return (
+        <>
+            {parts.map((part, i) =>
+                regex.test(part) ? (
+                    <Box component="mark" key={i} sx={{ bgcolor: 'warning.light', px: 0.25, borderRadius: 0.5 }}>
+                        {part}
+                    </Box>
+                ) : (
+                    <span key={i}>{part}</span>
+                )
+            )}
+        </>
+    );
+};
+
 const GlobalSearch: React.FC = () => {
     const navigate = useNavigate();
     const dispatch = useDispatch<AppDispatch>();
+    const inputRef = useRef<HTMLInputElement>(null);
+
     const [query, setQuery] = useState('');
     const [showResults, setShowResults] = useState(false);
     const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
+    const [selectedIndex, setSelectedIndex] = useState(-1);
+    const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>('all');
+    const [recentSearches, setRecentSearches] = useState<string[]>([]);
+
+    // Debounce the query for filtering
+    const debouncedQuery = useDebounce(query, 300);
 
     // Get data from Redux
     const projects = useSelector((state: RootState) => state.projects.items);
@@ -97,86 +152,130 @@ const GlobalSearch: React.FC = () => {
     const documents = useSelector((state: RootState) => state.documents.items);
     const members = useSelector((state: RootState) => state.members.items);
 
-    // Filter results
-    const results: SearchResult[] = React.useMemo(() => {
-        if (!query.trim()) return [];
+    // Load recent searches from localStorage
+    useEffect(() => {
+        const saved = localStorage.getItem(RECENT_SEARCHES_KEY);
+        if (saved) {
+            try {
+                setRecentSearches(JSON.parse(saved));
+            } catch (e) {
+                console.error('Failed to parse recent searches');
+            }
+        }
+    }, []);
 
-        const lowerQuery = query.toLowerCase();
+    // Ctrl+K keyboard shortcut
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+                e.preventDefault();
+                inputRef.current?.focus();
+            }
+        };
+
+        document.addEventListener('keydown', handleKeyDown);
+        return () => document.removeEventListener('keydown', handleKeyDown);
+    }, []);
+
+    // Filter results
+    const results: SearchResult[] = useMemo(() => {
+        if (!debouncedQuery.trim()) return [];
+
+        const lowerQuery = debouncedQuery.toLowerCase();
         const searchResults: SearchResult[] = [];
 
         // Projects
-        projects.forEach(p => {
-            if (p.name.toLowerCase().includes(lowerQuery) || p.code.toLowerCase().includes(lowerQuery)) {
-                searchResults.push({
-                    id: p.id,
-                    type: 'project',
-                    title: p.name,
-                    subtitle: `${p.code} - ${p.status}`,
-                    link: `/projects/${p.id}`,
-                    date: p.dateUpdated
-                });
-            }
-        });
+        if (categoryFilter === 'all' || categoryFilter === 'project') {
+            projects.forEach(p => {
+                if (p.name.toLowerCase().includes(lowerQuery) || p.code.toLowerCase().includes(lowerQuery)) {
+                    searchResults.push({
+                        id: p.id,
+                        type: 'project',
+                        title: p.name,
+                        subtitle: `${p.code} - ${p.status}`,
+                        link: `/projects/${p.id}`,
+                        date: p.dateUpdated
+                    });
+                }
+            });
+        }
 
         // Meetings
-        meetings.forEach(m => {
-            if (m.title.toLowerCase().includes(lowerQuery) || (m.location && m.location.toLowerCase().includes(lowerQuery))) {
-                searchResults.push({
-                    id: m.id,
-                    type: 'meeting',
-                    title: m.title,
-                    subtitle: m.type === 'regular' ? 'Régulière' : 'Spéciale',
-                    link: `/meetings/${m.id}`,
-                    date: m.date
-                });
-            }
-        });
+        if (categoryFilter === 'all' || categoryFilter === 'meeting') {
+            meetings.forEach(m => {
+                if (m.title.toLowerCase().includes(lowerQuery) || (m.location && m.location.toLowerCase().includes(lowerQuery))) {
+                    searchResults.push({
+                        id: m.id,
+                        type: 'meeting',
+                        title: m.title,
+                        subtitle: m.type === 'regular' ? 'Régulière' : 'Spéciale',
+                        link: `/meetings/${m.id}`,
+                        date: m.date
+                    });
+                }
+            });
+        }
 
         // Documents
-        documents.forEach(d => {
-            if (d.name.toLowerCase().includes(lowerQuery)) {
-                searchResults.push({
-                    id: d.id,
-                    type: 'document',
-                    title: d.name,
-                    subtitle: `${(d.size / 1024).toFixed(0)} KB`,
-                    link: d.url,
-                    date: d.dateUploaded
-                });
-            }
-        });
+        if (categoryFilter === 'all' || categoryFilter === 'document') {
+            documents.forEach(d => {
+                if (d.name.toLowerCase().includes(lowerQuery)) {
+                    searchResults.push({
+                        id: d.id,
+                        type: 'document',
+                        title: d.name,
+                        subtitle: `${(d.size / 1024).toFixed(0)} KB`,
+                        link: d.url,
+                        date: d.dateUploaded
+                    });
+                }
+            });
+        }
 
         // Members
-        members.forEach(m => {
-            if (m.displayName.toLowerCase().includes(lowerQuery) || m.email.toLowerCase().includes(lowerQuery)) {
-                searchResults.push({
-                    id: m.id,
-                    type: 'member',
-                    title: m.displayName,
-                    subtitle: m.role,
-                    link: `/members`
-                });
-            }
-        });
+        if (categoryFilter === 'all' || categoryFilter === 'member') {
+            members.forEach(m => {
+                if (m.displayName.toLowerCase().includes(lowerQuery) || m.email.toLowerCase().includes(lowerQuery)) {
+                    searchResults.push({
+                        id: m.id,
+                        type: 'member',
+                        title: m.displayName,
+                        subtitle: m.role,
+                        link: `/members`
+                    });
+                }
+            });
+        }
 
-        return searchResults.slice(0, 10); // Limit to 10 filtered results
-    }, [query, projects, meetings, documents, members]);
+        return searchResults.slice(0, 10);
+    }, [debouncedQuery, projects, meetings, documents, members, categoryFilter]);
+
+    // Save to recent searches
+    const saveToRecent = useCallback((searchTerm: string) => {
+        if (!searchTerm.trim()) return;
+
+        setRecentSearches(prev => {
+            const filtered = prev.filter(s => s.toLowerCase() !== searchTerm.toLowerCase());
+            const updated = [searchTerm, ...filtered].slice(0, MAX_RECENT_SEARCHES);
+            localStorage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(updated));
+            return updated;
+        });
+    }, []);
 
     const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         setQuery(e.target.value);
         if (e.target.value.trim()) {
             setAnchorEl(e.currentTarget);
             setShowResults(true);
+            setSelectedIndex(-1);
         } else {
             setShowResults(false);
         }
     };
 
     const handleFocus = (e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-        if (query.trim()) {
-            setAnchorEl(e.currentTarget);
-            setShowResults(true);
-        }
+        setAnchorEl(e.currentTarget);
+        setShowResults(true);
 
         // Lazy load data if missing
         if (projects.length === 0) dispatch(fetchProjects());
@@ -186,6 +285,7 @@ const GlobalSearch: React.FC = () => {
     };
 
     const handleResultClick = (result: SearchResult) => {
+        saveToRecent(query);
         if (result.type === 'document') {
             window.open(result.link, '_blank');
         } else {
@@ -193,6 +293,41 @@ const GlobalSearch: React.FC = () => {
         }
         setShowResults(false);
         setQuery('');
+    };
+
+    const handleRecentClick = (searchTerm: string) => {
+        setQuery(searchTerm);
+        inputRef.current?.focus();
+    };
+
+    // Keyboard navigation
+    const handleKeyDown = (e: React.KeyboardEvent) => {
+        const itemCount = results.length || recentSearches.length;
+
+        switch (e.key) {
+            case 'ArrowDown':
+                e.preventDefault();
+                setSelectedIndex(prev => (prev < itemCount - 1 ? prev + 1 : 0));
+                break;
+            case 'ArrowUp':
+                e.preventDefault();
+                setSelectedIndex(prev => (prev > 0 ? prev - 1 : itemCount - 1));
+                break;
+            case 'Enter':
+                e.preventDefault();
+                if (selectedIndex >= 0) {
+                    if (results.length > 0 && results[selectedIndex]) {
+                        handleResultClick(results[selectedIndex]);
+                    } else if (recentSearches[selectedIndex]) {
+                        handleRecentClick(recentSearches[selectedIndex]);
+                    }
+                }
+                break;
+            case 'Escape':
+                setShowResults(false);
+                inputRef.current?.blur();
+                break;
+        }
     };
 
     const getIcon = (type: string) => {
@@ -205,6 +340,14 @@ const GlobalSearch: React.FC = () => {
         }
     };
 
+    const categoryChips: { key: CategoryFilter; label: string }[] = [
+        { key: 'all', label: 'Tout' },
+        { key: 'project', label: 'Projets' },
+        { key: 'meeting', label: 'Réunions' },
+        { key: 'document', label: 'Documents' },
+        { key: 'member', label: 'Membres' },
+    ];
+
     return (
         <ClickAwayListener onClickAway={() => setShowResults(false)}>
             <Box>
@@ -213,11 +356,13 @@ const GlobalSearch: React.FC = () => {
                         <SearchIcon />
                     </SearchIconWrapper>
                     <StyledInputBase
-                        placeholder="Rechercher..."
+                        inputRef={inputRef}
+                        placeholder="Rechercher... (Ctrl+K)"
                         inputProps={{ 'aria-label': 'search' }}
                         value={query}
                         onChange={handleSearchChange}
                         onFocus={handleFocus}
+                        onKeyDown={handleKeyDown}
                     />
                     {query && (
                         <Tooltip title="Effacer la recherche">
@@ -237,57 +382,120 @@ const GlobalSearch: React.FC = () => {
                 </Search>
 
                 <Popper
-                    open={showResults && query.trim() !== ''}
+                    open={showResults}
                     anchorEl={anchorEl}
                     placement="bottom-start"
                     transition
-                    sx={{ zIndex: 1300, width: anchorEl?.clientWidth }}
+                    sx={{ zIndex: 1300, width: anchorEl?.clientWidth ? Math.max(anchorEl.clientWidth, 400) : 400 }}
                 >
                     {({ TransitionProps }) => (
                         <Fade {...TransitionProps} timeout={350}>
-                            <Paper elevation={4} sx={{ mt: 1, maxHeight: 400, overflow: 'auto' }}>
+                            <Paper elevation={4} sx={{ mt: 1, maxHeight: 450, overflow: 'auto' }}>
+                                {/* Category Filter Chips */}
+                                <Box sx={{ p: 1.5, borderBottom: 1, borderColor: 'divider' }}>
+                                    <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
+                                        {categoryChips.map(chip => (
+                                            <Chip
+                                                key={chip.key}
+                                                label={chip.label}
+                                                size="small"
+                                                color={categoryFilter === chip.key ? 'primary' : 'default'}
+                                                variant={categoryFilter === chip.key ? 'filled' : 'outlined'}
+                                                onClick={() => setCategoryFilter(chip.key)}
+                                                sx={{ cursor: 'pointer' }}
+                                            />
+                                        ))}
+                                    </Stack>
+                                </Box>
+
                                 <List dense>
-                                    <ListItem>
-                                        <Typography variant="overline" color="text.secondary">
-                                            RÉSULTATS ({results.length})
-                                        </Typography>
-                                    </ListItem>
-                                    <Divider />
-                                    {results.length > 0 ? (
-                                        results.map((result) => (
-                                            <ListItem
-                                                key={`${result.type}-${result.id}`}
-                                                disablePadding
-                                            >
-                                                <ListItemButton onClick={() => handleResultClick(result)}>
-                                                    <ListItemIcon sx={{ minWidth: 40 }}>
-                                                        {getIcon(result.type)}
-                                                    </ListItemIcon>
+                                    {/* Show results if query exists */}
+                                    {debouncedQuery.trim() && (
+                                        <>
+                                            <ListItem>
+                                                <Typography variant="overline" color="text.secondary">
+                                                    RÉSULTATS ({results.length})
+                                                </Typography>
+                                            </ListItem>
+                                            <Divider />
+                                            {results.length > 0 ? (
+                                                results.map((result, index) => (
+                                                    <ListItem
+                                                        key={`${result.type}-${result.id}`}
+                                                        disablePadding
+                                                    >
+                                                        <ListItemButton
+                                                            onClick={() => handleResultClick(result)}
+                                                            selected={selectedIndex === index}
+                                                        >
+                                                            <ListItemIcon sx={{ minWidth: 40 }}>
+                                                                {getIcon(result.type)}
+                                                            </ListItemIcon>
+                                                            <ListItemText
+                                                                primary={<HighlightText text={result.title} highlight={debouncedQuery} />}
+                                                                secondary={
+                                                                    <Box component="span" sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                                        <span>{result.subtitle}</span>
+                                                                        {result.date && (
+                                                                            <span>{format(new Date(result.date), 'dd/MM/yyyy')}</span>
+                                                                        )}
+                                                                    </Box>
+                                                                }
+                                                            />
+                                                        </ListItemButton>
+                                                    </ListItem>
+                                                ))
+                                            ) : (
+                                                <ListItem>
                                                     <ListItemText
-                                                        primary={result.title}
+                                                        primary={
+                                                            <Typography variant="body2" color="text.secondary" align="center" sx={{ py: 2 }}>
+                                                                Aucun résultat trouvé
+                                                            </Typography>
+                                                        }
                                                         secondary={
-                                                            <Box component="span" sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                                                                <span>{result.subtitle}</span>
-                                                                {result.date && (
-                                                                    <span>{format(new Date(result.date), 'dd/MM/yyyy')}</span>
-                                                                )}
-                                                            </Box>
+                                                            <Typography variant="caption" color="text.disabled" align="center" display="block">
+                                                                Essayez d'autres mots-clés
+                                                            </Typography>
                                                         }
                                                     />
-                                                </ListItemButton>
+                                                </ListItem>
+                                            )}
+                                        </>
+                                    )}
+
+                                    {/* Show recent searches when no query */}
+                                    {!debouncedQuery.trim() && recentSearches.length > 0 && (
+                                        <>
+                                            <ListItem>
+                                                <Typography variant="overline" color="text.secondary">
+                                                    RECHERCHES RÉCENTES
+                                                </Typography>
                                             </ListItem>
-                                        ))
-                                    ) : (
+                                            <Divider />
+                                            {recentSearches.map((term, index) => (
+                                                <ListItem key={term} disablePadding>
+                                                    <ListItemButton
+                                                        onClick={() => handleRecentClick(term)}
+                                                        selected={selectedIndex === index}
+                                                    >
+                                                        <ListItemIcon sx={{ minWidth: 40 }}>
+                                                            <HistoryIcon color="action" fontSize="small" />
+                                                        </ListItemIcon>
+                                                        <ListItemText primary={term} />
+                                                    </ListItemButton>
+                                                </ListItem>
+                                            ))}
+                                        </>
+                                    )}
+
+                                    {/* Empty state when no query and no recent searches */}
+                                    {!debouncedQuery.trim() && recentSearches.length === 0 && (
                                         <ListItem>
                                             <ListItemText
                                                 primary={
                                                     <Typography variant="body2" color="text.secondary" align="center" sx={{ py: 2 }}>
-                                                        Aucun résultat trouvé
-                                                    </Typography>
-                                                }
-                                                secondary={
-                                                    <Typography variant="caption" color="text.disabled" align="center" display="block">
-                                                        Essayez d'autres mots-clés
+                                                        Commencez à taper pour rechercher
                                                     </Typography>
                                                 }
                                             />
@@ -304,3 +512,4 @@ const GlobalSearch: React.FC = () => {
 };
 
 export default GlobalSearch;
+

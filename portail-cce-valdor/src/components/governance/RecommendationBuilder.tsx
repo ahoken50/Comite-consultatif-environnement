@@ -52,6 +52,7 @@ import type { Meeting, AgendaItem } from '../../types/meeting.types';
 import { useNavigate } from 'react-router-dom';
 import { generateResolutionPDF } from '../../services/pdfServiceResolution';
 import type { PVStructure, VerificationResult, DraftRecommendation } from '../../types/ai-workflow.types';
+import { useToast } from '../../hooks/useToast';
 
 const steps = ['Détails de base', 'Considérants & Analyse', 'Liaisons Stratégiques', 'Révision'];
 
@@ -62,6 +63,7 @@ interface RecommendationBuilderProps {
 const RecommendationBuilder: React.FC<RecommendationBuilderProps> = ({ onClose }) => {
     const dispatch = useDispatch<AppDispatch>();
     const navigate = useNavigate();
+    const { showWarning } = useToast();
     const [activeStep, setActiveStep] = useState(0);
 
     // Import State
@@ -295,7 +297,7 @@ const RecommendationBuilder: React.FC<RecommendationBuilderProps> = ({ onClose }
                 } as any;
             }
         } else {
-            alert("Veuillez lier une réunion (Import) pour générer l'extrait officiel.");
+            showWarning("Veuillez lier une réunion (Import) pour générer l'extrait officiel.");
             return;
         }
         if (meetingContext) {

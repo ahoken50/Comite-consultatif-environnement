@@ -37,24 +37,19 @@ const DocumentsPage: React.FC = () => {
     const projectsMap = useMemo(() => new Map(projects.map(p => [p.id, p])), [projects]);
 
     const handleDelete = useCallback(async (id: string, storagePath: string) => {
-        console.log('[DEBUG] handleDelete called with:', { id, storagePath });
         if (window.confirm('Êtes-vous sûr de vouloir supprimer ce document ?')) {
-            console.log('[DEBUG] User confirmed deletion');
             try {
                 // Check if this document is linked as a meeting's minutes file
-                // Access current meetings from ref to avoid adding meetings to dependency array
                 const currentMeetings = meetingsRef.current;
 
                 // First try by documentId, then by storagePath as fallback for legacy data
                 let linkedMeeting = currentMeetings.find(m => m.minutesFileDocumentId === id);
 
                 if (!linkedMeeting) {
-                    // Fallback: check by storagePath for documents uploaded before minutesFileDocumentId was added
                     linkedMeeting = currentMeetings.find(m => m.minutesFileStoragePath === storagePath);
                 }
 
                 if (linkedMeeting) {
-                    console.log('[DEBUG] Document is linked to meeting:', linkedMeeting.id, '- clearing minutes file reference');
                     // Clear the minutes file reference in the meeting
                     await dispatch(updateMeeting({
                         id: linkedMeeting.id,
@@ -65,20 +60,14 @@ const DocumentsPage: React.FC = () => {
                             minutesFileDocumentId: null as any
                         }
                     }));
-                } else {
-                    console.log('[DEBUG] No linked meeting found for document:', id);
                 }
 
-                // Delete the document
-                const result = await dispatch(deleteDocument({ id, storagePath }));
-                console.log('[DEBUG] deleteDocument result:', result);
+                await dispatch(deleteDocument({ id, storagePath }));
             } catch (error) {
-                console.error('[DEBUG] deleteDocument error:', error);
+                console.error('Error deleting document:', error);
             }
-        } else {
-            console.log('[DEBUG] User cancelled deletion');
         }
-    }, [dispatch]); // Stable callback, depends only on dispatch
+    }, [dispatch]);
 
     const groupedDocuments = useMemo(() => {
         const groups: Record<string, { title: string; type: 'meeting' | 'project' | 'other'; date: string; documents: Document[]; entityId?: string }> = {};

@@ -19,6 +19,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
+import { useToast } from '../../hooks/useToast';
 
 // Ensure jsPDF types are correct
 interface jsPDFCustom extends jsPDF {
@@ -26,6 +27,7 @@ interface jsPDFCustom extends jsPDF {
 }
 
 const AnnualReportPage: React.FC = () => {
+    const { showError } = useToast();
     const [year, setYear] = useState(new Date().getFullYear());
     const [loading, setLoading] = useState(false);
 
@@ -105,7 +107,7 @@ const AnnualReportPage: React.FC = () => {
 
         } catch (err) {
             console.error('Error creating PDF', err);
-            alert('Erreur lors de la création du PDF');
+            showError('Erreur lors de la création du PDF');
         } finally {
             setLoading(false);
         }

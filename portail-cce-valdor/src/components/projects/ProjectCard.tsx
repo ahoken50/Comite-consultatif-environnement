@@ -93,8 +93,12 @@ const ProjectCard: React.FC<ProjectCardProps> = ({ project, onClick }) => {
                     </Typography>
 
                     <AvatarGroup max={3} sx={{ '& .MuiAvatar-root': { width: 24, height: 24, fontSize: '0.75rem' } }}>
-                        {/* Placeholder for coordinator/members */}
-                        <Avatar alt="Coordinator" src="/static/images/avatar/1.jpg" />
+                        <Avatar
+                            alt="Coordinateur"
+                            sx={{ bgcolor: getPriorityColor(project.priority) }}
+                        >
+                            {project.code.charAt(0).toUpperCase()}
+                        </Avatar>
                     </AvatarGroup>
                 </Box>
             </CardContent>

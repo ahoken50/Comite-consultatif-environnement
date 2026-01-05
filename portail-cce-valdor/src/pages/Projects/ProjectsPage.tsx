@@ -31,6 +31,7 @@ import ProjectList from '../../components/projects/ProjectList';
 import ProjectKanbanBoard from '../../components/projects/ProjectKanbanBoard';
 import ProjectCalendar from '../../components/projects/ProjectCalendar';
 import ProjectForm from '../../components/projects/ProjectForm';
+import PaginationControls, { usePagination } from '../../components/common/PaginationControls';
 import { ProjectStatus } from '../../types/project.types';
 import type { Project } from '../../types/project.types';
 
@@ -64,6 +65,9 @@ const ProjectsPage: React.FC = () => {
         project.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         project.code.toLowerCase().includes(searchTerm.toLowerCase())
     ), [projects, searchTerm]);
+
+    // Pagination for grid view
+    const { page, setPage, rowsPerPage, setRowsPerPage, paginatedItems: paginatedProjects, totalItems } = usePagination(filteredProjects, 12);
 
     const handleProjectClick = useCallback((id: string) => {
         navigate(`/projects/${id}`);
@@ -250,13 +254,25 @@ const ProjectsPage: React.FC = () => {
             )}
 
             {view === 'grid' && (
-                <Grid container spacing={3}>
-                    {filteredProjects.map((project) => (
-                        <Grid size={{ xs: 12, sm: 6, md: 4 }} key={project.id}>
-                            <ProjectCard project={project} onClick={handleProjectClick} />
-                        </Grid>
-                    ))}
-                </Grid>
+                <Box>
+                    <Grid container spacing={3}>
+                        {paginatedProjects.map((project) => (
+                            <Grid size={{ xs: 12, sm: 6, md: 4 }} key={project.id}>
+                                <ProjectCard project={project} onClick={handleProjectClick} />
+                            </Grid>
+                        ))}
+                    </Grid>
+                    {totalItems > 12 && (
+                        <PaginationControls
+                            totalItems={totalItems}
+                            page={page}
+                            rowsPerPage={rowsPerPage}
+                            onPageChange={setPage}
+                            onRowsPerPageChange={setRowsPerPage}
+                            rowsPerPageOptions={[12, 24, 48]}
+                        />
+                    )}
+                </Box>
             )}
 
             {view === 'calendar' && (

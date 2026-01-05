@@ -3,6 +3,11 @@ import type { CouncilRecommendation } from '../types/recommendation.types';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
+export interface PDFGenerationResult {
+    success: boolean;
+    error?: string;
+}
+
 /**
  * Sanitize text to remove special characters
  */
@@ -102,7 +107,7 @@ export const generateResolutionPDF = async (
     itemOrRec: AgendaItem | CouncilRecommendation,
     type: 'agendaItem' | 'recommendation',
     mode: 'official' | 'campaign' = 'official'
-) => {
+): Promise<PDFGenerationResult> => {
 
     // Extract Data
     const meetingDate = new Date(meeting.date);
@@ -371,8 +376,7 @@ export const generateResolutionPDF = async (
     // Open print window
     const printWindow = window.open('', '_blank', 'width=816,height=1056');
     if (!printWindow) {
-        alert('Pop-up bloqué.');
-        return;
+        return { success: false, error: 'Pop-up bloqué. Veuillez autoriser les pop-ups pour générer le PDF.' };
     }
 
     printWindow.document.write(html);
@@ -381,6 +385,7 @@ export const generateResolutionPDF = async (
     // Wait for resources
     await new Promise(resolve => setTimeout(resolve, 1000));
     printWindow.print();
+    return { success: true };
 };
 
 const formattedNotes = (text: string) => {
