@@ -1,100 +1,81 @@
-import * as functions from "firebase-functions";
-import * as admin from "firebase-admin";
-
-import * as fs from "fs";
-import * as path from "path";
-import * as os from "os";
-import { GoogleGenerativeAI } from "@google/generative-ai";
-import { GoogleAIFileManager, FileState } from "@google/generative-ai/server";
-
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.transcribeAudio = void 0;
+const functions = require("firebase-functions");
+const admin = require("firebase-admin");
+const fs = require("fs");
+const path = require("path");
+const os = require("os");
+const generative_ai_1 = require("@google/generative-ai");
+const server_1 = require("@google/generative-ai/server");
 try {
     admin.initializeApp();
-} catch (e) {
+}
+catch (e) {
     console.warn('Firebase Admin already initialized:', e);
 }
-
-interface TranscriptionRequest {
-    meetingId: string;
-    storagePath: string;
-    mimeType: string;
-}
-
 // Detect and clean repetition loops
-function cleanRepetitions(text: string): string {
+function cleanRepetitions(text) {
     // Pattern: same word repeated 5+ times
     let cleaned = text.replace(/(\b\w+\b)(\s+\1){4,}/gi, '$1 [...]');
     // Pattern: same phrase repeated
     cleaned = cleaned.replace(/(.{10,50})\1{2,}/gi, '$1 [...]');
     return cleaned;
 }
-
-import { onCall, HttpsError, CallableRequest } from "firebase-functions/v2/https";
-import { setGlobalOptions } from "firebase-functions/v2";
-
+const https_1 = require("firebase-functions/v2/https");
+const v2_1 = require("firebase-functions/v2");
 // Global options for Gen 2
-setGlobalOptions({ maxInstances: 10 });
-
-export const transcribeAudio = onCall({
-    timeoutSeconds: 3600, // 1 hour timeout (Gen 2 supports up to 60m)
-    memory: "4GiB",       // Increases memory to 4GB
-}, async (request: CallableRequest<TranscriptionRequest>) => {
-    const data = request.data as TranscriptionRequest;
+(0, v2_1.setGlobalOptions)({ maxInstances: 10 });
+exports.transcribeAudio = (0, https_1.onCall)({
+    timeoutSeconds: 3600,
+    memory: "4GiB", // Increases memory to 4GB
+}, async (request) => {
+    var _a, _b, _c;
+    const data = request.data;
     console.log('[V5-V2] Start:', JSON.stringify(data));
-
     try {
-        if (!request.auth) throw new HttpsError("unauthenticated", "Auth required.");
-
+        if (!request.auth)
+            throw new https_1.HttpsError("unauthenticated", "Auth required.");
         // Compatibility: try both config and env
         const config = functions.config();
-        const GEMINI_API_KEY = config.google?.api_key || process.env.GOOGLE_API_KEY;
-        if (!GEMINI_API_KEY) throw new HttpsError("failed-precondition", "API Key missing.");
-
+        const GEMINI_API_KEY = ((_a = config.google) === null || _a === void 0 ? void 0 : _a.api_key) || process.env.GOOGLE_API_KEY;
+        if (!GEMINI_API_KEY)
+            throw new https_1.HttpsError("failed-precondition", "API Key missing.");
         const { meetingId, storagePath, mimeType } = data;
-        if (!meetingId || !storagePath || !mimeType) throw new HttpsError("invalid-argument", "Missing params.");
-
+        if (!meetingId || !storagePath || !mimeType)
+            throw new https_1.HttpsError("invalid-argument", "Missing params.");
         // 1. Get meeting context
         const meetingDoc = await admin.firestore().doc(`meetings/${meetingId}`).get();
         const meetingData = meetingDoc.data();
-
-        const agendaItems = meetingData?.agendaItems?.map((item: { title: string }, i: number) =>
-            `${i + 1}. ${item.title}`
-        ).join('\n') || '';
-
-        const attendeeNames = meetingData?.attendees?.map((a: { name: string }) => a.name).join(', ') || '';
-
+        const agendaItems = ((_b = meetingData === null || meetingData === void 0 ? void 0 : meetingData.agendaItems) === null || _b === void 0 ? void 0 : _b.map((item, i) => `${i + 1}. ${item.title}`).join('\n')) || '';
+        const attendeeNames = ((_c = meetingData === null || meetingData === void 0 ? void 0 : meetingData.attendees) === null || _c === void 0 ? void 0 : _c.map((a) => a.name).join(', ')) || '';
         // 2. Download & Upload
         const bucket = admin.storage().bucket();
         const tempFilePath = path.join(os.tmpdir(), `audio-${meetingId}${path.extname(storagePath)}`);
         await bucket.file(storagePath).download({ destination: tempFilePath });
-
-        const fileManager = new GoogleAIFileManager(GEMINI_API_KEY);
+        const fileManager = new server_1.GoogleAIFileManager(GEMINI_API_KEY);
         const uploadResult = await fileManager.uploadFile(tempFilePath, {
             mimeType: mimeType,
             displayName: `Meeting ${meetingId}`
         });
         const file = uploadResult.file;
-
         let processedFile = await fileManager.getFile(file.name);
-        while (processedFile.state === FileState.PROCESSING) {
+        while (processedFile.state === server_1.FileState.PROCESSING) {
             await new Promise(resolve => setTimeout(resolve, 2000));
             processedFile = await fileManager.getFile(file.name);
         }
-        if (processedFile.state === FileState.FAILED) throw new Error("File processing failed.");
-
+        if (processedFile.state === server_1.FileState.FAILED)
+            throw new Error("File processing failed.");
         // 3. Setup model
-        const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
+        const genAI = new generative_ai_1.GoogleGenerativeAI(GEMINI_API_KEY);
         const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
-
         // 4. PHASE 1: Raw transcription in chunks
         console.log('[V5-V2] Phase 1: Raw transcription...');
-
         let rawTranscription = "";
         let lastTimestamp = "0:00";
         const maxPasses = 8; // Increased from 5 to 8 to cover 2 hours (8 * 15m = 120m)
-
         for (let pass = 0; pass < maxPasses; pass++) {
             console.log(`[V5-V2] Pass ${pass + 1}/${maxPasses}, last timestamp: ${lastTimestamp}`);
-
             const continuePrompt = pass === 0
                 ? `Transcris cet enregistrement audio de réunion. Transcris VERBATIM (mot à mot) tout ce qui est dit.
                 
@@ -108,15 +89,14 @@ IMPORTANT:
 RAPPEL: Tu as déjà transcrit le début. Continue là où tu t'es arrêté.
 - Transcris les 15 prochaines minutes environ
 - Termine par [CONTINUER À: MM:SS] ou [FIN DE L'ENREGISTREMENT]`;
-
             const result = await model.generateContent({
                 contents: [{
-                    role: "user",
-                    parts: [
-                        { fileData: { mimeType: file.mimeType, fileUri: file.uri } },
-                        { text: continuePrompt }
-                    ]
-                }],
+                        role: "user",
+                        parts: [
+                            { fileData: { mimeType: file.mimeType, fileUri: file.uri } },
+                            { text: continuePrompt }
+                        ]
+                    }],
                 generationConfig: {
                     maxOutputTokens: 8192,
                     temperature: 0.1,
@@ -124,36 +104,27 @@ RAPPEL: Tu as déjà transcrit le début. Continue là où tu t'es arrêté.
                     topK: 40
                 }
             });
-
             let chunk = result.response.text();
             console.log(`[V5-V2] Received ${chunk.length} chars`);
-
             chunk = cleanRepetitions(chunk);
-
             const continueMatch = chunk.match(/\[CONTINUER À:\s*(\d+:\d+)\]/i);
             if (continueMatch) {
                 lastTimestamp = continueMatch[1];
             }
-
             rawTranscription += (pass > 0 ? "\n\n---\n\n" : "") + chunk;
-
             if (chunk.includes('[FIN DE L\'ENREGISTREMENT]') ||
                 chunk.toLowerCase().includes('fin de l\'enregistrement')) {
                 console.log('[V5-V2] Reached end of recording');
                 break;
             }
-
             if (chunk.length < 500 && pass > 0) {
                 console.log('[V5-V2] Short chunk, stopping');
                 break;
             }
         }
-
         console.log(`[V5-V2] Phase 1 complete: ${rawTranscription.length} chars`);
-
         // 5. PHASE 2: Organization
         console.log('[V5-V2] Phase 2: Organization...');
-
         const organizePrompt = `Tu es un assistant qui organise des transcriptions.
 
 TRANSCRIPTION BRUTE:
@@ -177,31 +148,24 @@ FORMAT:
 
 **Nom/Intervenant :** Ce qui est dit...
 ---`;
-
         const organizeResult = await model.generateContent({
             contents: [{ role: "user", parts: [{ text: organizePrompt }] }],
             generationConfig: {
-                maxOutputTokens: 32768, // Requires high output limit
+                maxOutputTokens: 32768,
                 temperature: 0.1
             }
         });
-
         let finalTranscription = organizeResult.response.text();
         finalTranscription = cleanRepetitions(finalTranscription);
-
         const isOrganized = finalTranscription.includes('##');
         const isComplete = finalTranscription.includes('[TRANSCRIPTION ORGANISÉE COMPLÈTE]') ||
             finalTranscription.includes('[FIN');
-
         console.log(`[V5-V2] Organized: ${isOrganized}, Complete: ${isComplete}`);
-
         await fileManager.deleteFile(file.name).catch(() => { });
         fs.unlinkSync(tempFilePath);
-
         if (!isComplete) {
             finalTranscription += '\n\n⚠️ **Note:** La transcription peut être incomplète. Veuillez vérifier.';
         }
-
         await admin.firestore().doc(`meetings/${meetingId}`).update({
             'audioRecording.transcription': finalTranscription,
             'audioRecording.rawTranscription': rawTranscription,
@@ -210,25 +174,23 @@ FORMAT:
             'audioRecording.isOrganized': isOrganized,
             dateUpdated: new Date().toISOString()
         });
-
         return {
             success: true,
             transcription: finalTranscription,
             isComplete,
             isOrganized
         };
-
-    } catch (error) {
+    }
+    catch (error) {
         console.error('[V5-V2 ERROR]', error);
-
-        if (data?.meetingId) {
+        if (data === null || data === void 0 ? void 0 : data.meetingId) {
             await admin.firestore().doc(`meetings/${data.meetingId}`).update({
                 'audioRecording.transcriptionStatus': 'error',
                 'audioRecording.transcriptionError': error instanceof Error ? error.message : String(error)
             }).catch(() => { });
         }
-
         // HttpsError from Gen 2
-        throw new HttpsError("internal", error instanceof Error ? error.message : "Error");
+        throw new https_1.HttpsError("internal", error instanceof Error ? error.message : "Error");
     }
 });
+//# sourceMappingURL=index.js.map

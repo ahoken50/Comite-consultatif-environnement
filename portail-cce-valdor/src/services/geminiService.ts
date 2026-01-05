@@ -264,30 +264,29 @@ ${transcription}
 
 ## DIRECTIVES CRUCIALES DE STRUCTURE (IMPÉRATIF)
 1. **Un point d'ordre du jour = Un seul bloc principal**.
-2. **DÉLIBÉRATIONS AÉRÉES** : Utilise des paragraphes distincts (sauts de ligne) chaque fois que le sujet évolue ou qu'un nouvel aspect est abordé. Ne fais pas un bloc de texte compact.
-3. **CONCLUSION DU POINT** : Termine chaque point par UNE seule conclusion qui synthétise l'issue. Cela peut être une "RÉSOLUTION", une "DÉCISION", ou un "COMMENTAIRE".
+2. **DÉLIBÉRATIONS** : Doivent être séparées par des **paragraphes distincts**, pas un texte continu. Si on change de sujet dans le même bloc, cela doit se voir par un saut de ligne.
+3. **CONCLUSION DU POINT** : À la fin d'un bloc, il DOIT y avoir une conclusion qui regroupe les éléments pertinents. Ce n'est **pas nécessairement une résolution**, ça peut être un commentaire ou une décision.
 
 ## DIRECTIVES DE RÉDACTION
 
 ### 1. DÉLIBÉRATIONS (Le Cœur du point)
-- **Format** : Texte narratif divisé en paragraphes clairs.
-- **Règle** : Un nouveau paragraphe pour chaque nouvelle idée ou sous-thème discuté.
-- **Contenu** : Synthétise les échanges. "Le Comité aborde d'abord... Ensuite, la discussion porte sur..."
+- **Format** : Texte narratif aéré.
+- **Règle** : "Si on change de sujet mais dans le même bloc, on doit le savoir." -> Utilise des paragraphes.
+- **Contenu** : Synthétise les échanges de manière fluide.
 
 ### 2. ISSUE DU POINT (Choisir la plus appropriée)
-À la fin du point, ajoute UNE section finale adaptée :
+Termine le bloc par l'une des sections suivantes :
 
-*   **Option A : RÉSOLUTION** (Si un vote formel a lieu)
-    *   **Format OBLIGATOIRE** :
-        "CONSIDÉRANT [le contexte ou le motif]...
-         IL EST RÉSOLU QUE [la décision]..." (ou "IL EST RÉSOLU DE" si suivi d'un verbe)
+*   **Option A : RÉSOLUTION** (Si un vote a lieu)
+    *   **Format STRICT** : Doit utiliser la forme "CONSIDÉRANT... IL EST RÉSOLU DE/QUE..."
+    *   Exemple : "CONSIDÉRANT la proposition... IL EST RÉSOLU QUE le Comité accepte..."
     *   Indiquer proposeur/secondeur.
 
-*   **Option B : DÉCISION** (Si une action est décidée sans vote formel)
+*   **Option B : DÉCISION** (Action sans vote formel)
     *   Format : "DÉCISION : Le Comité convient de..."
 
-*   **Option C : COMMENTAIRE** (Si discussion seulement ou information)
-    *   Format : "COMMENTAIRE : Le Comité prend acte de l'information." ou "Résumé : ..."
+*   **Option C : COMMENTAIRE** (Discussion/Info)
+    *   Format : "COMMENTAIRE : Le Comité prend acte..." ou "Résumé : ..."
 
 
 ### 4. COHÉRENCE TERMINOLOGIQUE
