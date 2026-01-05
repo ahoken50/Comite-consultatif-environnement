@@ -1,4 +1,3 @@
-import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
 
 import * as fs from "fs";
@@ -30,6 +29,9 @@ function cleanRepetitions(text: string): string {
 
 import { onCall, HttpsError, CallableRequest } from "firebase-functions/v2/https";
 import { setGlobalOptions } from "firebase-functions/v2";
+import { defineSecret } from "firebase-functions/params";
+
+const googleApiKey = defineSecret("GOOGLE_API_KEY");
 
 // Global options for Gen 2
 setGlobalOptions({ maxInstances: 10 });
@@ -37,6 +39,7 @@ setGlobalOptions({ maxInstances: 10 });
 export const transcribeAudioV2 = onCall({
     timeoutSeconds: 3600, // 1 hour timeout (Gen 2 supports up to 60m)
     memory: "4GiB",       // Increases memory to 4GB
+    secrets: [googleApiKey], // Make secret available
 }, async (request: CallableRequest<TranscriptionRequest>) => {
     const data = request.data as TranscriptionRequest;
     console.log('[V5-V2] Start:', JSON.stringify(data));
@@ -44,9 +47,8 @@ export const transcribeAudioV2 = onCall({
     try {
         if (!request.auth) throw new HttpsError("unauthenticated", "Auth required.");
 
-        // Compatibility: try both config and env
-        const config = functions.config();
-        const GEMINI_API_KEY = config.google?.api_key || process.env.GOOGLE_API_KEY;
+        // Access secret directly
+        const GEMINI_API_KEY = googleApiKey.value();
         if (!GEMINI_API_KEY) throw new HttpsError("failed-precondition", "API Key missing.");
 
         const { meetingId, storagePath, mimeType } = data;

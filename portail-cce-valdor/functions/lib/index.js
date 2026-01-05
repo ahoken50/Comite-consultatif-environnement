@@ -1,7 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.transcribeAudio = void 0;
-const functions = require("firebase-functions");
+exports.transcribeAudioV2 = void 0;
 const admin = require("firebase-admin");
 const fs = require("fs");
 const path = require("path");
@@ -24,21 +23,23 @@ function cleanRepetitions(text) {
 }
 const https_1 = require("firebase-functions/v2/https");
 const v2_1 = require("firebase-functions/v2");
+const params_1 = require("firebase-functions/params");
+const googleApiKey = (0, params_1.defineSecret)("GOOGLE_API_KEY");
 // Global options for Gen 2
 (0, v2_1.setGlobalOptions)({ maxInstances: 10 });
-exports.transcribeAudio = (0, https_1.onCall)({
+exports.transcribeAudioV2 = (0, https_1.onCall)({
     timeoutSeconds: 3600,
-    memory: "4GiB", // Increases memory to 4GB
+    memory: "4GiB",
+    secrets: [googleApiKey], // Make secret available
 }, async (request) => {
-    var _a, _b, _c;
+    var _a, _b;
     const data = request.data;
     console.log('[V5-V2] Start:', JSON.stringify(data));
     try {
         if (!request.auth)
             throw new https_1.HttpsError("unauthenticated", "Auth required.");
-        // Compatibility: try both config and env
-        const config = functions.config();
-        const GEMINI_API_KEY = ((_a = config.google) === null || _a === void 0 ? void 0 : _a.api_key) || process.env.GOOGLE_API_KEY;
+        // Access secret directly
+        const GEMINI_API_KEY = googleApiKey.value();
         if (!GEMINI_API_KEY)
             throw new https_1.HttpsError("failed-precondition", "API Key missing.");
         const { meetingId, storagePath, mimeType } = data;
@@ -47,8 +48,8 @@ exports.transcribeAudio = (0, https_1.onCall)({
         // 1. Get meeting context
         const meetingDoc = await admin.firestore().doc(`meetings/${meetingId}`).get();
         const meetingData = meetingDoc.data();
-        const agendaItems = ((_b = meetingData === null || meetingData === void 0 ? void 0 : meetingData.agendaItems) === null || _b === void 0 ? void 0 : _b.map((item, i) => `${i + 1}. ${item.title}`).join('\n')) || '';
-        const attendeeNames = ((_c = meetingData === null || meetingData === void 0 ? void 0 : meetingData.attendees) === null || _c === void 0 ? void 0 : _c.map((a) => a.name).join(', ')) || '';
+        const agendaItems = ((_a = meetingData === null || meetingData === void 0 ? void 0 : meetingData.agendaItems) === null || _a === void 0 ? void 0 : _a.map((item, i) => `${i + 1}. ${item.title}`).join('\n')) || '';
+        const attendeeNames = ((_b = meetingData === null || meetingData === void 0 ? void 0 : meetingData.attendees) === null || _b === void 0 ? void 0 : _b.map((a) => a.name).join(', ')) || '';
         // 2. Download & Upload
         const bucket = admin.storage().bucket();
         const tempFilePath = path.join(os.tmpdir(), `audio-${meetingId}${path.extname(storagePath)}`);
