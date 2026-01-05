@@ -110,7 +110,7 @@ export const transcribeAudio = async (
 
         // 1. Call Cloud Function instead of client-side fetch due to CORS issues
         console.log('[Transcription] Calling Cloud Function...');
-        const transcribeFunction = httpsCallable(functions, 'transcribeAudio', { timeout: 540000 }); // 9 minutes timeout
+        const transcribeFunction = httpsCallable(functions, 'transcribeAudio', { timeout: 1800000 }); // 30 minutes timeout
 
         const result = await transcribeFunction({
             meetingId,
@@ -262,30 +262,33 @@ ${agendaList}
 ## TRANSCRIPTION (Source intégrale)
 ${transcription}
 
-## DIRECTIVES DE RÉDACTION IMPORTANTES
+## DIRECTIVES CRUCIALES DE STRUCTURE (IMPÉRATIF)
+1. **Un point d'ordre du jour = Un seul bloc principal**.
+2. **DÉLIBÉRATIONS AÉRÉES** : Utilise des paragraphes distincts (sauts de ligne) chaque fois que le sujet évolue ou qu'un nouvel aspect est abordé. Ne fais pas un bloc de texte compact.
+3. **CONCLUSION DU POINT** : Termine chaque point par UNE seule conclusion qui synthétise l'issue. Cela peut être une "RÉSOLUTION", une "DÉCISION", ou un "COMMENTAIRE".
 
-### 1. STRUCTURE - Suivre l'ordre du jour
-- Suis EXACTEMENT la structure et numérotation de l'ordre du jour ci-dessus
-- Pour CHAQUE point de l'ordre du jour, crée une section correspondante avec le même numéro et titre
-- N'invente pas de nouveaux points, suis uniquement ceux listés
+## DIRECTIVES DE RÉDACTION
 
-### 2. ORGANISATION THÉMATIQUE
-- Au sein de chaque point, regroupe les interventions par THÈME plutôt que chronologiquement
-- Si plusieurs personnes parlent du même aspect, synthétise leurs points ensemble
-- Utilise des sous-sections si un point contient plusieurs thèmes distincts
+### 1. DÉLIBÉRATIONS (Le Cœur du point)
+- **Format** : Texte narratif divisé en paragraphes clairs.
+- **Règle** : Un nouveau paragraphe pour chaque nouvelle idée ou sous-thème discuté.
+- **Contenu** : Synthétise les échanges. "Le Comité aborde d'abord... Ensuite, la discussion porte sur..."
 
-### 3. DISTINCTION PAROLE / DÉCISION
-Pour chaque point, sépare clairement:
+### 2. ISSUE DU POINT (Choisir la plus appropriée)
+À la fin du point, ajoute UNE section finale adaptée :
 
-**A) DÉLIBÉRATIONS** (ce qui a été dit/discuté)
-- Utilise: "Le Comité discute de...", "Il est mentionné que...", "Les membres échangent sur..."
-- Résume les positions et arguments exprimés
+*   **Option A : RÉSOLUTION** (Si un vote formel a lieu)
+    *   **Format OBLIGATOIRE** :
+        "CONSIDÉRANT [le contexte ou le motif]...
+         IL EST RÉSOLU QUE [la décision]..." (ou "IL EST RÉSOLU DE" si suivi d'un verbe)
+    *   Indiquer proposeur/secondeur.
 
-**B) DÉCISIONS** (ce qui a été voté/résolu)
-- Encadre dans une section "RÉSOLUTION" avec format:
-  "CONSIDÉRANT que...
-   IL EST RÉSOLU DE..."
-- Indique proposeur, secondeur, et résultat du vote (unanimité/majorité)
+*   **Option B : DÉCISION** (Si une action est décidée sans vote formel)
+    *   Format : "DÉCISION : Le Comité convient de..."
+
+*   **Option C : COMMENTAIRE** (Si discussion seulement ou information)
+    *   Format : "COMMENTAIRE : Le Comité prend acte de l'information." ou "Résumé : ..."
+
 
 ### 4. COHÉRENCE TERMINOLOGIQUE
 Utilise TOUJOURS ces termes de façon cohérente:
