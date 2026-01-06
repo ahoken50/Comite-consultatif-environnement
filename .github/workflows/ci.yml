@@ -20,6 +20,14 @@ jobs:
         cache: 'npm'
         cache-dependency-path: portail-cce-valdor/package-lock.json
 
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Install ffmpeg
+      run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
     - name: Install dependencies
       working-directory: portail-cce-valdor
       # --legacy-peer-deps required due to react-quill expecting React 18
@@ -39,6 +47,7 @@ jobs:
         VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID }}
         VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID }}
         VITE_GOOGLE_AI_API: ${{ secrets.GOOGLE_AI_API }}
+        VITE_ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
 
     - name: Install Functions dependencies
       working-directory: portail-cce-valdor/functions
@@ -52,6 +61,13 @@ jobs:
       working-directory: portail-cce-valdor/functions
       run: echo "GOOGLE_API_KEY=${{ secrets.GOOGLE_AI_API }}" > .env
 
+    - name: Setup Python Functions venv
+      working-directory: portail-cce-valdor/functions-python
+      run: |
+        python3.11 -m venv venv
+        source venv/bin/activate
+        pip install -r requirements.txt
+
     - name: Deploy to Firebase (Hosting & Functions)
       if: github.ref == 'refs/heads/main'
       uses: w9jds/firebase-action@master
@@ -62,4 +78,5 @@ jobs:
         PROJECT_ID: comite-cce
         # We need to be in the project root (subdir) for firebase.json
         PROJECT_PATH: portail-cce-valdor
-
+        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
