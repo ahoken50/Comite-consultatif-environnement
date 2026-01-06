@@ -122,8 +122,7 @@ def build_context_prompt(attendee_names: list[str], agenda_items: list[str]) -> 
 
 @https_fn.on_call(
     timeout_sec=3600,  # 1 hour timeout
-    memory=options.MemoryOption.GB_4,
-    secrets=["OPENAI_API_KEY"]
+    memory=options.MemoryOption.GB_4
 )
 def transcribe_whisper(req: https_fn.CallableRequest) -> dict:
     """
