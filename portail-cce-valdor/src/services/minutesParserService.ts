@@ -46,6 +46,26 @@ export const parseMinutesDraft = (draftContent: string): { items: AgendaItem[], 
         }
     };
 
+    // Helper to check if a title is a sub-title of the current section
+    const isSubTitle = (titleLine: string, currentSectionTitle: string | undefined): boolean => {
+        if (!currentSectionTitle) return false;
+
+        // Extract numbers from titles (e.g., "4. Revue..." -> "4", "4.1 Amenagement" -> "4.1")
+        const currentMatch = currentSectionTitle.match(/^(\d+(?:[.-]\d+)*)/);
+        const newMatch = titleLine.match(/^(\d+(?:[.-]\d+)*)/);
+
+        if (!currentMatch || !newMatch) return false;
+
+        const currentNum = currentMatch[1];
+        const newNum = newMatch[1];
+
+        // It is a sub-title if it starts with the current section number AND is longer
+        // e.g. "4.1" starts with "4" -> TRUE
+        // e.g. "5" starts with "4" -> FALSE
+        // e.g. "4" starts with "4" -> FALSE (same level)
+        return newNum.startsWith(currentNum) && newNum.length > currentNum.length;
+    };
+
     // Iterate through lines to identify structure
     for (let i = 0; i < lines.length; i++) {
         const line = lines[i].trim();
@@ -64,7 +84,23 @@ export const parseMinutesDraft = (draftContent: string): { items: AgendaItem[], 
             let j = i + 1;
             while (j < lines.length) {
                 const nextLine = lines[j].trim();
-                if (numberedTitleRegex.test(nextLine) || resolutionRegex.test(nextLine) || commentaireRegex.test(nextLine)) {
+                let shouldBreak = false;
+
+                // Check for hard breaks
+                if (resolutionRegex.test(nextLine) || commentaireRegex.test(nextLine)) {
+                    shouldBreak = true;
+                }
+                // Check for title breaks (UNLESS it's a sub-title of the current section)
+                else if (numberedTitleRegex.test(nextLine)) {
+                    // If we are deep inside a content block attached to section "4.", 
+                    // and we see "4.1", we should treat it as text content, not a new section.
+                    const isSub = currentSection ? isSubTitle(nextLine, currentSection.title) : false;
+                    if (!isSub) {
+                        shouldBreak = true;
+                    }
+                }
+
+                if (shouldBreak) {
                     break;
                 }
                 resolutionText += '\n' + lines[j];
@@ -110,7 +146,21 @@ export const parseMinutesDraft = (draftContent: string): { items: AgendaItem[], 
             let j = i + 1;
             while (j < lines.length) {
                 const nextLine = lines[j].trim();
-                if (numberedTitleRegex.test(nextLine) || resolutionRegex.test(nextLine) || commentaireRegex.test(nextLine)) {
+                let shouldBreak = false;
+
+                // Check for hard breaks
+                if (resolutionRegex.test(nextLine) || commentaireRegex.test(nextLine)) {
+                    shouldBreak = true;
+                }
+                // Check for title breaks (UNLESS it's a sub-title)
+                else if (numberedTitleRegex.test(nextLine)) {
+                    const isSub = currentSection ? isSubTitle(nextLine, currentSection.title) : false;
+                    if (!isSub) {
+                        shouldBreak = true;
+                    }
+                }
+
+                if (shouldBreak) {
                     break;
                 }
                 commentText += '\n' + lines[j];
