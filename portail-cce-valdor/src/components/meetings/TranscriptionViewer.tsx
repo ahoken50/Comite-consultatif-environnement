@@ -21,7 +21,8 @@ import {
 } from '@mui/icons-material';
 import { useSelector } from 'react-redux';
 import type { Meeting, MinutesDraft } from '../../types/meeting.types';
-import { generateMinutesDraft, finalizeDraft, isGeminiConfigured, buildHistoricalContext, formatHistoricalContextForPrompt } from '../../services/geminiService';
+import { buildHistoricalContext, formatHistoricalContextForPrompt } from '../../services/geminiService';
+import { generateMinutesDraftClaude, finalizeDraftClaude, isClaudeConfigured } from '../../services/claudeService';
 import { selectAllMeetings } from '../../features/meetings/meetingsSlice';
 
 interface TranscriptionViewerProps {
@@ -76,8 +77,8 @@ const TranscriptionViewer: React.FC<TranscriptionViewerProps> = ({
     }
 
     const handleGenerateDraft = async () => {
-        if (!isGeminiConfigured()) {
-            setError('Clé API Gemini non configurée');
+        if (!isClaudeConfigured()) {
+            setError('Clé API Claude non configurée');
             return;
         }
 
@@ -88,7 +89,7 @@ const TranscriptionViewer: React.FC<TranscriptionViewerProps> = ({
         const context = buildHistoricalContext(pastMeetings, meeting.agendaItems || []);
         const historicalContextText = formatHistoricalContextForPrompt(context);
 
-        const result = await generateMinutesDraft(meeting, transcription, historicalContextText);
+        const result = await generateMinutesDraftClaude(meeting, transcription, historicalContextText);
 
         if (result.success && result.draft) {
             onDraftGenerated?.(result.draft);
@@ -108,7 +109,7 @@ const TranscriptionViewer: React.FC<TranscriptionViewerProps> = ({
         setIsFinalizing(true);
         setError(null);
 
-        const result = await finalizeDraft(meeting, feedback);
+        const result = await finalizeDraftClaude(meeting, feedback);
 
         if (result.success) {
             setShowFeedbackForm(false);

@@ -1,0 +1,13 @@
+# Firebase Functions Python Runtime
+firebase-functions>=0.4.0
+firebase-admin>=6.0.0
+
+# Audio Processing
+pydub>=0.25.1
+openai>=1.0.0
+
+# Anthropic Claude
+anthropic>=0.18.0
+
+# Utilities
+python-dotenv>=1.0.0

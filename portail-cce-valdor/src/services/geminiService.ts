@@ -93,13 +93,6 @@ export const transcribeAudio = async (
     mimeType: string,
     storagePath?: string // Optional storage path for direct SDK download
 ): Promise<{ success: boolean; transcription?: string; error?: string }> => {
-    if (!GEMINI_API_KEY) {
-        return {
-            success: false,
-            error: 'Clé API Gemini non configurée. Vérifiez GOOGLE_AI_API dans les secrets GitHub.'
-        };
-    }
-
     try {
         // Update status to processing
         const meetingRef = doc(db, 'meetings', meetingId);
@@ -108,24 +101,24 @@ export const transcribeAudio = async (
             dateUpdated: new Date().toISOString()
         });
 
-        // 1. Call Cloud Function instead of client-side fetch due to CORS issues
-        console.log('[Transcription] Calling Cloud Function...');
-        const transcribeFunction = httpsCallable(functions, 'transcribeAudioV2', { timeout: 1800000 }); // 30 minutes client timeout
+        // Call Whisper Python Cloud Function
+        console.log('[Transcription] Calling Whisper Cloud Function...');
+        const transcribeFunction = httpsCallable(functions, 'transcribe_whisper', { timeout: 3600000 }); // 1 hour client timeout
 
         const result = await transcribeFunction({
             meetingId,
-            storagePath: storagePath || audioUrl, // Pass storage path if avail, else URL (but function expects path)
+            storagePath: storagePath || audioUrl,
             mimeType
         });
 
         // The function updates Firestore directly, so we just verify success
-        const data = result.data as { success: boolean; transcription: string; error?: string };
+        const data = result.data as { success: boolean; transcription: string; chunks?: number; error?: string };
 
         if (!data.success) {
-            throw new Error(data.error || 'Unknown error from server');
+            throw new Error(data.error || 'Unknown error from Whisper');
         }
 
-        console.log('[Transcription] Success via Cloud Function!');
+        console.log(`[Transcription] Whisper success! ${data.chunks || 1} chunk(s)`);
         return { success: true, transcription: data.transcription };
 
     } catch (error) {
@@ -146,6 +139,7 @@ export const transcribeAudio = async (
         };
     }
 };
+
 
 
 /**
