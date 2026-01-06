@@ -44,64 +44,64 @@ export const generateMinutesDraftClaude = async (
 
 OBJECTIF : Rédiger un procès-verbal (PV) professionnel, EXHAUSTIF et DÉTAILLÉ à partir de la transcription fournie.
 
-## ⚠️ DIRECTIVES CRUCIALES - MODE "VERBATIM INTELLIGENT"
+## ⚠️ EXEMPLE DE STYLE À REPRODUIRE (RÉFÉRENCE ABSOLUE)
+Tu dois imiter le ton, la structure et la densité de cet exemple. Note comment les "COMMENTAIRES" sont rédigés comme des articles complets et précis.
 
-Ta priorité absolue est de capturer TOUTE la substance des discussions. Ne résume pas à outrance.
-Le lecteur doit pouvoir comprendre la nuance des débats sans avoir assisté à la réunion.
+<EXEMPLE_STYLE>
+Présentation du plan climat par Lawrence Gervais de la MRCVO
+
+COMMENTAIRE XX-C
+
+La présentation de la MRC de la Vallée-de-l'Or (MRCVO), assurée par Laurence Gervais, portait sur le projet de plan climat. Voici un résumé structuré des points clés abordés :
+
+Objectifs du Plan Climat de la MRCVO
+Réduction des émissions de gaz à effet de serre (GES) : Mise en place d’un inventaire des GES liés aux activités municipales, aux infrastructures et aux équipements, ainsi qu’une analyse pour l’ensemble du territoire.
+
+Budget et financement
+Le projet est financé par une enveloppe de 1,2 million de dollars répartis sur trois ans dans le cadre du volet 1 du programme ATC.
+Volet 1 : Élaboration du plan avec des diagnostics, consultations et études.
+Volet 2 (prévu pour 2025-2027) : Mise en œuvre des actions avec des subventions couvrant jusqu’à 95 % des coûts.
+
+Étapes de mise en œuvre
+Diagnostic environnemental et de résilience : Évaluation de la maturité environnementale des infrastructures.
+Consultation et concertation : La MRCVO collaborera avec les autres MRC régionales.
+
+Le CCE est invité à jouer un rôle actif en identifiant les parties prenantes à consulter. La collaboration intermunicipale et l'implication des citoyens sont des éléments clés pour la réussite du plan climat.
+</EXEMPLE_STYLE>
+
+## ⚠️ DIRECTIVES DE RÉDACTION
 
 ### 1. STRUCTURE PAR POINT DE L'ORDRE DU JOUR
-Pour chaque point de l'ordre du jour (ODJ), tu dois produire un bloc structuré ainsi :
+Pour chaque point, produis un contenu riche.
+- **Titre** : Reprends le titre de l'ODJ.
+- **Corps du texte** : Utilise des sous-titres si nécessaire (Contexte, Détails, Conclusion). Fais des paragraphes complets.
+- **Conclusion du point** : Termine TOUJOURS par une section explicite :
+  - Soit **RÉSOLUTION [ANNEE]-[NO]** (si vote)
+  - Soit **COMMENTAIRE [ANNEE]-[LETTRE]** (si discussion/info)
+  - Soit **DÉCISION** (si action sans vote)
 
+### 2. DÉTAILS ET PRÉCISION
+- Ne sois PAS évasif.
+- Si M. Ross parle du "programme OASIS volet 1", explique ce que c'est d'après ce qu'il dit.
+- Rapporte les chiffres, les montants ($), les dates.
+- Nomme les intervenants quand ils apportent une idée spécifique.
+
+### 3. FORMAT DES ISSUES
+Inspire-toi de ces formats :
+
+**POUR UNE RÉSOLUTION :**
 \`\`\`
-## [Numéro]. [Titre du point tel que listé dans l'ODJ]
-
-### Contexte (Si mentionné)
-[Explication factuelle du dossier, présentation par l'urbaniste ou le président]
-
-### Délibérations (CŒUR DU TRAVAIL)
-Ici, tu dois détailler les échanges. Ne dis pas juste "ils ont discuté de X".
-Dis plutôt : "M. UnTel soulève un point concernant X. Mme UneTelle répond que Y. Le Comité débat de la pertinence de Z."
-
-RÈGLES POUR LES DÉLIBÉRATIONS :
-- **Cite nommément les intervenants** quand c'est possible.
-- **Rapporte les arguments** pour et contre.
-- **Sépare les idées** en plusieurs paragraphes (un paragraphe par sous-thème).
-- **Sois précis** sur les chiffres, dates, et lieux mentionnés.
-
-### Issue du point
-[Choisis UN format parmi les 3 options ci-dessous]
-\`\`\`
-
-### 2. FORMAT DE L'ISSUE (OBLIGATOIRE À LA FIN DE CHAQUE POINT)
-
-**OPTION A - RÉSOLUTION** (Vote formel ou consensus clair pour une action officielle)
-\`\`\`
-**RÉSOLUTION CCE-[ANNÉE]-[NUMÉRO]**
-
-CONSIDÉRANT QUE [Argument majeur 1];
-CONSIDÉRANT QUE [Argument majeur 2];
-
-IL EST RÉSOLU QUE :
-Le Comité recommande au Conseil municipal de [Action précise].
-
-_Proposé par: [Nom] | Appuyé par: [Nom] | [Adopté à l'unanimité OU détail des votes]_
+RÉSOLUTION CCE-2024-XX
+L’ordre du jour est adopté en laissant l’item varia ouvert.
+_Proposé par..._
 \`\`\`
 
-**OPTION B - DÉCISION / ORIENTATION** (Accord interne sans résolution au conseil)
+**POUR UN COMMENTAIRE (Discussion) :**
 \`\`\`
-**DÉCISION :** Le Comité convient de [Action à faire par l'admistration ou les membres].
+COMMENTAIRE 2024-X
+[Texte narratif détaillé résumant la présentation et les échanges, comme dans l'exemple ci-dessus]
 \`\`\`
-
-**OPTION C - COMMENTAIRE / DÉPÔT** (Discussion informative)
-\`\`\`
-**COMMENTAIRE :** Le Comité prend acte du rapport/document. Les points saillants retenus sont : [Liste des points].
-\`\`\`
-
-### 3. CONSIGNES DE QUALITÉ
-- **ORDRE DU JOUR** : Suis STRICTEMENT l'ordre du jour fourni. Si un sujet est discuté hors-ODJ, mets-le dans "Varia".
-- **TON** : Professionnel, administratif, neutre.
-- **PAS D'INVENTION** : Si la transcription est floue, note [Inaudible] ou résume ce qui est sûr.
-- **LONGUEUR** : Mieux vaut trop long que trop court. L'utilisateur veut des détails.`;
+`;
 
         const userMessage = `## INFORMATIONS DE LA RÉUNION
 Titre: ${meeting.title}
