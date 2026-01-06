@@ -76,13 +76,21 @@ def split_audio_if_needed(file_path: str, max_size_mb: int = MAX_WHISPER_SIZE_MB
     return chunks
 
 
+def format_timestamp(seconds: float) -> str:
+    """Convert seconds to [MM:SS] format."""
+    m = int(seconds // 60)
+    s = int(seconds % 60)
+    return f"[{m:02d}:{s:02d}]"
+
 def transcribe_with_whisper(
     file_path: str,
     language: str = "fr",
-    context_prompt: str = ""
+    context_prompt: str = "",
+    time_offset: float = 0.0
 ) -> str:
     """
-    Transcribe a single audio file using OpenAI Whisper API.
+    Transcribe a single audio file using OpenAI Whisper API with timestamps.
+    Returns formatted string with [MM:SS] timestamps adjusted by time_offset.
     """
     client = openai.OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
     
@@ -91,12 +99,29 @@ def transcribe_with_whisper(
             model="whisper-1",
             file=audio_file,
             language=language,
-            response_format="text",
-            temperature=0,
+            response_format="verbose_json",
+            temperature=0.2, 
             prompt=context_prompt
         )
     
-    return response
+    formatted_text = ""
+    last_text = ""
+    
+    for segment in response.segments:
+        text = segment.text.strip()
+        start = segment.start + time_offset # Apply global offset
+        
+        if text == last_text:
+            continue
+        last_text = text
+        
+        if not text or len(text) < 2:
+            continue
+            
+        timestamp = format_timestamp(start)
+        formatted_text += f"{timestamp} {text}\n"
+    
+    return formatted_text
 
 
 def build_context_prompt(attendee_names: list[str], agenda_items: list[str]) -> str:
@@ -195,13 +220,19 @@ def transcribe_whisper(req: https_fn.CallableRequest) -> dict:
         
         # Transcribe each chunk
         full_transcription = ""
+        segment_duration_sec = SEGMENT_DURATION_MINUTES * 60
+        
         for i, chunk_path in enumerate(chunk_paths):
             print(f"[Whisper] Transcribing chunk {i+1}/{len(chunk_paths)}...")
+            
+            # Calculate offset based on chunk index
+            current_offset = i * segment_duration_sec
             
             chunk_text = transcribe_with_whisper(
                 chunk_path,
                 language="fr",
-                context_prompt=context_prompt
+                context_prompt=context_prompt,
+                time_offset=current_offset
             )
             
             if i > 0:
