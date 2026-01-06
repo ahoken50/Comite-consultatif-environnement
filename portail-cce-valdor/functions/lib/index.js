@@ -32,7 +32,7 @@ exports.transcribeAudioV2 = (0, https_1.onCall)({
     memory: "4GiB",
     secrets: [googleApiKey], // Make secret available
 }, async (request) => {
-    var _a, _b;
+    var _a, _b, _c;
     const data = request.data;
     console.log('[V5-V2] Start:', JSON.stringify(data));
     try {
@@ -42,14 +42,24 @@ exports.transcribeAudioV2 = (0, https_1.onCall)({
         const GEMINI_API_KEY = googleApiKey.value();
         if (!GEMINI_API_KEY)
             throw new https_1.HttpsError("failed-precondition", "API Key missing.");
-        const { meetingId, storagePath, mimeType } = data;
+        const { meetingId, storagePath, mimeType, expectedDurationMinutes } = data;
         if (!meetingId || !storagePath || !mimeType)
             throw new https_1.HttpsError("invalid-argument", "Missing params.");
         // 1. Get meeting context
         const meetingDoc = await admin.firestore().doc(`meetings/${meetingId}`).get();
         const meetingData = meetingDoc.data();
-        const agendaItems = ((_a = meetingData === null || meetingData === void 0 ? void 0 : meetingData.agendaItems) === null || _a === void 0 ? void 0 : _a.map((item, i) => `${i + 1}. ${item.title}`).join('\n')) || '';
-        const attendeeNames = ((_b = meetingData === null || meetingData === void 0 ? void 0 : meetingData.attendees) === null || _b === void 0 ? void 0 : _b.map((a) => a.name).join(', ')) || '';
+        // Get actual audio duration from meeting data (in seconds -> convert to minutes)
+        const audioDurationSeconds = (_a = meetingData === null || meetingData === void 0 ? void 0 : meetingData.audioRecording) === null || _a === void 0 ? void 0 : _a.duration;
+        const audioDurationMinutes = audioDurationSeconds ? Math.ceil(audioDurationSeconds / 60) : null;
+        // Set max duration: use actual audio duration if available, else param, else 180 min default
+        const maxDurationMinutes = audioDurationMinutes
+            ? audioDurationMinutes + 5 // Add 5 min margin to actual duration
+            : (expectedDurationMinutes
+                ? expectedDurationMinutes + 10
+                : 180); // Default max 3 hours
+        console.log(`[V6] Audio duration: ${audioDurationMinutes || 'unknown'} min, Max allowed: ${maxDurationMinutes} min`);
+        const agendaItems = ((_b = meetingData === null || meetingData === void 0 ? void 0 : meetingData.agendaItems) === null || _b === void 0 ? void 0 : _b.map((item, i) => `${i + 1}. ${item.title}`).join('\n')) || '';
+        const attendeeNames = ((_c = meetingData === null || meetingData === void 0 ? void 0 : meetingData.attendees) === null || _c === void 0 ? void 0 : _c.map((a) => a.name).join(', ')) || '';
         // 2. Download & Upload
         const bucket = admin.storage().bucket();
         const tempFilePath = path.join(os.tmpdir(), `audio-${meetingId}${path.extname(storagePath)}`);
@@ -77,6 +87,10 @@ exports.transcribeAudioV2 = (0, https_1.onCall)({
         let previousTimestamp = "";
         let stuckCount = 0;
         const maxPasses = 12; // Increased to cover ~3 hours (12 * 15m = 180m)
+        // Format audio duration info for the prompt
+        const durationInfo = audioDurationMinutes
+            ? `DURÉE TOTALE DE L'AUDIO: ${Math.floor(audioDurationMinutes / 60)}h${audioDurationMinutes % 60}min (${audioDurationMinutes} minutes)`
+            : '';
         for (let pass = 0; pass < maxPasses; pass++) {
             console.log(`[V6] Pass ${pass + 1}/${maxPasses}, last timestamp: ${lastTimestamp}`);
             // Detect if we're stuck at the same timestamp
@@ -93,23 +107,26 @@ exports.transcribeAudioV2 = (0, https_1.onCall)({
             previousTimestamp = lastTimestamp;
             const continuePrompt = pass === 0
                 ? `Transcris cet enregistrement audio de réunion. Transcris VERBATIM (mot à mot) tout ce qui est dit.
-                
+${durationInfo}
+
 RÈGLES IMPORTANTES:
 1. Commence au début (0:00) et transcris environ 15 minutes de contenu
-2. HORODATAGE OBLIGATOIRE: Indique le temps [MM:SS] au début de chaque intervention
+2. HORODATAGE OBLIGATOIRE: Indique le temps [MM:SS] ou [H:MM:SS] au début de chaque intervention
    Exemple: "[0:00] **Président:** Bonjour à tous..."
             "[1:30] **Membre:** Je voudrais ajouter..."
-3. À la fin, écris EXACTEMENT: [CONTINUER À: MM:SS] ou [FIN DE L'ENREGISTREMENT]
-4. N'invente rien, transcris uniquement ce que tu entends
-5. Change de paragraphe quand l'intervenant change`
+3. À la fin de ton passage, écris: [CONTINUER À: MM:SS] avec le timestamp où tu t'es arrêté
+4. Si tu atteins la FIN RÉELLE de l'audio (silence, plus rien), écris: [FIN DE L'ENREGISTREMENT]
+5. N'invente JAMAIS de contenu après la fin de l'audio!`
                 : `Continue la transcription de cet enregistrement à partir de [${lastTimestamp}].
+${durationInfo}
 
 RAPPEL: Tu as déjà transcrit de 0:00 à ${lastTimestamp}. Continue à partir de là.
 RÈGLES:
 1. Transcris les 15 prochaines minutes environ
-2. HORODATAGE OBLIGATOIRE sur chaque intervention: [MM:SS] **Nom:**
-3. Termine par [CONTINUER À: MM:SS] ou [FIN DE L'ENREGISTREMENT]
-4. Ne répète pas ce qui a déjà été transcrit`;
+2. HORODATAGE sur chaque intervention: [MM:SS] **Nom:**
+3. Si tu atteins la FIN RÉELLE de l'audio, écris IMMÉDIATEMENT: [FIN DE L'ENREGISTREMENT]
+4. Sinon, termine par: [CONTINUER À: MM:SS]
+5. N'INVENTE PAS de contenu après la fin de l'audio!`;
             const result = await model.generateContent({
                 contents: [{
                         role: "user",
@@ -163,6 +180,13 @@ RÈGLES:
             };
             const currentMinutes = parseTimestamp(lastTimestamp);
             console.log(`[V6] Progress: ${currentMinutes.toFixed(1)} minutes transcribed`);
+            // SAFEGUARD: Stop if we exceed expected duration (prevents hallucination)
+            if (currentMinutes > maxDurationMinutes) {
+                console.log(`[V6] STOPPING: Exceeded max duration (${currentMinutes.toFixed(1)} > ${maxDurationMinutes} min) - likely hallucination`);
+                // Trim the transcription to remove this hallucinatory chunk
+                rawTranscription = rawTranscription.substring(0, rawTranscription.lastIndexOf('\n\n---\n\n'));
+                break;
+            }
             // Check for EXPLICIT end marker - must be EXACT format
             const hasExplicitEnd = chunk.includes('[FIN DE L\'ENREGISTREMENT]');
             if (hasExplicitEnd) {
