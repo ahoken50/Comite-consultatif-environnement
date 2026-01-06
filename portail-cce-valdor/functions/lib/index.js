@@ -128,22 +128,57 @@ RÈGLES:
             let chunk = result.response.text();
             console.log(`[V6] Received ${chunk.length} chars`);
             chunk = cleanRepetitions(chunk);
-            // Extract continuation timestamp
-            const continueMatch = chunk.match(/\[CONTINUER À:\s*(\d+:\d+)\]/i);
+            // Extract timestamp - try multiple methods
+            // Method 1: Look for explicit continue marker
+            const continueMatch = chunk.match(/\[CONTINUER\s*[ÀA]?\s*:?\s*(\d{1,2}:\d{2}(?::\d{2})?)\]/i);
+            // Method 2: Find the LAST timestamp in the chunk content [MM:SS] or [H:MM:SS]
+            const allTimestamps = chunk.match(/\[(\d{1,2}:\d{2}(?::\d{2})?)\]/g);
+            const lastContentTimestamp = allTimestamps && allTimestamps.length > 0
+                ? allTimestamps[allTimestamps.length - 1].replace(/[\[\]]/g, '')
+                : null;
+            // Use continue marker if found, otherwise use last content timestamp
             if (continueMatch) {
                 lastTimestamp = continueMatch[1];
+                console.log(`[V6] Found continue marker: ${lastTimestamp}`);
+            }
+            else if (lastContentTimestamp) {
+                lastTimestamp = lastContentTimestamp;
+                console.log(`[V6] Extracted last timestamp from content: ${lastTimestamp}`);
+            }
+            else {
+                // If no timestamp found at all, estimate based on pass number (15 min per pass)
+                const estimatedMinutes = (pass + 1) * 15;
+                lastTimestamp = `${estimatedMinutes}:00`;
+                console.log(`[V6] No timestamp found, estimating: ${lastTimestamp}`);
             }
             rawTranscription += (pass > 0 ? "\n\n---\n\n" : "") + chunk;
-            // Check for end markers
-            if (chunk.includes('[FIN DE L\'ENREGISTREMENT]') ||
-                chunk.toLowerCase().includes('fin de l\'enregistrement') ||
-                chunk.toLowerCase().includes('end of recording')) {
-                console.log('[V6] Reached end of recording');
-                break;
+            // Parse current timestamp to minutes for validation
+            const parseTimestamp = (ts) => {
+                const parts = ts.split(':').map(Number);
+                if (parts.length === 2)
+                    return parts[0] + parts[1] / 60; // MM:SS
+                if (parts.length === 3)
+                    return parts[0] * 60 + parts[1] + parts[2] / 60; // HH:MM:SS
+                return 0;
+            };
+            const currentMinutes = parseTimestamp(lastTimestamp);
+            console.log(`[V6] Progress: ${currentMinutes.toFixed(1)} minutes transcribed`);
+            // Check for EXPLICIT end marker - must be EXACT format
+            const hasExplicitEnd = chunk.includes('[FIN DE L\'ENREGISTREMENT]');
+            if (hasExplicitEnd) {
+                // Only trust "end" marker if we've transcribed at least 45 minutes
+                // OR if there's no continue marker
+                if (currentMinutes >= 45 || !continueMatch) {
+                    console.log(`[V6] Reached end of recording at ${lastTimestamp} (${currentMinutes.toFixed(1)} min)`);
+                    break;
+                }
+                else {
+                    console.log(`[V6] Ignoring premature end marker at ${lastTimestamp} - only ${currentMinutes.toFixed(1)} min transcribed`);
+                }
             }
-            // Adjusted threshold: only stop if very short AND no new content
-            if (chunk.length < 200 && pass > 0) {
-                console.log('[V6] Very short chunk, likely end');
+            // Adjusted threshold: only stop if very short AND no new content AND we've done significant work
+            if (chunk.length < 200 && pass > 2 && currentMinutes >= 30) {
+                console.log(`[V6] Very short chunk at ${currentMinutes.toFixed(1)} min, likely end`);
                 break;
             }
         }
