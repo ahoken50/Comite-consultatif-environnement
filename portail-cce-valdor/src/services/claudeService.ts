@@ -44,62 +44,71 @@ export const generateMinutesDraftClaude = async (
 
 OBJECTIF : Rédiger un procès-verbal (PV) professionnel, EXHAUSTIF et DÉTAILLÉ à partir de la transcription fournie.
 
+## ⚠️ CONSIGNE CRITIQUE : EXHAUSTIVITÉ MAXIMALE
+L'utilisateur veut un compte-rendu presque INTÉGRAL des discussions, structuré et lisible.
+- **INTERDICTION DE RÉSUMER** : Ne condense pas une discussion de 10 minutes en 3 lignes. Utilise autant de paragraphes que nécessaire pour tout couvrir.
+- **DENSITÉ** : Si les intervenants échangent 5 arguments, les 5 doivent apparaître.
+- **ATTRIBUTION** : Qui dit quoi ? (M. Ross explique que..., Mme Boutin demande si...)
+- **CHIFFRES & FAITS** : Ne manque aucune date, aucun montant, aucune référence complexe.
+
 ## ⚠️ EXEMPLE DE STYLE À REPRODUIRE (RÉFÉRENCE ABSOLUE)
-Tu dois imiter le ton, la structure et la densité de cet exemple. Note comment les "COMMENTAIRES" sont rédigés comme des articles complets et précis.
+Observe la longueur, la précision et la structure de cet exemple. Ton travail DOIT être aussi riche que ceci :
 
 <EXEMPLE_STYLE>
 Présentation du plan climat par Lawrence Gervais de la MRCVO
 
-COMMENTAIRE XX-C
+COMMENTAIRE 12-C
 
 La présentation de la MRC de la Vallée-de-l'Or (MRCVO), assurée par Laurence Gervais, portait sur le projet de plan climat. Voici un résumé structuré des points clés abordés :
 
 Objectifs du Plan Climat de la MRCVO
 Réduction des émissions de gaz à effet de serre (GES) : Mise en place d’un inventaire des GES liés aux activités municipales, aux infrastructures et aux équipements, ainsi qu’une analyse pour l’ensemble du territoire.
+Adaptation aux changements climatiques : Identification des infrastructures et zones vulnérables aux aléas climatiques tels que les îlots de chaleur, les risques d'inondations, et les incendies de forêt.
 
 Budget et financement
-Le projet est financé par une enveloppe de 1,2 million de dollars répartis sur trois ans dans le cadre du volet 1 du programme ATC.
+Le projet est financé par une enveloppe de 1,2 million de dollars répartis sur trois ans dans le cadre du volet 1 du programme ATC (Accélérer la transition climatique), destiné à l’élaboration du plan climat.
 Volet 1 : Élaboration du plan avec des diagnostics, consultations et études.
-Volet 2 (prévu pour 2025-2027) : Mise en œuvre des actions avec des subventions couvrant jusqu’à 95 % des coûts.
+Volet 2 (prévu pour 2025-2027) : Mise en œuvre des actions du plan climat avec des subventions couvrant jusqu’à 95 % des coûts pour des projets prioritaires.
+Plus la MRCVO terminera rapidement le volet 1, plus elle pourra accéder tôt aux fonds du volet 2 pour les actions concrètes. De plus, tout surplus budgétaire du volet 1 pourra être réaffecté pour le financement direct des projets et actions prioritaires dès leur identification.
 
 Étapes de mise en œuvre
-Diagnostic environnemental et de résilience : Évaluation de la maturité environnementale des infrastructures.
-Consultation et concertation : La MRCVO collaborera avec les autres MRC régionales.
+Diagnostic environnemental et de résilience : Évaluation de la maturité environnementale des infrastructures et systèmes municipaux face aux aléas climatiques.
+Consultation et concertation : La MRCVO collabore avec les autres MRC régionales et prévoit des consultations auprès des citoyens et des parties prenantes pour prioriser les actions du plan.
+Élaboration des mesures d'adaptation et de réduction des GES : Sélection de mesures adaptées pour réduire les impacts environnementaux et climatiques.
 
-Le CCE est invité à jouer un rôle actif en identifiant les parties prenantes à consulter. La collaboration intermunicipale et l'implication des citoyens sont des éléments clés pour la réussite du plan climat.
+Engagement et suivi
+La MRC prévoit de collaborer avec les municipalités pour mobiliser les ressources locales, faciliter le partage de données, et encourager l'adhésion citoyenne.
+Un suivi biennal est envisagé pour mesurer les progrès accomplis dans la réduction des GES et l’efficacité des mesures d’adaptation.
+
+Le CCE est invité à jouer un rôle actif en identifiant les parties prenantes à consulter, en commentant le portrait de la situation et en proposant des mesures d'adaptation et de réduction des GES.
+La collaboration intermunicipale et l'implication des citoyens sont des éléments clés pour la réussite du plan climat. Le CCE peut jouer un rôle de facilitateur en favorisant le dialogue entre les différents acteurs et en assurant la cohérence des actions entreprises avec les besoins du territoire.
 </EXEMPLE_STYLE>
 
-## ⚠️ DIRECTIVES DE RÉDACTION
+## DIRECTIVES DE RÉDACTION
 
 ### 1. STRUCTURE PAR POINT DE L'ORDRE DU JOUR
 Pour chaque point, produis un contenu riche.
 - **Titre** : Reprends le titre de l'ODJ.
-- **Corps du texte** : Utilise des sous-titres si nécessaire (Contexte, Détails, Conclusion). Fais des paragraphes complets.
+- **Corps du texte** : Utilise des sous-titres (Contexte, Délibérations, Conclusion). Fais des paragraphes complets.
 - **Conclusion du point** : Termine TOUJOURS par une section explicite :
   - Soit **RÉSOLUTION [ANNEE]-[NO]** (si vote)
   - Soit **COMMENTAIRE [ANNEE]-[LETTRE]** (si discussion/info)
   - Soit **DÉCISION** (si action sans vote)
 
-### 2. DÉTAILS ET PRÉCISION
-- Ne sois PAS évasif.
-- Si M. Ross parle du "programme OASIS volet 1", explique ce que c'est d'après ce qu'il dit.
-- Rapporte les chiffres, les montants ($), les dates.
-- Nomme les intervenants quand ils apportent une idée spécifique.
-
-### 3. FORMAT DES ISSUES
-Inspire-toi de ces formats :
+### 2. FORMAT DES ISSUES (OBLIGATOIRE)
 
 **POUR UNE RÉSOLUTION :**
 \`\`\`
 RÉSOLUTION CCE-2024-XX
-L’ordre du jour est adopté en laissant l’item varia ouvert.
+[Texte juridique précis avec CONSIDÉRANT...]
+IL EST RÉSOLU QUE...
 _Proposé par..._
 \`\`\`
 
 **POUR UN COMMENTAIRE (Discussion) :**
 \`\`\`
 COMMENTAIRE 2024-X
-[Texte narratif détaillé résumant la présentation et les échanges, comme dans l'exemple ci-dessus]
+[Texte narratif TRÈS DÉTAILLÉ du sujet traité, comme dans l'exemple ci-dessus.]
 \`\`\`
 `;
 
@@ -111,7 +120,7 @@ Lieu: ${meeting.location || 'Salle de conférence'}
 ## PARTICIPANTS
 ${attendeesList}
 
-## ORDRE DU JOUR (STRUCTURE À SUIVRE EXACTEMENT)
+## ORDRE DU JOUR (STRUCTURE À SUIVRE STRICTEMENT)
 ${agendaList}
 
 ## TRANSCRIPTION (Source intégrale)
@@ -120,7 +129,7 @@ ${transcription}
 ${historicalContext || ''}
 
 ## RÉSULTAT ATTENDU
-Un document prêt pour approbation, avec des délibérations riches et détaillées, et des issues clairement formatées.`;
+Un procès-verbal PROFESSIONNEL, EXHAUSTIF et DÉTAILLÉ. Pas de résumés courts.`;
 
         console.log('[Claude] Calling Cloud Function generate_minutes_claude...');
 
