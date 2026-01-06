@@ -323,7 +323,7 @@ def generate_minutes_claude(req: https_fn.CallableRequest) -> dict:
         client = Anthropic(api_key=api_key)
         
         message = client.messages.create(
-            model="claude-3-5-sonnet-20241022",
+            model="claude-3-5-sonnet-20240620",
             max_tokens=8192,
             temperature=0.1,
             system=system_prompt,
@@ -410,7 +410,7 @@ def finalize_draft_claude(req: https_fn.CallableRequest) -> dict:
         client = Anthropic(api_key=api_key)
         
         message = client.messages.create(
-            model="claude-3-5-sonnet-20241022",
+            model="claude-3-5-sonnet-20240620",
             max_tokens=8192,
             temperature=0.1,
             system=system_prompt,
