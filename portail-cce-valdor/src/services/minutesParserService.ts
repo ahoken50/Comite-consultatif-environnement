@@ -27,8 +27,8 @@ export const parseMinutesDraft = (draftContent: string): { items: AgendaItem[], 
     // Regex helpers
     const resolutionRegex = /R[ÉE]SOLUTION\s+(\d{2}|[A-Z]{3,})-(\d+)/i;
     const commentaireRegex = /COMMENTAIRE\s+(\d{2}|[A-Z]{3,})-([A-Z0-9]+)/i;
-    // Matches "1. Title", "3.1 Title", "10. Title"
-    const numberedTitleRegex = /^(\d+(\.\d+)*)\.?\s+(.+)$/;
+    // Matches "1. Title", "3.1 Title", "10 - Title", "1) Title"
+    const numberedTitleRegex = /^(\d+([.-]\d+)*)[.)-]?\s+(.+)$/;
 
     // Function to flush current section or intro
     const flushSection = () => {
@@ -154,8 +154,11 @@ export const parseMinutesDraft = (draftContent: string): { items: AgendaItem[], 
             flushSection();
 
             // Start new section
+            // Clean title structure (remove leading number if needed, or keep it consistent)
+            // Currently we keep raw line as title, but maybe cleaner to normalize?
+            // For now, let's keep it as is, but trim.
             currentSection = {
-                title: line, // e.g., "3.1 Approbation du PV"
+                title: line.trim(), // e.g., "3.1 Approbation du PV"
                 content: "",
                 minuteEntries: []
             };
