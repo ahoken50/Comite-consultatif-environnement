@@ -42,9 +42,13 @@ jobs:
       - name: Build Functions
         run: cd functions && npm run build
 
-      # Backend (Python Functions) Setup
-      - name: Install Python Functions Dependencies
-        run: cd functions-python && pip install -r requirements.txt
+      # Backend (Python Functions) Setup - Firebase requires a venv
+      - name: Setup Python Virtual Environment
+        run: |
+          cd functions-python
+          python3.11 -m venv venv
+          source venv/bin/activate
+          pip install -r requirements.txt
 
       # Deploy
       - name: Deploy to Firebase
