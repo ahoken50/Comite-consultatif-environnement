@@ -133,7 +133,7 @@ Un procès-verbal PROFESSIONNEL, EXHAUSTIF et DÉTAILLÉ. Pas de résumés court
 
         console.log('[Claude] Calling Cloud Function generate_minutes_claude...');
 
-        const generateFunction = httpsCallable(functions, 'generate_minutes_claude');
+        const generateFunction = httpsCallable(functions, 'generate_minutes_claude', { timeout: 540000 });
         const result = await generateFunction({
             meetingId: meeting.id,
             systemPrompt,

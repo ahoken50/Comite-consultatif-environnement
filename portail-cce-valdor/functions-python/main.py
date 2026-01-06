@@ -283,7 +283,7 @@ def transcribe_whisper(req: https_fn.CallableRequest) -> dict:
 
 
 @https_fn.on_call(
-    timeout_sec=300,  # 5 minutes timeout for generation
+    timeout_sec=540,  # 9 minutes timeout for generation
     memory=options.MemoryOption.GB_1
 )
 def generate_minutes_claude(req: https_fn.CallableRequest) -> dict:
@@ -371,7 +371,7 @@ def generate_minutes_claude(req: https_fn.CallableRequest) -> dict:
 
 
 @https_fn.on_call(
-    timeout_sec=300,
+    timeout_sec=540,
     memory=options.MemoryOption.GB_1
 )
 def finalize_draft_claude(req: https_fn.CallableRequest) -> dict:
