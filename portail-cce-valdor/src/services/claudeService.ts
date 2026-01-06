@@ -3,44 +3,18 @@
  * Uses Anthropic Claude API for structuring transcriptions into official meeting minutes
  */
 
-import { db } from './firebase';
-import { doc, updateDoc } from 'firebase/firestore';
+import { functions } from './firebase';
+import { httpsCallable } from 'firebase/functions';
 import type { Meeting, MinutesDraft } from '../types/meeting.types';
 
-// Environment variable for Anthropic API key
-const ANTHROPIC_API_KEY = import.meta.env.VITE_ANTHROPIC_API_KEY;
-
-// Claude API endpoint
-const CLAUDE_API_URL = 'https://api.anthropic.com/v1/messages';
-
-interface ClaudeMessage {
-    role: 'user' | 'assistant';
-    content: string;
-}
-
-interface ClaudeResponse {
-    id: string;
-    type: string;
-    content: Array<{
-        type: 'text';
-        text: string;
-    }>;
-    stop_reason: string;
-    usage: {
-        input_tokens: number;
-        output_tokens: number;
-    };
-    error?: {
-        type: string;
-        message: string;
-    };
-}
+// Environment variable check for Anthropic API key is removed as it is handled in backend
 
 /**
  * Check if Claude API is configured
+ * (Maintained for compatibility, always returns true as config is now server-side)
  */
 export const isClaudeConfigured = (): boolean => {
-    return !!ANTHROPIC_API_KEY;
+    return true;
 };
 
 /**
@@ -49,17 +23,13 @@ export const isClaudeConfigured = (): boolean => {
  * @param transcription - The audio transcription (from Whisper)
  * @param historicalContext - Optional formatted historical context (past resolutions)
  */
+
 export const generateMinutesDraftClaude = async (
     meeting: Meeting,
     transcription: string,
     historicalContext?: string
 ): Promise<{ success: boolean; draft?: MinutesDraft; error?: string }> => {
-    if (!ANTHROPIC_API_KEY) {
-        return {
-            success: false,
-            error: 'Clé API Anthropic non configurée. Vérifiez VITE_ANTHROPIC_API_KEY.'
-        };
-    }
+    // Note: We don't check for VITE_ANTHROPIC_API_KEY anymore as it's handled in the backend
 
     try {
         const attendeesList = meeting.attendees
@@ -147,53 +117,36 @@ ${historicalContext || ''}
 ## RÉSULTAT ATTENDU
 Un document prêt pour approbation, avec des délibérations riches et détaillées, et des issues clairement formatées.`;
 
-        console.log('[Claude] Generating minutes draft...');
+        console.log('[Claude] Calling Cloud Function generate_minutes_claude...');
 
-        const response = await fetch(CLAUDE_API_URL, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'x-api-key': ANTHROPIC_API_KEY,
-                'anthropic-version': '2023-06-01'
-            },
-            body: JSON.stringify({
-                model: 'claude-sonnet-4-20250514',
-                max_tokens: 8192,
-                temperature: 0.1,
-                system: systemPrompt,
-                messages: [
-                    { role: 'user', content: userMessage }
-                ] as ClaudeMessage[]
-            })
+        const generateFunction = httpsCallable(functions, 'generate_minutes_claude');
+        const result = await generateFunction({
+            meetingId: meeting.id,
+            systemPrompt,
+            userMessage
         });
 
-        const result: ClaudeResponse = await response.json();
+        const data = result.data as { success: boolean; content: string; error?: string };
 
-        if (result.error) {
-            throw new Error(result.error.message);
+        if (!data.success) {
+            throw new Error(data.error || 'Erreur inconnue de la fonction Claude');
         }
 
-        const draftContent = result.content?.[0]?.text;
+        const draftContent = data.content;
 
         if (!draftContent) {
-            throw new Error('Aucun brouillon généré par Claude');
+            throw new Error('Aucun contenu généré par la fonction');
         }
 
-        console.log(`[Claude] Draft generated: ${draftContent.length} chars, ${result.usage?.output_tokens} tokens`);
+        console.log(`[Claude] Draft received: ${draftContent.length} chars`);
 
+        // Note: The function already saves to Firestore, but we return the draft to update local state immediately
         const draft: MinutesDraft = {
             content: draftContent,
             generatedAt: new Date().toISOString(),
             status: 'draft',
             version: 1
         };
-
-        // Update meeting with draft
-        const meetingRef = doc(db, 'meetings', meeting.id);
-        await updateDoc(meetingRef, {
-            minutesDraft: draft,
-            dateUpdated: new Date().toISOString()
-        });
 
         return { success: true, draft };
 
@@ -211,12 +164,7 @@ export const finalizeDraftClaude = async (
     meeting: Meeting,
     userFeedback: string
 ): Promise<{ success: boolean; finalContent?: string; error?: string }> => {
-    if (!ANTHROPIC_API_KEY) {
-        return {
-            success: false,
-            error: 'Clé API Anthropic non configurée'
-        };
-    }
+    // Note: API key check handled in backend
 
     const currentDraft = meeting.minutesDraft?.content;
     if (!currentDraft) {
@@ -241,47 +189,29 @@ ${userFeedback}
 
 Génère le procès-verbal final, prêt à être imprimé.`;
 
-        const response = await fetch(CLAUDE_API_URL, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'x-api-key': ANTHROPIC_API_KEY,
-                'anthropic-version': '2023-06-01'
-            },
-            body: JSON.stringify({
-                model: 'claude-sonnet-4-20250514',
-                max_tokens: 8192,
-                temperature: 0.1,
-                system: systemPrompt,
-                messages: [
-                    { role: 'user', content: userMessage }
-                ] as ClaudeMessage[]
-            })
+        console.log('[Claude] Calling Cloud Function finalize_draft_claude...');
+
+        const finalizeFunction = httpsCallable(functions, 'finalize_draft_claude');
+        const result = await finalizeFunction({
+            meetingId: meeting.id,
+            systemPrompt,
+            userMessage,
+            userFeedback
         });
 
-        const result: ClaudeResponse = await response.json();
+        const data = result.data as { success: boolean; content: string; error?: string };
 
-        if (result.error) {
-            throw new Error(result.error.message);
+        if (!data.success) {
+            throw new Error(data.error || 'Erreur inconnue lors de la finalisation');
         }
 
-        const finalContent = result.content?.[0]?.text;
+        const finalContent = data.content;
 
         if (!finalContent) {
             throw new Error('Aucune version finale générée');
         }
 
-        // Update meeting
-        const meetingRef = doc(db, 'meetings', meeting.id);
-        await updateDoc(meetingRef, {
-            'minutesDraft.content': finalContent,
-            'minutesDraft.status': 'final',
-            'minutesDraft.finalizedAt': new Date().toISOString(),
-            'minutesDraft.userFeedback': userFeedback,
-            'minutesDraft.version': (meeting.minutesDraft?.version || 0) + 1,
-            dateUpdated: new Date().toISOString()
-        });
-
+        // Note: The function already updates Firestore, we return content for local update
         return { success: true, finalContent };
 
     } catch (error) {

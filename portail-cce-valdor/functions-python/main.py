@@ -12,6 +12,10 @@ from firebase_functions import https_fn, options
 from firebase_admin import initialize_app, firestore, storage
 import openai
 from pydub import AudioSegment
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 # Initialize Firebase
 initialize_app()
@@ -241,6 +245,182 @@ def transcribe_whisper(req: https_fn.CallableRequest) -> dict:
         except:
             pass
         
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.INTERNAL,
+            message=str(e)
+        )
+
+
+@https_fn.on_call(
+    timeout_sec=300,  # 5 minutes timeout for generation
+    memory=options.MemoryOption.GB_1
+)
+def generate_minutes_claude(req: https_fn.CallableRequest) -> dict:
+    """
+    Cloud Function to generate meeting minutes draft using Claude API.
+    """
+    if not req.auth:
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.UNAUTHENTICATED,
+            message="Authentication required."
+        )
+
+    data = req.data
+    system_prompt = data.get("systemPrompt")
+    user_message = data.get("userMessage")
+    meeting_id = data.get("meetingId")
+
+    if not system_prompt or not user_message:
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT,
+            message="Missing keys: systemPrompt, userMessage"
+        )
+    
+    # Check API key
+    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    if not api_key:
+         raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.INTERNAL,
+            message="ANTHROPIC_API_KEY is not configured on server."
+        )
+
+    print(f"[Claude] Generating minutes for meeting {meeting_id}...")
+
+    try:
+        from anthropic import Anthropic
+        
+        client = Anthropic(api_key=api_key)
+        
+        message = client.messages.create(
+            model="claude-3-5-sonnet-20241022",
+            max_tokens=8192,
+            temperature=0.1,
+            system=system_prompt,
+            messages=[
+                {"role": "user", "content": user_message}
+            ]
+        )
+        
+        content = message.content[0].text
+        
+        # Save to Firestore directly if meetingId provided
+        if meeting_id:
+            try:
+                db = firestore.client()
+                meeting_ref = db.collection("meetings").document(meeting_id)
+                
+                draft_data = {
+                    "content": content,
+                    "generatedAt": datetime.now().isoformat(),
+                    "status": "draft",
+                    "version": 1,
+                    "engine": "claude-3-5-sonnet"
+                }
+                
+                meeting_ref.update({
+                    "minutesDraft": draft_data, 
+                    "dateUpdated": datetime.now().isoformat()
+                })
+                print(f"[Claude] Saved draft to Firestore for {meeting_id}")
+            except Exception as e:
+                print(f"[Claude] Warning: Failed to save to Firestore: {e}")
+                # We still return the content
+        
+        return {
+            "success": True,
+            "content": content
+        }
+
+    except Exception as e:
+        print(f"[Claude] Error: {str(e)}")
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.INTERNAL,
+            message=str(e)
+        )
+
+
+@https_fn.on_call(
+    timeout_sec=300,
+    memory=options.MemoryOption.GB_1
+)
+def finalize_draft_claude(req: https_fn.CallableRequest) -> dict:
+    """
+    Cloud Function to finalize draft with user feedback using Claude.
+    """
+    if not req.auth:
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.UNAUTHENTICATED,
+            message="Authentication required."
+        )
+
+    data = req.data
+    system_prompt = data.get("systemPrompt")
+    user_message = data.get("userMessage")
+    meeting_id = data.get("meetingId")
+    user_feedback = data.get("userFeedback")
+
+    if not system_prompt or not user_message:
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT,
+            message="Missing keys: systemPrompt, userMessage"
+        )
+    
+    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    if not api_key:
+         raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.INTERNAL,
+            message="ANTHROPIC_API_KEY is not configured on server."
+        )
+
+    print(f"[Claude] Finalizing draft for meeting {meeting_id}...")
+
+    try:
+        from anthropic import Anthropic
+        client = Anthropic(api_key=api_key)
+        
+        message = client.messages.create(
+            model="claude-3-5-sonnet-20241022",
+            max_tokens=8192,
+            temperature=0.1,
+            system=system_prompt,
+            messages=[
+                {"role": "user", "content": user_message}
+            ]
+        )
+        
+        final_content = message.content[0].text
+        
+        # Update meeting
+        if meeting_id:
+            try:
+                db = firestore.client()
+                meeting_ref = db.collection("meetings").document(meeting_id)
+                meeting_doc = meeting_ref.get()
+                current_version = 0
+                if meeting_doc.exists:
+                    meeting_data_dict = meeting_doc.to_dict()
+                    draft = meeting_data_dict.get("minutesDraft", {})
+                    current_version = draft.get("version", 0)
+
+                meeting_ref.update({
+                    "minutesDraft.content": final_content,
+                    "minutesDraft.status": "final",
+                    "minutesDraft.finalizedAt": datetime.now().isoformat(),
+                    "minutesDraft.userFeedback": user_feedback,
+                    "minutesDraft.version": current_version + 1,
+                    "dateUpdated": datetime.now().isoformat()
+                })
+                print(f"[Claude] Saved final draft to Firestore for {meeting_id}")
+            except Exception as e:
+                print(f"[Claude] Warning: Failed to save final draft: {e}")
+
+        return {
+            "success": True,
+            "content": final_content
+        }
+
+    except Exception as e:
+        print(f"[Claude] Error: {str(e)}")
         raise https_fn.HttpsError(
             code=https_fn.FunctionsErrorCode.INTERNAL,
             message=str(e)
