@@ -71,25 +71,45 @@ exports.transcribeAudioV2 = (0, https_1.onCall)({
         const genAI = new generative_ai_1.GoogleGenerativeAI(GEMINI_API_KEY);
         const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
         // 4. PHASE 1: Raw transcription in chunks
-        console.log('[V5-V2] Phase 1: Raw transcription...');
+        console.log('[V6] Phase 1: Raw transcription with timestamps...');
         let rawTranscription = "";
         let lastTimestamp = "0:00";
-        const maxPasses = 8; // Increased from 5 to 8 to cover 2 hours (8 * 15m = 120m)
+        let previousTimestamp = "";
+        let stuckCount = 0;
+        const maxPasses = 12; // Increased to cover ~3 hours (12 * 15m = 180m)
         for (let pass = 0; pass < maxPasses; pass++) {
-            console.log(`[V5-V2] Pass ${pass + 1}/${maxPasses}, last timestamp: ${lastTimestamp}`);
+            console.log(`[V6] Pass ${pass + 1}/${maxPasses}, last timestamp: ${lastTimestamp}`);
+            // Detect if we're stuck at the same timestamp
+            if (lastTimestamp === previousTimestamp && pass > 0) {
+                stuckCount++;
+                if (stuckCount >= 2) {
+                    console.log('[V6] Stuck at same timestamp, ending transcription');
+                    break;
+                }
+            }
+            else {
+                stuckCount = 0;
+            }
+            previousTimestamp = lastTimestamp;
             const continuePrompt = pass === 0
                 ? `Transcris cet enregistrement audio de réunion. Transcris VERBATIM (mot à mot) tout ce qui est dit.
                 
-IMPORTANT:
-- Commence au début et transcris jusqu'à la fin OU jusqu'à ce que tu aies transcrit environ 15 minutes de contenu
-- Indique le temps approximatif entre crochets: [MM:SS]
-- À la fin de ta transcription, écris: [CONTINUER À: MM:SS] ou [FIN DE L'ENREGISTREMENT]
-- N'invente rien, transcris uniquement ce que tu entends`
-                : `Continue la transcription de cet enregistrement à partir de ${lastTimestamp}.
+RÈGLES IMPORTANTES:
+1. Commence au début (0:00) et transcris environ 15 minutes de contenu
+2. HORODATAGE OBLIGATOIRE: Indique le temps [MM:SS] au début de chaque intervention
+   Exemple: "[0:00] **Président:** Bonjour à tous..."
+            "[1:30] **Membre:** Je voudrais ajouter..."
+3. À la fin, écris EXACTEMENT: [CONTINUER À: MM:SS] ou [FIN DE L'ENREGISTREMENT]
+4. N'invente rien, transcris uniquement ce que tu entends
+5. Change de paragraphe quand l'intervenant change`
+                : `Continue la transcription de cet enregistrement à partir de [${lastTimestamp}].
 
-RAPPEL: Tu as déjà transcrit le début. Continue là où tu t'es arrêté.
-- Transcris les 15 prochaines minutes environ
-- Termine par [CONTINUER À: MM:SS] ou [FIN DE L'ENREGISTREMENT]`;
+RAPPEL: Tu as déjà transcrit de 0:00 à ${lastTimestamp}. Continue à partir de là.
+RÈGLES:
+1. Transcris les 15 prochaines minutes environ
+2. HORODATAGE OBLIGATOIRE sur chaque intervention: [MM:SS] **Nom:**
+3. Termine par [CONTINUER À: MM:SS] ou [FIN DE L'ENREGISTREMENT]
+4. Ne répète pas ce qui a déjà été transcrit`;
             const result = await model.generateContent({
                 contents: [{
                         role: "user",
@@ -106,27 +126,31 @@ RAPPEL: Tu as déjà transcrit le début. Continue là où tu t'es arrêté.
                 }
             });
             let chunk = result.response.text();
-            console.log(`[V5-V2] Received ${chunk.length} chars`);
+            console.log(`[V6] Received ${chunk.length} chars`);
             chunk = cleanRepetitions(chunk);
+            // Extract continuation timestamp
             const continueMatch = chunk.match(/\[CONTINUER À:\s*(\d+:\d+)\]/i);
             if (continueMatch) {
                 lastTimestamp = continueMatch[1];
             }
             rawTranscription += (pass > 0 ? "\n\n---\n\n" : "") + chunk;
+            // Check for end markers
             if (chunk.includes('[FIN DE L\'ENREGISTREMENT]') ||
-                chunk.toLowerCase().includes('fin de l\'enregistrement')) {
-                console.log('[V5-V2] Reached end of recording');
+                chunk.toLowerCase().includes('fin de l\'enregistrement') ||
+                chunk.toLowerCase().includes('end of recording')) {
+                console.log('[V6] Reached end of recording');
                 break;
             }
-            if (chunk.length < 500 && pass > 0) {
-                console.log('[V5-V2] Short chunk, stopping');
+            // Adjusted threshold: only stop if very short AND no new content
+            if (chunk.length < 200 && pass > 0) {
+                console.log('[V6] Very short chunk, likely end');
                 break;
             }
         }
-        console.log(`[V5-V2] Phase 1 complete: ${rawTranscription.length} chars`);
-        // 5. PHASE 2: Organization
-        console.log('[V5-V2] Phase 2: Organization...');
-        const organizePrompt = `Tu es un assistant qui organise des transcriptions.
+        console.log(`[V6] Phase 1 complete: ${rawTranscription.length} chars, final timestamp: ${lastTimestamp}`);
+        // 5. PHASE 2: Organization with PRESERVED timestamps
+        console.log('[V6] Phase 2: Organization with timestamps...');
+        const organizePrompt = `Tu es un assistant qui organise des transcriptions de réunions.
 
 TRANSCRIPTION BRUTE:
 ${rawTranscription}
@@ -135,19 +159,22 @@ ${agendaItems ? `ORDRE DU JOUR DE LA RÉUNION:\n${agendaItems}\n` : ''}
 ${attendeeNames ? `PARTICIPANTS CONNUS: ${attendeeNames}\n` : ''}
 
 MISSION:
-1. ORGANISE cette transcription par SUJETS/THÈMES discutés
-2. Pour chaque sujet, crée une section avec un titre ## 
+1. ORGANISE par SUJETS/THÈMES discutés avec titres ##
+2. ⚠️ PRÉSERVE TOUS LES HORODATAGES [MM:SS] - C'est CRITIQUE
 3. IDENTIFIE les intervenants:
-   - Si tu reconnais des noms mentionnés, utilise-les (ex: **M. Tremblay :**)
-   - Sinon utilise **Intervenant A :**, **Intervenant B :**, etc. (différencie les voix)
+   - Si tu reconnais des noms, utilise-les: **[MM:SS] M. Tremblay:**
+   - Sinon: **[MM:SS] Intervenant A:**
 4. CONSERVE tout le contenu, ne résume pas
-5. Supprime les répétitions inutiles comme "c'est c'est c'est..."
+5. Supprime uniquement les répétitions type "c'est c'est c'est..."
 6. Termine par [TRANSCRIPTION ORGANISÉE COMPLÈTE]
 
-FORMAT:
-## [Titre du sujet]
+FORMAT EXACT:
+## [MM:SS] Titre du sujet
 
-**Nom/Intervenant :** Ce qui est dit...
+**[MM:SS] Nom/Intervenant:** Ce qui est dit...
+
+**[MM:SS] Autre intervenant:** Sa réponse...
+
 ---`;
         const organizeResult = await model.generateContent({
             contents: [{ role: "user", parts: [{ text: organizePrompt }] }],

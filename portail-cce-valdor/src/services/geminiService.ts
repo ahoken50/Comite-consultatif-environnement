@@ -246,7 +246,7 @@ export const generateMinutesDraft = async (
             .join('\n') || 'Non spécifié';
 
         const prompt = `Tu es un rédacteur expert de procès-verbaux pour le Comité Consultatif en Environnement (CCE) de la Ville de Val-d'Or.
-OBJECTIF : Rédiger un procès-verbal (PV) professionnel, complet et structuré à partir de la transcription fournie.
+OBJECTIF : Rédiger un procès-verbal (PV) professionnel, COMPLET et DÉTAILLÉ à partir de la transcription fournie.
 
 ## INFORMATIONS DE LA RÉUNION
 Titre: ${meeting.title}
@@ -262,47 +262,67 @@ ${agendaList}
 ## TRANSCRIPTION (Source intégrale)
 ${transcription}
 
-## DIRECTIVES CRUCIALES DE STRUCTURE (IMPÉRATIF)
-1. **Un point d'ordre du jour = Un seul bloc principal**.
-2. **DÉLIBÉRATIONS** : Doivent être séparées par des **paragraphes distincts**, pas un texte continu. Si on change de sujet dans le même bloc, cela doit se voir par un saut de ligne.
-3. **CONCLUSION DU POINT** : À la fin d'un bloc, il DOIT y avoir une conclusion qui regroupe les éléments pertinents. Ce n'est **pas nécessairement une résolution**, ça peut être un commentaire ou une décision.
+---
 
-## DIRECTIVES DE RÉDACTION
+## ⚠️ DIRECTIVES CRUCIALES (IMPÉRATIF)
 
-### 1. DÉLIBÉRATIONS (Le Cœur du point)
-- **Format** : Texte narratif aéré.
-- **Règle** : "Si on change de sujet mais dans le même bloc, on doit le savoir." -> Utilise des paragraphes.
-- **Contenu** : Synthétise les échanges de manière fluide.
+### 1. STRUCTURE PAR POINT
+Chaque point de l'ordre du jour = Un bloc complet avec cette structure:
 
-### 2. ISSUE DU POINT (Choisir la plus appropriée)
-Termine le bloc par l'une des sections suivantes :
+\`\`\`
+## [Numéro]. [Titre du point]
 
-*   **Option A : RÉSOLUTION** (Si un vote a lieu)
-    *   **Format STRICT** : Doit utiliser la forme "CONSIDÉRANT... IL EST RÉSOLU DE/QUE..."
-    *   Exemple : "CONSIDÉRANT la proposition... IL EST RÉSOLU QUE le Comité accepte..."
-    *   Indiquer proposeur/secondeur.
+### Contexte
+[2-3 phrases de mise en contexte sur le sujet abordé]
 
-*   **Option B : DÉCISION** (Action sans vote formel)
-    *   Format : "DÉCISION : Le Comité convient de..."
+### Délibérations
 
-*   **Option C : COMMENTAIRE** (Discussion/Info)
-    *   Format : "COMMENTAIRE : Le Comité prend acte..." ou "Résumé : ..."
+[PARAGRAPHE 1: Premier thème discuté]
+Détail des échanges sur ce thème. Qui a dit quoi, quelles préoccupations ont été soulevées, quelles solutions proposées. MINIMUM 4-5 phrases détaillées par paragraphe.
 
+[PARAGRAPHE 2: Deuxième aspect abordé]  
+Si la discussion change de sujet au sein du même point, faire un nouveau paragraphe. Toujours détailler les interventions.
 
-### 4. COHÉRENCE TERMINOLOGIQUE
-Utilise TOUJOURS ces termes de façon cohérente:
-- "le Comité" (pas "CCE", "le comité", "le CCE", "le conseil")
-- "procès-verbal" ou "PV" (pas "minutes")
-- "résolution" (pas "motion")
-- "Il est résolu" (pas "il est décidé")
-- "appuyé par" (pas "secondé par")
+[PARAGRAPHE 3: Etc si nécessaire]
 
-### 5. VÉRIFICATION
-- Si une information est floue, utilise **[À VALIDER : ...]**
-- Base-toi UNIQUEMENT sur la transcription, n'invente rien
+### Issue du point
+[Choisir UN format parmi les 3 ci-dessous]
+\`\`\`
+
+### 2. FORMAT DE L'ISSUE (CHOISIR LE BON)
+
+**OPTION A - RÉSOLUTION** (S'il y a eu un VOTE formel)
+\`\`\`
+**RÉSOLUTION CCE-[ANNÉE]-[NUMÉRO]**
+
+CONSIDÉRANT [contexte factuel];
+CONSIDÉRANT [justification de la décision];
+
+IL EST RÉSOLU QUE [décision claire et actionnable].
+
+_Proposé par: [Nom] | Appuyé par: [Nom] | Adopté à l'unanimité / X voix pour, Y contre_
+\`\`\`
+
+**OPTION B - DÉCISION** (Action décidée SANS vote formel)
+\`\`\`
+**DÉCISION :** Le Comité convient de [action spécifique avec responsable et échéance si mentionnés].
+\`\`\`
+
+**OPTION C - COMMENTAIRE** (Discussion informative, pas d'action)
+\`\`\`
+**COMMENTAIRE :** Le Comité prend acte de [information]. Les membres ont [résumé des points retenus en 3-4 phrases].
+\`\`\`
+
+### 3. RÈGLES DE RÉDACTION
+- **DÉTAIL** : Les délibérations doivent être LONGUES et DÉTAILLÉES, pas des résumés en 2 lignes
+- **PARAGRAPHES** : Séparer par thème au sein des délibérations
+- **TERMINOLOGIE** : "le Comité" (pas CCE/comité), "résolution" (pas motion), "appuyé par" (pas secondé)
+- **VALIDATION** : Si info floue, marquer **[À VALIDER : ...]**
+- **FIDÉLITÉ** : Base-toi UNIQUEMENT sur la transcription
 ${historicalContext || ''}
+
 ## RÉSULTAT ATTENDU
-Un document prêt pour approbation, structuré selon l'ordre du jour, avec délibérations et décisions clairement distinguées.`;
+Un document prêt pour approbation, avec des délibérations riches et détaillées, et des issues clairement formatées.`;
 
         const geminiRequest = {
             contents: [{
@@ -310,7 +330,7 @@ Un document prêt pour approbation, structuré selon l'ordre du jour, avec déli
             }],
             generationConfig: {
                 temperature: 0.2,
-                maxOutputTokens: 16000
+                maxOutputTokens: 32000 // Increased for longer, more detailed drafts
             }
         };
 
