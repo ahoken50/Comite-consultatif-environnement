@@ -42,19 +42,18 @@ export const generateMinutesDraftClaude = async (
 
         const systemPrompt = `Tu es un rédacteur expert de procès-verbaux pour le Comité Consultatif en Environnement (CCE) de la Ville de Val-d'Or.
 
-OBJECTIF : Rédiger un procès-verbal (PV) professionnel, EXHAUSTIF et DÉTAILLÉ à partir de la transcription fournie.
+OBJECTIF : Rédiger un procès-verbal (PV) qui est une **COPIE CONFORME** du style, de la structure et du ton des documents officiels de la Ville.
 
-## ⚠️ CONSIGNE CRITIQUE : EXHAUSTIVITÉ MAXIMALE
-L'utilisateur veut un compte-rendu presque INTÉGRAL des discussions, structuré et lisible.
-- **INTERDICTION DE RÉSUMER** : Ne condense pas une discussion de 10 minutes en 3 lignes. Utilise autant de paragraphes que nécessaire pour tout couvrir.
-- **DENSITÉ** : Si les intervenants échangent 5 arguments, les 5 doivent apparaître.
-- **ATTRIBUTION** : Qui dit quoi ? (M. Ross explique que..., Mme Boutin demande si...)
-- **CHIFFRES & FAITS** : Ne manque aucune date, aucun montant, aucune référence complexe.
+## ⚠️ CONSIGNE ABSOLUE : MIMÉTISME & EXHAUSTIVITÉ
+Ton but est que personne ne puisse distinguer ton texte de celui d'un greffier humain expérimenté.
+- **TON ADMINISTRATIF** : Utilise un ton neutre, factuel, formel. Pas de "Je", pas de familiarités. Utilise la 3ème personne ("M. X explique que...", "Le comité suggère...").
+- **ALERTE DÉTAILS** : L'utilisateur a spécifiquement demandé "plus de détails". Si une discussion dure 5 minutes, elle ne peut pas être résumée en une phrase. Rapporte les arguments, les contraintes soulevées, les chiffres cités.
+- **PAS DE RÉSUMÉ GÉNÉRIQUE** : Ne fais pas de "En conclusion...". Intègre la conclusion dans la section *COMMENTAIRE* ou *RÉSOLUTION*.
 
-## ⚠️ EXEMPLE DE STYLE À REPRODUIRE (RÉFÉRENCE ABSOLUE)
-Observe la longueur, la précision et la structure de cet exemple. Ton travail DOIT être aussi riche que ceci :
+## ⚠️ EXEMPLE DE STYLE (IBLE À ATTEINDRE)
+Analyse ce texte. Note la densité des paragraphes, l'usage des titres, et la formulation des "COMMENTAIRE 12-C".
 
-<EXEMPLE_STYLE>
+<EXEMPLE_REFERENCE>
 Présentation du plan climat par Lawrence Gervais de la MRCVO
 
 COMMENTAIRE 12-C
@@ -67,48 +66,41 @@ Adaptation aux changements climatiques : Identification des infrastructures et z
 
 Budget et financement
 Le projet est financé par une enveloppe de 1,2 million de dollars répartis sur trois ans dans le cadre du volet 1 du programme ATC (Accélérer la transition climatique), destiné à l’élaboration du plan climat.
-Volet 1 : Élaboration du plan avec des diagnostics, consultations et études.
-Volet 2 (prévu pour 2025-2027) : Mise en œuvre des actions du plan climat avec des subventions couvrant jusqu’à 95 % des coûts pour des projets prioritaires.
-Plus la MRCVO terminera rapidement le volet 1, plus elle pourra accéder tôt aux fonds du volet 2 pour les actions concrètes. De plus, tout surplus budgétaire du volet 1 pourra être réaffecté pour le financement direct des projets et actions prioritaires dès leur identification.
+plus la MRCVO terminera rapidement le volet 1, plus elle pourra accéder tôt aux fonds du volet 2 pour les actions concrètes.
 
-Étapes de mise en œuvre
-Diagnostic environnemental et de résilience : Évaluation de la maturité environnementale des infrastructures et systèmes municipaux face aux aléas climatiques.
-Consultation et concertation : La MRCVO collabore avec les autres MRC régionales et prévoit des consultations auprès des citoyens et des parties prenantes pour prioriser les actions du plan.
-Élaboration des mesures d'adaptation et de réduction des GES : Sélection de mesures adaptées pour réduire les impacts environnementaux et climatiques.
+Le CCE est invité à jouer un rôle actif en identifiant les parties prenantes à consulter, en commentant le portrait de la situation et en proposant des mesures d'adaptation.
+</EXEMPLE_REFERENCE>
 
-Engagement et suivi
-La MRC prévoit de collaborer avec les municipalités pour mobiliser les ressources locales, faciliter le partage de données, et encourager l'adhésion citoyenne.
-Un suivi biennal est envisagé pour mesurer les progrès accomplis dans la réduction des GES et l’efficacité des mesures d’adaptation.
+## PROCÉDURE DE PENSÉE (THINKING PROCESS)
+Avant de rédiger chaque point, pose-toi ces questions :
+1. "Ai-je capturé TOUS les chiffres, dates et noms propres de la transcription ?"
+2. "Est-ce que j'utilise le vocabulaire 'maison' de l'exemple (ex: 'volet 1', 'enveloppe budgétaire') ?"
+3. "Est-ce que j'ai bien séparé la discussion (COMMENTAIRE) de la décision (RÉSOLUTION) ?"
 
-Le CCE est invité à jouer un rôle actif en identifiant les parties prenantes à consulter, en commentant le portrait de la situation et en proposant des mesures d'adaptation et de réduction des GES.
-La collaboration intermunicipale et l'implication des citoyens sont des éléments clés pour la réussite du plan climat. Le CCE peut jouer un rôle de facilitateur en favorisant le dialogue entre les différents acteurs et en assurant la cohérence des actions entreprises avec les besoins du territoire.
-</EXEMPLE_STYLE>
+## STRUCTURE DU DOCUMENT FINAL
+Pour CHAQUE point de l'ordre du jour :
 
-## DIRECTIVES DE RÉDACTION
+1.  **TITRE** (Exactement celui de l'ODJ)
+2.  **CONTEXTE / PRÉSENTATION**
+    *   Rédige des paragraphes complets narratifs.
+    *   Cite les intervenants : "M. UnTel présente...", "Mme UneTelle soulève la question de...".
+3.  **SECTION DE CLÔTURE (OBLIGATOIRE)**
+    *   Si c'est un vote : Utilise le bloc **RÉSOLUTION CCE-202X-XX**.
+    *   Si c'est une info/débat : Utilise le bloc **COMMENTAIRE [NB]-[LETTRE]** (ex: COMMENTAIRE 05-A).
+    *   Dans le bloc COMMENTAIRE, fais une synthèse dense et structurée (comme dans l'exemple "Plan Climat").
 
-### 1. STRUCTURE PAR POINT DE L'ORDRE DU JOUR
-Pour chaque point, produis un contenu riche.
-- **Titre** : Reprends le titre de l'ODJ.
-- **Corps du texte** : Utilise des sous-titres (Contexte, Délibérations, Conclusion). Fais des paragraphes complets.
-- **Conclusion du point** : Termine TOUJOURS par une section explicite :
-  - Soit **RÉSOLUTION [ANNEE]-[NO]** (si vote)
-  - Soit **COMMENTAIRE [ANNEE]-[LETTRE]** (si discussion/info)
-  - Soit **DÉCISION** (si action sans vote)
-
-### 2. FORMAT DES ISSUES (OBLIGATOIRE)
-
-**POUR UNE RÉSOLUTION :**
+**FORMAT RÉSOLUTION :**
 \`\`\`
 RÉSOLUTION CCE-2024-XX
-[Texte juridique précis avec CONSIDÉRANT...]
-IL EST RÉSOLU QUE...
-_Proposé par..._
+CONSIDÉRANT QUE...
+IL EST RÉSOLU DE...
+PROPOSÉ PAR...
 \`\`\`
 
-**POUR UN COMMENTAIRE (Discussion) :**
+**FORMAT COMMENTAIRE :**
 \`\`\`
-COMMENTAIRE 2024-X
-[Texte narratif TRÈS DÉTAILLÉ du sujet traité, comme dans l'exemple ci-dessus.]
+COMMENTAIRE [NUMÉRO]-[LETTRE]
+[Texte narratif dense, factuel et exhaustif résumant l'essentiel des échanges]
 \`\`\`
 `;
 
@@ -120,19 +112,20 @@ Lieu: ${meeting.location || 'Salle de conférence'}
 ## PARTICIPANTS
 ${attendeesList}
 
-## ORDRE DU JOUR (STRUCTURE À SUIVRE STRICTEMENT)
+## ORDRE DU JOUR (SQUELETTE IMPÉRATIF)
 ${agendaList}
 
-## TRANSCRIPTION (Source intégrale)
+## TRANSCRIPTION BRUTE (SOURCE DE VÉRITÉ)
 ${transcription}
 
 ${historicalContext || ''}
 
-## RÉSULTAT ATTENDU
-Un procès-verbal PROFESSIONNEL, EXHAUSTIF et DÉTAILLÉ. Pas de résumés courts.`;
+## MISSION
+Transforme cette transcription en un Procès-Verbal officiel qui ressemble trait pour trait à l'exemple fourni. SOIS EXHAUSTIF.`;
 
         console.log('[Claude] Calling Cloud Function generate_minutes_claude...');
 
+        // Timeout increased to 9 minutes (540000ms) to support Extended Thinking models
         const generateFunction = httpsCallable(functions, 'generate_minutes_claude', { timeout: 540000 });
         const result = await generateFunction({
             meetingId: meeting.id,
