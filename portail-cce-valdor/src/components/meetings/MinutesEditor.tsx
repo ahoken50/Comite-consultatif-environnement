@@ -550,9 +550,65 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
                         onDraftGenerated={(draft: MinutesDraft) => {
                             onUpdate({ minutesDraft: draft });
                         }}
-                        onApplyToMinutes={(content: string) => {
-                            setGlobalNotes(content);
-                            setHasUnsavedChanges(true);
+                        onApplyToMinutes={async (content: string) => {
+                            try {
+                                const { parseMinutesDraft } = await import('../../services/minutesParserService');
+                                const { matchPVToAgenda } = await import('../../services/docxParserService');
+
+                                const { items: parsedItems, intro } = parseMinutesDraft(content);
+
+                                // 1. Put Intro text in Global Notes
+                                if (intro) {
+                                    setGlobalNotes(intro);
+                                } else if (parsedItems.length === 0) {
+                                    // Fallback: Dump everything if no structure
+                                    setGlobalNotes(content);
+                                    showSuccess('Texte ajouté aux notes générales (Structure non détectée)');
+                                    setHasUnsavedChanges(true);
+                                    return;
+                                }
+
+                                // 2. Map parsed items to Agenda Items
+                                if (parsedItems.length > 0) {
+                                    const matchMap = matchPVToAgenda(parsedItems, localAgendaItems);
+
+                                    const updatedItems = localAgendaItems.map(item => {
+                                        const matched = matchMap.get(item.id);
+                                        if (matched) {
+                                            return {
+                                                ...item,
+                                                minuteEntries: matched.minuteEntries, // Helper to sync arrays
+                                                // Legacy
+                                                minuteType: matched.minuteType,
+                                                minuteNumber: matched.minuteNumber,
+                                                decision: matched.decision
+                                            };
+                                        }
+                                        return item;
+                                    });
+
+                                    setLocalAgendaItems(updatedItems);
+
+                                    // Sync decisions for UI
+                                    const newDecisions = { ...itemDecisions };
+                                    updatedItems.forEach(item => {
+                                        if (item.decision) {
+                                            newDecisions[item.id] = item.decision;
+                                        }
+                                    });
+                                    setItemDecisions(newDecisions);
+
+                                    showSuccess(`${matchMap.size} points mis à jour et Introduction appliquée`);
+                                } else {
+                                    showSuccess('Introduction appliquée (Aucun point matché)');
+                                }
+
+                                setHasUnsavedChanges(true);
+
+                            } catch (e) {
+                                console.error('Error parsing minutes:', e);
+                                showError('Erreur lors de l\'application intelligente');
+                            }
                         }}
                         onTranscriptionUpdate={(newTranscription: string) => {
                             if (meeting.audioRecording) {
