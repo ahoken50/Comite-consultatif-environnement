@@ -336,7 +336,9 @@ def generate_minutes_claude(req: https_fn.CallableRequest) -> dict:
             ]
         )
         
-        content = message.content[0].text
+        # Handle extended thinking (multiple blocks)
+        content_blocks = [block.text for block in message.content if block.type == "text"]
+        content = "".join(content_blocks)
         
         # Save to Firestore directly if meetingId provided
         if meeting_id:
@@ -427,7 +429,9 @@ def finalize_draft_claude(req: https_fn.CallableRequest) -> dict:
             ]
         )
         
-        final_content = message.content[0].text
+        # Handle extended thinking (multiple blocks)
+        final_content_blocks = [block.text for block in message.content if block.type == "text"]
+        final_content = "".join(final_content_blocks)
         
         # Update meeting
         if meeting_id:
