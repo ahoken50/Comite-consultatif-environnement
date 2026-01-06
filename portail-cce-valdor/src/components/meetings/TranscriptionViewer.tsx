@@ -17,7 +17,8 @@ import {
     CheckCircle,
     ArrowRightAlt,
     ContentCopy,
-    People
+    People,
+    Refresh
 } from '@mui/icons-material';
 import { useSelector } from 'react-redux';
 import type { Meeting, MinutesDraft } from '../../types/meeting.types';
@@ -293,6 +294,15 @@ const TranscriptionViewer: React.FC<TranscriptionViewerProps> = ({
                                 onClick={() => copyToClipboard(draft.content)}
                             >
                                 Copier
+                            </Button>
+                            <Button
+                                size="small"
+                                color="warning"
+                                startIcon={isGenerating ? <CircularProgress size={16} color="inherit" /> : <Refresh />}
+                                onClick={handleGenerateDraft}
+                                disabled={isGenerating}
+                            >
+                                Regénérer
                             </Button>
                             <Button
                                 size="small"
