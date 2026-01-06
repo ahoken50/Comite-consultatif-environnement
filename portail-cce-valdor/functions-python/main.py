@@ -324,8 +324,12 @@ def generate_minutes_claude(req: https_fn.CallableRequest) -> dict:
         
         message = client.messages.create(
             model="claude-haiku-4-5-20251001",
-            max_tokens=8192,
-            temperature=0.1,
+            max_tokens=20000,
+            thinking={
+                "type": "enabled",
+                "budget_tokens": 12000
+            },
+            temperature=1,
             system=system_prompt,
             messages=[
                 {"role": "user", "content": user_message}
@@ -411,8 +415,12 @@ def finalize_draft_claude(req: https_fn.CallableRequest) -> dict:
         
         message = client.messages.create(
             model="claude-haiku-4-5-20251001",
-            max_tokens=8192,
-            temperature=0.1,
+            max_tokens=20000,
+            thinking={
+                "type": "enabled",
+                "budget_tokens": 12000
+            },
+            temperature=1,
             system=system_prompt,
             messages=[
                 {"role": "user", "content": user_message}
