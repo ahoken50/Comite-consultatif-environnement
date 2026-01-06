@@ -145,15 +145,29 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
     };
 
     const handleSave = () => {
-        // Save agenda items WITHOUT overwriting the decision field
-        // decision = ODJ "Note/Décision attendue" (preserved)
-        // minuteEntries = PV resolutions/comments
-        const updatedAgendaItems = localAgendaItems.map(item => ({
-            ...item,
-            // IMPORTANT: Do NOT overwrite decision field - it belongs to ODJ
-            // PV content goes in minuteEntries, not decision
-            minuteEntries: item.minuteEntries
-        }));
+        // Save agenda items
+        const updatedAgendaItems = localAgendaItems.map(item => {
+            // Check if we are in 'Legacy/Simple' mode for this item (no structured entries)
+            const isLegacyMode = !item.minuteEntries || item.minuteEntries.length === 0;
+
+            if (isLegacyMode) {
+                // In legacy mode, we SAVE the decision field from the tracked state
+                // This ensures manual edits to the "Contenu du PV" box are saved
+                return {
+                    ...item,
+                    decision: itemDecisions[item.id] || item.decision || '',
+                    minuteEntries: []
+                };
+            } else {
+                // In structured mode (Parsed PV), we PRESERVE the ODJ decision field (don't overwrite with empty)
+                // and save the structured minuteEntries (Resolutions/Comments)
+                return {
+                    ...item,
+                    minuteEntries: item.minuteEntries
+                    // decision is kept as-is (from ODJ)
+                };
+            }
+        });
 
         console.log('[DEBUG] handleSave called');
         console.log('[DEBUG] globalNotes:', globalNotes);
