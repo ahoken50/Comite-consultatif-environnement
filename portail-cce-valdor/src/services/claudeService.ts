@@ -198,7 +198,7 @@ Génère le procès-verbal final, prêt à être imprimé.`;
 
         console.log('[Claude] Calling Cloud Function finalize_draft_claude...');
 
-        const finalizeFunction = httpsCallable(functions, 'finalize_draft_claude');
+        const finalizeFunction = httpsCallable(functions, 'finalize_draft_claude', { timeout: 540000 });
         const result = await finalizeFunction({
             meetingId: meeting.id,
             systemPrompt,
