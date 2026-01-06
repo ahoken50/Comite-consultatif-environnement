@@ -101,9 +101,9 @@ export const transcribeAudio = async (
             dateUpdated: new Date().toISOString()
         });
 
-        // Call Gemini Cloud Function (TypeScript)
-        console.log('[Transcription] Calling Gemini Cloud Function...');
-        const transcribeFunction = httpsCallable(functions, 'transcribeAudioV2', { timeout: 3600000 }); // 1 hour client timeout
+        // Call Whisper Python Cloud Function
+        console.log('[Transcription] Calling Whisper Cloud Function...');
+        const transcribeFunction = httpsCallable(functions, 'transcribe_whisper', { timeout: 3600000 }); // 1 hour client timeout
 
         const result = await transcribeFunction({
             meetingId,
@@ -112,13 +112,13 @@ export const transcribeAudio = async (
         });
 
         // The function updates Firestore directly, so we just verify success
-        const data = result.data as { success: boolean; transcription: string; error?: string };
+        const data = result.data as { success: boolean; transcription: string; chunks?: number; error?: string };
 
         if (!data.success) {
-            throw new Error(data.error || 'Unknown error from Gemini');
+            throw new Error(data.error || 'Unknown error from Whisper');
         }
 
-        console.log('[Transcription] Gemini success!');
+        console.log(`[Transcription] Whisper success! ${data.chunks || 1} chunk(s)`);
         return { success: true, transcription: data.transcription };
 
     } catch (error) {
