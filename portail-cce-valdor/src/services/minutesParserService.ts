@@ -164,10 +164,15 @@ export const parseMinutesDraft = (draftContent: string): { items: AgendaItem[], 
 
             // Peek at next line if we didn't catch a number yet, or if text is empty
             if (j < lines.length && (!commentText || !capturedNumber)) {
-                const nextPeek = lines[j].trim();
+                let nextPeek = lines[j].trim();
+
+                // CLEANUP MARKDOWN from nextPeek to handle "**25-A**" or "__25-A__"
+                // remove only surrounding * or _ but keep content
+                const cleanNextPeek = nextPeek.replace(/^[*_]+|[*_]+$/g, '').trim();
+
                 // Simple regex to catch standalone number "DD-L" or "DD-LL" or "DD-D"
                 // e.g. "09-35" or "09-A" or "25-B"
-                const standaloneNumberMatch = nextPeek.match(/^(\d{2}-[A-Z0-9]+)$/i);
+                const standaloneNumberMatch = cleanNextPeek.match(/^(\d{2}-[A-Z0-9]+)$/i);
 
                 if (standaloneNumberMatch) {
                     if (!capturedNumber) capturedNumber = standaloneNumberMatch[1];
@@ -175,14 +180,15 @@ export const parseMinutesDraft = (draftContent: string): { items: AgendaItem[], 
                     j++;
                 }
                 // Also check if next line is just "25-B :" 
-                else if (/^(\d{2}-[A-Z0-9]+)\s*[:.-]/.test(nextPeek)) {
-                    const match = nextPeek.match(/^(\d{2}-[A-Z0-9]+)/);
+                else if (/^(\d{2}-[A-Z0-9]+)\s*[:.-]/.test(cleanNextPeek)) {
+                    const match = cleanNextPeek.match(/^(\d{2}-[A-Z0-9]+)/);
                     if (match) {
                         if (!capturedNumber) capturedNumber = match[1];
                         // Strip the number from this next line, but keep the rest
-                        const remaining = nextPeek.replace(/^(\d{2}-[A-Z0-9]+)\s*[:.-]?\s*/, '');
+                        const remaining = cleanNextPeek.replace(/^(\d{2}-[A-Z0-9]+)\s*[:.-]?\s*/, '');
                         if (remaining) {
-                            commentText = remaining; // Should be the start of content
+                            // If there was text after the number on the clean line, use it.
+                            commentText = remaining;
                             j++; // consume line
                         } else {
                             j++; // pure number line
