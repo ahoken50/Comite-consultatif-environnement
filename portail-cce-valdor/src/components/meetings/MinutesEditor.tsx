@@ -289,15 +289,30 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
             const file = await uploadFile(e);
             if (!file) return;
 
-            // If it's a DOCX file, automatically parse and extract resolution/comment data
-            if (file.name.toLowerCase().endsWith('.docx')) {
-                try {
-                    console.log('[DEBUG] Parsing DOCX file for agenda items...');
-                    const { parseAgendaDOCX: parseDocx, matchPVToAgenda } = await import('../../services/docxParserService');
-                    const parsedData = await parseDocx(file);
-                    console.log('[DEBUG] Parsed data:', parsedData);
+            // Detect file type and parse accordingly
+            const isDocx = file.name.toLowerCase().endsWith('.docx');
+            const isPdf = file.name.toLowerCase().endsWith('.pdf');
 
-                    if (parsedData.agendaItems && parsedData.agendaItems.length > 0) {
+            if (isDocx || isPdf) {
+                try {
+                    console.log(`[DEBUG] Parsing ${isDocx ? 'DOCX' : 'PDF'} file as Minutes (PV)...`);
+
+                    let parsedData;
+                    // Dynamically import the specialized PV parser (distinct from ODJ parser)
+                    const { parseMinutesDOCX, parseMinutesPDF } = await import('../../services/pvParserService');
+
+                    if (isDocx) {
+                        parsedData = await parseMinutesDOCX(file);
+                    } else if (isPdf) {
+                        parsedData = await parseMinutesPDF(file);
+                    }
+
+                    // Helper to match items (generic logic can be shared or moved, using existing helper for now)
+                    const { matchPVToAgenda } = await import('../../services/docxParserService');
+
+                    console.log('[DEBUG] Parsed PV data:', parsedData);
+
+                    if (parsedData?.agendaItems && parsedData.agendaItems.length > 0) {
                         console.log('[DEBUG] Found', parsedData.agendaItems.length, 'agenda items in DOCX');
 
                         // If meeting has no agenda items, CREATE new ones from parsed data
@@ -339,7 +354,9 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
                             console.log('[DEBUG] Created', newAgendaItems.length, 'new agenda items from DOCX');
                         } else {
                             // Use title-based matching instead of just index
-                            const matchMap = matchPVToAgenda(parsedData.agendaItems, localAgendaItems);
+                            const matchMap = parsedData?.agendaItems
+                                ? matchPVToAgenda(parsedData.agendaItems, localAgendaItems)
+                                : new Map();
                             console.log('[DEBUG] Matched', matchMap.size, 'items by title similarity');
 
                             // Update items that have a match
@@ -378,12 +395,19 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
                         }
                     }
 
-                    // Also update attendees if parsed from DOCX
-                    if (parsedData.attendees && parsedData.attendees.length > 0) {
-                        console.log('[DEBUG] Found', parsedData.attendees.length, 'attendees in DOCX');
-                        // Update meeting with parsed attendees
+                    // Also update attendees if parsed from DOCX/PDF
+                    if (parsedData?.attendees && parsedData.attendees.length > 0) {
+                        console.log('[DEBUG] Found', parsedData.attendees.length, 'attendees in parsed file');
+                        // Update meeting with parsed attendees, converting strings to Attendee objects
+                        const newAttendees = parsedData.attendees.map(name => ({
+                            id: `att-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                            name: name,
+                            role: 'Participant', // Default role
+                            isPresent: true
+                        }));
+
                         onUpdate({
-                            attendees: parsedData.attendees
+                            attendees: newAttendees
                         });
                         console.log('[DEBUG] Updated meeting attendees from parsed data');
                     }

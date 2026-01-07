@@ -437,7 +437,7 @@ export const parseAgendaDOCX = async (file: File): Promise<ParsedMeetingData> =>
         const tables = doc.querySelectorAll('table');
         if (tables.length > 0) {
             console.log('[docxParser] Found tables:', tables.length);
-            tables.forEach((table, tIndex) => {
+            tables.forEach((table) => {
                 const rows = table.querySelectorAll('tr');
                 rows.forEach((row, rIndex) => {
                     // Skip header rows (usually first row, often bold)
