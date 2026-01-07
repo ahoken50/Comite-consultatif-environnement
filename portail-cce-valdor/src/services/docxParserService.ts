@@ -295,6 +295,11 @@ export const parseAgendaDOCX = async (file: File): Promise<ParsedMeetingData> =>
         const strongElement = element.querySelector('strong');
         const isBoldParagraph = strongElement && strongElement.textContent?.trim() === text;
 
+        // Common patterns
+        const numberedItemPattern = /^\d+(\.|-)?\s+/;
+        const isLeveeRegex = /lev[ée]e\s+de\s+l['’]?\s*assembl[ée]e/i;
+        const isLevee = isLeveeRegex.test(text);
+
         if (isBoldParagraph) {
             // If not formal language and not too short, it could be a section title
             if (!formalLanguageRegex.test(text) && text.length > 15 && text.length < 250) {
@@ -310,11 +315,8 @@ export const parseAgendaDOCX = async (file: File): Promise<ParsedMeetingData> =>
                         continue;
                     }
 
-                    // Check if it's a numbered sub-section (1., 2., 3., etc.)
-                    const numberedItemRegex = /^\d+\.\s+/;
-
-                    // Only treat as section title if NOT a numbered item
-                    if (!numberedItemRegex.test(text)) {
+                    // Only treat as section title if NOT a numbered item AND NOT "Levée"
+                    if (!numberedItemPattern.test(text) && !isLevee) {
                         // Save previous item if exists
                         if (currentItem) {
                             currentItem.decision = currentContent.join('\n').trim();
@@ -328,20 +330,30 @@ export const parseAgendaDOCX = async (file: File): Promise<ParsedMeetingData> =>
                         console.log('[docxParser] Found section title (bold):', currentSectionTitle);
                         continue;
                     }
-                    // Numbered items fall through to content collection below
+                    // Numbered items AND Levée fall through to content collection below
                 }
             }
         }
 
         // Track potential titles: non-formal, non-marker text that could be a section header
-        // These get used when we encounter a resolution/comment with no current section
-        // Exclude numbered items (1., 2., 3., etc.) - they should not be section titles
-        const numberedItemPattern = /^\d+\.\s+/;
         if (!currentItem && !formalLanguageRegex.test(text) &&
             !resolutionRegex.test(text) && !commentaireRegex.test(text) &&
-            !numberedItemPattern.test(text) &&
+            !numberedItemPattern.test(text) && !isLevee &&
             text.length > 10 && text.length < 300 && !text.startsWith('Sur une proposition')) {
             lastPotentialTitle = text;
+        }
+
+        // Special Start for Levée if not started
+        if (isLevee && !currentItem) {
+            currentItem = {
+                sectionTitle: text.trim(),
+                minuteType: 'resolution', // Often implies a resolution to adjourn
+                minuteNumber: '',
+                decision: ''
+            };
+            currentContent = []; // Start fresh content
+            console.log('[docxParser] Found special section:', text);
+            continue; // Skip the regular content push below for this line
         }
 
         // If we're in an item, collect content
