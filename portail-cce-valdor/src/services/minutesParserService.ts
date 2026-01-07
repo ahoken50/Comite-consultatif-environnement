@@ -24,9 +24,11 @@ export const parseMinutesDraft = (draftContent: string): { items: AgendaItem[], 
     let currentSection: ParsedPVSection | null = null;
     let buffer: string[] = [];
 
-    // Regex helpers - Updated to handle Markdown bold (** or __)
+    // Regex helpers - Updated to handle Markdown bold (** or __) and various formats
     const resolutionRegex = /(?:\*\*|__)?R[ÉE]SOLUTION(?:\*\*|__)?\s+(\d{2}|[A-Z]{3,})-(\d+)/i;
-    const commentaireRegex = /(?:\*\*|__)?COMMENTAIRE(?:\*\*|__)?\s*(?:[:\s]\s*([A-Z0-9-]+)|[:\s]?)/i;
+    // FIXED: Now captures number format "XX-Y" or "XX-YY" after COMMENTAIRE with space/colon
+    // Test cases: "COMMENTAIRE 25-A", "COMMENTAIRE: 09-B", "**COMMENTAIRE** 25-C"
+    const commentaireRegex = /(?:\*\*|__)?COMMENTAIRE(?:\*\*|__)?[\s:]*(\d{2}-[A-Za-z0-9]+)?/i;
     // Matches "1. Title", "3.1 Title", "10 - Title", "1) Title"
     const numberedTitleRegex = /^(\d+([.-]\d+)*)[.)-]?\s+(.+)$/;
 
