@@ -470,7 +470,7 @@ def finalize_draft_claude(req: https_fn.CallableRequest) -> dict:
         )
 
 @https_fn.on_call(
-    timeout_sec=300,  # 5 minutes timeout for general tasks
+    timeout_sec=540,  # 9 minutes timeout to match client
     memory=options.MemoryOption.GB_1
 )
 def chat_claude(req: https_fn.CallableRequest) -> dict:
@@ -508,23 +508,28 @@ def chat_claude(req: https_fn.CallableRequest) -> dict:
         from anthropic import Anthropic
         client = Anthropic(api_key=api_key)
         
-        # Use Sonnet 3.5 instead of Haiku 3.5 for complex tasks if needed, 
-        # but User asked for Claude. Haiku 3.5 is fast and efficient for text processing.
-        # Let's use Haiku 3.5 (claude-3-haiku-20240307) or Opte for cost?
-        # User is used to 'claude-haiku-4-5-20251001' (which is the custom name for the new model).
-        # We will usage the same model for consistency.
-        
+        # Use Claude 4.5 Haiku as explicitly requested by user (same as generate_minutes)
         message = client.messages.create(
-            model="claude-3-5-sonnet-20241022", # Using Sonnet 3.5 for high quality formatting/logic
-            max_tokens=8000,
-            temperature=temperature,
+            model="claude-haiku-4-5-20251001",
+            max_tokens=20000,
+            thinking={
+                "type": "enabled",
+                "budget_tokens": 12000
+            },
+            temperature=1, # Start at 1 for thinking models
             system=system_prompt,
             messages=[
                 {"role": "user", "content": user_message}
             ]
         )
         
-        content = message.content[0].text
+        # Handle multiple content blocks (ignore 'thinking', keep 'text')
+        content_parts = []
+        for block in message.content:
+            if block.type == "text":
+                content_parts.append(block.text)
+        
+        content = "\n".join(content_parts)
         
         return {
             "success": True,
