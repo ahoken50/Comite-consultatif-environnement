@@ -516,13 +516,8 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
                     }}
                 />
 
+
                 {/* Transcription Viewer and Draft Generator */}
-                {meeting.audioRecording?.transcription && (
-
-
-                    // ... inside return ...
-
-                    {/* Transcription Viewer and Draft Generator */ }
                 {meeting.audioRecording?.transcription && (
                     <TranscriptionViewer
                         meeting={meeting}
