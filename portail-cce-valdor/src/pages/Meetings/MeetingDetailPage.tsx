@@ -158,8 +158,7 @@ const MeetingDetailPage: React.FC = () => {
             dispatch(updateMeeting({
                 id,
                 updates: {
-                    ...updatedData,
-                    agendaItems: updatedData.agendaItems
+                    ...updatedData
                 }
             }));
             setIsEditModalOpen(false);
