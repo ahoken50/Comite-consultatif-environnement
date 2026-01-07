@@ -223,3 +223,175 @@ Génère le procès-verbal final, prêt à être imprimé.`;
         return { success: false, error: err.message };
     }
 };
+
+/**
+ * Sanitize minutes content using Claude
+ * Replaces sensitive info with placeholders
+ */
+export const sanitizeMinutesClaude = async (
+    minutesContent: string
+): Promise<{ success: boolean; sanitizedContent?: string; error?: string }> => {
+    // Note: API key handled in backend
+
+    try {
+        const systemPrompt = `Tu es un expert en conformité et protection de la vie privée pour une administration municipale.
+TA MISSIONS : Anonymiser le procès-verbal suivant pour qu'il soit conforme à la Loi sur l'accès à l'information.
+
+RÈGLES D'ANONYMISATION :
+1. CITOYENS : Remplace les noms complets des citoyens privés par "[NOM MASQUÉ]" ou "un citoyen".
+2. ADRESSES : Remplace les adresses civiques privées complètes par le nom de la rue seulement (ex: "123 rue Principale" -> "rue Principale"). 
+3. DONNÉES SENSIBLES : Masque les numéros de téléphone, courriels personnels, ou détails financiers privés.
+4. ÉLUS ET FONCTIONNAIRES : NE MASQUE PAS les noms des élus municipaux, employés de la ville, ou promoteurs d'entreprises (personnes morales). Ils sont publics.
+5. CONTEXTE : Garde le reste du texte intact pour la compréhension.
+6. IDENTITÉ : Si tu ne sais pas si une personne est publique ou privée, dans le doute, masque.`;
+
+        const userMessage = `TEXTE À TRAITER :
+${minutesContent}
+
+FORMAT DE SORTIE :
+Retourne uniquement le texte traité, sans introduction ni conclusion.`;
+
+        console.log('[Claude] Calling Cloud Function chat_claude (for sanitization)...');
+
+        const chatFunction = httpsCallable(functions, 'chat_claude', { timeout: 300000 });
+
+        const result = await chatFunction({
+            systemPrompt,
+            userMessage,
+            temperature: 0.1 // Low temperature for consistent sanitization
+        });
+
+        const data = result.data as { success: boolean; content: string; error?: string };
+
+        if (!data.success) {
+            throw new Error(data.error || 'Erreur inconnue de la fonction Claude');
+        }
+
+        const sanitizedContent = data.content;
+
+        if (!sanitizedContent) {
+            throw new Error('Aucun contenu généré');
+        }
+
+        return { success: true, sanitizedContent };
+
+
+        return { success: true, sanitizedContent };
+
+    } catch (error) {
+        const err = error as Error;
+        console.error('Claude sanitization error:', err);
+        return { success: false, error: err.message };
+    }
+};
+
+/**
+ * Sanitize the entire meeting object for PDF export
+ */
+/**
+ * Sanitize the entire meeting object for PDF export
+ */
+export const sanitizeMeetingClaude = async (
+    meeting: Meeting
+): Promise<{ success: boolean; sanitizedMeeting?: Meeting; error?: string }> => {
+    try {
+        // 1. Construct a simplified payload to minimize tokens, only sending text fields
+        const payload = {
+            minutes: meeting.minutes || '',
+            attendees: meeting.attendees?.map(a => ({
+                id: a.id,
+                name: a.name,
+                role: a.role
+            })),
+            agendaItems: meeting.agendaItems?.map(item => ({
+                id: item.id,
+                title: item.title,
+                decision: item.decision, // Legacy
+                proposer: item.proposer,
+                seconder: item.seconder,
+                minuteEntries: item.minuteEntries?.map(entry => ({
+                    type: entry.type,
+                    content: entry.content,
+                    number: entry.number
+                }))
+            }))
+        };
+
+        const systemPrompt = `Tu es un expert en protection de la vie privée.
+TA MISSION : Anonymiser les données JSON suivantes pour qu'elles soient conformes à la Loi sur l'accès à l'information, tout en préservant STRICTEMENT la structure JSON.
+
+RÈGLES D'ANONYMISATION :
+1. CITOYENS : Remplace les noms complets des citoyens privés par "[NOM MASQUÉ]" ou "un citoyen". (Valable pour les participants, proposeurs, appuyeurs).
+2. ADRESSES : Remplace les adresses civiques privées complètes par le nom de la rue seulement.
+3. DONNÉES SENSIBLES : Masque les numéros de téléphone, courriels personnels, montants financiers privés, plaques d'immatriculation.
+4. ÉLUS ET FONCTIONNAIRES : NE MASQUE PAS les noms des élus municipaux, employés de la ville ou entreprises (ex: "Conseiller X", "Directeur Y").
+5. FORMAT : Tu DOIS retourner EXCLUSIVEMENT un JSON valide qui respecte exactement la structure d'entrée. Ne change pas les ID ni les clés.`;
+
+        const userMessage = `DONNÉES À TRAITER (JSON) :
+${JSON.stringify(payload, null, 2)}
+
+FORMAT DE SORTIE ATTENDU :
+Uniquement le JSON traité, rien d'autre.`;
+
+        console.log('[Claude] Calling Cloud Function chat_claude (for full meeting sanitization)...');
+
+        const chatFunction = httpsCallable(functions, 'chat_claude', { timeout: 540000 }); // 9 mins
+
+        const result = await chatFunction({
+            systemPrompt,
+            userMessage,
+            temperature: 0, // Zero temp for deterministic JSON output
+        });
+
+        const data = result.data as { success: boolean; content: string; error?: string };
+
+        if (!data.success) {
+            throw new Error(data.error || 'Erreur inconnue de la fonction Claude');
+        }
+
+        // Parse the result
+        let sanitizedData: any;
+        try {
+            // Find JSON block if Claude wrapped it in markdown
+            const jsonMatch = data.content.match(/\{[\s\S]*\}/);
+            const jsonString = jsonMatch ? jsonMatch[0] : data.content;
+            sanitizedData = JSON.parse(jsonString);
+        } catch (e) {
+            console.error('Failed to parse Claude JSON response:', data.content);
+            throw new Error('La réponse de l\'IA n\'est pas un JSON valide.');
+        }
+
+        // Reconstruct the meeting object with sanitized data
+        const sanitizedMeeting: Meeting = {
+            ...meeting,
+            minutes: sanitizedData.minutes,
+            attendees: meeting.attendees?.map(a => {
+                const sanitizedAttendee = sanitizedData.attendees?.find((s: any) => s.id === a.id);
+                return sanitizedAttendee ? { ...a, name: sanitizedAttendee.name } : a;
+            }),
+            agendaItems: meeting.agendaItems?.map(item => {
+                const sanitizedItem = sanitizedData.agendaItems?.find((s: any) => s.id === item.id);
+                if (!sanitizedItem) return item;
+
+                return {
+                    ...item,
+                    title: sanitizedItem.title,
+                    decision: sanitizedItem.decision,
+                    proposer: sanitizedItem.proposer,
+                    seconder: sanitizedItem.seconder,
+                    minuteEntries: item.minuteEntries?.map((entry, index) => {
+                        const sanitizedEntry = sanitizedItem.minuteEntries?.[index];
+                        return sanitizedEntry ? { ...entry, content: sanitizedEntry.content } : entry;
+                    })
+                };
+            })
+        };
+
+        return { success: true, sanitizedMeeting };
+
+    } catch (error) {
+        const err = error as Error;
+        console.error('Claude meeting sanitization error:', err);
+        return { success: false, error: err.message };
+    }
+};

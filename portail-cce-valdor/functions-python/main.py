@@ -468,3 +468,72 @@ def finalize_draft_claude(req: https_fn.CallableRequest) -> dict:
             code=https_fn.FunctionsErrorCode.INTERNAL,
             message=str(e)
         )
+
+@https_fn.on_call(
+    timeout_sec=300,  # 5 minutes timeout for general tasks
+    memory=options.MemoryOption.GB_1
+)
+def chat_claude(req: https_fn.CallableRequest) -> dict:
+    """
+    Generic Cloud Function to chat with Claude API (no side effects).
+    Useful for sanitization, summarization, etc.
+    """
+    if not req.auth:
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.UNAUTHENTICATED,
+            message="Authentication required."
+        )
+
+    data = req.data
+    system_prompt = data.get("systemPrompt")
+    user_message = data.get("userMessage")
+    temperature = data.get("temperature", 0.5)
+
+    if not system_prompt or not user_message:
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT,
+            message="Missing keys: systemPrompt, userMessage"
+        )
+    
+    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    if not api_key:
+         raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.INTERNAL,
+            message="ANTHROPIC_API_KEY is not configured on server."
+        )
+
+    print(f"[Claude] Generic chat request received...")
+
+    try:
+        from anthropic import Anthropic
+        client = Anthropic(api_key=api_key)
+        
+        # Use Sonnet 3.5 instead of Haiku 3.5 for complex tasks if needed, 
+        # but User asked for Claude. Haiku 3.5 is fast and efficient for text processing.
+        # Let's use Haiku 3.5 (claude-3-haiku-20240307) or Opte for cost?
+        # User is used to 'claude-haiku-4-5-20251001' (which is the custom name for the new model).
+        # We will usage the same model for consistency.
+        
+        message = client.messages.create(
+            model="claude-3-5-sonnet-20241022", # Using Sonnet 3.5 for high quality formatting/logic
+            max_tokens=8000,
+            temperature=temperature,
+            system=system_prompt,
+            messages=[
+                {"role": "user", "content": user_message}
+            ]
+        )
+        
+        content = message.content[0].text
+        
+        return {
+            "success": True,
+            "content": content
+        }
+
+    except Exception as e:
+        print(f"[Claude] Chat Error: {str(e)}")
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.INTERNAL,
+            message=str(e)
+        )

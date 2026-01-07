@@ -13,7 +13,7 @@ import {
 import { Save, PictureAsPdf, UploadFile, DeleteSweep, Shield } from '@mui/icons-material';
 import type { Meeting, AgendaItem, AudioRecording, MinutesDraft } from '../../types/meeting.types';
 import { generateMinutesPDF } from '../../services/pdfServiceMinutes';
-import { sanitizeMinutes } from '../../services/geminiService';
+// import { sanitizeMinutes } from '../../services/geminiService'; // Removed in favor of Claude
 import MinutesImportDialog from './MinutesImportDialog';
 import AudioUpload from './AudioUpload';
 import TranscriptionViewer from './TranscriptionViewer';
@@ -194,14 +194,47 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
     };
 
     const handleSanitize = async () => {
-        if (!window.confirm('Ceci enverra le contenu du PV à l\'IA pour masquer les noms de citoyens et données sensibles. Voulez-vous continuer ?')) return;
+        // Validation: Check if there is content to anonymize
+        if (!globalNotes && (!localAgendaItems || localAgendaItems.length === 0)) {
+            showError('Aucun contenu à anonymiser.');
+            return;
+        }
+
+        if (!window.confirm('Cette action va générer un fichier PDF contenant une version anonymisée du procès-verbal (Noms masqués, adresses simplifiées).\n\nNOTE : Votre brouillon actuel ne sera PAS modifié. Le PDF s\'ouvrira dans une nouvelle fenêtre.\n\nContinuer ?')) return;
 
         try {
-            const result = await sanitizeMinutes(globalNotes);
-            if (result.success && result.sanitizedContent) {
-                setGlobalNotes(result.sanitizedContent);
-                setHasUnsavedChanges(true);
-                showSuccess('Anonymisation effectuée. Veuillez relire avant d\'enregistrer.');
+            // 1. Prepare the meeting data exactly as it would be saved (Merging local state)
+            const updatedAgendaItems = localAgendaItems.map(item => {
+                const isLegacyMode = !item.minuteEntries || item.minuteEntries.length === 0;
+                if (isLegacyMode) {
+                    return {
+                        ...item,
+                        decision: itemDecisions[item.id] || item.decision || '',
+                        minuteEntries: []
+                    };
+                } else {
+                    return { ...item, minuteEntries: item.minuteEntries };
+                }
+            });
+
+            const meetingSnapshot: Meeting = {
+                ...meeting,
+                minutes: globalNotes,
+                agendaItems: updatedAgendaItems
+            };
+
+            showSuccess('Anonymisation en cours via Claude... (Cela peut prendre quelques secondes)');
+
+            // Dynamically import
+            const { sanitizeMeetingClaude } = await import('../../services/claudeService');
+
+            // 2. Call AI
+            const result = await sanitizeMeetingClaude(meetingSnapshot);
+
+            if (result.success && result.sanitizedMeeting) {
+                // 3. Generate PDF with the SANITIZED object
+                await generateMinutesPDF(result.sanitizedMeeting, result.sanitizedMeeting.minutes);
+                showSuccess('PDF Anonymisé généré !');
             } else {
                 showError('Erreur lors de l\'anonymisation: ' + (result.error || 'Inconnue'));
             }
@@ -519,9 +552,9 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
                         startIcon={<Shield />}
                         onClick={handleSanitize}
                         disabled={!globalNotes && (!localAgendaItems || localAgendaItems.length === 0)}
-                        title="Masquer les données sensibles dans les notes générales (IA)"
+                        title="Générer un PDF anonymisé via IA (ne modifie pas le brouillon)"
                     >
-                        Masquer (IA)
+                        PDF Anonymisé (IA)
                     </Button>
                     <Button
                         variant="contained"
