@@ -291,14 +291,33 @@ export const parseAgendaDOCX = async (file: File): Promise<ParsedMeetingData> =>
             continue;
         }
 
+        // Special case for "Levée de l'assemblée" - treat as explicit item/delimiter
+        const isLeveeRegex = /lev[ée]e\s+de\s+l['’]?\s*assembl[ée]e/i;
+        const isLevee = isLeveeRegex.test(text);
+        if (isLevee) {
+            // Close previous item if exists
+            if (currentItem) {
+                currentItem.decision = currentContent.join('\n').trim();
+                parsedItems.push(currentItem);
+            }
+
+            currentItem = {
+                sectionTitle: text.trim(), // Use the text itself as title
+                minuteType: 'resolution', // Often implies a resolution
+                minuteNumber: '',
+                decision: ''
+            };
+            currentContent = [];
+            console.log('[docxParser] Found special section (Levée):', text);
+            continue;
+        }
+
         // Check for bold text - could be section title
         const strongElement = element.querySelector('strong');
         const isBoldParagraph = strongElement && strongElement.textContent?.trim() === text;
 
         // Common patterns
         const numberedItemPattern = /^\d+(\.|-)?\s+/;
-        const isLeveeRegex = /lev[ée]e\s+de\s+l['’]?\s*assembl[ée]e/i;
-        const isLevee = isLeveeRegex.test(text);
 
         if (isBoldParagraph) {
             // If not formal language and not too short, it could be a section title
@@ -315,8 +334,8 @@ export const parseAgendaDOCX = async (file: File): Promise<ParsedMeetingData> =>
                         continue;
                     }
 
-                    // Only treat as section title if NOT a numbered item AND NOT "Levée"
-                    if (!numberedItemPattern.test(text) && !isLevee) {
+                    // Only treat as section title if NOT a numbered item
+                    if (!numberedItemPattern.test(text)) {
                         // Save previous item if exists
                         if (currentItem) {
                             currentItem.decision = currentContent.join('\n').trim();
@@ -330,7 +349,7 @@ export const parseAgendaDOCX = async (file: File): Promise<ParsedMeetingData> =>
                         console.log('[docxParser] Found section title (bold):', currentSectionTitle);
                         continue;
                     }
-                    // Numbered items AND Levée fall through to content collection below
+                    // Numbered items fall through to content collection below
                 }
             }
         }
@@ -338,22 +357,9 @@ export const parseAgendaDOCX = async (file: File): Promise<ParsedMeetingData> =>
         // Track potential titles: non-formal, non-marker text that could be a section header
         if (!currentItem && !formalLanguageRegex.test(text) &&
             !resolutionRegex.test(text) && !commentaireRegex.test(text) &&
-            !numberedItemPattern.test(text) && !isLevee &&
+            !numberedItemPattern.test(text) &&
             text.length > 10 && text.length < 300 && !text.startsWith('Sur une proposition')) {
             lastPotentialTitle = text;
-        }
-
-        // Special Start for Levée if not started
-        if (isLevee && !currentItem) {
-            currentItem = {
-                sectionTitle: text.trim(),
-                minuteType: 'resolution', // Often implies a resolution to adjourn
-                minuteNumber: '',
-                decision: ''
-            };
-            currentContent = []; // Start fresh content
-            console.log('[docxParser] Found special section:', text);
-            continue; // Skip the regular content push below for this line
         }
 
         // If we're in an item, collect content
