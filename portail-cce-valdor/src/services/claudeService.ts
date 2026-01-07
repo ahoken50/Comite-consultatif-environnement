@@ -6,6 +6,7 @@
 import { functions } from './firebase';
 import { httpsCallable } from 'firebase/functions';
 import type { Meeting, MinutesDraft } from '../types/meeting.types';
+import { ClaudeSanitizedResponseSchema, type ClaudeSanitizedResponse } from '../schemas/meetingSchemas';
 
 // Environment variable check for Anthropic API key is removed as it is handled in backend
 
@@ -349,16 +350,28 @@ Uniquement le JSON traité, rien d'autre.`;
             throw new Error(data.error || 'Erreur inconnue de la fonction Claude');
         }
 
-        // Parse the result
-        let sanitizedData: any;
+        // Parse and Validate the result with Zod
+        let sanitizedData: ClaudeSanitizedResponse;
         try {
             // Find JSON block if Claude wrapped it in markdown
             const jsonMatch = data.content.match(/\{[\s\S]*\}/);
             const jsonString = jsonMatch ? jsonMatch[0] : data.content;
-            sanitizedData = JSON.parse(jsonString);
+
+            const rawJson = JSON.parse(jsonString);
+
+            // Validate with Zod
+            const validation = ClaudeSanitizedResponseSchema.safeParse(rawJson);
+
+            if (!validation.success) {
+                console.error('Claude JSON validation failed:', validation.error);
+                throw new Error('La réponse de l\'IA ne respecte pas le schéma attendu.');
+            }
+
+            sanitizedData = validation.data;
+
         } catch (e) {
-            console.error('Failed to parse Claude JSON response:', data.content);
-            throw new Error('La réponse de l\'IA n\'est pas un JSON valide.');
+            console.error('Failed to parse Claude JSON response:', data.content, e);
+            throw new Error('La réponse de l\'IA n\'est pas un JSON valide ou est malformée.');
         }
 
         // Reconstruct the meeting object with sanitized data
@@ -366,11 +379,11 @@ Uniquement le JSON traité, rien d'autre.`;
             ...meeting,
             minutes: sanitizedData.minutes,
             attendees: meeting.attendees?.map(a => {
-                const sanitizedAttendee = sanitizedData.attendees?.find((s: any) => s.id === a.id);
+                const sanitizedAttendee = sanitizedData.attendees?.find((s) => s.id === a.id);
                 return sanitizedAttendee ? { ...a, name: sanitizedAttendee.name } : a;
             }),
             agendaItems: meeting.agendaItems?.map(item => {
-                const sanitizedItem = sanitizedData.agendaItems?.find((s: any) => s.id === item.id);
+                const sanitizedItem = sanitizedData.agendaItems?.find((s) => s.id === item.id);
                 if (!sanitizedItem) return item;
 
                 return {

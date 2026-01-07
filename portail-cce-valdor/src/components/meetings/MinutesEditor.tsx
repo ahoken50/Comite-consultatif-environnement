@@ -19,9 +19,10 @@ import AudioUpload from './AudioUpload';
 import TranscriptionViewer from './TranscriptionViewer';
 import AgendaItemEditor from './AgendaItemEditor';
 import CrossValidationPanel from './CrossValidationPanel';
-import { documentsAPI } from '../../features/documents/documentsAPI';
+import { useMinutesFile } from '../../hooks/useMinutesFile';
 import { useToast } from '../../hooks/useToast';
 import { generateNextResolutionNumber } from '../../utils/resolutionUtils';
+import { useTranscriptionProcessor } from '../../hooks/useTranscriptionProcessor';
 // Note: parseAgendaDOCX is imported dynamically when needed
 
 interface MinutesEditorProps {
@@ -39,49 +40,35 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
 
     // Local state for agenda item fields that need to be saved manually
     const [localAgendaItems, setLocalAgendaItems] = useState<AgendaItem[]>(meeting.agendaItems || []);
-
-    const [localFile, setLocalFile] = useState<{
-        url: string | null | undefined;
-        name: string | null | undefined;
-        path: string | null | undefined;
-    }>({
-        url: meeting.minutesFileUrl ?? null,
-        name: meeting.minutesFileName ?? null,
-        path: meeting.minutesFileStoragePath ?? null
+    // Use custom hook for file management
+    const { localFile, handleFileUpload: uploadFile, handleDeleteFile } = useMinutesFile({
+        meeting,
+        onUpdate
     });
-
-    // Initialize local state from meeting data
-    // Only update agendaItems from meeting if meeting has actual items
-    // This prevents data corruption from overwriting local state with empty arrays
+    // Use custom hook for transcription processing
+    const { handleApplyTranscription } = useTranscriptionProcessor({
+        localAgendaItems,
+        setGlobalNotes,
+        setLocalAgendaItems,
+        setItemDecisions,
+        setHasUnsavedChanges
+    });
+    // Sync state when meeting changes
     useEffect(() => {
         setGlobalNotes(meeting.minutes || '');
+        setLocalAgendaItems(meeting.agendaItems || []);
 
-        // Only sync agendaItems if meeting.agendaItems has actual content
-        // Don't overwrite with empty array to prevent corruption
-        if (meeting.agendaItems && meeting.agendaItems.length > 0) {
-            setLocalAgendaItems(meeting.agendaItems);
-            const decisions: Record<string, string> = {};
-            meeting.agendaItems.forEach(item => {
-                decisions[item.id] = item.decision || '';
-            });
-            setItemDecisions(decisions);
-        }
+        // Populate decision map from existing items
+        const decisions: Record<string, string> = {};
+        meeting.agendaItems?.forEach(item => {
+            if (item.decision) {
+                decisions[item.id] = item.decision;
+            }
+        });
+        setItemDecisions(decisions);
+
+        setHasUnsavedChanges(false);
     }, [meeting.id, meeting.minutes, meeting.agendaItems]);
-
-    // Sync local file state if meeting prop updates externally
-    // Use strict comparison to handle null/undefined properly
-    useEffect(() => {
-        const meetingUrl = meeting.minutesFileUrl ?? null;
-        const localUrl = localFile.url ?? null;
-
-        if (meetingUrl !== localUrl) {
-            setLocalFile({
-                url: meeting.minutesFileUrl ?? null,
-                name: meeting.minutesFileName ?? null,
-                path: meeting.minutesFileStoragePath ?? null
-            });
-        }
-    }, [meeting.minutesFileUrl, meeting.minutesFileName, meeting.minutesFileStoragePath]);
 
     const handleGlobalNotesChange = (value: string) => {
         setGlobalNotes(value);
@@ -152,6 +139,7 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
 
             if (isLegacyMode) {
                 // In legacy mode, we SAVE the decision field from the tracked state
+                // In legacy mode, we SAVE the decision field from the tracked state
                 // This ensures manual edits to the "Contenu du PV" box are saved
                 return {
                     ...item,
@@ -200,7 +188,22 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
             return;
         }
 
-        if (!window.confirm('Cette action va générer un fichier PDF contenant une version anonymisée du procès-verbal (Noms masqués, adresses simplifiées).\n\nNOTE : Votre brouillon actuel ne sera PAS modifié. Le PDF s\'ouvrira dans une nouvelle fenêtre.\n\nContinuer ?')) return;
+        if (!window.confirm("Cette action va générer un fichier PDF contenant une version anonymisée du procès-verbal (Noms masqués, adresses simplifiées).\n\nNOTE : Votre brouillon actuel ne sera PAS modifié. Le PDF s'ouvrira dans une nouvelle fenêtre.\n\nContinuer ?")) return;
+
+        // Open window immediately to satisfy browser popup blockers
+        const printWindow = window.open('', '_blank', 'width=816,height=1056');
+        if (printWindow) {
+            printWindow.document.write('<html><body style="font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; flex-direction: column;">' +
+                '<h2>Génération du PDF Anonymisé en cours...</h2>' +
+                '<p>Veuillez patienter pendant que l\'IA traite le document (15-30 secondes).</p>' +
+                '<div style="width: 50px; height: 50px; border: 5px solid #f3f3f3; border-top: 5px solid #3498db; border-radius: 50%; animation: spin 1s linear infinite;"></div>' +
+                '<style>@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }</style>' +
+                '</body></html>');
+            printWindow.document.close();
+        } else {
+            showError("Veuillez autoriser les pop-ups pour voir le PDF.");
+            return;
+        }
 
         try {
             // 1. Prepare the meeting data exactly as it would be saved (Merging local state)
@@ -223,7 +226,7 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
                 agendaItems: updatedAgendaItems
             };
 
-            showSuccess('Anonymisation en cours via Claude... (Cela peut prendre quelques secondes)');
+            showSuccess('Anonymisation en cours via Claude...');
 
             // Dynamically import
             const { sanitizeMeetingClaude } = await import('../../services/claudeService');
@@ -232,15 +235,17 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
             const result = await sanitizeMeetingClaude(meetingSnapshot);
 
             if (result.success && result.sanitizedMeeting) {
-                // 3. Generate PDF with the SANITIZED object
-                await generateMinutesPDF(result.sanitizedMeeting, result.sanitizedMeeting.minutes);
+                // 3. Generate PDF with the SANITIZED object, using the existing window
+                await generateMinutesPDF(result.sanitizedMeeting, result.sanitizedMeeting.minutes, printWindow);
                 showSuccess('PDF Anonymisé généré !');
             } else {
-                showError('Erreur lors de l\'anonymisation: ' + (result.error || 'Inconnue'));
+                if (printWindow) printWindow.close();
+                showError("Erreur lors de l'anonymisation: " + (result.error || 'Inconnue'));
             }
         } catch (error) {
             console.error('Sanitization failed:', error);
-            showError('Erreur technique lors de l\'appel IA');
+            if (printWindow) printWindow.close();
+            showError("Erreur technique lors de l'appel IA");
         }
     };
 
@@ -278,34 +283,11 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
         setHasUnsavedChanges(true);
     };
 
-    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (!e.target.files || e.target.files.length === 0) return;
-
+    // Wrapper for file upload including DOCX parsing logic
+    const handleFileUploadWrapper = async (e: React.ChangeEvent<HTMLInputElement>) => {
         try {
-            const file = e.target.files[0];
-
-            // Upload file to storage
-            const doc = await documentsAPI.upload(
-                file,
-                meeting.id,
-                'meeting',
-                'user' // Placeholder
-            );
-
-            // Optimistic local update
-            setLocalFile({
-                url: doc.url,
-                name: file.name,
-                path: doc.storagePath
-            });
-
-            // File upload is saved immediately (auto-save)
-            onUpdate({
-                minutesFileUrl: doc.url,
-                minutesFileName: file.name,
-                minutesFileStoragePath: doc.storagePath,
-                minutesFileDocumentId: doc.id
-            });
+            const file = await uploadFile(e);
+            if (!file) return;
 
             // If it's a DOCX file, automatically parse and extract resolution/comment data
             if (file.name.toLowerCase().endsWith('.docx')) {
@@ -365,16 +347,6 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
                                 const matchedPV = matchMap.get(item.id);
 
                                 if (matchedPV) {
-                                    // Log all minute entries for debugging
-                                    if (matchedPV.minuteEntries && matchedPV.minuteEntries.length > 0) {
-                                        console.log('[DEBUG] Updating item:', item.title, 'with', matchedPV.minuteEntries.length, 'minute entries:');
-                                        matchedPV.minuteEntries.forEach(entry => {
-                                            console.log('  -', entry.type, entry.number);
-                                        });
-                                    } else {
-                                        console.log('[DEBUG] Updating item:', item.title, 'with PV data:', matchedPV.minuteNumber);
-                                    }
-
                                     return {
                                         ...item,
                                         // NEW: Copy all minute entries (resolutions + comments)
@@ -422,56 +394,10 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
             }
 
         } catch (error) {
-            console.error("Upload failed", error);
+            console.error("Upload process failed", error);
         }
     };
 
-    const handleDeleteFile = async () => {
-        console.log('[DEBUG] handleDeleteFile called');
-        console.log('[DEBUG] Current meeting file state:', {
-            url: meeting.minutesFileUrl,
-            name: meeting.minutesFileName,
-            path: meeting.minutesFileStoragePath,
-            docId: meeting.minutesFileDocumentId
-        });
-
-        // Optimistic update for immediate UI feedback
-        setLocalFile({
-            url: null,
-            name: null,
-            path: null
-        });
-
-        // Try to delete physical file if IDs are available
-        if (meeting.minutesFileDocumentId && meeting.minutesFileStoragePath) {
-            try {
-                console.log('[DEBUG] Attempting to delete physical file...');
-                await documentsAPI.delete(
-                    meeting.minutesFileDocumentId,
-                    meeting.minutesFileStoragePath
-                );
-                console.log('[DEBUG] Physical file deleted successfully');
-            } catch (e) {
-                console.warn('[DEBUG] Failed to delete physical file (may already be deleted):', e);
-            }
-        } else {
-            console.log('[DEBUG] No documentId or storagePath, skipping physical file deletion');
-        }
-
-        // ALWAYS unlink from meeting, regardless of whether physical deletion succeeded
-        console.log('[DEBUG] Calling onUpdate to clear file references in meeting...');
-        try {
-            onUpdate({
-                minutesFileUrl: null as any,
-                minutesFileName: null as any,
-                minutesFileStoragePath: null as any,
-                minutesFileDocumentId: null as any
-            });
-            console.log('[DEBUG] onUpdate called successfully');
-        } catch (e) {
-            console.error('[DEBUG] Error calling onUpdate:', e);
-        }
-    };
 
     const handleClearAll = () => {
         if (!window.confirm('Êtes-vous sûr de vouloir effacer tout le contenu du procès-verbal ? Cette action ne peut pas être annulée.')) {
@@ -521,7 +447,7 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
                             type="file"
                             hidden
                             accept=".pdf,.docx,.doc"
-                            onChange={handleFileUpload}
+                            onChange={handleFileUploadWrapper}
                         />
                     </Button>
                     <Button
@@ -592,71 +518,18 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
 
                 {/* Transcription Viewer and Draft Generator */}
                 {meeting.audioRecording?.transcription && (
+
+
+                    // ... inside return ...
+
+                    {/* Transcription Viewer and Draft Generator */ }
+                {meeting.audioRecording?.transcription && (
                     <TranscriptionViewer
                         meeting={meeting}
                         onDraftGenerated={(draft: MinutesDraft) => {
                             onUpdate({ minutesDraft: draft });
                         }}
-                        onApplyToMinutes={async (content: string) => {
-                            try {
-                                const { parseMinutesDraft } = await import('../../services/minutesParserService');
-                                const { matchPVToAgenda } = await import('../../services/docxParserService');
-
-                                const { items: parsedItems, intro } = parseMinutesDraft(content);
-
-                                // 1. Put Intro text in Global Notes
-                                if (intro) {
-                                    setGlobalNotes(intro);
-                                } else if (parsedItems.length === 0) {
-                                    // Fallback: Dump everything if no structure
-                                    setGlobalNotes(content);
-                                    showSuccess('Texte ajouté aux notes générales (Structure non détectée)');
-                                    setHasUnsavedChanges(true);
-                                    return;
-                                }
-
-                                // 2. Map parsed items to Agenda Items
-                                if (parsedItems.length > 0) {
-                                    const matchMap = matchPVToAgenda(parsedItems, localAgendaItems);
-
-                                    const updatedItems = localAgendaItems.map(item => {
-                                        const matched = matchMap.get(item.id);
-                                        if (matched) {
-                                            return {
-                                                ...item,
-                                                minuteEntries: matched.minuteEntries, // Helper to sync arrays
-                                                // Legacy
-                                                minuteType: matched.minuteType,
-                                                minuteNumber: matched.minuteNumber,
-                                                decision: matched.decision
-                                            };
-                                        }
-                                        return item;
-                                    });
-
-                                    setLocalAgendaItems(updatedItems);
-
-                                    // Sync decisions for UI
-                                    const newDecisions = { ...itemDecisions };
-                                    updatedItems.forEach(item => {
-                                        if (item.decision) {
-                                            newDecisions[item.id] = item.decision;
-                                        }
-                                    });
-                                    setItemDecisions(newDecisions);
-
-                                    showSuccess(`${matchMap.size} points mis à jour et Introduction appliquée`);
-                                } else {
-                                    showSuccess('Introduction appliquée (Aucun point matché)');
-                                }
-
-                                setHasUnsavedChanges(true);
-
-                            } catch (e) {
-                                console.error('Error parsing minutes:', e);
-                                showError('Erreur lors de l\'application intelligente');
-                            }
-                        }}
+                        onApplyToMinutes={handleApplyTranscription}
                         onTranscriptionUpdate={(newTranscription: string) => {
                             if (meeting.audioRecording) {
                                 onUpdate({

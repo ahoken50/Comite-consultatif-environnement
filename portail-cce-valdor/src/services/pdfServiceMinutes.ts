@@ -683,17 +683,26 @@ const generateHTMLDocument = (meeting: Meeting, _globalNotes?: string): string =
  * Generate PDF from HTML using native browser print
  * This approach respects CSS page-break rules for resolution blocks
  */
-export const generateMinutesPDF = async (meeting: Meeting, globalNotes?: string): Promise<PDFGenerationResult> => {
+/**
+ * Generate PDF from HTML using native browser print
+ * This approach respects CSS page-break rules for resolution blocks
+ * @param windowRef Optional existing window reference (to avoid popup blockers on async calls)
+ */
+export const generateMinutesPDF = async (meeting: Meeting, globalNotes?: string, windowRef?: Window | null): Promise<PDFGenerationResult> => {
     const html = generateHTMLDocument(meeting, globalNotes);
 
-    // Open a new window for printing
-    const printWindow = window.open('', '_blank', 'width=816,height=1056');
+    // Use provided window or open a new one
+    let printWindow = windowRef;
+    if (!printWindow) {
+        printWindow = window.open('', '_blank', 'width=816,height=1056');
+    }
 
     if (!printWindow) {
         return { success: false, error: 'Veuillez autoriser les pop-ups pour générer le PDF.' };
     }
 
     // Write the HTML content
+    printWindow.document.open();
     printWindow.document.write(html);
     printWindow.document.close();
 
