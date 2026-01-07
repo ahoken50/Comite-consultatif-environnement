@@ -24,9 +24,11 @@ export const parseMinutesDraft = (draftContent: string): { items: AgendaItem[], 
     let currentSection: ParsedPVSection | null = null;
     let buffer: string[] = [];
 
-    // Regex helpers
-    const resolutionRegex = /R[ÉE]SOLUTION\s+(\d{2}|[A-Z]{3,})-(\d+)/i;
-    const commentaireRegex = /COMMENTAIRE\s+(\d{2}|[A-Z]{3,})-([A-Z0-9]+)/i;
+    // Regex helpers - Updated to handle Markdown bold (** or __) and various formats
+    const resolutionRegex = /(?:\*\*|__)?R[ÉE]SOLUTION(?:\*\*|__)?\s+(\d{2}|[A-Z]{3,})-(\d+)/i;
+    // FIXED: Now captures number format "XX-Y" or "XX-YY" after COMMENTAIRE with space/colon
+    // Test cases: "COMMENTAIRE 25-A", "COMMENTAIRE: 09-B", "**COMMENTAIRE** 25-C"
+    const commentaireRegex = /(?:\*\*|__)?COMMENTAIRE(?:\*\*|__)?[\s:]*(\d{2}-[A-Za-z0-9]+)?/i;
     // Matches "1. Title", "3.1 Title", "10 - Title", "1) Title"
     const numberedTitleRegex = /^(\d+([.-]\d+)*)[.)-]?\s+(.+)$/;
 
@@ -80,7 +82,11 @@ export const parseMinutesDraft = (draftContent: string): { items: AgendaItem[], 
             const minuteNumber = `${resMatch[1]}-${resMatch[2]}`;
 
             // We read ahead to capture the full resolution text until end of block
-            let resolutionText = line;
+            // CLEANUP: Strip the "RÉSOLUTION XX-XX" header from the content
+            let resolutionText = line.replace(resolutionRegex, '').trim();
+            // Remove leading separator chars like ": " or "- "
+            resolutionText = resolutionText.replace(/^[:\s-]+/, '');
+
             let j = i + 1;
             while (j < lines.length) {
                 const nextLine = lines[j].trim();
@@ -103,7 +109,11 @@ export const parseMinutesDraft = (draftContent: string): { items: AgendaItem[], 
                 if (shouldBreak) {
                     break;
                 }
-                resolutionText += '\n' + lines[j];
+                if (resolutionText) {
+                    resolutionText += '\n' + lines[j];
+                } else {
+                    resolutionText = lines[j]; // If first line was empty after strip
+                }
                 j++;
             }
             i = j - 1;
@@ -140,10 +150,59 @@ export const parseMinutesDraft = (draftContent: string): { items: AgendaItem[], 
         // 2. Check for Comment Start
         const comMatch = line.match(commentaireRegex);
         if (comMatch) {
-            const minuteNumber = `${comMatch[1]}-${comMatch[2]}`;
+            // If number captured, use it.
+            let capturedNumber = comMatch[1] ? comMatch[1] : '';
 
-            let commentText = line;
+            // CLEANUP: Strip header from the current line
+            let commentText = line.replace(commentaireRegex, '').trim();
+            commentText = commentText.replace(/^[:\s-]+/, ''); // remove separators
+
+            // Advanced Clean: If line 1 was JUST the header, check line 2 for the number "25-B"
+            // Case: 
+            // **COMMENTAIRE**
+            // 25-B
+            // Content...
             let j = i + 1;
+
+            // Peek at next line if we didn't catch a number yet, or if text is empty
+            if (j < lines.length && (!commentText || !capturedNumber)) {
+                let nextPeek = lines[j].trim();
+                console.log('[Parser Debug] Peeking next line for number:', nextPeek);
+
+                // CLEANUP MARKDOWN from nextPeek to handle "**25-A**" or "__25-A__"
+                // remove only surrounding * or _ but keep content
+                const cleanNextPeek = nextPeek.replace(/^[*_]+|[*_]+$/g, '').trim();
+                console.log('[Parser Debug] Cleaned peek:', cleanNextPeek);
+
+                // Simple regex to catch standalone number "DD-L" or "DD-LL" or "DD-D"
+                // e.g. "09-35" or "09-A" or "25-B"
+                const standaloneNumberMatch = cleanNextPeek.match(/^(\d{2}-[A-Z0-9]+)$/i);
+
+                if (standaloneNumberMatch) {
+                    if (!capturedNumber) capturedNumber = standaloneNumberMatch[1];
+                    // Skip this line as it is just the number
+                    j++;
+                }
+                // Also check if next line is just "25-B :" 
+                else if (/^(\d{2}-[A-Z0-9]+)\s*[:.-]/.test(cleanNextPeek)) {
+                    const match = cleanNextPeek.match(/^(\d{2}-[A-Z0-9]+)/);
+                    if (match) {
+                        if (!capturedNumber) capturedNumber = match[1];
+                        // Strip the number from this next line, but keep the rest
+                        const remaining = cleanNextPeek.replace(/^(\d{2}-[A-Z0-9]+)\s*[:.-]?\s*/, '');
+                        if (remaining) {
+                            // If there was text after the number on the clean line, use it.
+                            commentText = remaining;
+                            j++; // consume line
+                        } else {
+                            j++; // pure number line
+                        }
+                    }
+                }
+            }
+
+            const minuteNumber = capturedNumber || '';
+
             while (j < lines.length) {
                 const nextLine = lines[j].trim();
                 let shouldBreak = false;
@@ -163,24 +222,38 @@ export const parseMinutesDraft = (draftContent: string): { items: AgendaItem[], 
                 if (shouldBreak) {
                     break;
                 }
-                commentText += '\n' + lines[j];
+                if (commentText) {
+                    commentText += '\n' + lines[j];
+                } else {
+                    commentText = lines[j];
+                }
                 j++;
             }
             i = j - 1;
 
-            const entryContent = commentText.replace(commentaireRegex, '').trim();
-
             if (currentSection) {
-                currentSection.minuteEntries.push({
-                    type: 'comment',
-                    number: minuteNumber,
-                    content: entryContent || commentText // Use full text if replacement empty
-                });
+                // MERGE LOGIC: If last entry was also a comment and we just parsed another comment...
+                // The user says "ce commentaire ne devrait en être qu'un".
+                // If it's a "broken" comment (multiple headers for same point), we merge.
+                // UNLESS the number is different?
+                const lastEntry = currentSection.minuteEntries[currentSection.minuteEntries.length - 1];
+
+                if (lastEntry && lastEntry.type === 'comment' && (!minuteNumber || minuteNumber === lastEntry.number)) {
+                    // It's likely a continuation broken by a header
+                    lastEntry.content += '\n\n' + commentText.trim();
+                } else {
+                    currentSection.minuteEntries.push({
+                        type: 'comment',
+                        number: minuteNumber,
+                        content: commentText.trim()
+                    });
+                }
+
                 // Legacy support
                 if (!currentSection.minuteType) {
                     currentSection.minuteType = 'comment';
                     currentSection.minuteNumber = minuteNumber;
-                    currentSection.decision = entryContent || commentText;
+                    currentSection.decision = commentText.trim();
                 }
             } else {
                 currentSection = {
@@ -189,7 +262,7 @@ export const parseMinutesDraft = (draftContent: string): { items: AgendaItem[], 
                     minuteEntries: [{
                         type: 'comment',
                         number: minuteNumber,
-                        content: entryContent || commentText
+                        content: commentText.trim()
                     }]
                 };
             }
@@ -224,22 +297,51 @@ export const parseMinutesDraft = (draftContent: string): { items: AgendaItem[], 
     flushSection();
 
     // Convert to AgendaItems
-    const items = sections.map((sec, idx) => ({
-        id: `draft-parsed-${Date.now()}-${idx}`,
-        order: idx,
-        title: sec.title,
-        duration: 10,
-        presenter: '',
-        objective: sec.minuteEntries.some(e => e.type === 'resolution') ? 'Décision' : 'Information',
-        description: '',
-        minuteEntries: sec.minuteEntries,
-        // Legacy
-        minuteType: sec.minuteType,
-        minuteNumber: sec.minuteNumber,
-        decision: sec.decision || sec.content,
-        proposer: sec.proposer || '',
-        seconder: sec.seconder || ''
-    }));
+    const items = sections.map((sec, idx) => {
+        // PER USER REQUEST:
+        // If a section has content but NO explicit entries (Resolution/Comment), it is implied to be a COMMENT.
+        // Exceptions: "Mot de bienvenue", "Ouverture", "Levée", "Varia" (if empty/simple).
+
+        let finalMinuteEntries = [...sec.minuteEntries];
+        let finalMinuteType = sec.minuteType;
+        let finalMinuteNumber = sec.minuteNumber;
+        let finalDecision = sec.decision || sec.content;
+
+        const lowerTitle = sec.title.toLowerCase();
+        const isException = lowerTitle.includes('bienvenue') ||
+            lowerTitle.includes('ouverture') ||
+            lowerTitle.includes('levée') ||
+            (lowerTitle.includes('varia') && (!sec.content || sec.content.length < 50));
+
+        if (finalMinuteEntries.length === 0 && sec.content.trim() && !isException) {
+            // Create implicit comment entry
+            finalMinuteEntries.push({
+                type: 'comment',
+                number: '', // No number for implicit comment unless we parse it from content? User said number in box. 
+                // If implicit, we don't have a number. Leave empty.
+                content: sec.content.trim()
+            });
+            finalMinuteType = 'comment';
+            finalDecision = sec.content.trim();
+        }
+
+        return {
+            id: `draft-parsed-${Date.now()}-${idx}`,
+            order: idx,
+            title: sec.title,
+            duration: 10,
+            presenter: '',
+            objective: finalMinuteEntries.some(e => e.type === 'resolution') ? 'Décision' : 'Information',
+            description: '',
+            minuteEntries: finalMinuteEntries,
+            // Legacy
+            minuteType: finalMinuteType,
+            minuteNumber: finalMinuteNumber,
+            decision: finalDecision,
+            proposer: sec.proposer || '',
+            seconder: sec.seconder || ''
+        };
+    });
 
     return { items, intro };
 };

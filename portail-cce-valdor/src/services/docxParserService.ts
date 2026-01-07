@@ -291,20 +291,51 @@ export const parseAgendaDOCX = async (file: File): Promise<ParsedMeetingData> =>
             continue;
         }
 
+        // Special case for "Levée de l'assemblée" - treat as explicit item/delimiter
+        const isLeveeRegex = /lev[ée]e\s+de\s+l['’]?\s*assembl[ée]e/i;
+        const isLevee = isLeveeRegex.test(text);
+        if (isLevee) {
+            // Close previous item if exists
+            if (currentItem) {
+                currentItem.decision = currentContent.join('\n').trim();
+                parsedItems.push(currentItem);
+            }
+
+            currentItem = {
+                sectionTitle: text.trim(), // Use the text itself as title
+                minuteType: 'resolution', // Often implies a resolution
+                minuteNumber: '',
+                decision: ''
+            };
+            currentContent = [];
+            console.log('[docxParser] Found special section (Levée):', text);
+            continue;
+        }
+
         // Check for bold text - could be section title
         const strongElement = element.querySelector('strong');
         const isBoldParagraph = strongElement && strongElement.textContent?.trim() === text;
+
+        // Common patterns
+        const numberedItemPattern = /^\d+(\.|-)?\s+/;
 
         if (isBoldParagraph) {
             // If not formal language and not too short, it could be a section title
             if (!formalLanguageRegex.test(text) && text.length > 15 && text.length < 250) {
                 // Don't treat RÉSOLUTION/COMMENTAIRE as section titles
                 if (!resolutionRegex.test(text) && !commentaireRegex.test(text)) {
-                    // Check if it's a numbered sub-section (1., 2., 3., etc.)
-                    const numberedItemRegex = /^\d+\.\s+/;
+                    // EXCLUDE METADATA HEADERS
+                    const isMetadata =
+                        /COMIT[ÉE]\s+CONSULTATIF|ASSEMBL[ÉE]E\s+ORDINAIRE|ASSEMBL[ÉE]E\s+SP[ÉE]CIALE/i.test(text) ||
+                        /^(Lundi|Mardi|Mercredi|Jeudi|Vendredi|Samedi|Dimanche)\s+\d+/i.test(text);
+
+                    if (isMetadata) {
+                        console.log('[docxParser] Skipping metadata header:', text);
+                        continue;
+                    }
 
                     // Only treat as section title if NOT a numbered item
-                    if (!numberedItemRegex.test(text)) {
+                    if (!numberedItemPattern.test(text)) {
                         // Save previous item if exists
                         if (currentItem) {
                             currentItem.decision = currentContent.join('\n').trim();
@@ -324,9 +355,6 @@ export const parseAgendaDOCX = async (file: File): Promise<ParsedMeetingData> =>
         }
 
         // Track potential titles: non-formal, non-marker text that could be a section header
-        // These get used when we encounter a resolution/comment with no current section
-        // Exclude numbered items (1., 2., 3., etc.) - they should not be section titles
-        const numberedItemPattern = /^\d+\.\s+/;
         if (!currentItem && !formalLanguageRegex.test(text) &&
             !resolutionRegex.test(text) && !commentaireRegex.test(text) &&
             !numberedItemPattern.test(text) &&
@@ -413,38 +441,164 @@ export const parseAgendaDOCX = async (file: File): Promise<ParsedMeetingData> =>
     // ============================================================
     // 5. Fallbacks (if no items found)
     // ============================================================
-    if (!parsedResult.agendaItems || parsedResult.agendaItems.length === 0) {
-        // Try ordered lists
-        const orderedLists = doc.querySelectorAll('ol');
-        let mainList: HTMLOListElement | null = null;
-        let maxItems = 0;
+    // ============================================================
+    // 5. Fallbacks (if no items found or very few)
+    // ============================================================
 
-        orderedLists.forEach((ol: HTMLOListElement) => {
-            const items = ol.querySelectorAll('li');
-            if (items.length > maxItems) {
-                maxItems = items.length;
-                mainList = ol;
-            }
-        });
+    // Check if we found a Levée item in the main loop
+    const leveeItem = parsedResult.agendaItems?.find(item =>
+        /lev[ée]e\s+de\s+l['’]?\s*assembl[ée]e/i.test(item.title)
+    );
 
-        if (mainList && maxItems >= 3) {
-            const listItems = (mainList as HTMLOListElement).querySelectorAll('li');
-            parsedResult.agendaItems = [];
-            listItems.forEach((li: HTMLLIElement, index: number) => {
-                const text = li.textContent?.trim() || "";
-                if (text) {
-                    parsedResult.agendaItems?.push({
-                        id: `imported-docx-auto-${Date.now()}-${index}`,
-                        order: index,
-                        title: text,
-                        duration: 15,
-                        presenter: 'Coordonnateur',
-                        objective: 'Information',
-                        decision: '',
-                        description: ''
-                    });
+    // Check if we found better items via other methods
+    // If we only found 1-2 items and they look like titles, we might have missed the real list
+    if (!parsedResult.agendaItems || parsedResult.agendaItems.length < 3) {
+        let fallbackItems: AgendaItem[] = [];
+
+        // STRATEGY A: Check for Tables (Common in some ODJ formats)
+        // Look for rows with numbered items or specific columns
+        const tables = doc.querySelectorAll('table');
+        if (tables.length > 0) {
+            console.log('[docxParser] Found tables:', tables.length);
+            tables.forEach((table) => {
+                const rows = table.querySelectorAll('tr');
+                rows.forEach((row, rIndex) => {
+                    // Skip header rows (usually first row, often bold)
+                    if (rIndex === 0 && rows.length > 1) {
+                        const headerText = row.textContent?.toLowerCase() || '';
+                        if (headerText.includes('sujet') || headerText.includes('item')) return;
+                    }
+
+                    // Try to find the "Subject" cell
+                    // It's usually the widest cell, or the second cell if numbered
+                    const cells = row.querySelectorAll('td');
+                    if (cells.length === 0) return;
+
+                    let subjectText = '';
+                    let itemNumber = '';
+                    let duration = 15;
+                    let presenter = 'Coordonnateur'; // Default
+                    let objective = 'Information'; // Default
+
+                    // Heuristic: If cell starts with number, it might be the number column + text
+                    // Or first column is number, second is text
+
+                    for (const cell of Array.from(cells)) {
+                        const cellText = cell.textContent?.trim() || '';
+                        if (!cellText) continue;
+
+                        // Check for numbering (e.g. "1.", "2.")
+                        const numMatch = cellText.match(/^(\d+)\.?\s*$/);
+                        if (numMatch) {
+                            itemNumber = numMatch[1];
+                            continue;
+                        }
+
+                        // Check combined "1. Subject"
+                        const combinedMatch = cellText.match(/^(\d+)\.?\s+(.+)/);
+                        if (combinedMatch && combinedMatch[2].length > 5) {
+                            itemNumber = combinedMatch[1];
+                            subjectText = combinedMatch[2].trim();
+                            break; // specific match found
+                        }
+
+                        // Otherwise, potential subject if long enough
+                        if (!subjectText && cellText.length > 10) {
+                            subjectText = cellText;
+                        }
+
+                        // Detect duration
+                        if (cellText.match(/\d+\s*(?:min|h)/i)) {
+                            // simple parse duration
+                            const digits = cellText.match(/(\d+)/);
+                            if (digits) duration = parseInt(digits[1]);
+                        }
+
+                        // Detect presenter (M. Name)
+                        if (cellText.match(/(?:M\.|Mme)\s+[A-Z]/)) {
+                            presenter = cellText.replace(/\n/g, ' ').trim();
+                        }
+                        // Detect objective
+                        if (cellText.match(/Information|D[ée]cision|Adoption/i)) {
+                            objective = cellText.trim();
+                        }
+                    }
+
+                    if (subjectText && (itemNumber || fallbackItems.length > 0 || subjectText.length > 20)) {
+                        // Filter out "Ouverture", "Levée" if desired, but usually we keep them
+                        if (!subjectText.toLowerCase().includes('sujet') && !subjectText.match(/^temps$/i)) {
+                            fallbackItems.push({
+                                id: `imported-docx-table-${Date.now()}-${fallbackItems.length}`,
+                                order: fallbackItems.length,
+                                title: subjectText,
+                                duration: duration,
+                                presenter: presenter,
+                                objective: objective,
+                                decision: '',
+                                description: '',
+                                minuteEntries: [],
+                                minuteNumber: itemNumber
+                            });
+                        }
+                    }
+                });
+            });
+        }
+
+        // Use table items if found significant number
+        if (fallbackItems.length >= 2) {
+            console.log('[docxParser] Using Table fallback items:', fallbackItems.length);
+            parsedResult.agendaItems = fallbackItems;
+        } else {
+            // STRATEGY B: Ordered Lists (Existing fallback)
+            const orderedLists = doc.querySelectorAll('ol');
+            let mainList: HTMLOListElement | null = null;
+            let maxItems = 0;
+
+            orderedLists.forEach((ol: HTMLOListElement) => {
+                const items = ol.querySelectorAll('li');
+                if (items.length > maxItems) {
+                    maxItems = items.length;
+                    mainList = ol;
                 }
             });
+
+            if (mainList && maxItems >= 3) {
+                const listItems = (mainList as HTMLOListElement).querySelectorAll('li');
+                // Only replace if we have significantly more items or existing was near empty
+                console.log('[docxParser] Using List fallback items:', maxItems);
+                parsedResult.agendaItems = [];
+                listItems.forEach((li: HTMLLIElement, index: number) => {
+                    const text = li.textContent?.trim() || "";
+                    if (text) {
+                        parsedResult.agendaItems?.push({
+                            id: `imported-docx-auto-${Date.now()}-${index}`,
+                            order: index,
+                            title: text,
+                            duration: 15,
+                            presenter: 'Coordonnateur',
+                            objective: 'Information',
+                            decision: '',
+                            description: '',
+                            minuteEntries: []
+                        });
+                    }
+                });
+            }
+        }
+
+        // RE-INJECT LEVEE IF LOST
+        // If we switched to fallback items, we might have lost the Levée item found in the main loop
+        if (leveeItem && parsedResult.agendaItems) {
+            const hasLevee = parsedResult.agendaItems.some(item =>
+                /lev[ée]e\s+de\s+l['’]?\s*assembl[ée]e/i.test(item.title)
+            );
+            if (!hasLevee) {
+                console.log('[docxParser] Re-injecting lost Levée item');
+                // Adjust order to be last
+                leveeItem.order = parsedResult.agendaItems.length;
+                parsedResult.agendaItems.push(leveeItem);
+            }
         }
     }
 

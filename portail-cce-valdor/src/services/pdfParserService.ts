@@ -82,13 +82,23 @@ export const parseAgendaPDF = async (file: File): Promise<ParsedMeetingData> => 
     let currentItem: Partial<AgendaItem> | null = null;
     let itemOrder = 1;
 
+    // Metadata exclusion regex
+    const metadataRegex = /COMIT[ÉE]\s+CONSULTATIF|ASSEMBL[ÉE]E\s+ORDINAIRE|ASSEMBL[ÉE]E\s+SP[ÉE]CIALE/i;
+
     for (const line of lines) {
+        // Skip metadata lines appearing in body
+        if (metadataRegex.test(line)) continue;
+
+        // Skip standard header/footer noise
+        if (/^\d+\s*$/.test(line) && line.length < 3) continue; // Pagination numbers alone
+        if (/MICHA[EË]L\s+ROSS|Secr[ée]taire|Coordonnateur/i.test(line)) continue; // Signatures
+
         // Strict Regex for Agenda Items
         const itemMatch = line.match(/^(\d+)[.)]\s+(.*)/);
         const isNumberOnly = line.match(/^(\d+)[.)]\s*$/);
 
         if (itemMatch && !isNumberOnly && itemMatch[2].length > 0) {
-            // New Item detected
+            // New Item detected (Number + Text on same line)
             if (currentItem && currentItem.title) {
                 result.agendaItems?.push(currentItem as AgendaItem);
             }
@@ -105,7 +115,10 @@ export const parseAgendaPDF = async (file: File): Promise<ParsedMeetingData> => 
             };
             itemOrder++;
         } else if (isNumberOnly) {
-            // New Item with empty title on first line
+            // New Item with number only (title likely on next line)
+
+            // Check if it's a false positive (e.g. valid number but inside a paragraph?)
+            // For now assume strictly starting line is an item
             if (currentItem && currentItem.title) {
                 result.agendaItems?.push(currentItem as AgendaItem);
             }
@@ -114,7 +127,7 @@ export const parseAgendaPDF = async (file: File): Promise<ParsedMeetingData> => 
             currentItem = {
                 id: `imported-${Date.now()}-${order}`,
                 order: order,
-                title: 'Point sans titre',
+                title: '', // Pending next line
                 duration: 15,
                 presenter: 'Coordonnateur',
                 objective: 'Information',
@@ -122,8 +135,9 @@ export const parseAgendaPDF = async (file: File): Promise<ParsedMeetingData> => 
             };
             itemOrder++;
         } else if (currentItem) {
-            // Append continuation line
-            if (currentItem.title === '') {
+            // Append continuation line logic
+            if (currentItem.title === '' || currentItem.title === 'Point sans titre') {
+                // First line of title was missing, this is it
                 currentItem.title = line;
             } else {
                 // Heuristic for word merging:

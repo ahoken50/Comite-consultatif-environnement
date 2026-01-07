@@ -186,35 +186,33 @@ const MeetingForm: React.FC<MeetingFormProps> = ({ open, onClose, onSubmit, init
             <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 {initialData ? 'Modifier la réunion' : 'Nouvelle réunion'}
                 <Box>
-                    {!initialData && (
-                        <Button
-                            component="label"
-                            htmlFor={fileInputId}
-                            startIcon={<UploadFile />}
-                            variant="outlined"
-                            size="small"
-                            sx={{ mr: 1 }}
-                        >
-                            Importer Structure ODJ (PDF/DOCX)
-                            <input
-                                id={fileInputId}
-                                type="file"
-                                style={{
-                                    clip: 'rect(0 0 0 0)',
-                                    clipPath: 'inset(50%)',
-                                    height: 1,
-                                    overflow: 'hidden',
-                                    position: 'absolute',
-                                    bottom: 0,
-                                    left: 0,
-                                    whiteSpace: 'nowrap',
-                                    width: 1,
-                                }}
-                                accept=".pdf,.docx"
-                                onChange={handleImportPDF}
-                            />
-                        </Button>
-                    )}
+                    <Button
+                        component="label"
+                        htmlFor={fileInputId}
+                        startIcon={<UploadFile />}
+                        variant="outlined"
+                        size="small"
+                        sx={{ mr: 1 }}
+                    >
+                        Importer Structure ODJ (PDF/DOCX)
+                        <input
+                            id={fileInputId}
+                            type="file"
+                            style={{
+                                clip: 'rect(0 0 0 0)',
+                                clipPath: 'inset(50%)',
+                                height: 1,
+                                overflow: 'hidden',
+                                position: 'absolute',
+                                bottom: 0,
+                                left: 0,
+                                whiteSpace: 'nowrap',
+                                width: 1,
+                            }}
+                            accept=".pdf,.docx"
+                            onChange={handleImportPDF}
+                        />
+                    </Button>
                     {initialData && (
                         <Button
                             startIcon={<Print />}

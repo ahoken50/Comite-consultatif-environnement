@@ -95,8 +95,10 @@ IL EST RÉSOLU QUE : Le CCE recommande une approche ciblée...
 2.  **CORPS** : Pour chaque point de l'ODJ :
     -   Écris le **TITRE NUMÉROTÉ**.
     -   Écris le contenu narratif (Contexte, échanges, noms des intervenants).
-    -   Si décision formelle : Ajoute le bloc **RÉSOLUTION**.
-    -   Si discussion : Ajoute le bloc **COMMENTAIRE**.
+    -   **RÈGLE D'OR** : Si un point de l'ordre du jour (sauf "Mot de bienvenue" et "Varia" vide) n'a PAS de RÉSOLUTION, il DOIT être traité comme un **COMMENTAIRE**.
+    -   **FORMATTAGE COMMENTAIRE** : Utilise le header \`COMMENTAIRE XX-X\` pour le numéro. Leparser extraira ce numéro pour le mettre dans la case "Numéro".
+    -   **CONTENU** : Ne répète JAMAIS le numéro \`XX-X\` dans le texte narratif. L'objectif est d'avoir le numéro dans sa case et le texte dans sa case.
+    -   **NOTE** : Un même point peut avoir les deux (un Commentaire suivi d'une Résolution).
 3.  **STYLE** : Phrases complètes, vocabulaire précis ("considérant", "attendu que", "il est résolu"). Pas de listes à puces simples si un paragraphe narratif est possible.
 
 **Important** : Ne résume pas. Sois EXHAUSTIF. Si le point a duré 15 minutes, il doit y avoir de la matière.`;
