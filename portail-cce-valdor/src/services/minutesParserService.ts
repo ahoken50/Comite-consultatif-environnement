@@ -24,9 +24,9 @@ export const parseMinutesDraft = (draftContent: string): { items: AgendaItem[], 
     let currentSection: ParsedPVSection | null = null;
     let buffer: string[] = [];
 
-    // Regex helpers
-    const resolutionRegex = /R[ÉE]SOLUTION\s+(\d{2}|[A-Z]{3,})-(\d+)/i;
-    const commentaireRegex = /COMMENTAIRE\s*(?:[:\s]\s*([A-Z0-9-]+)|[:\s]?)/i;
+    // Regex helpers - Updated to handle Markdown bold (** or __)
+    const resolutionRegex = /(?:\*\*|__)?R[ÉE]SOLUTION(?:\*\*|__)?\s+(\d{2}|[A-Z]{3,})-(\d+)/i;
+    const commentaireRegex = /(?:\*\*|__)?COMMENTAIRE(?:\*\*|__)?\s*(?:[:\s]\s*([A-Z0-9-]+)|[:\s]?)/i;
     // Matches "1. Title", "3.1 Title", "10 - Title", "1) Title"
     const numberedTitleRegex = /^(\d+([.-]\d+)*)[.)-]?\s+(.+)$/;
 
@@ -148,16 +148,51 @@ export const parseMinutesDraft = (draftContent: string): { items: AgendaItem[], 
         // 2. Check for Comment Start
         const comMatch = line.match(commentaireRegex);
         if (comMatch) {
-            // If number captured, use it. If not, generated a generic one or leave empty.
-            // The regex group 1 might be undefined if just "COMMENTAIRE :" matched.
-            const capturedNumber = comMatch[1] ? comMatch[1] : '';
+            // If number captured, use it.
+            let capturedNumber = comMatch[1] ? comMatch[1] : '';
+
+            // CLEANUP: Strip header from the current line
+            let commentText = line.replace(commentaireRegex, '').trim();
+            commentText = commentText.replace(/^[:\s-]+/, ''); // remove separators
+
+            // Advanced Clean: If line 1 was JUST the header, check line 2 for the number "25-B"
+            // Case: 
+            // **COMMENTAIRE**
+            // 25-B
+            // Content...
+            let j = i + 1;
+
+            // Peek at next line if we didn't catch a number yet, or if text is empty
+            if (j < lines.length && (!commentText || !capturedNumber)) {
+                const nextPeek = lines[j].trim();
+                // Simple regex to catch standalone number "DD-L" or "DD-LL" or "DD-D"
+                // e.g. "09-35" or "09-A" or "25-B"
+                const standaloneNumberMatch = nextPeek.match(/^(\d{2}-[A-Z0-9]+)$/i);
+
+                if (standaloneNumberMatch) {
+                    if (!capturedNumber) capturedNumber = standaloneNumberMatch[1];
+                    // Skip this line as it is just the number
+                    j++;
+                }
+                // Also check if next line is just "25-B :" 
+                else if (/^(\d{2}-[A-Z0-9]+)\s*[:.-]/.test(nextPeek)) {
+                    const match = nextPeek.match(/^(\d{2}-[A-Z0-9]+)/);
+                    if (match) {
+                        if (!capturedNumber) capturedNumber = match[1];
+                        // Strip the number from this next line, but keep the rest
+                        const remaining = nextPeek.replace(/^(\d{2}-[A-Z0-9]+)\s*[:.-]?\s*/, '');
+                        if (remaining) {
+                            commentText = remaining; // Should be the start of content
+                            j++; // consume line
+                        } else {
+                            j++; // pure number line
+                        }
+                    }
+                }
+            }
+
             const minuteNumber = capturedNumber || '';
 
-            // CLEANUP: Strip header
-            let commentText = line.replace(commentaireRegex, '').trim();
-            commentText = commentText.replace(/^[:\s-]+/, '');
-
-            let j = i + 1;
             while (j < lines.length) {
                 const nextLine = lines[j].trim();
                 let shouldBreak = false;
@@ -186,14 +221,24 @@ export const parseMinutesDraft = (draftContent: string): { items: AgendaItem[], 
             }
             i = j - 1;
 
-            // const entryContent = commentText.replace(commentaireRegex, '').trim(); // Already done above
-
             if (currentSection) {
-                currentSection.minuteEntries.push({
-                    type: 'comment',
-                    number: minuteNumber,
-                    content: commentText.trim()
-                });
+                // MERGE LOGIC: If last entry was also a comment and we just parsed another comment...
+                // The user says "ce commentaire ne devrait en être qu'un".
+                // If it's a "broken" comment (multiple headers for same point), we merge.
+                // UNLESS the number is different?
+                const lastEntry = currentSection.minuteEntries[currentSection.minuteEntries.length - 1];
+
+                if (lastEntry && lastEntry.type === 'comment' && (!minuteNumber || minuteNumber === lastEntry.number)) {
+                    // It's likely a continuation broken by a header
+                    lastEntry.content += '\n\n' + commentText.trim();
+                } else {
+                    currentSection.minuteEntries.push({
+                        type: 'comment',
+                        number: minuteNumber,
+                        content: commentText.trim()
+                    });
+                }
+
                 // Legacy support
                 if (!currentSection.minuteType) {
                     currentSection.minuteType = 'comment';
