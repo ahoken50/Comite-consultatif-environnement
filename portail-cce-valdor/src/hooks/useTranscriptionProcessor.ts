@@ -1,5 +1,5 @@
 import { useCallback } from 'react';
-import type { AgendaItem, Meeting } from '../types/meeting.types';
+import type { AgendaItem } from '../types/meeting.types';
 import { useToast } from './useToast';
 
 interface UseTranscriptionProcessorProps {
