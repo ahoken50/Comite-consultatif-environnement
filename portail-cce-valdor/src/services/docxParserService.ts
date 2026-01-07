@@ -445,6 +445,11 @@ export const parseAgendaDOCX = async (file: File): Promise<ParsedMeetingData> =>
     // 5. Fallbacks (if no items found or very few)
     // ============================================================
 
+    // Check if we found a Levée item in the main loop
+    const leveeItem = parsedResult.agendaItems?.find(item =>
+        /lev[ée]e\s+de\s+l['’]?\s*assembl[ée]e/i.test(item.title)
+    );
+
     // Check if we found better items via other methods
     // If we only found 1-2 items and they look like titles, we might have missed the real list
     if (!parsedResult.agendaItems || parsedResult.agendaItems.length < 3) {
@@ -531,6 +536,7 @@ export const parseAgendaDOCX = async (file: File): Promise<ParsedMeetingData> =>
                                 objective: objective,
                                 decision: '',
                                 description: '',
+                                minuteEntries: [],
                                 minuteNumber: itemNumber
                             });
                         }
@@ -573,10 +579,25 @@ export const parseAgendaDOCX = async (file: File): Promise<ParsedMeetingData> =>
                             presenter: 'Coordonnateur',
                             objective: 'Information',
                             decision: '',
-                            description: ''
+                            description: '',
+                            minuteEntries: []
                         });
                     }
                 });
+            }
+        }
+
+        // RE-INJECT LEVEE IF LOST
+        // If we switched to fallback items, we might have lost the Levée item found in the main loop
+        if (leveeItem && parsedResult.agendaItems) {
+            const hasLevee = parsedResult.agendaItems.some(item =>
+                /lev[ée]e\s+de\s+l['’]?\s*assembl[ée]e/i.test(item.title)
+            );
+            if (!hasLevee) {
+                console.log('[docxParser] Re-injecting lost Levée item');
+                // Adjust order to be last
+                leveeItem.order = parsedResult.agendaItems.length;
+                parsedResult.agendaItems.push(leveeItem);
             }
         }
     }

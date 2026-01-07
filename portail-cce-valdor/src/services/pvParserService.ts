@@ -94,6 +94,32 @@ const parseRawTextToPV = (text: string): ParsedPVData => {
             continue;
         }
 
+        // 1.5 Special Case: Levée de l'assemblée (Unnumbered)
+        const isLevee = /lev[ée]e\s+de\s+l['’]?\s*assembl[ée]e/i.test(line);
+        if (isLevee) {
+            // Push previous item
+            if (currentItem && currentItem.title) {
+                if (currentMinuteEntry) {
+                    if (!currentItem.minuteEntries) currentItem.minuteEntries = [];
+                    currentItem.minuteEntries.push(currentMinuteEntry);
+                    currentMinuteEntry = null;
+                }
+                agendaItems.push(currentItem as AgendaItem);
+            }
+
+            // Start new item for Levée
+            currentItem = {
+                id: `pv-import-${Date.now()}-${agendaItems.length}`,
+                order: agendaItems.length + 1,
+                title: line.trim(),
+                minuteEntries: [],
+                decision: '',
+                duration: 5,
+                presenter: ''
+            };
+            continue;
+        }
+
         // 2. Detect Resolution
         const resMatch = line.match(resolutionRegex);
         if (resMatch && currentItem) {
