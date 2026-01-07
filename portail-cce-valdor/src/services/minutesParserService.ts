@@ -242,22 +242,51 @@ export const parseMinutesDraft = (draftContent: string): { items: AgendaItem[], 
     flushSection();
 
     // Convert to AgendaItems
-    const items = sections.map((sec, idx) => ({
-        id: `draft-parsed-${Date.now()}-${idx}`,
-        order: idx,
-        title: sec.title,
-        duration: 10,
-        presenter: '',
-        objective: sec.minuteEntries.some(e => e.type === 'resolution') ? 'Décision' : 'Information',
-        description: '',
-        minuteEntries: sec.minuteEntries,
-        // Legacy
-        minuteType: sec.minuteType,
-        minuteNumber: sec.minuteNumber,
-        decision: sec.decision || sec.content,
-        proposer: sec.proposer || '',
-        seconder: sec.seconder || ''
-    }));
+    const items = sections.map((sec, idx) => {
+        // PER USER REQUEST:
+        // If a section has content but NO explicit entries (Resolution/Comment), it is implied to be a COMMENT.
+        // Exceptions: "Mot de bienvenue", "Ouverture", "Levée", "Varia" (if empty/simple).
+
+        let finalMinuteEntries = [...sec.minuteEntries];
+        let finalMinuteType = sec.minuteType;
+        let finalMinuteNumber = sec.minuteNumber;
+        let finalDecision = sec.decision || sec.content;
+
+        const lowerTitle = sec.title.toLowerCase();
+        const isException = lowerTitle.includes('bienvenue') ||
+            lowerTitle.includes('ouverture') ||
+            lowerTitle.includes('levée') ||
+            (lowerTitle.includes('varia') && (!sec.content || sec.content.length < 50));
+
+        if (finalMinuteEntries.length === 0 && sec.content.trim() && !isException) {
+            // Create implicit comment entry
+            finalMinuteEntries.push({
+                type: 'comment',
+                number: '', // No number for implicit comment unless we parse it from content? User said number in box. 
+                // If implicit, we don't have a number. Leave empty.
+                content: sec.content.trim()
+            });
+            finalMinuteType = 'comment';
+            finalDecision = sec.content.trim();
+        }
+
+        return {
+            id: `draft-parsed-${Date.now()}-${idx}`,
+            order: idx,
+            title: sec.title,
+            duration: 10,
+            presenter: '',
+            objective: finalMinuteEntries.some(e => e.type === 'resolution') ? 'Décision' : 'Information',
+            description: '',
+            minuteEntries: finalMinuteEntries,
+            // Legacy
+            minuteType: finalMinuteType,
+            minuteNumber: finalMinuteNumber,
+            decision: finalDecision,
+            proposer: sec.proposer || '',
+            seconder: sec.seconder || ''
+        };
+    });
 
     return { items, intro };
 };
