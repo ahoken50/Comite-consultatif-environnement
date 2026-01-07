@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Box, Grid, TextField, MenuItem } from '@mui/material';
 import type { MinuteEntry } from '../../types/meeting.types';
 
@@ -19,6 +19,8 @@ const MinuteEntryEditor: React.FC<MinuteEntryEditorProps> = ({
     itemId,
     onChange
 }) => {
+    const [isExpanded, setIsExpanded] = useState(false);
+
     const handleFieldChange = (field: string, value: any) => {
         onChange(itemId, entryIndex, field, value);
     };
@@ -70,13 +72,21 @@ const MinuteEntryEditor: React.FC<MinuteEntryEditorProps> = ({
             <TextField
                 fullWidth
                 multiline
-                rows={4}
+                rows={isExpanded ? 12 : 4}
                 label={contentLabel}
                 placeholder={contentPlaceholder}
                 value={entry.content || ''}
                 onChange={(e) => handleFieldChange('content', e.target.value)}
+                onFocus={() => setIsExpanded(true)}
+                onBlur={() => setIsExpanded(false)}
                 variant="outlined"
                 size="small"
+                sx={{
+                    transition: 'all 0.3s ease-in-out',
+                    '& .MuiInputBase-root': {
+                        transition: 'all 0.3s ease-in-out',
+                    }
+                }}
             />
         </Box>
     );
