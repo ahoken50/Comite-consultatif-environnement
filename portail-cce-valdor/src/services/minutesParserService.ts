@@ -165,10 +165,12 @@ export const parseMinutesDraft = (draftContent: string): { items: AgendaItem[], 
             // Peek at next line if we didn't catch a number yet, or if text is empty
             if (j < lines.length && (!commentText || !capturedNumber)) {
                 let nextPeek = lines[j].trim();
+                console.log('[Parser Debug] Peeking next line for number:', nextPeek);
 
                 // CLEANUP MARKDOWN from nextPeek to handle "**25-A**" or "__25-A__"
                 // remove only surrounding * or _ but keep content
                 const cleanNextPeek = nextPeek.replace(/^[*_]+|[*_]+$/g, '').trim();
+                console.log('[Parser Debug] Cleaned peek:', cleanNextPeek);
 
                 // Simple regex to catch standalone number "DD-L" or "DD-LL" or "DD-D"
                 // e.g. "09-35" or "09-A" or "25-B"
