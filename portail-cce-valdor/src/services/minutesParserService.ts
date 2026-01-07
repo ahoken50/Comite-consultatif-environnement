@@ -26,7 +26,7 @@ export const parseMinutesDraft = (draftContent: string): { items: AgendaItem[], 
 
     // Regex helpers
     const resolutionRegex = /R[ÉE]SOLUTION\s+(\d{2}|[A-Z]{3,})-(\d+)/i;
-    const commentaireRegex = /COMMENTAIRE\s+(\d{2}|[A-Z]{3,})-([A-Z0-9]+)/i;
+    const commentaireRegex = /COMMENTAIRE\s*(?:[:\s]\s*([A-Z0-9-]+)|[:\s]?)/i;
     // Matches "1. Title", "3.1 Title", "10 - Title", "1) Title"
     const numberedTitleRegex = /^(\d+([.-]\d+)*)[.)-]?\s+(.+)$/;
 
@@ -80,7 +80,11 @@ export const parseMinutesDraft = (draftContent: string): { items: AgendaItem[], 
             const minuteNumber = `${resMatch[1]}-${resMatch[2]}`;
 
             // We read ahead to capture the full resolution text until end of block
-            let resolutionText = line;
+            // CLEANUP: Strip the "RÉSOLUTION XX-XX" header from the content
+            let resolutionText = line.replace(resolutionRegex, '').trim();
+            // Remove leading separator chars like ": " or "- "
+            resolutionText = resolutionText.replace(/^[:\s-]+/, '');
+
             let j = i + 1;
             while (j < lines.length) {
                 const nextLine = lines[j].trim();
@@ -103,7 +107,11 @@ export const parseMinutesDraft = (draftContent: string): { items: AgendaItem[], 
                 if (shouldBreak) {
                     break;
                 }
-                resolutionText += '\n' + lines[j];
+                if (resolutionText) {
+                    resolutionText += '\n' + lines[j];
+                } else {
+                    resolutionText = lines[j]; // If first line was empty after strip
+                }
                 j++;
             }
             i = j - 1;
@@ -140,9 +148,15 @@ export const parseMinutesDraft = (draftContent: string): { items: AgendaItem[], 
         // 2. Check for Comment Start
         const comMatch = line.match(commentaireRegex);
         if (comMatch) {
-            const minuteNumber = `${comMatch[1]}-${comMatch[2]}`;
+            // If number captured, use it. If not, generated a generic one or leave empty.
+            // The regex group 1 might be undefined if just "COMMENTAIRE :" matched.
+            const capturedNumber = comMatch[1] ? comMatch[1] : '';
+            const minuteNumber = capturedNumber || '';
 
-            let commentText = line;
+            // CLEANUP: Strip header
+            let commentText = line.replace(commentaireRegex, '').trim();
+            commentText = commentText.replace(/^[:\s-]+/, '');
+
             let j = i + 1;
             while (j < lines.length) {
                 const nextLine = lines[j].trim();
@@ -163,24 +177,28 @@ export const parseMinutesDraft = (draftContent: string): { items: AgendaItem[], 
                 if (shouldBreak) {
                     break;
                 }
-                commentText += '\n' + lines[j];
+                if (commentText) {
+                    commentText += '\n' + lines[j];
+                } else {
+                    commentText = lines[j];
+                }
                 j++;
             }
             i = j - 1;
 
-            const entryContent = commentText.replace(commentaireRegex, '').trim();
+            // const entryContent = commentText.replace(commentaireRegex, '').trim(); // Already done above
 
             if (currentSection) {
                 currentSection.minuteEntries.push({
                     type: 'comment',
                     number: minuteNumber,
-                    content: entryContent || commentText // Use full text if replacement empty
+                    content: commentText.trim()
                 });
                 // Legacy support
                 if (!currentSection.minuteType) {
                     currentSection.minuteType = 'comment';
                     currentSection.minuteNumber = minuteNumber;
-                    currentSection.decision = entryContent || commentText;
+                    currentSection.decision = commentText.trim();
                 }
             } else {
                 currentSection = {
@@ -189,7 +207,7 @@ export const parseMinutesDraft = (draftContent: string): { items: AgendaItem[], 
                     minuteEntries: [{
                         type: 'comment',
                         number: minuteNumber,
-                        content: entryContent || commentText
+                        content: commentText.trim()
                     }]
                 };
             }

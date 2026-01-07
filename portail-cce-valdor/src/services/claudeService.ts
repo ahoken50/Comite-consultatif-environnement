@@ -97,6 +97,7 @@ IL EST RÉSOLU QUE : Le CCE recommande une approche ciblée...
     -   Écris le contenu narratif (Contexte, échanges, noms des intervenants).
     -   Si décision formelle : Ajoute le bloc **RÉSOLUTION**.
     -   Si discussion : Ajoute le bloc **COMMENTAIRE**.
+    -   **NOTE** : Un même point peut très bien avoir les deux (un Commentaire suivi d'une Résolution).
 3.  **STYLE** : Phrases complètes, vocabulaire précis ("considérant", "attendu que", "il est résolu"). Pas de listes à puces simples si un paragraphe narratif est possible.
 
 **Important** : Ne résume pas. Sois EXHAUSTIF. Si le point a duré 15 minutes, il doit y avoir de la matière.`;

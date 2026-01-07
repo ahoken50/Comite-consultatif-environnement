@@ -280,7 +280,7 @@ Si la discussion change de sujet au sein du même point, faire un nouveau paragr
 [PARAGRAPHE 3: Etc si nécessaire]
 
 ### Issue du point
-[Choisir UN format parmi les 3 ci-dessous]
+[Utiliser les formats appropriés ci-dessous. Un point peut avoir PLUSIEURS issues (ex: une Résolution ET un Commentaire)]
 \`\`\`
 
 ### 2. FORMAT DE L'ISSUE (CHOISIR LE BON)
