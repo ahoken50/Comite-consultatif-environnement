@@ -25,6 +25,7 @@ const SettingsPage = lazy(() => import('./pages/Settings/SettingsPage'));
 const MinutesPage = lazy(() => import('./pages/Minutes/MinutesPage'));
 const CouncilTrackingPage = lazy(() => import('./pages/Governance/CouncilTrackingPage'));
 const AnnualReportPage = lazy(() => import('./pages/Reports/AnnualReportPage'));
+const RSVPPage = lazy(() => import('./pages/RSVP/RSVPPage'));
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -81,6 +82,8 @@ function App() {
             <Routes>
               <Route path="/login" element={<LoginPage />} />
               <Route path="/signup" element={<SignUpPage />} />
+              {/* Public RSVP page - no auth required */}
+              <Route path="/rsvp/:meetingId/:token" element={<RSVPPage />} />
 
               <Route path="/" element={
                 <ProtectedRoute>

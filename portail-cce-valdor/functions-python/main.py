@@ -628,3 +628,198 @@ def chat_claude(req: https_fn.CallableRequest) -> dict:
             code=https_fn.FunctionsErrorCode.INTERNAL,
             message=str(e)
         )
+
+
+# =============================================================================
+# CONVOCATION EMAIL SERVICE
+# =============================================================================
+
+@https_fn.on_call(
+    memory=options.MemoryOption.MB_256,
+    timeout_sec=120,
+    region="us-central1"
+)
+def send_convocation(req: https_fn.CallableRequest):
+    """
+    Cloud Function to send convocation emails to CCE members.
+    Uses Resend API for email delivery.
+    
+    Expected request data:
+    - meetingId: string
+    - convocationId: string
+    - meeting: { title, date, location, agendaItems }
+    - recipients: [{ email, name, token, memberId }]
+    - sender: { name, email }
+    """
+    # Verify authentication
+    if not req.auth:
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.UNAUTHENTICATED,
+            message="Authentification requise"
+        )
+
+    try:
+        import resend
+        
+        # Get Resend API key
+        resend_api_key = os.environ.get("RESEND_API_KEY")
+        if not resend_api_key:
+            raise https_fn.HttpsError(
+                code=https_fn.FunctionsErrorCode.FAILED_PRECONDITION,
+                message="RESEND_API_KEY non configurée"
+            )
+        
+        resend.api_key = resend_api_key
+        
+        # Extract data
+        data = req.data
+        meeting_id = data.get("meetingId")
+        convocation_id = data.get("convocationId")
+        meeting = data.get("meeting", {})
+        recipients = data.get("recipients", [])
+        sender = data.get("sender", {})
+        
+        if not meeting_id or not recipients:
+            raise https_fn.HttpsError(
+                code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT,
+                message="meetingId et recipients requis"
+            )
+        
+        # Format meeting date
+        meeting_date = datetime.fromisoformat(meeting.get("date", "").replace("Z", "+00:00"))
+        formatted_date = meeting_date.strftime("%A %d %B %Y")
+        formatted_time = meeting_date.strftime("%H h %M")
+        
+        # App URL for RSVP links
+        app_url = os.environ.get("APP_URL", "https://portail-cce-valdor.web.app")
+        
+        # Generate email HTML with logos
+        def generate_email_html(recipient_name: str, token: str) -> str:
+            rsvp_url = f"{app_url}/rsvp/{meeting_id}/{token}"
+            
+            return f"""
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="font-family: Georgia, 'Times New Roman', serif; background-color: #f9fbfa; margin: 0; padding: 20px;">
+    <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+        <!-- Header with logos -->
+        <div style="background-color: #1e4e3d; padding: 30px; text-align: center;">
+            <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-family: Arial, sans-serif;">
+                COMITÉ CONSULTATIF EN ENVIRONNEMENT
+            </h1>
+            <p style="color: #c5a065; margin: 10px 0 0 0; font-size: 14px; text-transform: uppercase; letter-spacing: 2px;">
+                Ville de Val-d'Or
+            </p>
+        </div>
+        
+        <!-- Content -->
+        <div style="padding: 30px;">
+            <p style="font-size: 16px; color: #333; margin-bottom: 20px;">
+                Bonjour <strong>{recipient_name}</strong>,
+            </p>
+            
+            <p style="font-size: 16px; color: #333; line-height: 1.6;">
+                Vous êtes convoqué(e) à la prochaine assemblée du Comité consultatif en environnement de la Ville de Val-d'Or.
+            </p>
+            
+            <!-- Meeting details box -->
+            <div style="background-color: #f9fbfa; border-left: 4px solid #c5a065; padding: 20px; margin: 25px 0; border-radius: 0 8px 8px 0;">
+                <p style="margin: 0 0 10px 0; font-size: 16px;">
+                    <strong style="color: #1e4e3d;">📅 Date :</strong> {formatted_date}
+                </p>
+                <p style="margin: 0 0 10px 0; font-size: 16px;">
+                    <strong style="color: #1e4e3d;">🕐 Heure :</strong> {formatted_time}
+                </p>
+                <p style="margin: 0; font-size: 16px;">
+                    <strong style="color: #1e4e3d;">📍 Lieu :</strong> {meeting.get("location", "Ville de Val-d'Or")}
+                </p>
+            </div>
+            
+            <p style="font-size: 16px; color: #333; line-height: 1.6;">
+                📎 L'ordre du jour est joint à ce courriel.
+            </p>
+            
+            <p style="font-size: 16px; color: #333; line-height: 1.6; margin-top: 25px;">
+                <strong>Veuillez confirmer votre présence :</strong>
+            </p>
+            
+            <!-- RSVP buttons -->
+            <div style="text-align: center; margin: 30px 0;">
+                <a href="{rsvp_url}?response=confirmed" 
+                   style="display: inline-block; background-color: #4caf50; color: white; padding: 15px 30px; text-decoration: none; border-radius: 5px; font-weight: bold; margin: 5px; font-size: 16px;">
+                    ✓ Je serai présent(e)
+                </a>
+                <a href="{rsvp_url}?response=declined" 
+                   style="display: inline-block; background-color: #f44336; color: white; padding: 15px 30px; text-decoration: none; border-radius: 5px; font-weight: bold; margin: 5px; font-size: 16px;">
+                    ✗ Je serai absent(e)
+                </a>
+            </div>
+        </div>
+        
+        <!-- Footer -->
+        <div style="background-color: #f9fbfa; padding: 20px; border-top: 1px solid #eee;">
+            <p style="margin: 0; font-size: 14px; color: #666; text-align: center;">
+                Cordialement,<br>
+                <strong style="color: #1e4e3d;">{sender.get("name", "Coordonnateur en environnement")}</strong><br>
+                Ville de Val-d'Or
+            </p>
+        </div>
+    </div>
+</body>
+</html>
+"""
+        
+        # Send emails to all recipients
+        sent_count = 0
+        errors = []
+        
+        for recipient in recipients:
+            try:
+                email_html = generate_email_html(
+                    recipient.get("name", ""),
+                    recipient.get("token", "")
+                )
+                
+                resend.Emails.send({
+                    "from": "CCE Val-d'Or <noreply@resend.dev>",  # Use verified domain in production
+                    "to": [recipient.get("email")],
+                    "subject": f"Ordre du jour du CCE – {formatted_date}",
+                    "html": email_html,
+                    # TODO: Attach PDF when we have it stored in Cloud Storage
+                })
+                
+                sent_count += 1
+                print(f"[Convocation] Email sent to {recipient.get('email')}")
+                
+            except Exception as email_error:
+                error_msg = f"Failed to send to {recipient.get('email')}: {str(email_error)}"
+                print(f"[Convocation] {error_msg}")
+                errors.append(error_msg)
+        
+        # Update convocation record with send status
+        if convocation_id:
+            db = firestore.client()
+            db.collection("meetings").document(meeting_id).collection("convocations").document(convocation_id).update({
+                "emailsSent": sent_count,
+                "emailErrors": errors,
+                "emailSentAt": datetime.now().isoformat()
+            })
+        
+        return {
+            "success": True,
+            "sentCount": sent_count,
+            "errorCount": len(errors),
+            "errors": errors if errors else None
+        }
+        
+    except Exception as e:
+        print(f"[Convocation] Error: {str(e)}")
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.INTERNAL,
+            message=str(e)
+        )
+

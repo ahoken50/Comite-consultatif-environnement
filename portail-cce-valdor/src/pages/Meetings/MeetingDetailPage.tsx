@@ -29,6 +29,8 @@ import type { AgendaItem } from '../../types/meeting.types';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { useToast } from '../../hooks/useToast';
+import { sendConvocations } from '../../services/convocationService';
+import { Send } from '@mui/icons-material';
 
 interface TabPanelProps {
     children?: React.ReactNode;
@@ -74,6 +76,7 @@ const MeetingDetailPage: React.FC = () => {
     const currentMember = members.find(m => m.id === user?.uid);
 
     const [tabValue, setTabValue] = useState(0);
+    const [isSendingConvocation, setIsSendingConvocation] = useState(false);
 
     const location = useLocation();
 
@@ -165,6 +168,32 @@ const MeetingDetailPage: React.FC = () => {
         }
     };
 
+    const handleSendConvocations = async () => {
+        if (!meeting || !currentMember) {
+            showInfo('Erreur: Réunion ou membre non trouvé');
+            return;
+        }
+
+        if (!window.confirm(`Envoyer les convocations pour "${meeting.title}" à tous les membres actifs?`)) {
+            return;
+        }
+
+        setIsSendingConvocation(true);
+        try {
+            const result = await sendConvocations(meeting, currentMember);
+            if (result.success) {
+                showInfo(`✅ Convocations envoyées à ${result.sentCount} membres!`);
+            } else {
+                showInfo(`❌ Erreur: ${result.error}`);
+            }
+        } catch (error) {
+            showInfo('❌ Erreur lors de l\'envoi des convocations');
+            console.error(error);
+        } finally {
+            setIsSendingConvocation(false);
+        }
+    };
+
     const handleApproval = (role: 'president' | 'elected_official' | 'coordinator') => {
         if (!id || !currentMember) return;
 
@@ -215,10 +244,12 @@ const MeetingDetailPage: React.FC = () => {
                 <Box sx={{ display: 'flex', gap: 2 }}>
                     <Button
                         variant="outlined"
-                        startIcon={<CalendarToday />}
-                        onClick={() => showInfo("Fonctionnalité de convocation (à venir)")}
+                        color="primary"
+                        startIcon={<Send />}
+                        onClick={handleSendConvocations}
+                        disabled={isSendingConvocation}
                     >
-                        Convoquer
+                        {isSendingConvocation ? 'Envoi...' : 'Convoquer'}
                     </Button>
                     <ProjectExtractor meeting={meeting} />
                     <Button

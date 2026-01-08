@@ -9,5 +9,8 @@ openai>=1.0.0
 # Anthropic Claude
 anthropic>=0.18.0
 
+# Email (Resend)
+resend>=2.0.0
+
 # Utilities
 python-dotenv>=1.0.0
