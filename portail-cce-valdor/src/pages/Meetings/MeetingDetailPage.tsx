@@ -149,6 +149,7 @@ const MeetingDetailPage: React.FC = () => {
     }, [meeting, dispatch]);
 
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+    const [isConvocationDialogOpen, setIsConvocationDialogOpen] = useState(false);
 
     // Early return moved to after all hooks to satisfy Rules of Hooks
     if (!meeting) {
@@ -166,9 +167,6 @@ const MeetingDetailPage: React.FC = () => {
             setIsEditModalOpen(false);
         }
     };
-
-    // Convocation dialog state
-    const [isConvocationDialogOpen, setIsConvocationDialogOpen] = useState(false);
 
     const handleConvocationSuccess = (sentCount: number) => {
         showInfo(`✅ Convocations envoyées à ${sentCount} membre${sentCount !== 1 ? 's' : ''}!`);
