@@ -278,9 +278,6 @@ Retourne uniquement le texte traité, sans introduction ni conclusion.`;
 
         return { success: true, sanitizedContent };
 
-
-        return { success: true, sanitizedContent };
-
     } catch (error) {
         const err = error as Error;
         console.error('Claude sanitization error:', err);

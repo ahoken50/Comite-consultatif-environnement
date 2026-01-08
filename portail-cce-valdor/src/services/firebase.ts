@@ -3,7 +3,6 @@ import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import { getFunctions } from 'firebase/functions';
-// @ts-ignore
 import { getAI, VertexAIBackend } from 'firebase/ai';
 
 const firebaseConfig = {
