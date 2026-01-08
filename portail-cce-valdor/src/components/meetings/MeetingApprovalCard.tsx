@@ -1,6 +1,9 @@
-import React from 'react';
-import { Box, Paper, Typography, Button, Stepper, Step, StepLabel, Chip } from '@mui/material';
-import { Gavel, VerifiedUser, HowToReg, AdminPanelSettings } from '@mui/icons-material';
+import React, { useState } from 'react';
+import {
+    Box, Paper, Typography, Button, Stepper, Step, StepLabel, Chip,
+    Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions
+} from '@mui/material';
+import { Gavel, VerifiedUser, HowToReg, AdminPanelSettings, Warning } from '@mui/icons-material';
 import type { Member, MemberRole } from '../../types/member.types';
 import type { Meeting } from '../../types/meeting.types';
 
@@ -16,6 +19,10 @@ const APPROVAL_ROLES: MemberRole[] = ['coordinator', 'president', 'vice_presiden
 const MeetingApprovalCard: React.FC<MeetingApprovalCardProps> = ({ meeting, currentUser, onApprove }) => {
     const steps = ['Brouillon', 'Vérification', 'Approuvé'];
 
+    // Warning dialog state
+    const [warningOpen, setWarningOpen] = useState(false);
+    const [pendingAction, setPendingAction] = useState<'president' | 'elected_official' | null>(null);
+
     const signatures = meeting.approvalSignatures || [];
     const hasPresidentSigned = signatures.some(s => s.role === 'president');
     const hasElectedSigned = signatures.some(s => s.role === 'elected_official');
@@ -26,29 +33,58 @@ const MeetingApprovalCard: React.FC<MeetingApprovalCardProps> = ({ meeting, curr
     if (hasPresidentSigned && hasElectedSigned) activeStep = 3;
     if (hasCoordinatorSigned) activeStep = 3;
 
+    const isCoordinator = currentUser?.role === 'coordinator';
+
     // Check if user is authorized to see approval buttons
     const isAuthorized = () => {
         if (!currentUser) return false;
         return APPROVAL_ROLES.includes(currentUser.role);
     };
 
-    // Check if user can sign for a specific role
-    const canSignAs = (signRole: 'president' | 'elected_official' | 'coordinator') => {
-        if (!currentUser) return false;
+    // Check if a signature slot is available
+    const isSlotAvailable = (signRole: 'president' | 'elected_official' | 'coordinator') => {
         if (activeStep === 3) return false;
-        if (!isAuthorized()) return false;
-
         switch (signRole) {
-            case 'coordinator':
-                return currentUser.role === 'coordinator';
-            case 'president':
-                // President or Vice-President can sign as "president"
-                return (currentUser.role === 'president' || currentUser.role === 'vice_president') && !hasPresidentSigned;
-            case 'elected_official':
-                return currentUser.role === 'elected_official' && !hasElectedSigned;
-            default:
-                return false;
+            case 'coordinator': return true; // Admin bypass always available
+            case 'president': return !hasPresidentSigned;
+            case 'elected_official': return !hasElectedSigned;
+            default: return false;
         }
+    };
+
+    // Check if user has the natural role to sign
+    const hasNaturalRole = (signRole: 'president' | 'elected_official' | 'coordinator') => {
+        if (!currentUser) return false;
+        switch (signRole) {
+            case 'coordinator': return currentUser.role === 'coordinator';
+            case 'president': return currentUser.role === 'president' || currentUser.role === 'vice_president';
+            case 'elected_official': return currentUser.role === 'elected_official';
+            default: return false;
+        }
+    };
+
+    // Handle button click with warning for coordinator signing as other roles
+    const handleSignClick = (role: 'president' | 'elected_official' | 'coordinator') => {
+        if (isCoordinator && role !== 'coordinator') {
+            // Show warning before signing as another role
+            setPendingAction(role);
+            setWarningOpen(true);
+        } else {
+            onApprove(role);
+        }
+    };
+
+    const handleConfirmWarning = () => {
+        if (pendingAction) {
+            onApprove(pendingAction);
+        }
+        setWarningOpen(false);
+        setPendingAction(null);
+    };
+
+    const handleCancelWarning = () => {
+        setWarningOpen(false);
+        setPendingAction(null);
     };
 
     return (
@@ -74,7 +110,7 @@ const MeetingApprovalCard: React.FC<MeetingApprovalCardProps> = ({ meeting, curr
                     {hasPresidentSigned ? (
                         <Box sx={{ color: 'success.main', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
                             <VerifiedUser fontSize="large" sx={{ mb: 1 }} />
-                            <Typography variant="caption">Signé le {new Date().toLocaleDateString()}</Typography>
+                            <Typography variant="caption">Signé</Typography>
                         </Box>
                     ) : (
                         <Typography variant="caption" color="text.secondary">En attente de signature</Typography>
@@ -86,7 +122,7 @@ const MeetingApprovalCard: React.FC<MeetingApprovalCardProps> = ({ meeting, curr
                     {hasElectedSigned ? (
                         <Box sx={{ color: 'success.main', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
                             <HowToReg fontSize="large" sx={{ mb: 1 }} />
-                            <Typography variant="caption">Signé le {new Date().toLocaleDateString()}</Typography>
+                            <Typography variant="caption">Signé</Typography>
                         </Box>
                     ) : (
                         <Typography variant="caption" color="text.secondary">En attente de signature</Typography>
@@ -96,51 +132,52 @@ const MeetingApprovalCard: React.FC<MeetingApprovalCardProps> = ({ meeting, curr
 
             {/* Coordinator Override Section */}
             {hasCoordinatorSigned && (
-                <Paper variant="outlined" sx={{ mt: 2, p: 2, bgcolor: '#e8f5e9', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 2 }}>
-                    <VerifiedUser color="success" />
+                <Paper variant="outlined" sx={{ mt: 2, p: 2, bgcolor: '#fff3e0', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 2 }}>
+                    <AdminPanelSettings color="warning" />
                     <Box>
-                        <Typography variant="subtitle2">Validé par l'Administration</Typography>
-                        <Typography variant="caption">Le PV a été approuvé administrativement.</Typography>
+                        <Typography variant="subtitle2">Validation Administrative</Typography>
+                        <Typography variant="caption">Le PV a été approuvé par bypass administratif.</Typography>
                     </Box>
                 </Paper>
             )}
 
-            {/* Approval Buttons - Only visible to authorized roles */}
+            {/* Approval Buttons */}
             {isAuthorized() && activeStep < 3 && (
                 <Box sx={{ mt: 3, display: 'flex', justifyContent: 'center', gap: 2, flexWrap: 'wrap' }}>
-                    {/* Admin Override Button - Coordinator Only */}
-                    {canSignAs('coordinator') && (
+
+                    {/* Coordinator: Admin Bypass Button */}
+                    {isCoordinator && (
                         <Button
                             variant="contained"
                             color="warning"
                             size="large"
-                            onClick={() => onApprove('coordinator')}
+                            onClick={() => handleSignClick('coordinator')}
                             startIcon={<AdminPanelSettings />}
                         >
-                            Valider (Admin)
+                            Bypass Admin (Finaliser)
                         </Button>
                     )}
 
-                    {/* President/Vice-President Button */}
-                    {canSignAs('president') && (
+                    {/* President/Vice-President Button (or Coordinator with warning) */}
+                    {isSlotAvailable('president') && (hasNaturalRole('president') || isCoordinator) && (
                         <Button
-                            variant="contained"
+                            variant={isCoordinator && !hasNaturalRole('president') ? "outlined" : "contained"}
                             color="primary"
                             size="large"
-                            onClick={() => onApprove('president')}
+                            onClick={() => handleSignClick('president')}
                             startIcon={<Gavel />}
                         >
                             Signer (Présidence)
                         </Button>
                     )}
 
-                    {/* Elected Official Button */}
-                    {canSignAs('elected_official') && (
+                    {/* Elected Official Button (or Coordinator with warning) */}
+                    {isSlotAvailable('elected_official') && (hasNaturalRole('elected_official') || isCoordinator) && (
                         <Button
-                            variant="contained"
+                            variant={isCoordinator && !hasNaturalRole('elected_official') ? "outlined" : "contained"}
                             color="secondary"
                             size="large"
-                            onClick={() => onApprove('elected_official')}
+                            onClick={() => handleSignClick('elected_official')}
                             startIcon={<HowToReg />}
                         >
                             Signer (Élu)
@@ -157,6 +194,30 @@ const MeetingApprovalCard: React.FC<MeetingApprovalCardProps> = ({ meeting, curr
                     </Typography>
                 </Box>
             )}
+
+            {/* Warning Dialog for Coordinator signing as other role */}
+            <Dialog open={warningOpen} onClose={handleCancelWarning}>
+                <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Warning color="warning" />
+                    Avertissement
+                </DialogTitle>
+                <DialogContent>
+                    <DialogContentText>
+                        Vous êtes sur le point de signer en tant que <strong>
+                            {pendingAction === 'president' ? 'Président(e)' : 'Élu(e)'}
+                        </strong> alors que vous êtes connecté en tant que <strong>Coordonnateur</strong>.
+                        <br /><br />
+                        Cette action devrait normalement être effectuée par la personne concernée.
+                        Voulez-vous continuer ?
+                    </DialogContentText>
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={handleCancelWarning}>Annuler</Button>
+                    <Button onClick={handleConfirmWarning} color="warning" variant="contained">
+                        Confirmer
+                    </Button>
+                </DialogActions>
+            </Dialog>
         </Paper>
     );
 };
