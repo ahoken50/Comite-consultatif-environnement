@@ -122,13 +122,7 @@ const SearchIndexManager: React.FC = () => {
         }
     };
 
-    if (!isConfigured) {
-        return (
-            <Alert severity="warning">
-                Typesense n'est pas configuré. Veuillez vérifier les variables d'environnement (VITE_TYPESENSE_*).
-            </Alert>
-        );
-    }
+    // if (!isConfigured) block removed to allow debug info to be seen
 
     return (
         <Card variant="outlined" sx={{ mt: 3 }}>
@@ -143,11 +137,18 @@ const SearchIndexManager: React.FC = () => {
                     </Box>
                     <Chip
                         label={isConfigured ? "Configuré" : "Non configuré"}
-                        color={isConfigured ? "success" : "default"}
+                        color={isConfigured ? "success" : "error"}
                         size="small"
                         variant="outlined"
                     />
                 </Box>
+
+                {!isConfigured && (
+                    <Alert severity="warning" sx={{ mb: 3 }}>
+                        Typesense n'est pas configuré. Vérifiez les secrets GitHub (Production) ou .env.local (Local).
+                        Consultez le panneau de diagnostic ci-dessous.
+                    </Alert>
+                )}
 
                 <Box sx={{ mb: 3, p: 2, bgcolor: 'action.hover', borderRadius: 1 }}>
                     <Typography variant="caption" display="block" color="text.secondary" gutterBottom>
