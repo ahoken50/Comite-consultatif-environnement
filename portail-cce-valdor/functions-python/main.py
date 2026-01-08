@@ -108,6 +108,40 @@ def format_timestamp(seconds: float) -> str:
     s = int(seconds % 60)
     return f"[{m:02d}:{s:02d}]"
 
+
+def clean_hallucinations(text: str) -> str:
+    """
+    Remove lines where the same phrase is repeated 3+ times (Whisper hallucination loops).
+    Preserves [inaudible] and does not correct text.
+    """
+    lines = text.split('\n')
+    cleaned_lines = []
+    
+    if not lines:
+        return ""
+        
+    last_line = None
+    repetition_count = 0
+    
+    for line in lines:
+        line_stripped = line.strip()
+        
+        # Format is "[MM:SS] Text content"
+        parts = line_stripped.split('] ', 1)
+        content = parts[1] if len(parts) > 1 else line_stripped
+        
+        if content == last_line:
+            repetition_count += 1
+        else:
+            repetition_count = 1
+            last_line = content
+            
+        if repetition_count < 3:
+            cleaned_lines.append(line)
+            
+    return "\n".join(cleaned_lines)
+
+
 def transcribe_with_whisper(
     file_path: str,
     language: str = "fr",
@@ -295,6 +329,10 @@ def transcribe_whisper(req: https_fn.CallableRequest) -> dict:
         os.unlink(temp_file.name)
         
         print(f"[Whisper] Transcription complete: {len(full_transcription)} chars")
+        
+        # Post-processing: Light filter to remove loops / hallucinations (3+ repeats)
+        full_transcription = clean_hallucinations(full_transcription)
+        print(f"[Whisper] After hallucination cleaning: {len(full_transcription)} chars")
         
         # Save transcription to Firestore
         meeting_ref.update({
