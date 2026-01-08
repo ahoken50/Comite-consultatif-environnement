@@ -39,6 +39,27 @@ const MeetingsPage: React.FC = () => {
             if (createMeeting.fulfilled.match(resultAction)) {
                 setIsFormOpen(false);
                 setIsSmartPlanningOpen(false);
+
+                // Index the new meeting in Typesense
+                // We create a temporary object for indexing since we don't have the full object returned easily here
+                // Ideal implementation would wait for fetchMeetings or use the returned payload if available
+                const newMeetingId = resultAction.payload.id;
+                if (newMeetingId) {
+                    import('../../services/typesenseService').then(({ indexMeeting }) => {
+                        indexMeeting({
+                            id: newMeetingId,
+                            title: data.title,
+                            date: data.date,
+                            dateTimestamp: data.date ? Math.floor(new Date(data.date).getTime() / 1000) : 0,
+                            type: data.type,
+                            status: data.status,
+                            minutes: '',
+                            agendaItemTitles: data.agendaItems?.map((i: any) => i.title) || [],
+                            resolutions: [],
+                            attendeeNames: data.attendees?.map((a: any) => a.name) || []
+                        }).catch(err => console.error('Failed to index new meeting:', err));
+                    });
+                }
             } else {
                 showError('Erreur lors de la création de la réunion');
             }
