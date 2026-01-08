@@ -151,12 +151,41 @@ const SearchIndexManager: React.FC = () => {
 
                 <Box sx={{ mb: 3, p: 2, bgcolor: 'action.hover', borderRadius: 1 }}>
                     <Typography variant="caption" display="block" color="text.secondary" gutterBottom>
-                        Configuration
+                        Configuration Debug (Production)
                     </Typography>
-                    <Stack direction="row" spacing={2} alignItems="center">
-                        <Typography variant="body2"><strong>Host:</strong> {host}</Typography>
-                        <Divider orientation="vertical" flexItem />
-                        <Typography variant="body2"><strong>Status:</strong> Prêt</Typography>
+                    <Stack spacing={1}>
+                        <Stack direction="row" spacing={2} alignItems="center">
+                            <Typography variant="body2" sx={{ minWidth: 100 }}><strong>Status:</strong></Typography>
+                            <Chip
+                                label={isConfigured ? "Prêt" : "Manquant"}
+                                color={isConfigured ? "success" : "error"}
+                                size="small"
+                            />
+                        </Stack>
+                        <Stack direction="row" spacing={2} alignItems="center">
+                            <Typography variant="body2" sx={{ minWidth: 100 }}><strong>Host:</strong></Typography>
+                            <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>
+                                {import.meta.env.VITE_TYPESENSE_HOST ?
+                                    `${import.meta.env.VITE_TYPESENSE_HOST.substring(0, 5)}...` :
+                                    '(Non défini)'}
+                            </Typography>
+                        </Stack>
+                        <Stack direction="row" spacing={2} alignItems="center">
+                            <Typography variant="body2" sx={{ minWidth: 100 }}><strong>API Key:</strong></Typography>
+                            <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>
+                                {import.meta.env.VITE_TYPESENSE_API_KEY ?
+                                    (import.meta.env.VITE_TYPESENSE_API_KEY.length > 5 ? 'Présente (longueur OK)' : 'Trop courte') :
+                                    '(Non définie)'}
+                            </Typography>
+                        </Stack>
+                        <Stack direction="row" spacing={2} alignItems="center">
+                            <Typography variant="body2" sx={{ minWidth: 100 }}><strong>Admin Key:</strong></Typography>
+                            <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>
+                                {import.meta.env.VITE_TYPESENSE_ADMIN_KEY ?
+                                    'Présente (Cachée)' :
+                                    '(Non définie)'}
+                            </Typography>
+                        </Stack>
                     </Stack>
                 </Box>
 
