@@ -1,5 +1,5 @@
 
-
+import React, { useState } from 'react';
 import {
     Box,
     Button,
@@ -82,7 +82,7 @@ const SearchIndexManager: React.FC = () => {
                 processed++;
                 setProgress((processed / totalDocs) * 100);
             }
-            setStats(prev => ({ ...prev, meetings: meetingsSnapshot.size }));
+            setStats((prev: { meetings: number; projects: number }) => ({ ...prev, meetings: meetingsSnapshot.size }));
 
             // 4. Index Projects
             // Note: Assuming 'projects' collection exists and has similar structure
@@ -106,7 +106,7 @@ const SearchIndexManager: React.FC = () => {
                 processed++;
                 setProgress((processed / totalDocs) * 100);
             }
-            setStats(prev => ({ ...prev, projects: projectsSnapshot.size }));
+            setStats((prev: { meetings: number; projects: number }) => ({ ...prev, projects: projectsSnapshot.size }));
 
             setStatus({
                 type: 'success',
