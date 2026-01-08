@@ -6,6 +6,7 @@ Transcription audio avec OpenAI Whisper + Génération PV avec Claude
 import os
 import io
 import tempfile
+import subprocess
 from datetime import datetime
 
 from firebase_functions import https_fn, options
@@ -215,8 +216,11 @@ def transcribe_whisper(req: https_fn.CallableRequest) -> dict:
         blob.download_to_filename(temp_file.name)
         print(f"[Whisper] Downloaded audio to {temp_file.name}")
         
-        # Split if needed
-        chunk_paths = split_audio_if_needed(temp_file.name)
+        # Pre-process audio with FFmpeg (Normalize & Clean)
+        processed_file_path = process_audio_with_ffmpeg(temp_file.name)
+        
+        # Split if needed (use processed file)
+        chunk_paths = split_audio_if_needed(processed_file_path)
         
         # Transcribe each chunk
         full_transcription = ""
@@ -239,10 +243,14 @@ def transcribe_whisper(req: https_fn.CallableRequest) -> dict:
                 full_transcription += "\n\n"
             full_transcription += chunk_text
             
-            # Clean up chunk if it's not the original
-            if chunk_path != temp_file.name:
+        # Clean up chunk if it's not the original (processed) file
+            if chunk_path != processed_file_path:
                 os.unlink(chunk_path)
         
+        # Clean up processed file if it was created and different from temp
+        if processed_file_path != temp_file.name and os.path.exists(processed_file_path):
+             os.unlink(processed_file_path)
+
         # Clean up original temp file
         os.unlink(temp_file.name)
         
