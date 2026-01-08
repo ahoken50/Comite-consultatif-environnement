@@ -78,6 +78,7 @@ jobs:
       run: |
         echo "OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}" > .env
         echo "ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}" >> .env
+        echo "RESEND_API_KEY=${{ secrets.RESEND_API_KEY }}" >> .env
 
     - name: Setup Python Functions venv
       working-directory: portail-cce-valdor/functions-python
@@ -92,11 +93,12 @@ jobs:
     - name: Create Service Account Key JSON
       run: echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT_COMITE_CCE }}' > service-account-key.json
     
-    - name: Deploy to Firebase (Hosting & Functions)
+    - name: Deploy to Firebase (Hosting, Functions & Rules)
       if: github.ref == 'refs/heads/main'
       working-directory: portail-cce-valdor
-      run: firebase deploy --only functions,hosting --force
+      run: firebase deploy --only functions,hosting,firestore:rules,storage --force
       env:
         GOOGLE_APPLICATION_CREDENTIALS: ../service-account-key.json
         OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
