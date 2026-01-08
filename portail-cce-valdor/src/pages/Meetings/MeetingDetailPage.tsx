@@ -29,7 +29,7 @@ import type { AgendaItem } from '../../types/meeting.types';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { useToast } from '../../hooks/useToast';
-import { sendConvocations } from '../../services/convocationService';
+import ConvocationDialog from '../../components/meetings/ConvocationDialog';
 import { Send } from '@mui/icons-material';
 
 interface TabPanelProps {
@@ -76,7 +76,6 @@ const MeetingDetailPage: React.FC = () => {
     const currentMember = members.find(m => m.id === user?.uid);
 
     const [tabValue, setTabValue] = useState(0);
-    const [isSendingConvocation, setIsSendingConvocation] = useState(false);
 
     const location = useLocation();
 
@@ -168,30 +167,15 @@ const MeetingDetailPage: React.FC = () => {
         }
     };
 
-    const handleSendConvocations = async () => {
-        if (!meeting || !currentMember) {
-            showInfo('Erreur: Réunion ou membre non trouvé');
-            return;
-        }
+    // Convocation dialog state
+    const [isConvocationDialogOpen, setIsConvocationDialogOpen] = useState(false);
 
-        if (!window.confirm(`Envoyer les convocations pour "${meeting.title}" à tous les membres actifs?`)) {
-            return;
-        }
+    const handleConvocationSuccess = (sentCount: number) => {
+        showInfo(`✅ Convocations envoyées à ${sentCount} membre${sentCount !== 1 ? 's' : ''}!`);
+    };
 
-        setIsSendingConvocation(true);
-        try {
-            const result = await sendConvocations(meeting, currentMember);
-            if (result.success) {
-                showInfo(`✅ Convocations envoyées à ${result.sentCount} membres!`);
-            } else {
-                showInfo(`❌ Erreur: ${result.error}`);
-            }
-        } catch (error) {
-            showInfo('❌ Erreur lors de l\'envoi des convocations');
-            console.error(error);
-        } finally {
-            setIsSendingConvocation(false);
-        }
+    const handleConvocationError = (error: string) => {
+        showInfo(`❌ Erreur: ${error}`);
     };
 
     const handleApproval = (role: 'president' | 'elected_official' | 'coordinator') => {
@@ -246,10 +230,9 @@ const MeetingDetailPage: React.FC = () => {
                         variant="outlined"
                         color="primary"
                         startIcon={<Send />}
-                        onClick={handleSendConvocations}
-                        disabled={isSendingConvocation}
+                        onClick={() => setIsConvocationDialogOpen(true)}
                     >
-                        {isSendingConvocation ? 'Envoi...' : 'Convoquer'}
+                        Convoquer
                     </Button>
                     <ProjectExtractor meeting={meeting} />
                     <Button
@@ -359,6 +342,18 @@ const MeetingDetailPage: React.FC = () => {
                     onClose={() => setIsEditModalOpen(false)}
                     onSubmit={handleMeetingUpdate}
                     initialData={meeting}
+                />
+            )}
+
+            {/* Convocation Dialog */}
+            {currentMember && (
+                <ConvocationDialog
+                    open={isConvocationDialogOpen}
+                    meeting={meeting}
+                    currentMember={currentMember}
+                    onClose={() => setIsConvocationDialogOpen(false)}
+                    onSuccess={handleConvocationSuccess}
+                    onError={handleConvocationError}
                 />
             )}
         </Box>

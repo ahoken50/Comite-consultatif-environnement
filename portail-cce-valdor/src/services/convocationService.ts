@@ -72,18 +72,21 @@ export const getActiveMembers = async (): Promise<Member[]> => {
 };
 
 /**
- * Send convocations to all active members
+ * Send convocations to selected members (or all active members if none specified)
  */
 export const sendConvocations = async (
     meeting: Meeting,
-    senderMember: Member
+    senderMember: Member,
+    selectedMembers?: Member[]
 ): Promise<{ success: boolean; convocationId?: string; error?: string; sentCount?: number }> => {
     try {
-        // 1. Get all active members
-        const members = await getActiveMembers();
+        // 1. Use provided members or get all active members
+        const members = selectedMembers && selectedMembers.length > 0
+            ? selectedMembers
+            : await getActiveMembers();
 
         if (members.length === 0) {
-            return { success: false, error: 'Aucun membre actif trouvé' };
+            return { success: false, error: 'Aucun membre sélectionné' };
         }
 
         // 2. Prepare recipients with tokens
