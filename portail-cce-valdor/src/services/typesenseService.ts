@@ -17,8 +17,18 @@ import { logger } from '../utils/logger';
 // CONFIGURATION
 // ============================================
 
+// Helper to clean host string (remove protocol, port, whitespace, copy-paste artifacts)
+const cleanHost = (host: string): string => {
+    if (!host) return '';
+    return host
+        .replace(/^https?:\/\//, '') // Remove protocol
+        .replace(/:443$/, '')        // Remove port 443
+        .replace(/\s*\[.*?\]\s*/g, '') // Remove brackets like [https:443]
+        .trim();                     // Remove whitespace
+};
+
 const TYPESENSE_CONFIG = {
-    host: import.meta.env.VITE_TYPESENSE_HOST || '',
+    host: cleanHost(import.meta.env.VITE_TYPESENSE_HOST || ''),
     port: 443,
     protocol: 'https' as const,
     apiKey: import.meta.env.VITE_TYPESENSE_API_KEY || '',
