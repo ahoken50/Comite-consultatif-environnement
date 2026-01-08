@@ -35,6 +35,56 @@ export const isOCRConfigured = (): boolean => {
 };
 
 /**
+ * Analyze extracted text quality to determine if PDF is usable native or needs OCR
+ * Returns true if text appears to be real, readable content
+ */
+const analyzeTextQuality = (text: string, pageCount: number): { isUsable: boolean; reason: string } => {
+    const cleanText = text.trim();
+
+    // Check 1: Minimum total length
+    if (cleanText.length < 50) {
+        return { isUsable: false, reason: 'Texte trop court' };
+    }
+
+    // Check 2: Count actual words (3+ letters)
+    const words = cleanText.match(/[a-zA-ZàâäéèêëïîôùûüçÀÂÄÉÈÊËÏÎÔÙÛÜÇ]{3,}/g) || [];
+    const wordCount = words.length;
+    const avgWordsPerPage = wordCount / pageCount;
+
+    // Less than 10 real words per page = likely scanned or garbage
+    if (avgWordsPerPage < 10) {
+        return { isUsable: false, reason: `Seulement ${avgWordsPerPage.toFixed(1)} mots/page` };
+    }
+
+    // Check 3: Look for common French words (indicates real text)
+    const commonFrenchWords = ['de', 'la', 'le', 'les', 'des', 'du', 'et', 'en', 'un', 'une', 'que', 'qui', 'pour', 'dans', 'sur', 'par', 'est', 'sont', 'avec', 'au', 'aux'];
+    const lowerText = cleanText.toLowerCase();
+    const frenchWordCount = commonFrenchWords.filter(word => {
+        const regex = new RegExp(`\\b${word}\\b`, 'g');
+        return (lowerText.match(regex) || []).length > 0;
+    }).length;
+
+    // If less than 5 common French words found, suspicious
+    if (frenchWordCount < 5) {
+        return { isUsable: false, reason: 'Peu de mots français détectés' };
+    }
+
+    // Check 4: Character/word ratio (real text is ~5-8 chars/word, garbage is often higher or lower)
+    const avgCharsPerWord = cleanText.length / wordCount;
+    if (avgCharsPerWord < 2 || avgCharsPerWord > 15) {
+        return { isUsable: false, reason: 'Ratio caractères/mots anormal' };
+    }
+
+    // Check 5: Punctuation presence (real documents have some)
+    const punctuationCount = (cleanText.match(/[.,;:!?]/g) || []).length;
+    if (punctuationCount < 2) {
+        return { isUsable: false, reason: 'Pas de ponctuation détectée' };
+    }
+
+    return { isUsable: true, reason: 'Texte valide' };
+};
+
+/**
  * Extract text from a PDF file, with automatic OCR fallback for scanned PDFs
  * 
  * Flow:
@@ -63,12 +113,12 @@ export const extractTextFromPDF = async (
             fullText += pageText + '\n';
         }
 
-        // Step 2: Check if it's a scanned PDF (heuristic: < 50 chars per page on average)
-        const avgCharsPerPage = fullText.trim().length / pageCount;
-        const isScanned = avgCharsPerPage < 50;
+        // Step 2: Analyze text quality to determine if it's a scanned PDF
+        // Simple char count is not enough - scanned PDFs can have invisible text or metadata
+        const textQuality = analyzeTextQuality(fullText, pageCount);
 
-        if (!isScanned && fullText.trim().length > 100) {
-            // Regular PDF with extractable text
+        if (textQuality.isUsable) {
+            // Regular PDF with extractable, usable text
             onProgress?.('Texte extrait avec succès (PDF natif)');
             return {
                 success: true,
