@@ -8,8 +8,7 @@ import {
     Card,
     CardContent,
     Stack,
-    Chip,
-    Divider
+    Chip
 } from '@mui/material';
 import { Sync, Search } from '@mui/icons-material';
 import { collection, getDocs, query } from 'firebase/firestore';
@@ -27,7 +26,7 @@ const SearchIndexManager: React.FC = () => {
     } | null>(null);
     const [stats, setStats] = useState({ meetings: 0, projects: 0 });
 
-    const { isConfigured, host } = getTypesenseStatus();
+    const { isConfigured } = getTypesenseStatus();
 
     const handleSync = async () => {
         setLoading(true);
