@@ -304,7 +304,16 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
                     if (isDocx) {
                         parsedData = await parseMinutesDOCX(file);
                     } else if (isPdf) {
-                        parsedData = await parseMinutesPDF(file);
+                        // PDF parsing with progress callback for OCR
+                        parsedData = await parseMinutesPDF(file, (message: string) => {
+                            console.log(`[OCR Progress] ${message}`);
+                            showSuccess(message); // Show progress to user
+                        });
+
+                        // Notify user if OCR was used (scanned PDF)
+                        if (parsedData?.wasScanned) {
+                            showSuccess('✅ PDF scanné détecté et traité par OCR (IA Gemini)');
+                        }
                     }
 
                     // Helper to match items (generic logic can be shared or moved, using existing helper for now)
@@ -412,7 +421,8 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
                         console.log('[DEBUG] Updated meeting attendees from parsed data');
                     }
                 } catch (parseError) {
-                    console.warn('[DEBUG] Failed to parse DOCX content:', parseError);
+                    console.warn('[DEBUG] Failed to parse file content:', parseError);
+                    showError(`Erreur de parsing: ${parseError instanceof Error ? parseError.message : 'Inconnue'}`);
                     // Don't fail the upload if parsing fails - file is already uploaded
                 }
             }

@@ -1,6 +1,7 @@
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import mammoth from 'mammoth';
 import { type AgendaItem, type MinuteEntry } from '../types/meeting.types';
+import { extractTextFromPDF } from './ocrService';
 
 // @ts-ignore
 import pdfWorker from 'pdfjs-dist/build/pdf.worker?url';
@@ -14,25 +15,29 @@ interface ParsedPVData {
     agendaItems: AgendaItem[];
     attendees?: string[]; // Added to match MinutesEditor expectations
     globalNotes?: string;
+    wasScanned?: boolean; // Indicates if OCR was used
 }
 
 // ============================================================================
-// PDF PARSING LOGIC FOR PV
+// PDF PARSING LOGIC FOR PV (with automatic OCR for scanned PDFs)
 // ============================================================================
-export const parseMinutesPDF = async (file: File): Promise<ParsedPVData> => {
-    const arrayBuffer = await file.arrayBuffer();
-    // @ts-ignore
-    const pdf = await (pdfjsLib as any).getDocument({ data: arrayBuffer }).promise;
-    let fullText = '';
+export const parseMinutesPDF = async (
+    file: File,
+    onProgress?: (message: string) => void
+): Promise<ParsedPVData> => {
+    // Use the OCR service which handles both native and scanned PDFs
+    const result = await extractTextFromPDF(file, onProgress);
 
-    for (let i = 1; i <= pdf.numPages; i++) {
-        const page = await pdf.getPage(i);
-        const textContent = await page.getTextContent();
-        const pageText = textContent.items.map((item: any) => item.str).join('\n');
-        fullText += pageText + '\n';
+    if (!result.success || !result.text) {
+        throw new Error(result.error || 'Impossible d\'extraire le texte du PDF');
     }
 
-    return parseRawTextToPV(fullText);
+    const parsed = parseRawTextToPV(result.text);
+
+    return {
+        ...parsed,
+        wasScanned: result.isScanned
+    };
 };
 
 // ============================================================================
