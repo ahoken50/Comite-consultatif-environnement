@@ -101,7 +101,11 @@ def transcribe_with_whisper(
             file=audio_file,
             language=language,
             response_format="verbose_json",
-            temperature=0.2, 
+            # Temperature 0 reduces hallucinations (most deterministic)
+            # Note: Other parameters like beam_size, condition_on_previous_text, etc.
+            # are not available in the OpenAI API (only in local Whisper),
+            # but our chunking strategy effectively implements condition_on_previous_text=False.
+            temperature=0, 
             prompt=context_prompt
         )
     
