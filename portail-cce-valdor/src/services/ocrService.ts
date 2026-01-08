@@ -41,8 +41,13 @@ export const isOCRConfigured = (): boolean => {
 const analyzeTextQuality = (text: string, pageCount: number): { isUsable: boolean; reason: string } => {
     const cleanText = text.trim();
 
+    // Debug logging
+    console.log('[OCR Debug] Extracted text length:', cleanText.length);
+    console.log('[OCR Debug] First 200 chars:', cleanText.substring(0, 200));
+
     // Check 1: Minimum total length
-    if (cleanText.length < 50) {
+    if (cleanText.length < 100) {
+        console.log('[OCR Debug] FAIL: Text too short');
         return { isUsable: false, reason: 'Texte trop court' };
     }
 
@@ -50,9 +55,11 @@ const analyzeTextQuality = (text: string, pageCount: number): { isUsable: boolea
     const words = cleanText.match(/[a-zA-ZàâäéèêëïîôùûüçÀÂÄÉÈÊËÏÎÔÙÛÜÇ]{3,}/g) || [];
     const wordCount = words.length;
     const avgWordsPerPage = wordCount / pageCount;
+    console.log('[OCR Debug] Word count:', wordCount, '| Avg/page:', avgWordsPerPage.toFixed(1));
 
-    // Less than 10 real words per page = likely scanned or garbage
-    if (avgWordsPerPage < 10) {
+    // STRICTER: Less than 20 real words per page = likely scanned or garbage
+    if (avgWordsPerPage < 20) {
+        console.log('[OCR Debug] FAIL: Not enough words per page');
         return { isUsable: false, reason: `Seulement ${avgWordsPerPage.toFixed(1)} mots/page` };
     }
 
@@ -63,24 +70,42 @@ const analyzeTextQuality = (text: string, pageCount: number): { isUsable: boolea
         const regex = new RegExp(`\\b${word}\\b`, 'g');
         return (lowerText.match(regex) || []).length > 0;
     }).length;
+    console.log('[OCR Debug] French common words found:', frenchWordCount);
 
-    // If less than 5 common French words found, suspicious
-    if (frenchWordCount < 5) {
+    // STRICTER: If less than 8 common French words found, suspicious
+    if (frenchWordCount < 8) {
+        console.log('[OCR Debug] FAIL: Too few French words');
         return { isUsable: false, reason: 'Peu de mots français détectés' };
     }
 
     // Check 4: Character/word ratio (real text is ~5-8 chars/word, garbage is often higher or lower)
     const avgCharsPerWord = cleanText.length / wordCount;
-    if (avgCharsPerWord < 2 || avgCharsPerWord > 15) {
+    console.log('[OCR Debug] Avg chars/word:', avgCharsPerWord.toFixed(1));
+    if (avgCharsPerWord < 3 || avgCharsPerWord > 12) {
+        console.log('[OCR Debug] FAIL: Abnormal char/word ratio');
         return { isUsable: false, reason: 'Ratio caractères/mots anormal' };
     }
 
     // Check 5: Punctuation presence (real documents have some)
     const punctuationCount = (cleanText.match(/[.,;:!?]/g) || []).length;
-    if (punctuationCount < 2) {
+    console.log('[OCR Debug] Punctuation count:', punctuationCount);
+    if (punctuationCount < 3) {
+        console.log('[OCR Debug] FAIL: Not enough punctuation');
         return { isUsable: false, reason: 'Pas de ponctuation détectée' };
     }
 
+    // Check 6: NEW - Check for document structure (numbered items for agendas)
+    const hasNumberedItems = /\d+[.)]\s*[A-Za-zÀ-ÿ]/.test(cleanText);
+    const hasLineBreaks = (cleanText.match(/\n/g) || []).length > 2;
+    console.log('[OCR Debug] Has numbered items:', hasNumberedItems, '| Has line breaks:', hasLineBreaks);
+
+    // If it's a very short text without proper structure, it might be garbage
+    if (cleanText.length < 500 && !hasNumberedItems && !hasLineBreaks) {
+        console.log('[OCR Debug] FAIL: Short text without structure');
+        return { isUsable: false, reason: 'Texte court sans structure' };
+    }
+
+    console.log('[OCR Debug] PASS: Text appears valid');
     return { isUsable: true, reason: 'Texte valide' };
 };
 
