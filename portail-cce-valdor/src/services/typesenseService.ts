@@ -33,6 +33,7 @@ export interface SearchableMeeting {
     id: string;
     title: string;
     date: string;
+    dateTimestamp: number; // Unix timestamp for sorting
     type: string;
     status: string;
     minutes: string;
@@ -83,6 +84,7 @@ export const COLLECTIONS = {
             { name: 'id', type: 'string' as const },
             { name: 'title', type: 'string' as const },
             { name: 'date', type: 'string' as const, facet: true },
+            { name: 'dateTimestamp', type: 'int64' as const },
             { name: 'type', type: 'string' as const, facet: true },
             { name: 'status', type: 'string' as const, facet: true },
             { name: 'minutes', type: 'string' as const },
@@ -90,7 +92,7 @@ export const COLLECTIONS = {
             { name: 'resolutions', type: 'string[]' as const },
             { name: 'attendeeNames', type: 'string[]' as const }
         ],
-        defaultSortingField: 'date'
+        defaultSortingField: 'dateTimestamp'
     },
     projects: {
         name: 'projects',
