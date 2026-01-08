@@ -27,7 +27,21 @@ export const parseAgendaPDF = async (
         throw new Error(ocrResult.error || 'Impossible d\'extraire le texte du PDF');
     }
 
-    const fullText = ocrResult.text;
+    let processedText = ocrResult.text;
+
+    // Preprocess: If text has no line breaks, insert them before numbered items
+    const lineBreakCount = (processedText.match(/\n/g) || []).length;
+    if (lineBreakCount < 3) {
+        console.log('[PDF Parser] No line breaks detected, preprocessing text...');
+        // Insert line breaks before patterns like "1.", "2.", etc. at word boundaries
+        // Match space/multiple spaces followed by a number and a period
+        processedText = processedText
+            .replace(/\s{2,}(\d+)\.\s+/g, '\n$1. ') // Replace multiple spaces before numbers with newline
+            .replace(/\s+(\d+)\.\s+([A-ZÀÂÄÉÈÊËÏÎÔÙÛÜÇ])/g, '\n$1. $2'); // Insert newline before "N. UppercaseLetter"
+        console.log('[PDF Parser] Preprocessed text (first 300):', processedText.substring(0, 300));
+    }
+
+    const fullText = processedText;
 
     const result: ParsedMeetingData = {
         agendaItems: [],
