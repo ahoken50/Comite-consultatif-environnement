@@ -129,29 +129,40 @@ def transcribe_with_whisper(
     return formatted_text
 
 
-def build_context_prompt(attendee_names: list[str], agenda_items: list[str]) -> str:
     """
     Build a context prompt to help Whisper with proper nouns and terminology.
+    Using a narrative style to set the context and disable auto-completion behavior.
     """
-    context_parts = [
-        "Comité Consultatif en Environnement (CCE)",
-        "Ville de Val-d'Or",
-        "Procès-verbal",
-        "Ordre du jour",
-        "Résolution",
-        "CONSIDÉRANT",
-        "IL EST RÉSOLU",
-    ]
+    # Base narrative prompt (Zero-shot styling)
+    base_prompt = (
+        "Enregistrement audio en français québécois. "
+        "Il s’agit d’une réunion officielle d’un comité consultatif en environnement. "
+        "La rencontre se déroule dans une salle de conférence avec un micro central. "
+        "Les intervenants parlent à tour de rôle, parfois à voix basse ou à distance du micro. "
+        "Le langage est professionnel, technique et institutionnel. "
+        "Le vocabulaire peut inclure : environnement, développement durable, politique environnementale, "
+        "plan d’action, adaptation aux changements climatiques, gestion des eaux pluviales, "
+        "îlots de chaleur, biodiversité, consultation, règlement municipal. "
+        "Les échanges sont naturels et peuvent contenir des hésitations, des silences et des phrases incomplètes. "
+        "Lorsque le propos est inaudible ou incertain, il doit être laissé tel quel sans tentative de complétion."
+    )
+
+    # Specific vocabulary integration
+    extras = []
     
     # Add attendee names
     if attendee_names:
-        context_parts.extend(attendee_names)
+        extras.extend(attendee_names)
     
     # Add agenda item titles
     if agenda_items:
-        context_parts.extend(agenda_items)
+        extras.extend(agenda_items)
     
-    return ", ".join(context_parts)
+    # Combine narrative + specific vocabulary
+    if extras:
+        return f"{base_prompt} Mots clés spécifiques pour cette réunion : {', '.join(extras)}."
+    
+    return base_prompt
 
 
 @https_fn.on_call(
