@@ -34,6 +34,17 @@ jobs:
 
       - name: Build Frontend
         run: npm run build
+        env:
+          VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY }}
+          VITE_FIREBASE_AUTH_DOMAIN: ${{ secrets.VITE_FIREBASE_AUTH_DOMAIN }}
+          VITE_FIREBASE_PROJECT_ID: ${{ secrets.VITE_FIREBASE_PROJECT_ID }}
+          VITE_FIREBASE_STORAGE_BUCKET: ${{ secrets.VITE_FIREBASE_STORAGE_BUCKET }}
+          VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID }}
+          VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID }}
+          VITE_GOOGLE_AI_API: ${{ secrets.VITE_GOOGLE_AI_API }}
+          VITE_TYPESENSE_HOST: ${{ secrets.VITE_TYPESENSE_HOST }}
+          VITE_TYPESENSE_API_KEY: ${{ secrets.VITE_TYPESENSE_API_KEY }}
+          VITE_TYPESENSE_ADMIN_KEY: ${{ secrets.VITE_TYPESENSE_ADMIN_KEY }}
 
       # Backend (TypeScript Functions) Build
       - name: Install Functions Dependencies
