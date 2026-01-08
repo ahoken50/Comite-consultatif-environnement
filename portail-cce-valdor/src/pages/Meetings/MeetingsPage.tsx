@@ -49,7 +49,7 @@ const MeetingsPage: React.FC = () => {
                         indexMeeting({
                             id: newMeetingId,
                             title: data.title,
-                            date: data.date,
+                            date: data.date ? new Date(data.date).toISOString() : new Date().toISOString(),
                             dateTimestamp: data.date ? Math.floor(new Date(data.date).getTime() / 1000) : 0,
                             type: data.type,
                             status: data.status,

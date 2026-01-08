@@ -64,7 +64,8 @@ const SearchIndexManager: React.FC = () => {
                 const searchableMeeting: SearchableMeeting = {
                     id: doc.id,
                     title: data.title || 'Sans titre',
-                    date: data.date,
+                    // Ensure date is a string (handle Firestore Timestamp or Date object)
+                    date: data.date ? new Date(data.date).toISOString() : new Date().toISOString(),
                     dateTimestamp: data.date ? Math.floor(new Date(data.date).getTime() / 1000) : 0,
                     type: data.type,
                     status: data.status,
