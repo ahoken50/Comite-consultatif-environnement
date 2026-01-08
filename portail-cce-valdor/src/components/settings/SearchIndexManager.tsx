@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+
+
 import {
     Box,
     Button,
@@ -13,6 +14,7 @@ import {
 import { Sync, Search } from '@mui/icons-material';
 import { collection, getDocs, query } from 'firebase/firestore';
 import { db } from '../../services/firebase';
+import { parseAnyDate } from '../../utils/dateUtils';
 import { indexMeeting, indexProject, getTypesenseStatus, checkTypesenseHealth } from '../../services/typesenseService';
 import type { Meeting } from '../../types/meeting.types';
 import type { SearchableMeeting, SearchableProject } from '../../services/typesenseService';
@@ -64,9 +66,9 @@ const SearchIndexManager: React.FC = () => {
                 const searchableMeeting: SearchableMeeting = {
                     id: doc.id,
                     title: data.title || 'Sans titre',
-                    // Ensure date is a string (handle Firestore Timestamp or Date object)
-                    date: data.date ? new Date(data.date).toISOString() : new Date().toISOString(),
-                    dateTimestamp: data.date ? Math.floor(new Date(data.date).getTime() / 1000) : 0,
+                    // Use parseAnyDate to handle Firestore Timestamps, strings, or Date objects safely
+                    date: (parseAnyDate(data.date) || new Date()).toISOString(),
+                    dateTimestamp: Math.floor((parseAnyDate(data.date) || new Date()).getTime() / 1000),
                     type: data.type,
                     status: data.status,
                     minutes: data.minutes || '',

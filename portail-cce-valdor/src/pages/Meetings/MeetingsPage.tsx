@@ -12,6 +12,7 @@ import MeetingForm from '../../components/meetings/MeetingForm';
 import SmartPlanningDialog from '../../components/meetings/SmartPlanningDialog';
 import { MeetingStatus } from '../../types/meeting.types';
 import { useToast } from '../../hooks/useToast';
+import { parseAnyDate } from '../../utils/dateUtils';
 
 const MeetingsPage: React.FC = () => {
     const dispatch = useDispatch<AppDispatch>();
@@ -49,8 +50,8 @@ const MeetingsPage: React.FC = () => {
                         indexMeeting({
                             id: newMeetingId,
                             title: data.title,
-                            date: data.date ? new Date(data.date).toISOString() : new Date().toISOString(),
-                            dateTimestamp: data.date ? Math.floor(new Date(data.date).getTime() / 1000) : 0,
+                            date: (parseAnyDate(data.date) || new Date()).toISOString(),
+                            dateTimestamp: Math.floor((parseAnyDate(data.date) || new Date()).getTime() / 1000),
                             type: data.type,
                             status: data.status,
                             minutes: '',
