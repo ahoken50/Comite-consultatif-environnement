@@ -8,10 +8,11 @@ import {
     orderBy,
     addDoc,
     arrayUnion,
-    Timestamp
+    Timestamp,
+    getDoc
 } from 'firebase/firestore';
 import { db } from '../../services/firebase';
-import type { Project } from '../../types/project.types';
+import type { Project, LinkedResolution } from '../../types/project.types';
 import type { ProjectTask } from '../../types/task.types';
 
 const COLLECTION_NAME = 'projects';
@@ -103,5 +104,31 @@ export const projectsAPI = {
         await updateDoc(docRef, {
             caucusDecisions: arrayUnion(decision)
         });
+    },
+
+    // Link a CCE resolution/comment to a project
+    linkResolution: async (projectId: string, resolution: LinkedResolution): Promise<void> => {
+        const docRef = doc(db, COLLECTION_NAME, projectId);
+        await updateDoc(docRef, {
+            linkedResolutions: arrayUnion(resolution),
+            dateUpdated: Timestamp.now()
+        });
+    },
+
+    // Unlink a CCE resolution/comment from a project
+    unlinkResolution: async (projectId: string, resolutionId: string): Promise<void> => {
+        const docRef = doc(db, COLLECTION_NAME, projectId);
+        // Need to fetch current array and filter
+        const docSnap = await getDoc(docRef);
+        if (docSnap.exists()) {
+            const data = docSnap.data();
+            const linkedResolutions = (data.linkedResolutions || []).filter(
+                (r: LinkedResolution) => r.id !== resolutionId
+            );
+            await updateDoc(docRef, {
+                linkedResolutions,
+                dateUpdated: Timestamp.now()
+            });
+        }
     }
 };

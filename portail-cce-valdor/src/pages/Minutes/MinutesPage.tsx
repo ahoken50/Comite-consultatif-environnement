@@ -117,7 +117,15 @@ const MinutesPage: React.FC = () => {
                                     <Tooltip title="Télécharger PDF">
                                         <IconButton
                                             onClick={() => handleDownloadPDF(meeting)}
-                                            disabled={!meeting.minutes || meeting.minutes.length < 5}
+                                            disabled={
+                                                // Disable if neither legacy minutes nor minuteEntries have content
+                                                (!meeting.minutes || meeting.minutes.length < 5) &&
+                                                !meeting.agendaItems?.some((item: any) =>
+                                                    item.minuteEntries?.some((entry: any) =>
+                                                        entry.content && entry.content.trim().length > 10
+                                                    )
+                                                )
+                                            }
                                             color="primary"
                                         >
                                             <PictureAsPdf />

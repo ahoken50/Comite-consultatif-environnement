@@ -31,6 +31,25 @@ export const Category = {
 
 export type Category = typeof Category[keyof typeof Category];
 
+/**
+ * Represents a link between a project and a resolution/comment from a CCE meeting.
+ * Allows tracking follow-up resolutions across multiple meetings for the same project.
+ */
+export interface LinkedResolution {
+    id: string;                              // Unique ID for this link
+    meetingId: string;                       // Source meeting ID
+    meetingTitle: string;                    // Meeting title (e.g., "CCE 13")
+    meetingDate: string;                     // Meeting date ISO string
+    agendaItemId: string;                    // Agenda item ID
+    agendaItemTitle: string;                 // Agenda item title
+    entryIndex: number;                      // Index in minuteEntries array
+    entryType: 'resolution' | 'comment';     // Type of entry
+    entryNumber: string;                     // Number (e.g., "13-A")
+    entryContent: string;                    // Content preview (first 200 chars)
+    linkedAt: string;                        // When the link was created
+    linkedBy: string;                        // User ID who created the link
+}
+
 export interface Project {
     id: string;
     code: string;
@@ -48,7 +67,8 @@ export interface Project {
     nextSteps: string;
     linkedMeetingIds: string[];
     linkedDocumentIds: string[];
-    linkedResolutionIds: string[];
+    linkedResolutions?: LinkedResolution[];  // New: array of linked resolutions
+    linkedResolutionIds: string[];           // Legacy: kept for backward compatibility
     tags: string[];
     isUrgent: boolean;
     estimatedCompletionDate: string | null;

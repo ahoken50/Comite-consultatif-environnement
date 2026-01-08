@@ -1,5 +1,5 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
-import type { Project } from '../../types/project.types';
+import type { Project, LinkedResolution } from '../../types/project.types';
 import type { ProjectTask } from '../../types/task.types';
 import { projectsAPI } from './projectsAPI';
 import { logProjectActivity } from '../../services/activityLogService';
@@ -164,6 +164,40 @@ export const addCaucusDecision = createAsyncThunk(
     }
 );
 
+// Link a CCE resolution/comment to a project
+export const linkResolutionToProject = createAsyncThunk(
+    'projects/linkResolution',
+    async ({ projectId, resolution, projectName, userId, userName }: {
+        projectId: string;
+        resolution: LinkedResolution;
+        projectName: string;
+        userId: string;
+        userName: string;
+    }) => {
+        await projectsAPI.linkResolution(projectId, resolution);
+        await logProjectActivity('project_updated', userId, userName, projectId,
+            `${projectName}: Résolution liée (${resolution.entryNumber} - ${resolution.meetingTitle})`);
+        return { projectId, resolution };
+    }
+);
+
+// Unlink a CCE resolution/comment from a project
+export const unlinkResolutionFromProject = createAsyncThunk(
+    'projects/unlinkResolution',
+    async ({ projectId, resolutionId, projectName, userId, userName }: {
+        projectId: string;
+        resolutionId: string;
+        projectName: string;
+        userId: string;
+        userName: string;
+    }) => {
+        await projectsAPI.unlinkResolution(projectId, resolutionId);
+        await logProjectActivity('project_updated', userId, userName, projectId,
+            `${projectName}: Résolution déliée`);
+        return { projectId, resolutionId };
+    }
+);
+
 const projectsSlice = createSlice({
     name: 'projects',
     initialState,
@@ -251,6 +285,25 @@ const projectsSlice = createSlice({
                 if (project) {
                     if (!project.caucusDecisions) project.caucusDecisions = [];
                     project.caucusDecisions.push(decision);
+                }
+            })
+            // Link Resolution
+            .addCase(linkResolutionToProject.fulfilled, (state, action) => {
+                const { projectId, resolution } = action.payload;
+                const project = state.items.find(p => p.id === projectId);
+                if (project) {
+                    if (!project.linkedResolutions) project.linkedResolutions = [];
+                    project.linkedResolutions.push(resolution);
+                }
+            })
+            // Unlink Resolution
+            .addCase(unlinkResolutionFromProject.fulfilled, (state, action) => {
+                const { projectId, resolutionId } = action.payload;
+                const project = state.items.find(p => p.id === projectId);
+                if (project && project.linkedResolutions) {
+                    project.linkedResolutions = project.linkedResolutions.filter(
+                        r => r.id !== resolutionId
+                    );
                 }
             });
     },
