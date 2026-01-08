@@ -32,6 +32,22 @@ jobs:
       - name: Install Frontend Dependencies
         run: npm install
 
+      - name: Debug Secrets Availability
+        run: |
+          echo "Checking if secrets are available..."
+          if [ -z "${{ secrets.VITE_TYPESENSE_HOST }}" ]; then
+            echo "::error::VITE_TYPESENSE_HOST is NOT available (Empty)"
+          else
+            echo "VITE_TYPESENSE_HOST is available"
+          fi
+          
+          if [ -z "${{ secrets.VITE_TYPESENSE_API_KEY }}" ]; then
+            echo "::error::VITE_TYPESENSE_API_KEY is NOT available (Empty)"
+          else
+            echo "VITE_TYPESENSE_API_KEY is available"
+          fi
+
+
       - name: Build Frontend
         run: npm run build
         env:
