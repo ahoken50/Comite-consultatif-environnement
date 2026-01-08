@@ -16,12 +16,16 @@ import {
 import { useForm, Controller, useFieldArray } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Add, Delete, Print, UploadFile } from '@mui/icons-material';
+import { Add, Delete, Print, UploadFile, DragIndicator } from '@mui/icons-material';
 import { MeetingType, MeetingStatus } from '../../types/meeting.types';
 import { generateAgendaPDF } from '../../services/pdfServiceAgenda';
 import { parseAgendaPDF } from '../../services/pdfParserService';
 import { useToast } from '../../hooks/useToast';
 import { detectDocumentType } from '../../services/documentTypeDetector';
+import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
+import type { DragEndEvent } from '@dnd-kit/core';
+import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 
 const agendaItemSchema = z.object({
     title: z.string().min(1, 'Le titre est requis'),
@@ -51,6 +55,134 @@ const meetingSchema = z.object({
 });
 
 type MeetingFormData = z.infer<typeof meetingSchema>;
+
+// Sortable Agenda Item component for drag-and-drop
+interface SortableAgendaItemProps {
+    field: { id: string };
+    index: number;
+    control: any;
+    formId: string;
+    errors: any;
+    onRemove: () => void;
+}
+
+const SortableAgendaItem: React.FC<SortableAgendaItemProps> = ({ field, index, control, formId, errors, onRemove }) => {
+    const {
+        attributes,
+        listeners,
+        setNodeRef,
+        transform,
+        transition,
+    } = useSortable({ id: field.id });
+
+    const style = {
+        transform: CSS.Transform.toString(transform),
+        transition,
+    };
+
+    return (
+        <React.Fragment>
+            <Grid size={{ xs: 12 }} ref={setNodeRef} style={style} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Box {...attributes} {...listeners} sx={{ cursor: 'grab', display: 'flex', alignItems: 'center' }}>
+                    <DragIndicator sx={{ color: 'text.secondary' }} />
+                </Box>
+                <Typography variant="subtitle2" sx={{ width: 24 }}>{index + 1}.</Typography>
+                <Grid container spacing={2} sx={{ flexGrow: 1 }}>
+                    <Grid size={{ xs: 12, sm: 6 }}>
+                        <Controller
+                            name={`agendaItems.${index}.title`}
+                            control={control}
+                            render={({ field }) => (
+                                <TextField
+                                    {...field}
+                                    id={`${formId}-agenda-${index}-title`}
+                                    label="Sujet"
+                                    fullWidth
+                                    size="small"
+                                    error={!!errors.agendaItems?.[index]?.title}
+                                />
+                            )}
+                        />
+                    </Grid>
+                    <Grid size={{ xs: 6, sm: 3 }}>
+                        <Controller
+                            name={`agendaItems.${index}.objective`}
+                            control={control}
+                            render={({ field }) => (
+                                <TextField
+                                    {...field}
+                                    id={`${formId}-agenda-${index}-objective`}
+                                    label="Objectif"
+                                    fullWidth
+                                    size="small"
+                                    select
+                                    InputLabelProps={{ htmlFor: `${formId}-agenda-${index}-objective` }}
+                                    inputProps={{ id: `${formId}-agenda-${index}-objective` }}
+                                >
+                                    <MenuItem value="Information">Information</MenuItem>
+                                    <MenuItem value="Décision">Décision</MenuItem>
+                                    <MenuItem value="Consultation">Consultation</MenuItem>
+                                </TextField>
+                            )}
+                        />
+                    </Grid>
+                    <Grid size={{ xs: 6, sm: 3 }}>
+                        <Controller
+                            name={`agendaItems.${index}.duration`}
+                            control={control}
+                            render={({ field }) => (
+                                <TextField
+                                    {...field}
+                                    id={`${formId}-agenda-${index}-duration`}
+                                    label="Durée (min)"
+                                    type="number"
+                                    fullWidth
+                                    size="small"
+                                />
+                            )}
+                        />
+                    </Grid>
+                    <Grid size={{ xs: 12, sm: 6 }}>
+                        <Controller
+                            name={`agendaItems.${index}.presenter`}
+                            control={control}
+                            render={({ field }) => (
+                                <TextField
+                                    {...field}
+                                    id={`${formId}-agenda-${index}-presenter`}
+                                    label="Responsable"
+                                    fullWidth
+                                    size="small"
+                                />
+                            )}
+                        />
+                    </Grid>
+                    <Grid size={{ xs: 12, sm: 6 }}>
+                        <Controller
+                            name={`agendaItems.${index}.description`}
+                            control={control}
+                            render={({ field }) => (
+                                <TextField
+                                    {...field}
+                                    id={`${formId}-agenda-${index}-description`}
+                                    label="Notes / Description (Agenda)"
+                                    fullWidth
+                                    size="small"
+                                />
+                            )}
+                        />
+                    </Grid>
+                </Grid>
+                <IconButton onClick={onRemove} color="error">
+                    <Delete />
+                </IconButton>
+            </Grid>
+            <Grid size={{ xs: 12 }}>
+                <Divider />
+            </Grid>
+        </React.Fragment>
+    );
+};
 
 interface MeetingFormProps {
     open: boolean;
@@ -89,10 +221,29 @@ const MeetingForm: React.FC<MeetingFormProps> = ({ open, onClose, onSubmit, init
         },
     });
 
-    const { fields, append, remove, replace } = useFieldArray({
+    const { fields, append, remove, replace, move } = useFieldArray({
         control,
         name: "agendaItems",
     });
+
+    // Drag and drop sensors
+    const sensors = useSensors(
+        useSensor(PointerSensor),
+        useSensor(KeyboardSensor, {
+            coordinateGetter: sortableKeyboardCoordinates,
+        })
+    );
+
+    // Handle drag end - reorder items
+    const handleDragEnd = (event: DragEndEvent) => {
+        const { active, over } = event;
+
+        if (over && active.id !== over.id) {
+            const oldIndex = fields.findIndex((field) => field.id === active.id);
+            const newIndex = fields.findIndex((field) => field.id === over.id);
+            move(oldIndex, newIndex);
+        }
+    };
 
     const formId = useId();
     const fileInputId = `${formId}-file-input`;
@@ -367,105 +518,28 @@ const MeetingForm: React.FC<MeetingFormProps> = ({ open, onClose, onSubmit, init
                             </Box>
                         </Grid>
 
-                        {fields.map((field, index) => (
-                            <React.Fragment key={field.id}>
-                                <Grid size={{ xs: 12 }} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                    <Typography variant="subtitle2" sx={{ width: 24 }}>{index + 1}.</Typography>
-                                    <Grid container spacing={2} sx={{ flexGrow: 1 }}>
-                                        <Grid size={{ xs: 12, sm: 6 }}>
-                                            <Controller
-                                                name={`agendaItems.${index}.title`}
-                                                control={control}
-                                                render={({ field }) => (
-                                                    <TextField
-                                                        {...field}
-                                                        id={`${formId}-agenda-${index}-title`}
-                                                        label="Sujet"
-                                                        fullWidth
-                                                        size="small"
-                                                        error={!!errors.agendaItems?.[index]?.title}
-                                                    />
-                                                )}
-                                            />
-                                        </Grid>
-                                        <Grid size={{ xs: 6, sm: 3 }}>
-                                            <Controller
-                                                name={`agendaItems.${index}.objective`}
-                                                control={control}
-                                                render={({ field }) => (
-                                                    <TextField
-                                                        {...field}
-                                                        id={`${formId}-agenda-${index}-objective`}
-                                                        label="Objectif"
-                                                        fullWidth
-                                                        size="small"
-                                                        select
-                                                        InputLabelProps={{ htmlFor: `${formId}-agenda-${index}-objective` }}
-                                                        inputProps={{ id: `${formId}-agenda-${index}-objective` }}
-                                                    >
-                                                        <MenuItem value="Information">Information</MenuItem>
-                                                        <MenuItem value="Décision">Décision</MenuItem>
-                                                        <MenuItem value="Consultation">Consultation</MenuItem>
-                                                    </TextField>
-                                                )}
-                                            />
-                                        </Grid>
-                                        <Grid size={{ xs: 6, sm: 3 }}>
-                                            <Controller
-                                                name={`agendaItems.${index}.duration`}
-                                                control={control}
-                                                render={({ field }) => (
-                                                    <TextField
-                                                        {...field}
-                                                        id={`${formId}-agenda-${index}-duration`}
-                                                        label="Durée (min)"
-                                                        type="number"
-                                                        fullWidth
-                                                        size="small"
-                                                    />
-                                                )}
-                                            />
-                                        </Grid>
-                                        <Grid size={{ xs: 12, sm: 6 }}>
-                                            <Controller
-                                                name={`agendaItems.${index}.presenter`}
-                                                control={control}
-                                                render={({ field }) => (
-                                                    <TextField
-                                                        {...field}
-                                                        id={`${formId}-agenda-${index}-presenter`}
-                                                        label="Responsable"
-                                                        fullWidth
-                                                        size="small"
-                                                    />
-                                                )}
-                                            />
-                                        </Grid>
-                                        <Grid size={{ xs: 12, sm: 6 }}>
-                                            <Controller
-                                                name={`agendaItems.${index}.description`}
-                                                control={control}
-                                                render={({ field }) => (
-                                                    <TextField
-                                                        {...field}
-                                                        id={`${formId}-agenda-${index}-description`}
-                                                        label="Notes / Description (Agenda)"
-                                                        fullWidth
-                                                        size="small"
-                                                    />
-                                                )}
-                                            />
-                                        </Grid>
-                                    </Grid>
-                                    <IconButton onClick={() => remove(index)} color="error">
-                                        <Delete />
-                                    </IconButton>
-                                </Grid>
-                                <Grid size={{ xs: 12 }}>
-                                    <Divider />
-                                </Grid>
-                            </React.Fragment>
-                        ))}
+                        <DndContext
+                            sensors={sensors}
+                            collisionDetection={closestCenter}
+                            onDragEnd={handleDragEnd}
+                        >
+                            <SortableContext
+                                items={fields.map(f => f.id)}
+                                strategy={verticalListSortingStrategy}
+                            >
+                                {fields.map((field, index) => (
+                                    <SortableAgendaItem
+                                        key={field.id}
+                                        field={field}
+                                        index={index}
+                                        control={control}
+                                        formId={formId}
+                                        errors={errors}
+                                        onRemove={() => remove(index)}
+                                    />
+                                ))}
+                            </SortableContext>
+                        </DndContext>
                     </Grid>
                 </DialogContent>
                 <DialogActions>
