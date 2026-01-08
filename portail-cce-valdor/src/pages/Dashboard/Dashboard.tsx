@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Box, Grid, Typography, CircularProgress, Alert } from '@mui/material';
+import { Box, Grid, Typography, Alert } from '@mui/material';
 import { CheckCircle, Autorenew, NewReleases, Warning } from '@mui/icons-material';
 import StatsCard from '../../components/dashboard/StatsCard';
 import AlertsPanel from '../../components/dashboard/AlertsPanel';
@@ -8,6 +8,7 @@ import NextMeetingCard from '../../components/dashboard/NextMeetingCard';
 import CategoryChart from '../../components/dashboard/CategoryChart';
 import ProgressChart from '../../components/dashboard/ProgressChart';
 import ActivityFeed from '../../components/dashboard/ActivityFeed';
+import DashboardSkeleton from '../../components/dashboard/DashboardSkeleton';
 import { useDashboardData } from '../../hooks/useDashboardData';
 
 const Dashboard: React.FC = () => {
@@ -15,11 +16,7 @@ const Dashboard: React.FC = () => {
     const { stats, alerts, nextMeeting, categoryData, progressData, activities, loading, error } = useDashboardData();
 
     if (loading) {
-        return (
-            <Box display="flex" justifyContent="center" alignItems="center" minHeight="50vh">
-                <CircularProgress />
-            </Box>
-        );
+        return <DashboardSkeleton />;
     }
 
     if (error) {

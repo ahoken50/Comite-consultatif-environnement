@@ -22,6 +22,7 @@ import { generateAgendaPDF } from '../../services/pdfServiceAgenda';
 import { parseAgendaPDF } from '../../services/pdfParserService';
 import { useToast } from '../../hooks/useToast';
 import { detectDocumentType } from '../../services/documentTypeDetector';
+import { useUnsavedChanges } from '../../hooks/useUnsavedChanges';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import type { DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
@@ -56,13 +57,16 @@ const meetingSchema = z.object({
 
 type MeetingFormData = z.infer<typeof meetingSchema>;
 
+// Import types for strict typing
+import type { Control, FieldErrors } from 'react-hook-form';
+
 // Sortable Agenda Item component for drag-and-drop
 interface SortableAgendaItemProps {
     field: { id: string };
     index: number;
-    control: any;
+    control: Control<MeetingFormData>;
     formId: string;
-    errors: any;
+    errors: FieldErrors<MeetingFormData>;
     onRemove: () => void;
 }
 
@@ -193,7 +197,7 @@ interface MeetingFormProps {
 
 const MeetingForm: React.FC<MeetingFormProps> = ({ open, onClose, onSubmit, initialData }) => {
     const { showSuccess, showWarning, showError } = useToast();
-    const { control, handleSubmit, formState: { errors }, watch, setValue } = useForm<MeetingFormData>({
+    const { control, handleSubmit, formState: { errors, isDirty }, watch, setValue } = useForm<MeetingFormData>({
         resolver: zodResolver(meetingSchema) as any,
         defaultValues: {
             title: initialData?.title || '',
@@ -244,6 +248,12 @@ const MeetingForm: React.FC<MeetingFormProps> = ({ open, onClose, onSubmit, init
             move(oldIndex, newIndex);
         }
     };
+
+    // Unsaved changes warning
+    const { handleClose, ConfirmDialog } = useUnsavedChanges({
+        isDirty,
+        message: 'Vous avez des modifications non sauvegardées dans ce formulaire. Quitter sans sauvegarder?'
+    });
 
     const formId = useId();
     const fileInputId = `${formId}-file-input`;
@@ -342,214 +352,217 @@ const MeetingForm: React.FC<MeetingFormProps> = ({ open, onClose, onSubmit, init
     };
 
     return (
-        <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
-            <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                {initialData ? 'Modifier la réunion' : 'Nouvelle réunion'}
-                <Box>
-                    <Button
-                        component="label"
-                        htmlFor={fileInputId}
-                        startIcon={<UploadFile />}
-                        variant="outlined"
-                        size="small"
-                        sx={{ mr: 1 }}
-                    >
-                        Importer Structure ODJ (PDF/DOCX)
-                        <input
-                            id={fileInputId}
-                            type="file"
-                            style={{
-                                clip: 'rect(0 0 0 0)',
-                                clipPath: 'inset(50%)',
-                                height: 1,
-                                overflow: 'hidden',
-                                position: 'absolute',
-                                bottom: 0,
-                                left: 0,
-                                whiteSpace: 'nowrap',
-                                width: 1,
-                            }}
-                            accept=".pdf,.docx"
-                            onChange={handleImportPDF}
-                        />
-                    </Button>
-                    {initialData && (
+        <>
+            <Dialog open={open} onClose={() => handleClose(onClose)} maxWidth="md" fullWidth>
+                <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    {initialData ? 'Modifier la réunion' : 'Nouvelle réunion'}
+                    <Box>
                         <Button
-                            startIcon={<Print />}
-                            onClick={handlePrint}
+                            component="label"
+                            htmlFor={fileInputId}
+                            startIcon={<UploadFile />}
                             variant="outlined"
                             size="small"
+                            sx={{ mr: 1 }}
                         >
-                            Imprimer l'ODJ
+                            Importer Structure ODJ (PDF/DOCX)
+                            <input
+                                id={fileInputId}
+                                type="file"
+                                style={{
+                                    clip: 'rect(0 0 0 0)',
+                                    clipPath: 'inset(50%)',
+                                    height: 1,
+                                    overflow: 'hidden',
+                                    position: 'absolute',
+                                    bottom: 0,
+                                    left: 0,
+                                    whiteSpace: 'nowrap',
+                                    width: 1,
+                                }}
+                                accept=".pdf,.docx"
+                                onChange={handleImportPDF}
+                            />
                         </Button>
-                    )}
-                </Box>
-            </DialogTitle>
-            <form onSubmit={handleSubmit(handleFormSubmit, (errors) => console.error('Validation errors:', errors))}>
-                <DialogContent>
-                    <Grid container spacing={2}>
-                        <Grid size={{ xs: 12 }}>
-                            <Typography variant="h6" gutterBottom>Informations générales</Typography>
-                        </Grid>
-                        <Grid size={{ xs: 12 }}>
-                            <Controller
-                                name="title"
-                                control={control}
-                                render={({ field }) => (
-                                    <TextField
-                                        {...field}
-                                        id={`${formId}-title`}
-                                        label="Titre"
-                                        fullWidth
-                                        error={!!errors.title}
-                                        helperText={errors.title?.message}
-                                    />
-                                )}
-                            />
-                        </Grid>
-                        <Grid size={{ xs: 12, sm: 6 }}>
-                            <Controller
-                                name="date"
-                                control={control}
-                                render={({ field }) => (
-                                    <TextField
-                                        {...field}
-                                        id={`${formId}-date`}
-                                        label="Date et heure"
-                                        type="datetime-local"
-                                        fullWidth
-                                        InputLabelProps={{ shrink: true }}
-                                        error={!!errors.date}
-                                        helperText={errors.date?.message}
-                                    />
-                                )}
-                            />
-                        </Grid>
-                        <Grid size={{ xs: 12, sm: 6 }}>
-                            <Controller
-                                name="location"
-                                control={control}
-                                render={({ field }) => (
-                                    <TextField
-                                        {...field}
-                                        id={`${formId}-location`}
-                                        select
-                                        label="Lieu"
-                                        fullWidth
-                                        error={!!errors.location}
-                                        helperText={errors.location?.message}
-                                    >
-                                        <MenuItem value="Salle de l'urbanisme et de l'environnement">
-                                            Salle de l'urbanisme et de l'environnement
-                                        </MenuItem>
-                                        <MenuItem value="Réunion TEAMS">
-                                            Réunion TEAMS
-                                        </MenuItem>
-                                    </TextField>
-                                )}
-                            />
-                        </Grid>
-                        <Grid size={{ xs: 12, sm: 6 }}>
-                            <Controller
-                                name="type"
-                                control={control}
-                                render={({ field }) => (
-                                    <TextField
-                                        {...field}
-                                        id={`${formId}-type`}
-                                        select
-                                        label="Type"
-                                        fullWidth
-                                        error={!!errors.type}
-                                        helperText={errors.type?.message}
-                                        InputLabelProps={{ htmlFor: `${formId}-type` }}
-                                        inputProps={{ id: `${formId}-type` }}
-                                    >
-                                        {Object.values(MeetingType).map((type) => (
-                                            <MenuItem key={type} value={type}>
-                                                {type === MeetingType.REGULAR ? 'Régulière' :
-                                                    type === MeetingType.SPECIAL ? 'Spéciale' : 'Urgence'}
-                                            </MenuItem>
-                                        ))}
-                                    </TextField>
-                                )}
-                            />
-                        </Grid>
-                        <Grid size={{ xs: 12, sm: 6 }}>
-                            <Controller
-                                name="status"
-                                control={control}
-                                render={({ field }) => (
-                                    <TextField
-                                        {...field}
-                                        id={`${formId}-status`}
-                                        select
-                                        label="Statut"
-                                        fullWidth
-                                        error={!!errors.status}
-                                        helperText={errors.status?.message}
-                                        InputLabelProps={{ htmlFor: `${formId}-status` }}
-                                        inputProps={{ id: `${formId}-status` }}
-                                    >
-                                        {Object.values(MeetingStatus).map((status) => (
-                                            <MenuItem key={status} value={status}>
-                                                {status === MeetingStatus.SCHEDULED ? 'Planifiée' :
-                                                    status === MeetingStatus.IN_PROGRESS ? 'En cours' :
-                                                        status === MeetingStatus.COMPLETED ? 'Terminée' : 'Annulée'}
-                                            </MenuItem>
-                                        ))}
-                                    </TextField>
-                                )}
-                            />
-                        </Grid>
-
-                        <Grid size={{ xs: 12 }}>
-                            <Divider sx={{ my: 2 }} />
-                            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                                <Typography variant="h6">Ordre du jour</Typography>
-                                <Button
-                                    startIcon={<Add />}
-                                    onClick={() => append({ title: '', duration: 15, presenter: '', objective: 'Information', decision: '' })}
-                                    variant="outlined"
-                                    size="small"
-                                >
-                                    Ajouter un point
-                                </Button>
-                            </Box>
-                        </Grid>
-
-                        <DndContext
-                            sensors={sensors}
-                            collisionDetection={closestCenter}
-                            onDragEnd={handleDragEnd}
-                        >
-                            <SortableContext
-                                items={fields.map(f => f.id)}
-                                strategy={verticalListSortingStrategy}
+                        {initialData && (
+                            <Button
+                                startIcon={<Print />}
+                                onClick={handlePrint}
+                                variant="outlined"
+                                size="small"
                             >
-                                {fields.map((field, index) => (
-                                    <SortableAgendaItem
-                                        key={field.id}
-                                        field={field}
-                                        index={index}
-                                        control={control}
-                                        formId={formId}
-                                        errors={errors}
-                                        onRemove={() => remove(index)}
-                                    />
-                                ))}
-                            </SortableContext>
-                        </DndContext>
-                    </Grid>
-                </DialogContent>
-                <DialogActions>
-                    <Button onClick={onClose}>Annuler</Button>
-                    <Button type="submit" variant="contained" color="primary">
-                        Enregistrer
-                    </Button>
-                </DialogActions>
-            </form>
-        </Dialog >
+                                Imprimer l'ODJ
+                            </Button>
+                        )}
+                    </Box>
+                </DialogTitle>
+                <form onSubmit={handleSubmit(handleFormSubmit, (errors) => console.error('Validation errors:', errors))}>
+                    <DialogContent>
+                        <Grid container spacing={2}>
+                            <Grid size={{ xs: 12 }}>
+                                <Typography variant="h6" gutterBottom>Informations générales</Typography>
+                            </Grid>
+                            <Grid size={{ xs: 12 }}>
+                                <Controller
+                                    name="title"
+                                    control={control}
+                                    render={({ field }) => (
+                                        <TextField
+                                            {...field}
+                                            id={`${formId}-title`}
+                                            label="Titre"
+                                            fullWidth
+                                            error={!!errors.title}
+                                            helperText={errors.title?.message}
+                                        />
+                                    )}
+                                />
+                            </Grid>
+                            <Grid size={{ xs: 12, sm: 6 }}>
+                                <Controller
+                                    name="date"
+                                    control={control}
+                                    render={({ field }) => (
+                                        <TextField
+                                            {...field}
+                                            id={`${formId}-date`}
+                                            label="Date et heure"
+                                            type="datetime-local"
+                                            fullWidth
+                                            InputLabelProps={{ shrink: true }}
+                                            error={!!errors.date}
+                                            helperText={errors.date?.message}
+                                        />
+                                    )}
+                                />
+                            </Grid>
+                            <Grid size={{ xs: 12, sm: 6 }}>
+                                <Controller
+                                    name="location"
+                                    control={control}
+                                    render={({ field }) => (
+                                        <TextField
+                                            {...field}
+                                            id={`${formId}-location`}
+                                            select
+                                            label="Lieu"
+                                            fullWidth
+                                            error={!!errors.location}
+                                            helperText={errors.location?.message}
+                                        >
+                                            <MenuItem value="Salle de l'urbanisme et de l'environnement">
+                                                Salle de l'urbanisme et de l'environnement
+                                            </MenuItem>
+                                            <MenuItem value="Réunion TEAMS">
+                                                Réunion TEAMS
+                                            </MenuItem>
+                                        </TextField>
+                                    )}
+                                />
+                            </Grid>
+                            <Grid size={{ xs: 12, sm: 6 }}>
+                                <Controller
+                                    name="type"
+                                    control={control}
+                                    render={({ field }) => (
+                                        <TextField
+                                            {...field}
+                                            id={`${formId}-type`}
+                                            select
+                                            label="Type"
+                                            fullWidth
+                                            error={!!errors.type}
+                                            helperText={errors.type?.message}
+                                            InputLabelProps={{ htmlFor: `${formId}-type` }}
+                                            inputProps={{ id: `${formId}-type` }}
+                                        >
+                                            {Object.values(MeetingType).map((type) => (
+                                                <MenuItem key={type} value={type}>
+                                                    {type === MeetingType.REGULAR ? 'Régulière' :
+                                                        type === MeetingType.SPECIAL ? 'Spéciale' : 'Urgence'}
+                                                </MenuItem>
+                                            ))}
+                                        </TextField>
+                                    )}
+                                />
+                            </Grid>
+                            <Grid size={{ xs: 12, sm: 6 }}>
+                                <Controller
+                                    name="status"
+                                    control={control}
+                                    render={({ field }) => (
+                                        <TextField
+                                            {...field}
+                                            id={`${formId}-status`}
+                                            select
+                                            label="Statut"
+                                            fullWidth
+                                            error={!!errors.status}
+                                            helperText={errors.status?.message}
+                                            InputLabelProps={{ htmlFor: `${formId}-status` }}
+                                            inputProps={{ id: `${formId}-status` }}
+                                        >
+                                            {Object.values(MeetingStatus).map((status) => (
+                                                <MenuItem key={status} value={status}>
+                                                    {status === MeetingStatus.SCHEDULED ? 'Planifiée' :
+                                                        status === MeetingStatus.IN_PROGRESS ? 'En cours' :
+                                                            status === MeetingStatus.COMPLETED ? 'Terminée' : 'Annulée'}
+                                                </MenuItem>
+                                            ))}
+                                        </TextField>
+                                    )}
+                                />
+                            </Grid>
+
+                            <Grid size={{ xs: 12 }}>
+                                <Divider sx={{ my: 2 }} />
+                                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                                    <Typography variant="h6">Ordre du jour</Typography>
+                                    <Button
+                                        startIcon={<Add />}
+                                        onClick={() => append({ title: '', duration: 15, presenter: '', objective: 'Information', decision: '' })}
+                                        variant="outlined"
+                                        size="small"
+                                    >
+                                        Ajouter un point
+                                    </Button>
+                                </Box>
+                            </Grid>
+
+                            <DndContext
+                                sensors={sensors}
+                                collisionDetection={closestCenter}
+                                onDragEnd={handleDragEnd}
+                            >
+                                <SortableContext
+                                    items={fields.map(f => f.id)}
+                                    strategy={verticalListSortingStrategy}
+                                >
+                                    {fields.map((field, index) => (
+                                        <SortableAgendaItem
+                                            key={field.id}
+                                            field={field}
+                                            index={index}
+                                            control={control}
+                                            formId={formId}
+                                            errors={errors}
+                                            onRemove={() => remove(index)}
+                                        />
+                                    ))}
+                                </SortableContext>
+                            </DndContext>
+                        </Grid>
+                    </DialogContent>
+                    <DialogActions>
+                        <Button onClick={() => handleClose(onClose)}>Annuler</Button>
+                        <Button type="submit" variant="contained" color="primary">
+                            Enregistrer
+                        </Button>
+                    </DialogActions>
+                </form>
+            </Dialog>
+            {ConfirmDialog}
+        </>
     );
 };
 
