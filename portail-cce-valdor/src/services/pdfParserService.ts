@@ -1,5 +1,6 @@
 import * as pdfjsLib from 'pdfjs-dist';
 import { type AgendaItem } from '../types/meeting.types';
+import { extractTextFromPDF } from './ocrService';
 
 // @ts-ignore
 import pdfWorker from 'pdfjs-dist/build/pdf.worker?url';
@@ -12,24 +13,26 @@ interface ParsedMeetingData {
     date?: string;
     agendaItems?: AgendaItem[];
     rawText?: string;
+    wasScanned?: boolean; // Indicates if OCR was used
 }
 
-export const parseAgendaPDF = async (file: File): Promise<ParsedMeetingData> => {
-    const arrayBuffer = await file.arrayBuffer();
-    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-    let fullText = '';
+export const parseAgendaPDF = async (
+    file: File,
+    onProgress?: (message: string) => void
+): Promise<ParsedMeetingData> => {
+    // Use OCR service which handles both native and scanned PDFs
+    const ocrResult = await extractTextFromPDF(file, onProgress);
 
-    // Extract text from all pages
-    for (let i = 1; i <= pdf.numPages; i++) {
-        const page = await pdf.getPage(i);
-        const textContent = await page.getTextContent();
-        const pageText = textContent.items.map((item: any) => item.str).join('\n');
-        fullText += pageText + '\n';
+    if (!ocrResult.success || !ocrResult.text) {
+        throw new Error(ocrResult.error || 'Impossible d\'extraire le texte du PDF');
     }
+
+    const fullText = ocrResult.text;
 
     const result: ParsedMeetingData = {
         agendaItems: [],
-        rawText: fullText
+        rawText: fullText,
+        wasScanned: ocrResult.isScanned
     };
 
     const lines = fullText.split('\n').map(line => line.trim()).filter(line => line.length > 0);

@@ -60,7 +60,7 @@ interface MeetingFormProps {
 }
 
 const MeetingForm: React.FC<MeetingFormProps> = ({ open, onClose, onSubmit, initialData }) => {
-    const { showWarning, showError } = useToast();
+    const { showSuccess, showWarning, showError } = useToast();
     const { control, handleSubmit, formState: { errors }, watch, setValue } = useForm<MeetingFormData>({
         resolver: zodResolver(meetingSchema) as any,
         defaultValues: {
@@ -140,7 +140,16 @@ const MeetingForm: React.FC<MeetingFormProps> = ({ open, onClose, onSubmit, init
         try {
             let parsedData;
             if (file.type === 'application/pdf') {
-                parsedData = await parseAgendaPDF(file);
+                // PDF parsing with progress callback for OCR
+                parsedData = await parseAgendaPDF(file, (message: string) => {
+                    console.log(`[OCR Progress] ${message}`);
+                    showSuccess(message);
+                });
+
+                // Notify user if OCR was used (scanned PDF)
+                if (parsedData.wasScanned) {
+                    showSuccess('✅ PDF scanné détecté et traité par OCR (IA Gemini)');
+                }
             } else if (file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
                 // Dynamic import to avoid circular dependencies if any, though not strictly needed here
                 const { parseAgendaDOCX } = await import('../../services/docxParserService');
@@ -177,7 +186,7 @@ const MeetingForm: React.FC<MeetingFormProps> = ({ open, onClose, onSubmit, init
             }
         } catch (error) {
             console.error('Error parsing file:', error);
-            showError('Erreur lors de la lecture du fichier.');
+            showError(`Erreur lors de la lecture du fichier: ${error instanceof Error ? error.message : 'Inconnue'}`);
         }
     };
 

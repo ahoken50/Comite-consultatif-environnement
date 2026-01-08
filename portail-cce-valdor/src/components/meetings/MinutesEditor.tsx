@@ -476,7 +476,7 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
                         component="label"
                         startIcon={<UploadFile />}
                     >
-                        Téléverser PV Signé (PDF/DOCX)
+                        Importer PV (PDF/DOCX)
                         <input
                             type="file"
                             hidden
