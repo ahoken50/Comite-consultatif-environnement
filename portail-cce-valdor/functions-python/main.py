@@ -43,38 +43,63 @@ def get_audio_format(mime_type: str) -> str:
 
 def split_audio_if_needed(file_path: str, max_size_mb: int = MAX_WHISPER_SIZE_MB) -> list[str]:
     """
-    Split audio file into chunks if it exceeds the max size.
-    Returns list of file paths (original or chunks).
+    Split audio file into chunks using FFmpeg segment muxer.
+    This is more memory efficient than pydub and prevents Whisper looping by keeping segments short.
     """
     file_size_mb = os.path.getsize(file_path) / (1024 * 1024)
+    
+    # Even if small, we might want to enforce segmentation for "anti-looping" if it's close to the limit
+    # But for now, let's respect the size limit. 
+    # Actually, the user suggests segmentation is KEY for anti-looping.
+    # Let's enforce splitting if it's longer than SEGMENT_DURATION_MINUTES regardless of size,
+    # or just rely on the size check. 
+    # Given the user's emphasis on "Operational Guardrails", reliable segmentation is preferred.
     
     if file_size_mb <= max_size_mb:
         print(f"[Whisper] File size {file_size_mb:.1f}MB <= {max_size_mb}MB, no splitting needed")
         return [file_path]
     
-    print(f"[Whisper] File size {file_size_mb:.1f}MB > {max_size_mb}MB, splitting...")
+    print(f"[Whisper] File size {file_size_mb:.1f}MB > {max_size_mb}MB, splitting with FFmpeg...")
     
-    # Load audio
-    audio = AudioSegment.from_file(file_path)
-    
-    # Calculate segment duration based on file size ratio
-    segment_duration_ms = SEGMENT_DURATION_MINUTES * 60 * 1000
-    
-    chunks = []
     temp_dir = tempfile.gettempdir()
+    base_name = os.path.splitext(os.path.basename(file_path))[0]
+    output_pattern = os.path.join(temp_dir, f"{base_name}_part%03d.wav")
     
-    for i, start_ms in enumerate(range(0, len(audio), segment_duration_ms)):
-        end_ms = min(start_ms + segment_duration_ms, len(audio))
-        segment = audio[start_ms:end_ms]
-        
-        chunk_path = os.path.join(temp_dir, f"chunk_{i}.mp3")
-        segment.export(chunk_path, format="mp3", bitrate="64k")
-        chunks.append(chunk_path)
-        
-        print(f"[Whisper] Created chunk {i+1}: {start_ms//1000}s - {end_ms//1000}s")
+    # Segment time in seconds (10 minutes = 600s to stay safely under 25MB for 16kHz WAV)
+    # User suggested 900s (15m) but that risks exceeding 25MB for WAV (approx 27MB).
+    segment_time = SEGMENT_DURATION_MINUTES * 60 
     
-    print(f"[Whisper] Split into {len(chunks)} chunks")
-    return chunks
+    command = [
+        "ffmpeg", "-y",
+        "-i", file_path,
+        "-f", "segment",
+        "-segment_time", str(segment_time),
+        "-c", "copy",  # Copy codec (assumes input is already clean WAV from previous step)
+        output_pattern
+    ]
+    
+    try:
+        subprocess.run(
+            command, 
+            check=True, 
+            stdout=subprocess.PIPE, 
+            stderr=subprocess.PIPE
+        )
+        
+        # Collect generated files
+        chunks = []
+        # List files in temp dir matching the pattern
+        # Since we know the pattern, we can just look for them
+        for filename in sorted(os.listdir(temp_dir)):
+            if filename.startswith(f"{base_name}_part") and filename.endswith(".wav"):
+                chunks.append(os.path.join(temp_dir, filename))
+        
+        print(f"[Whisper] Split into {len(chunks)} chunks using FFmpeg")
+        return chunks
+        
+    except subprocess.CalledProcessError as e:
+        print(f"[Whisper] Error splitting audio: {e.stderr.decode() if e.stderr else str(e)}")
+        raise e
 
 
 def format_timestamp(seconds: float) -> str:
