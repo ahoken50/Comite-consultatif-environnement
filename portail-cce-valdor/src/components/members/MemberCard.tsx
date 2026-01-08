@@ -47,6 +47,8 @@ const MemberCard: React.FC<MemberCardProps> = memo(({ member, projectCount = 0, 
     const getRoleColor = (role: string) => {
         switch (role) {
             case 'coordinator': return 'primary';
+            case 'president': return 'warning';
+            case 'vice_president': return 'warning';
             case 'member': return 'success';
             case 'elected_official': return 'secondary';
             case 'observer': return 'default';
@@ -57,6 +59,8 @@ const MemberCard: React.FC<MemberCardProps> = memo(({ member, projectCount = 0, 
     const getRoleLabel = (role: string) => {
         switch (role) {
             case 'coordinator': return 'Coordonnateur';
+            case 'president': return 'Président(e)';
+            case 'vice_president': return 'Vice-Président(e)';
             case 'member': return 'Membre';
             case 'elected_official': return 'Élu(e) municipal';
             case 'observer': return 'Observateur';

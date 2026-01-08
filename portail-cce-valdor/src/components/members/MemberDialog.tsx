@@ -160,6 +160,8 @@ const MemberDialog: React.FC<MemberDialogProps> = ({ open, member, onClose, onSa
                             onChange={handleRoleChange}
                             fullWidth
                         >
+                            <MenuItem value="president">Président(e)</MenuItem>
+                            <MenuItem value="vice_president">Vice-Président(e)</MenuItem>
                             <MenuItem value="member">Membre</MenuItem>
                             <MenuItem value="elected_official">Élu(e) municipal</MenuItem>
                             <MenuItem value="coordinator">Coordonnateur</MenuItem>
