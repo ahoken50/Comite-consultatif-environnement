@@ -7,6 +7,7 @@ import {
     ListItem,
     ListItemText,
     ListItemSecondaryAction,
+    ListItemButton,
     IconButton,
     Dialog,
     DialogTitle,
@@ -19,9 +20,20 @@ import {
     Paper,
     Chip,
     Divider,
-    Alert
+    Alert,
+    Tooltip
 } from '@mui/material';
-import { Add, Delete, Link as LinkIcon, Event, Comment, Description } from '@mui/icons-material';
+import {
+    Add,
+    Delete,
+    Link as LinkIcon,
+    Event,
+    Comment,
+    Description,
+    AttachFile,
+    OpenInNew,
+    Visibility
+} from '@mui/icons-material';
 import { useDispatch, useSelector } from 'react-redux';
 import type { AppDispatch } from '../../store/store';
 import type { RootState } from '../../store/rootReducer';
@@ -29,6 +41,7 @@ import type { Project, LinkedResolution } from '../../types/project.types';
 import { linkResolutionToProject, unlinkResolutionFromProject } from '../../features/projects/projectsSlice';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
+import { useNavigate } from 'react-router-dom';
 
 interface LinkedResolutionsProps {
     project: Project;
@@ -40,14 +53,21 @@ interface LinkedResolutionsProps {
  */
 const LinkedResolutions: React.FC<LinkedResolutionsProps> = ({ project }) => {
     const dispatch = useDispatch<AppDispatch>();
+    const navigate = useNavigate();
     const { user } = useSelector((state: RootState) => state.auth);
     const { items: meetings } = useSelector((state: RootState) => state.meetings);
+    const { items: documents } = useSelector((state: RootState) => state.documents);
 
+    // Link dialog state
     const [dialogOpen, setDialogOpen] = useState(false);
     const [selectedMeetingId, setSelectedMeetingId] = useState<string>('');
     const [selectedAgendaItemId, setSelectedAgendaItemId] = useState<string>('');
     const [selectedEntryIndex, setSelectedEntryIndex] = useState<number>(-1);
     const [isLinking, setIsLinking] = useState(false);
+
+    // Detail dialog state
+    const [detailDialogOpen, setDetailDialogOpen] = useState(false);
+    const [selectedResolution, setSelectedResolution] = useState<LinkedResolution | null>(null);
 
     // Get past meetings with minute entries
     const pastMeetingsWithMinutes = useMemo(() => {
@@ -90,6 +110,40 @@ const LinkedResolutions: React.FC<LinkedResolutionsProps> = ({ project }) => {
         return minuteEntries[selectedEntryIndex];
     }, [minuteEntries, selectedEntryIndex]);
 
+    // Get full content and documents for selected resolution in detail dialog
+    const resolutionDetails = useMemo(() => {
+        if (!selectedResolution) return null;
+
+        const meeting = meetings.find(m => m.id === selectedResolution.meetingId);
+        if (!meeting) return null;
+
+        const agendaItem = meeting.agendaItems?.find(item => item.id === selectedResolution.agendaItemId);
+        if (!agendaItem) return null;
+
+        const entry = agendaItem.minuteEntries?.[selectedResolution.entryIndex];
+
+        // Get documents linked to this agenda item
+        const agendaDocuments = documents.filter(doc =>
+            doc.linkedEntityId === selectedResolution.meetingId &&
+            doc.agendaItemId === selectedResolution.agendaItemId
+        );
+
+        // Also get meeting-level documents
+        const meetingDocuments = documents.filter(doc =>
+            doc.linkedEntityId === selectedResolution.meetingId &&
+            doc.linkedEntityType === 'meeting' &&
+            !doc.agendaItemId
+        );
+
+        return {
+            meeting,
+            agendaItem,
+            entry,
+            agendaDocuments,
+            meetingDocuments
+        };
+    }, [selectedResolution, meetings, documents]);
+
     const handleOpenDialog = () => {
         setDialogOpen(true);
         setSelectedMeetingId('');
@@ -110,6 +164,20 @@ const LinkedResolutions: React.FC<LinkedResolutionsProps> = ({ project }) => {
     const handleAgendaItemChange = (agendaItemId: string) => {
         setSelectedAgendaItemId(agendaItemId);
         setSelectedEntryIndex(-1);
+    };
+
+    const handleOpenDetailDialog = (resolution: LinkedResolution) => {
+        setSelectedResolution(resolution);
+        setDetailDialogOpen(true);
+    };
+
+    const handleCloseDetailDialog = () => {
+        setDetailDialogOpen(false);
+        setSelectedResolution(null);
+    };
+
+    const handleNavigateToMeeting = (meetingId: string) => {
+        navigate(`/meetings/${meetingId}`, { state: { tab: 1 } }); // Tab 1 = PV
     };
 
     const handleLinkResolution = async () => {
@@ -148,7 +216,8 @@ const LinkedResolutions: React.FC<LinkedResolutionsProps> = ({ project }) => {
         }
     };
 
-    const handleUnlinkResolution = async (resolutionId: string) => {
+    const handleUnlinkResolution = async (resolutionId: string, e: React.MouseEvent) => {
+        e.stopPropagation(); // Prevent opening detail dialog
         if (!user) return;
         if (!window.confirm('Voulez-vous vraiment supprimer ce lien ?')) return;
 
@@ -198,7 +267,10 @@ const LinkedResolutions: React.FC<LinkedResolutionsProps> = ({ project }) => {
                     {linkedResolutions.map((resolution, index) => (
                         <React.Fragment key={resolution.id}>
                             {index > 0 && <Divider />}
-                            <ListItem sx={{ py: 2 }}>
+                            <ListItemButton
+                                onClick={() => handleOpenDetailDialog(resolution)}
+                                sx={{ py: 2 }}
+                            >
                                 <Box sx={{ mr: 2, color: resolution.entryType === 'resolution' ? 'primary.main' : 'warning.main' }}>
                                     {resolution.entryType === 'resolution' ? <Description /> : <Comment />}
                                 </Box>
@@ -220,6 +292,9 @@ const LinkedResolutions: React.FC<LinkedResolutionsProps> = ({ project }) => {
                                                 size="small"
                                                 variant="outlined"
                                             />
+                                            <Tooltip title="Cliquez pour voir les détails">
+                                                <Visibility fontSize="small" color="action" />
+                                            </Tooltip>
                                         </Box>
                                     }
                                     secondary={
@@ -235,11 +310,11 @@ const LinkedResolutions: React.FC<LinkedResolutionsProps> = ({ project }) => {
                                                     overflow: 'hidden',
                                                     textOverflow: 'ellipsis',
                                                     display: '-webkit-box',
-                                                    WebkitLineClamp: 3,
+                                                    WebkitLineClamp: 2,
                                                     WebkitBoxOrient: 'vertical'
                                                 }}
                                             >
-                                                {resolution.entryContent}
+                                                {resolution.entryContent}...
                                             </Typography>
                                         </Box>
                                     }
@@ -248,17 +323,155 @@ const LinkedResolutions: React.FC<LinkedResolutionsProps> = ({ project }) => {
                                     <IconButton
                                         edge="end"
                                         color="error"
-                                        onClick={() => handleUnlinkResolution(resolution.id)}
+                                        onClick={(e) => handleUnlinkResolution(resolution.id, e)}
                                         size="small"
                                     >
                                         <Delete />
                                     </IconButton>
                                 </ListItemSecondaryAction>
-                            </ListItem>
+                            </ListItemButton>
                         </React.Fragment>
                     ))}
                 </List>
             )}
+
+            {/* Detail Dialog */}
+            <Dialog open={detailDialogOpen} onClose={handleCloseDetailDialog} maxWidth="md" fullWidth>
+                <DialogTitle>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        {selectedResolution?.entryType === 'resolution' ? <Description color="primary" /> : <Comment color="warning" />}
+                        {selectedResolution?.entryType === 'resolution' ? 'Résolution' : 'Commentaire'} {selectedResolution?.entryNumber}
+                    </Box>
+                </DialogTitle>
+                <DialogContent>
+                    {resolutionDetails ? (
+                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                            {/* Meeting info */}
+                            <Paper variant="outlined" sx={{ p: 2, bgcolor: 'grey.50' }}>
+                                <Typography variant="subtitle2" gutterBottom>
+                                    📅 {resolutionDetails.meeting.title}
+                                </Typography>
+                                <Typography variant="body2" color="text.secondary">
+                                    {format(new Date(resolutionDetails.meeting.date), 'd MMMM yyyy', { locale: fr })}
+                                </Typography>
+                            </Paper>
+
+                            {/* Agenda item title */}
+                            <Box>
+                                <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                                    Point d'ordre du jour:
+                                </Typography>
+                                <Typography variant="body1" sx={{ fontWeight: 500 }}>
+                                    {resolutionDetails.agendaItem.title}
+                                </Typography>
+                            </Box>
+
+                            <Divider />
+
+                            {/* Full content */}
+                            <Box>
+                                <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                                    Contenu complet:
+                                </Typography>
+                                <Paper
+                                    variant="outlined"
+                                    sx={{
+                                        p: 2,
+                                        maxHeight: 300,
+                                        overflow: 'auto',
+                                        bgcolor: resolutionDetails.entry?.type === 'resolution' ? 'primary.50' : 'warning.50',
+                                        borderColor: resolutionDetails.entry?.type === 'resolution' ? 'primary.main' : 'warning.main'
+                                    }}
+                                >
+                                    <Typography
+                                        variant="body1"
+                                        sx={{ whiteSpace: 'pre-line' }}
+                                    >
+                                        {resolutionDetails.entry?.content || 'Contenu non disponible'}
+                                    </Typography>
+                                </Paper>
+                            </Box>
+
+                            {/* Documents section */}
+                            {(resolutionDetails.agendaDocuments.length > 0 || resolutionDetails.meetingDocuments.length > 0) && (
+                                <>
+                                    <Divider />
+                                    <Box>
+                                        <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                                            <AttachFile sx={{ fontSize: 18, mr: 0.5, verticalAlign: 'text-bottom' }} />
+                                            Pièces jointes:
+                                        </Typography>
+                                        <List dense>
+                                            {resolutionDetails.agendaDocuments.map(doc => (
+                                                <ListItem
+                                                    key={doc.id}
+                                                    component="a"
+                                                    href={doc.url}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    sx={{
+                                                        bgcolor: 'action.hover',
+                                                        borderRadius: 1,
+                                                        mb: 0.5,
+                                                        color: 'primary.main',
+                                                        '&:hover': { bgcolor: 'action.selected' }
+                                                    }}
+                                                >
+                                                    <AttachFile fontSize="small" sx={{ mr: 1 }} />
+                                                    <ListItemText
+                                                        primary={doc.name}
+                                                        secondary={`Point d'ordre du jour • ${(doc.size / 1024).toFixed(1)} Ko`}
+                                                    />
+                                                    <OpenInNew fontSize="small" />
+                                                </ListItem>
+                                            ))}
+                                            {resolutionDetails.meetingDocuments.map(doc => (
+                                                <ListItem
+                                                    key={doc.id}
+                                                    component="a"
+                                                    href={doc.url}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    sx={{
+                                                        bgcolor: 'action.hover',
+                                                        borderRadius: 1,
+                                                        mb: 0.5,
+                                                        color: 'primary.main',
+                                                        '&:hover': { bgcolor: 'action.selected' }
+                                                    }}
+                                                >
+                                                    <AttachFile fontSize="small" sx={{ mr: 1 }} />
+                                                    <ListItemText
+                                                        primary={doc.name}
+                                                        secondary={`Document de réunion • ${(doc.size / 1024).toFixed(1)} Ko`}
+                                                    />
+                                                    <OpenInNew fontSize="small" />
+                                                </ListItem>
+                                            ))}
+                                        </List>
+                                    </Box>
+                                </>
+                            )}
+                        </Box>
+                    ) : (
+                        <Alert severity="warning">
+                            Impossible de récupérer les détails. La réunion source n'est peut-être plus disponible.
+                        </Alert>
+                    )}
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={handleCloseDetailDialog}>Fermer</Button>
+                    {selectedResolution && (
+                        <Button
+                            variant="outlined"
+                            startIcon={<OpenInNew />}
+                            onClick={() => handleNavigateToMeeting(selectedResolution.meetingId)}
+                        >
+                            Voir la réunion complète
+                        </Button>
+                    )}
+                </DialogActions>
+            </Dialog>
 
             {/* Link Dialog */}
             <Dialog open={dialogOpen} onClose={handleCloseDialog} maxWidth="md" fullWidth>

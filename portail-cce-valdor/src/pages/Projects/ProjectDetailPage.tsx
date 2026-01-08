@@ -17,7 +17,7 @@ import { ArrowBack, Edit, Delete } from '@mui/icons-material';
 import { useDispatch, useSelector } from 'react-redux';
 import type { AppDispatch } from '../../store/store';
 import type { RootState } from '../../store/rootReducer';
-import { fetchDocumentsByEntity, deleteDocument } from '../../features/documents/documentsSlice';
+import { fetchDocumentsByEntity, deleteDocument, fetchDocuments } from '../../features/documents/documentsSlice';
 import { fetchMembers } from '../../features/members/membersSlice';
 import { fetchMeetings } from '../../features/meetings/meetingsSlice';
 import { updateProject, deleteProject } from '../../features/projects/projectsSlice';
@@ -74,6 +74,7 @@ const ProjectDetailPage: React.FC = () => {
     useEffect(() => {
         if (id) {
             dispatch(fetchDocumentsByEntity({ entityId: id, entityType: 'project' }));
+            dispatch(fetchDocuments()); // Fetch all documents for LinkedResolutions attachments
             if (members.length === 0) dispatch(fetchMembers());
             dispatch(fetchMeetings()); // Fetch meetings for LinkedResolutions
         }
