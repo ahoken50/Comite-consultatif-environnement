@@ -41,6 +41,11 @@ service cloud.firestore {
       allow read: if isAuthenticated();
       // Temporarily allow any authenticated user to write to meetings to unblock development
       allow write: if isAuthenticated(); 
+      
+      // Convocations sub-collection
+      match /convocations/{convocationId} {
+        allow read, write: if isAuthenticated();
+      }
     }
 
     // Council Recommendations collection
