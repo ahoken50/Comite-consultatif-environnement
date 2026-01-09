@@ -7,6 +7,7 @@ import { functions } from './firebase';
 import { httpsCallable } from 'firebase/functions';
 import type { Meeting, MinutesDraft } from '../types/meeting.types';
 import { ClaudeSanitizedResponseSchema, type ClaudeSanitizedResponse } from '../schemas/meetingSchemas';
+import { getClaudeMinutesDraftSystemPrompt, getClaudeMinutesDraftUserMessage } from '../prompts/minutesDraftPrompt';
 
 // Environment variable check for Anthropic API key is removed as it is handled in backend
 
@@ -33,94 +34,8 @@ export const generateMinutesDraftClaude = async (
     // Note: We don't check for VITE_ANTHROPIC_API_KEY anymore as it's handled in the backend
 
     try {
-        const attendeesList = meeting.attendees
-            ?.map(a => `${a.name} (${a.role})${a.isPresent ? '' : ' - ABSENT'}`)
-            .join('\n') || 'Non spécifié';
-
-        const agendaList = meeting.agendaItems
-            ?.map((item, i) => `${i + 1}. ${item.title}`)
-            .join('\n') || 'Non spécifié';
-
-        const systemPrompt = `Tu es un rédacteur expert de procès-verbaux pour le Comité Consultatif en Environnement (CCE) de la Ville de Val-d'Or.
-
-OBJECTIF : Rédiger un procès-verbal (PV) qui respecte scrupuleusement le style et la structure des documents officiels de la Ville.
-
-## ⚠️ CONSIGNE DE FORMATTAGE (POUR PARSING AUTOMATIQUE)
-Le document sera lu par un logiciel. TU DOIS RESPECTER CES RÈGLES :
-1.  **NUMÉROTATION OBLIGATOIRE** : Chaque titre de point de l'ordre du jour DOIT commencer par son numéro (ex: "1. Ouverture", "3.2 Suivi..."). Même si l'exemple ne le fait pas toujours, TOI TU LE FAIS.
-2.  **BLOCS RÉSOLUTION** : Utilise exactement le format \`RÉSOLUTION XX-XX\` (ex: 09-35).
-3.  **BLOCS COMMENTAIRE** : Utilise exactement le format \`COMMENTAIRE XX-X\` (ex: 09-A).
-4.  **RETOURS À LA LIGNE** : Laisse une ligne vide avant chaque Titre, Résolution ou Commentaire.
-
-## ⚠️ EXEMPLE DE STYLE (RÉFÉRENCE ABSOLUE)
-Inspire-toi de la densité, du ton et de la structure de cet exemple réel :
-
-<EXEMPLE_REFERENCE>
-PROCÈS-VERBAL
-COMITÉ CONSULTATIF EN ENVIRONNEMENT (CCE)
-9e assemblée ordinaire
-Tenue le mardi 10 octobre 2023, 17 h
-
-ÉTAIENT PRÉSENTS
-Patricia Boutin (Présidente), Sébastien Brodeur-Girard, Jacinthe Pothier.
-
-1. Adoption de l’ordre du jour
-RÉSOLUTION 09-35
-L’ordre du jour est adopté en laissant l’item varia ouvert.
-
-2. Retour sur la rencontre du 14 juin 2023
-COMMENTAIRE 09-A
-1. Offres de Services pour les Consultations Publiques (...) : Un devis d’appel d’offres est actuellement en cours...
-2. Réglementation sur les Poules (...) : Le processus progresse. Il reste à finaliser...
-
-3. Discussion autour de l’interdiction d’arrosage des pelouses
-COMMENTAIRE 09-B
-Benjamin Turcotte, élu associé au dossier de l’environnement, a soulevé la question... (TEXTE DENSE ET DÉTAILLÉ)
-(...)
-RÉSOLUTION 09-36
-CONSIDÉRANT que plusieurs municipalités...
-IL EST RÉSOLU DE recommander au conseil...
-
-4. Avis environnemental sur les services au volant
-COMMENTAIRE 09-C
-Le CCE de la Ville de Val-d’Or a débattu d’une proposition...
-Mme Pothier a soulevé plusieurs points pertinents... M. Ross a mis en lumière...
-RÉSOLUTION 09-37
-CONSIDÉRANT les discussions approfondies...
-IL EST RÉSOLU QUE : Le CCE recommande une approche ciblée...
-</EXEMPLE_REFERENCE>
-
-## PROCÉDURE DE RÉDACTION
-1.  **HEADER** : Commence par le bloc "PROCÈS-VERBAL... ÉTAIENT PRÉSENTS..." en t'adaptant aux données de la réunion.
-2.  **CORPS** : Pour chaque point de l'ODJ :
-    -   Écris le **TITRE NUMÉROTÉ**.
-    -   Écris le contenu narratif (Contexte, échanges, noms des intervenants).
-    -   **RÈGLE D'OR** : Si un point de l'ordre du jour (sauf "Mot de bienvenue" et "Varia" vide) n'a PAS de RÉSOLUTION, il DOIT être traité comme un **COMMENTAIRE**.
-    -   **FORMATTAGE COMMENTAIRE** : Utilise le header \`COMMENTAIRE XX-X\` pour le numéro. Leparser extraira ce numéro pour le mettre dans la case "Numéro".
-    -   **CONTENU** : Ne répète JAMAIS le numéro \`XX-X\` dans le texte narratif. L'objectif est d'avoir le numéro dans sa case et le texte dans sa case.
-    -   **NOTE** : Un même point peut avoir les deux (un Commentaire suivi d'une Résolution).
-3.  **STYLE** : Phrases complètes, vocabulaire précis ("considérant", "attendu que", "il est résolu"). Pas de listes à puces simples si un paragraphe narratif est possible.
-
-**Important** : Ne résume pas. Sois EXHAUSTIF. Si le point a duré 15 minutes, il doit y avoir de la matière.`;
-
-        const userMessage = `## INFORMATIONS DE LA RÉUNION
-Titre: ${meeting.title}
-Date: ${meeting.date}
-Lieu: ${meeting.location || 'Salle de conférence'}
-
-## PARTICIPANTS
-${attendeesList}
-
-## ORDRE DU JOUR (SQUELETTE IMPÉRATIF)
-${agendaList}
-
-## TRANSCRIPTION BRUTE (SOURCE DE VÉRITÉ)
-${transcription}
-
-${historicalContext || ''}
-
-## MISSION
-Transforme cette transcription en un Procès-Verbal officiel qui ressemble trait pour trait à l'exemple fourni. SOIS EXHAUSTIF.`;
+        const systemPrompt = getClaudeMinutesDraftSystemPrompt();
+        const userMessage = getClaudeMinutesDraftUserMessage(meeting, transcription, historicalContext);
 
         console.log('[Claude] Calling Cloud Function generate_minutes_claude...');
 

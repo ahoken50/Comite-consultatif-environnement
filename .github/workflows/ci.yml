@@ -79,6 +79,7 @@ jobs:
         echo "OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}" > .env
         echo "ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}" >> .env
         echo "RESEND_API_KEY=${{ secrets.RESEND_API_KEY }}" >> .env
+        echo "SALAD_API_KEY=${{ secrets.SALAD_API_KEY }}" >> .env
         # Ensure .env is included in deployment
         echo "!.env" > .gitignore
 

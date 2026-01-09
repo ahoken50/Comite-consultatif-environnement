@@ -9,18 +9,18 @@ import type { Meeting } from '../types/meeting.types';
  * Format attendees list for prompt
  */
 export const formatAttendeesList = (meeting: Meeting): string => {
-    return meeting.attendees
-        ?.map(a => `${a.name} (${a.role})${a.isPresent ? '' : ' - ABSENT'}`)
-        .join('\n') || 'Non spécifié';
+  return meeting.attendees
+    ?.map(a => `${a.name} (${a.role})${a.isPresent ? '' : ' - ABSENT'}`)
+    .join('\n') || 'Non spécifié';
 };
 
 /**
  * Format agenda list for prompt
  */
 export const formatAgendaList = (meeting: Meeting): string => {
-    return meeting.agendaItems
-        ?.map((item, i) => `${i + 1}. ${item.title}`)
-        .join('\n') || 'Non spécifié';
+  return meeting.agendaItems
+    ?.map((item, i) => `${i + 1}. ${item.title}`)
+    .join('\n') || 'Non spécifié';
 };
 
 /**
@@ -150,15 +150,18 @@ IL EST RÉSOLU QUE : Le CCE recommande une approche ciblée...
    - Écris le **TITRE NUMÉROTÉ**.
    - Rédige le contenu narratif (contexte, échanges, propos).
    - Mentionne les noms des intervenants SEULEMENT s'ils sont clairement identifiés.
-   - **RÈGLE D'OR** :
-     - Si un point (sauf « Mot de bienvenue » ou « Varia » vide) n'a PAS de résolution,
-       il DOIT être traité comme un COMMENTAIRE.
-   - **FORMATTAGE COMMENTAIRE** :
-     - Utilise le header COMMENTAIRE XX-X.
+   - **RÈGLE D'OR - ISSUE UNIQUE PAR POINT** :
+     - Un point de l'ordre du jour ne doit avoir qu'UNE SEULE issue principale.
+     - PRIORITÉ DES ISSUES :
+       1. **RÉSOLUTION** (Si un vote ou une recommandation formelle est faite).
+       2. **DÉCISION** (Si une action est convenue sans vote formel).
+       3. **COMMENTAIRE** (Si c'est seulement une discussion ou un dépôt de document).
+     - NE JAMAIS mettre une Résolution ET un Commentaire pour le même point. La Résolution englobe tout.
+   
+   - **FORMAT DE L'ISSUE** :
+     - Si RÉSOLUTION : Utilise le header RÉSOLUTION XX-XX
+     - Si COMMENTAIRE : Utilise le header COMMENTAIRE XX-X
      - NE RÉPÈTE JAMAIS le numéro XX-X dans le texte narratif.
-   - Un même point peut contenir :
-     - un COMMENTAIRE
-     - suivi d'une RÉSOLUTION (si explicitement formulée).
 
 3. **GESTION DES PASSAGES INCERTAINS**
    - Si un échange est partiellement inaudible :
@@ -181,8 +184,9 @@ IL EST RÉSOLU QUE : Le CCE recommande une approche ciblée...
 
 ## CONSIGNE FINALE
 
-- Ne résume pas.
-- Sois exhaustif lorsque l'information est clairement présente.
+- **SOIS RICHE EN DÉTAILS** : Ne fais pas de liste d'épicerie. Raconte les échanges avec précision.
+- Rapporte les arguments pour/contre, les nuances soulevées et le contexte des discussions.
+- Si une discussion est longue, le texte doit refléter cette densité avec plusieurs paragraphes.
 - N'écris RIEN qui ne peut être défendu à partir de la transcription.
 - Le document final ne doit contenir aucune mention d'IA, de transcription ou de traitement automatisé.
 
@@ -193,14 +197,14 @@ Voici la transcription brute à traiter :
  * Claude User Message for PV Generation
  */
 export const getClaudeMinutesDraftUserMessage = (
-    meeting: Meeting,
-    transcription: string,
-    historicalContext?: string
+  meeting: Meeting,
+  transcription: string,
+  historicalContext?: string
 ): string => {
-    const attendeesList = formatAttendeesList(meeting);
-    const agendaList = formatAgendaList(meeting);
+  const attendeesList = formatAttendeesList(meeting);
+  const agendaList = formatAgendaList(meeting);
 
-    return `## INFORMATIONS DE LA RÉUNION
+  return `## INFORMATIONS DE LA RÉUNION
 Titre: ${meeting.title}
 Date: ${meeting.date}
 Lieu: ${meeting.location || 'Salle de conférence'}
@@ -224,14 +228,14 @@ Transforme cette transcription en un Procès-Verbal officiel qui ressemble trait
  * Gemini Prompt for PV Generation (alternative)
  */
 export const getGeminiMinutesDraftPrompt = (
-    meeting: Meeting,
-    transcription: string,
-    historicalContext?: string
+  meeting: Meeting,
+  transcription: string,
+  historicalContext?: string
 ): string => {
-    const attendeesList = formatAttendeesList(meeting);
-    const agendaList = formatAgendaList(meeting);
+  const attendeesList = formatAttendeesList(meeting);
+  const agendaList = formatAgendaList(meeting);
 
-    return `Tu es un rédacteur expert de procès-verbaux pour le Comité Consultatif en Environnement (CCE) de la Ville de Val-d'Or.
+  return `Tu es un rédacteur expert de procès-verbaux pour le Comité Consultatif en Environnement (CCE) de la Ville de Val-d'Or.
 OBJECTIF : Rédiger un procès-verbal (PV) professionnel, COMPLET et DÉTAILLÉ à partir de la transcription fournie.
 
 ## INFORMATIONS DE LA RÉUNION
@@ -271,9 +275,9 @@ Si la discussion change de sujet au sein du même point, faire un nouveau paragr
 [PARAGRAPHE 3: Etc si nécessaire]
 
 ### Issue du point
-[Utiliser les formats appropriés ci-dessous. Un point peut avoir PLUSIEURS issues (ex: une Résolution ET un Commentaire)]
+[CHOISIR UNE SEULE OPTION PARMI : RÉSOLUTION, DÉCISION ou COMMENTAIRE. Ne jamais en mettre plusieurs pour un même point.]
 
-### 2. FORMAT DE L'ISSUE (CHOISIR LE BON)
+### 2. FORMAT DE L'ISSUE (CHOISIR LE BON - UN SEUL PAR POINT)
 
 **OPTION A - RÉSOLUTION** (S'il y a eu un VOTE formel)
 **RÉSOLUTION CCE-[ANNÉE]-[NUMÉRO]**
