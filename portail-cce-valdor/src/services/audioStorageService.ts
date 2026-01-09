@@ -7,6 +7,8 @@ import type { AudioRecording } from '../types/meeting.types';
 const SUPPORTED_FORMATS = [
     'audio/mpeg',      // .mp3
     'audio/mp4',       // .m4a
+    'audio/x-m4a',     // .m4a (alternate MIME type)
+    'audio/m4a',       // .m4a (another alternate)
     'audio/wav',       // .wav
     'audio/webm',      // .webm audio
     'video/mp4',       // .mp4
