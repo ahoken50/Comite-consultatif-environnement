@@ -303,9 +303,66 @@ def transcribe_with_whisper(
 
 SALAD_API_URL = "https://api.salad.com/api/public/organizations/vvd/inference-endpoints/transcribe/jobs"
 
+# Salad API Limits (from documentation)
+SALAD_MAX_FILE_SIZE_GB = 3
+SALAD_MAX_DURATION_HOURS = 2.5
+
+# Custom vocabulary for CCE meetings (improves transcription accuracy)
+CCE_VOCABULARY = (
+    "CCE, Val-d'Or, Comité consultatif en environnement, "
+    "procès-verbal, ordre du jour, résolution, "
+    "biodiversité, changements climatiques, îlots de chaleur, "
+    "gestion des eaux pluviales, développement durable, "
+    "règlement municipal, consultation publique"
+)
+
+
+def validate_file_for_salad(file_url: str, headers: dict) -> dict:
+    """
+    Pre-validate file before Salad submission.
+    Returns dict with 'valid': bool and 'error': str if invalid.
+    """
+    try:
+        # HEAD request to get file metadata without downloading
+        head_resp = requests.head(file_url, timeout=30, allow_redirects=True)
+        
+        if not head_resp.ok:
+            return {"valid": False, "error": f"Cannot access file: HTTP {head_resp.status_code}"}
+        
+        # Check file size
+        content_length = head_resp.headers.get("content-length")
+        if content_length:
+            size_gb = int(content_length) / (1024 ** 3)
+            print(f"[Salad] File size: {size_gb:.2f} GB")
+            
+            if size_gb > SALAD_MAX_FILE_SIZE_GB:
+                return {
+                    "valid": False, 
+                    "error": f"File too large: {size_gb:.2f} GB (max: {SALAD_MAX_FILE_SIZE_GB} GB)"
+                }
+        
+        # Check content type
+        content_type = head_resp.headers.get("content-type", "")
+        print(f"[Salad] Content-Type: {content_type}")
+        
+        supported_types = ["audio/", "video/", "application/octet-stream"]
+        if not any(t in content_type for t in supported_types):
+            print(f"[Salad] Warning: Unusual content-type '{content_type}', proceeding anyway")
+        
+        return {"valid": True}
+        
+    except requests.exceptions.Timeout:
+        return {"valid": False, "error": "File URL timeout - cannot verify accessibility"}
+    except Exception as e:
+        print(f"[Salad] Validation warning: {e}")
+        # Don't block on validation errors, let Salad try
+        return {"valid": True}
+
+
 def transcribe_with_salad(file_url: str, language_code: str = "fr") -> dict:
     """
     Submit job to Salad Cloud and poll for results.
+    Includes pre-validation, custom vocabulary, and detailed error logging.
     """
     api_key = os.environ.get("SALAD_API_KEY")
     if not api_key:
@@ -316,57 +373,120 @@ def transcribe_with_salad(file_url: str, language_code: str = "fr") -> dict:
         "Content-Type": "application/json"
     }
 
-    # 1. Submit Job
+    # 0. Pre-validate file
+    print(f"[Salad] Validating file: {file_url[:80]}...")
+    validation = validate_file_for_salad(file_url, headers)
+    if not validation.get("valid"):
+        raise Exception(f"File validation failed: {validation.get('error')}")
+
+    # 1. Submit Job with custom vocabulary for CCE context
     payload = {
         "input": {
             "url": file_url,
             "language_code": language_code,
             "return_as_file": False,
             "sentence_level_timestamps": True,
-            "diarization": True 
+            "diarization": True,
+            "sentence_diarization": True,  # Get speaker per sentence
+            "custom_vocabulary": CCE_VOCABULARY
         }
     }
 
-    print(f"[Salad] Submitting job for {file_url}...")
+    print(f"[Salad] Submitting job with custom vocabulary...")
+    print(f"[Salad] Payload: language={language_code}, diarization=True, sentence_diarization=True")
+    
     response = requests.post(SALAD_API_URL, headers=headers, json=payload)
     
     if not response.ok:
-        raise Exception(f"Salad Submit Failed: {response.text}")
+        error_detail = response.text[:500] if response.text else "No response body"
+        print(f"[Salad] Submit failed - Status: {response.status_code}, Body: {error_detail}")
+        raise Exception(f"Salad Submit Failed (HTTP {response.status_code}): {error_detail}")
 
     job_data = response.json()
     job_id = job_data.get("id")
-    print(f"[Salad] Job submitted: {job_id}")
+    print(f"[Salad] Job submitted successfully: {job_id}")
 
     # 2. Poll for Completion
     # Timeout after 30 minutes (1800s) for very long audio files
     start_time = time.time()
+    last_status = None
+    
     while (time.time() - start_time) < 1800:
-        time.sleep(2) # Poll every 2s
+        time.sleep(3)  # Poll every 3s (slightly less aggressive)
         
         status_url = f"{SALAD_API_URL}/{job_id}"
-        status_resp = requests.get(status_url, headers=headers)
+        
+        try:
+            status_resp = requests.get(status_url, headers=headers, timeout=30)
+        except requests.exceptions.Timeout:
+            print(f"[Salad] Status check timeout, retrying...")
+            continue
         
         if not status_resp.ok:
-            print(f"[Salad] Status check failed: {status_resp.text}")
+            print(f"[Salad] Status check failed (HTTP {status_resp.status_code}): {status_resp.text[:200]}")
             continue
             
         status_data = status_resp.json()
         status = status_data.get("status")
         
         if status == "succeeded":
+            output = status_data.get("output", {})
+            duration = output.get("duration", "unknown")
+            processing_time = output.get("processing_time", "unknown")
             print(f"[Salad] Job succeeded!")
-            return status_data.get("output", {})
+            print(f"[Salad] Audio duration: {duration}s, Processing time: {processing_time}s")
+            
+            # Handle file-based response (for large outputs > 1MB)
+            if "url" in output and "sentence_level_timestamps" not in output:
+                print(f"[Salad] Output returned as file URL, downloading...")
+                file_resp = requests.get(output["url"], timeout=60)
+                if file_resp.ok:
+                    return file_resp.json()
+                else:
+                    print(f"[Salad] Failed to download output file: {file_resp.status_code}")
+            
+            return output
+            
         elif status == "failed":
-            raise Exception(f"Salad Job Failed: {status_data}")
+            # Extract detailed error information
+            events = status_data.get("events", [])
+            output = status_data.get("output", {})
+            error_msg = output.get("error", "No error message provided")
+            
+            # Log failure details
+            print(f"[Salad] ========== JOB FAILED ==========")
+            print(f"[Salad] Job ID: {job_id}")
+            print(f"[Salad] Error: {error_msg}")
+            print(f"[Salad] Events: {events}")
+            print(f"[Salad] Full response: {status_data}")
+            print(f"[Salad] ================================")
+            
+            # Build user-friendly error message
+            if "3GB" in str(error_msg) or "size" in str(error_msg).lower():
+                raise Exception(f"Salad Error: File too large (max 3GB)")
+            elif "duration" in str(error_msg).lower() or "2.5 hours" in str(error_msg):
+                raise Exception(f"Salad Error: Audio too long (max 2.5 hours)")
+            elif "download" in str(error_msg).lower():
+                raise Exception(f"Salad Error: Could not download file from URL. Check Firebase token expiration.")
+            else:
+                raise Exception(f"Salad Job Failed: {error_msg}. Job ID: {job_id}")
+                
         elif status == "cancelled":
-             raise Exception("Salad Job Cancelled")
+            print(f"[Salad] Job was cancelled. Job ID: {job_id}")
+            raise Exception(f"Salad Job Cancelled. Job ID: {job_id}")
         else:
             elapsed = int(time.time() - start_time)
-            print(f"[Salad] Status: {status} (elapsed: {elapsed}s)")
+            # Only log status changes to reduce noise
+            if status != last_status:
+                print(f"[Salad] Status changed: {last_status} -> {status} (elapsed: {elapsed}s)")
+                last_status = status
+            elif elapsed % 30 == 0:  # Log every 30 seconds
+                print(f"[Salad] Still {status}... (elapsed: {elapsed}s)")
         
         # Still running/pending...
     
-    raise Exception("Salad Job Timeout (10m)")
+    print(f"[Salad] Job timed out after 30 minutes. Job ID: {job_id}")
+    raise Exception(f"Salad Job Timeout (30m). Job ID: {job_id}")
 
 
 def format_salad_output(output_data: dict) -> str:
