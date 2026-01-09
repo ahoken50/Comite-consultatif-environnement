@@ -1131,11 +1131,17 @@ def send_avis_convocation(req: https_fn.CallableRequest):
         meeting_location = meeting.get("location", "Ville de Val-d'Or")
         signature_url = sender.get("signatureUrl")
         
-        # Format time from meeting date
+        # Format time from meeting date (convert from UTC to Eastern timezone)
         try:
+            from zoneinfo import ZoneInfo
             meeting_datetime = datetime.fromisoformat(meeting.get("date", "").replace("Z", "+00:00"))
-            meeting_time = meeting_datetime.strftime("%H h %M")
-        except:
+            # Convert to Eastern timezone (Quebec)
+            eastern_tz = ZoneInfo("America/Montreal")
+            meeting_datetime_local = meeting_datetime.astimezone(eastern_tz)
+            meeting_time = meeting_datetime_local.strftime("%H h %M")
+            print(f"[Avis] Meeting time: UTC={meeting_datetime}, Local={meeting_datetime_local}, Formatted={meeting_time}")
+        except Exception as tz_error:
+            print(f"[Avis] Timezone error: {tz_error}")
             meeting_time = "À confirmer"
         
         # Format location for proper grammar
