@@ -785,7 +785,7 @@ def send_convocation(req: https_fn.CallableRequest):
                 )
                 
                 resend.Emails.send({
-                    "from": "CCE Val-d'Or <noreply@resend.dev>",  # Use verified domain in production
+                    "from": "CCE Val-d'Or <noreply@ccevvd.com>",
                     "to": [recipient.get("email")],
                     "subject": f"Ordre du jour du CCE – {formatted_date}",
                     "html": email_html,
