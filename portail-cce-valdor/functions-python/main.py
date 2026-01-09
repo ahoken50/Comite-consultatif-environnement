@@ -379,21 +379,21 @@ def transcribe_with_salad(file_url: str, language_code: str = "fr") -> dict:
     if not validation.get("valid"):
         raise Exception(f"File validation failed: {validation.get('error')}")
 
-    # 1. Submit Job with custom vocabulary for CCE context
+    # 1. Submit Job (simplified - removed sentence_diarization and custom_vocabulary to reduce GPU load)
     payload = {
         "input": {
             "url": file_url,
             "language_code": language_code,
             "return_as_file": False,
             "sentence_level_timestamps": True,
-            "diarization": True,
-            "sentence_diarization": True,  # Get speaker per sentence
-            "custom_vocabulary": CCE_VOCABULARY
+            "diarization": True
+            # NOTE: sentence_diarization and custom_vocabulary removed to reduce processing complexity
         }
     }
 
-    print(f"[Salad] Submitting job with custom vocabulary...")
-    print(f"[Salad] Payload: language={language_code}, diarization=True, sentence_diarization=True")
+    print(f"[Salad] Submitting simplified job (diarization only, no custom vocab)...")
+
+    print(f"[Salad] Payload: language={language_code}, diarization=True (simplified)")
     
     response = requests.post(SALAD_API_URL, headers=headers, json=payload)
     
