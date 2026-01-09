@@ -142,6 +142,68 @@ def clean_hallucinations(text: str) -> str:
     return "\n".join(cleaned_lines)
 
 
+def build_context_prompt(attendee_names: list, agenda_items: list) -> str:
+    """
+    Build a context prompt for Whisper to improve transcription accuracy.
+    Includes attendee names and agenda topics as context.
+    """
+    parts = []
+    
+    # Add context about the meeting
+    parts.append("Transcription d'une réunion du Comité consultatif en environnement de Val-d'Or.")
+    
+    # Add attendee names if available
+    if attendee_names:
+        names = ", ".join([name for name in attendee_names if name])
+        if names:
+            parts.append(f"Participants: {names}.")
+    
+    # Add agenda topics if available
+    if agenda_items:
+        topics = ", ".join([item for item in agenda_items if item])
+        if topics:
+            parts.append(f"Sujets à l'ordre du jour: {topics}.")
+    
+    return " ".join(parts)
+
+
+def process_audio_with_ffmpeg(input_path: str) -> str:
+    """
+    Pre-process audio file using FFmpeg for better transcription quality.
+    - Normalize audio levels
+    - Convert to mono
+    - Resample to 16kHz (optimal for Whisper)
+    Returns path to processed file.
+    """
+    try:
+        output_path = input_path.replace(".", "_processed.")
+        
+        # FFmpeg command for audio preprocessing
+        # -af loudnorm: Normalize audio levels
+        # -ac 1: Convert to mono
+        # -ar 16000: Resample to 16kHz (Whisper optimal)
+        cmd = [
+            "ffmpeg", "-y", "-i", input_path,
+            "-af", "loudnorm=I=-16:TP=-1.5:LRA=11",
+            "-ac", "1",
+            "-ar", "16000",
+            output_path
+        ]
+        
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+        
+        if result.returncode == 0 and os.path.exists(output_path):
+            print(f"[FFmpeg] Audio processed successfully: {output_path}")
+            return output_path
+        else:
+            print(f"[FFmpeg] Processing failed, using original: {result.stderr[:200] if result.stderr else 'No error'}")
+            return input_path
+            
+    except Exception as e:
+        print(f"[FFmpeg] Error processing audio: {e}")
+        return input_path
+
+
 def transcribe_with_whisper(
     file_path: str,
     language: str = "fr",
