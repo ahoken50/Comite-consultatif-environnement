@@ -31,6 +31,7 @@ import { fr } from 'date-fns/locale';
 import { useToast } from '../../hooks/useToast';
 import ConvocationDialog from '../../components/meetings/ConvocationDialog';
 import { Send } from '@mui/icons-material';
+import ConvocationDashboard from '../../components/meetings/ConvocationDashboard';
 
 interface TabPanelProps {
     children?: React.ReactNode;
@@ -305,7 +306,14 @@ const MeetingDetailPage: React.FC = () => {
                     />
                 </TabPanel>
 
+
+
                 <TabPanel value={tabValue} index={2}>
+                    <ConvocationDashboard
+                        meeting={meeting}
+                        onUpdate={() => dispatch(updateMeeting({ id: meeting.id, updates: { ...meeting } }))}
+                    />
+                    <Divider sx={{ my: 4 }} />
                     <AttendanceManager
                         meeting={meeting}
                         onUpdate={handleMeetingUpdate}
