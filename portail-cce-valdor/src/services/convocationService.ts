@@ -141,11 +141,17 @@ Ville de Val-d'Or`
         });
 
         // 5. Call Cloud Function to send emails
+        console.log('📨 Calling send_convocation cloud function...', {
+            meetingId: meeting.id,
+            recipientsCount: recipients.length,
+            recipients: recipients.map(r => r.email)
+        });
+
         const functions = getFunctions();
         const sendConvocationEmails = httpsCallable(functions, 'send_convocation');
 
         try {
-            await sendConvocationEmails({
+            const result = await sendConvocationEmails({
                 meetingId: meeting.id,
                 convocationId: docRef.id,
                 meeting: {
@@ -165,8 +171,9 @@ Ville de Val-d'Or`
                     email: senderMember.email
                 }
             });
+            console.log('✅ send_convocation success:', result.data);
         } catch (cloudFnError) {
-            console.error('Cloud Function error:', cloudFnError);
+            console.error('❌ Cloud Function error detailed:', cloudFnError);
             // Update convocation with error status but don't fail completely
             await updateDoc(doc(db, 'meetings', meeting.id, 'convocations', docRef.id), {
                 emailError: String(cloudFnError)
