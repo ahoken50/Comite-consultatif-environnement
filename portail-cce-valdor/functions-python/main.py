@@ -360,6 +360,9 @@ def transcribe_with_salad(file_url: str, language_code: str = "fr") -> dict:
             raise Exception(f"Salad Job Failed: {status_data}")
         elif status == "cancelled":
              raise Exception("Salad Job Cancelled")
+        else:
+            elapsed = int(time.time() - start_time)
+            print(f"[Salad] Status: {status} (elapsed: {elapsed}s)")
         
         # Still running/pending...
     
