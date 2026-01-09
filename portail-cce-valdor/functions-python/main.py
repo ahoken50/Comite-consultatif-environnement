@@ -426,26 +426,35 @@ def transcribe_with_salad(file_url: str, language_code: str = "fr") -> dict:
             print(f"[Salad] Status check failed (HTTP {status_resp.status_code}): {status_resp.text[:200]}")
             continue
             
-        status_data = status_resp.json()
+        try:
+            status_data = status_resp.json()
+        except ValueError:
+            # Handle non-JSON (HTML) error responses from Salad infrastructure (e.g. 502/503)
+            error_text = status_resp.text[:500]
+            print(f"[Salad] Critical: Check returned non-JSON response: {error_text}")
+            raise Exception(f"Salad API Error (Non-JSON response): {error_text}")
+
         status = status_data.get("status")
         
         if status == "succeeded":
             output = status_data.get("output", {})
             duration_hours = output.get("duration", 0)
-            duration_min = duration_hours * 60 if isinstance(duration_hours, (int, float)) else "unknown"
+            duration_min = duration_hours * 60 if isinstance(duration_hours, (int, float)) else 0
             processing_time = output.get("processing_time", "unknown")
             print(f"[Salad] Job succeeded!")
             print(f"[Salad] Audio duration: {duration_min:.1f} min, Processing time: {processing_time}s")
             
-            # Handle file-based response (for large outputs > 1MB)
-            if "url" in output and "sentence_level_timestamps" not in output and "text" not in output:
+            # 1. Check for file-based response FIRST (common for large files)
+            if "url" in output:
                 print(f"[Salad] Output returned as file URL, downloading...")
                 file_resp = requests.get(output["url"], timeout=60)
                 if file_resp.ok:
-                    return file_resp.json()
+                    # Downloaded JSON becomes the new output
+                    output = file_resp.json() 
                 else:
-                    print(f"[Salad] Failed to download output file: {file_resp.status_code}")
-            
+                    raise Exception(f"Salad Error: Failed to download output file from {output['url']} (HTTP {file_resp.status_code})")
+
+            # 2. Now process the output (whether from inline or file)
             return output
             
         elif status == "failed":
@@ -499,8 +508,14 @@ def format_salad_output(output_data: dict) -> str:
     sentences = output_data.get("sentence_level_timestamps", [])
     if not sentences:
         # Fallback to 'text' if available
-        print("[Salad] No sentence_level_timestamps, falling back to raw text")
-        return output_data.get("text", "")
+        text = output_data.get("text", "")
+        if text:
+             print("[Salad] No sentence_level_timestamps, falling back to raw text")
+             return text
+        else:
+            # If both are missing, this is an empty result
+            print("[Salad] Warning: Empty transcription result (no sentences, no text)")
+            return ""
 
     formatted_lines = []
     last_speaker = None
