@@ -686,8 +686,22 @@ def send_convocation(req: https_fn.CallableRequest):
             )
         
         # Format meeting date
+        # Format meeting date (Manual translation to ensure French regardless of server locale)
         meeting_date = datetime.fromisoformat(meeting.get("date", "").replace("Z", "+00:00"))
-        formatted_date = meeting_date.strftime("%A %d %B %Y")
+        
+        days = {
+            0: "lundi", 1: "mardi", 2: "mercredi", 3: "jeudi", 
+            4: "vendredi", 5: "samedi", 6: "dimanche"
+        }
+        months = {
+            1: "janvier", 2: "février", 3: "mars", 4: "avril", 5: "mai", 6: "juin",
+            7: "juillet", 8: "août", 9: "septembre", 10: "octobre", 11: "novembre", 12: "décembre"
+        }
+        
+        day_str = days[meeting_date.weekday()]
+        month_str = months[meeting_date.month]
+        
+        formatted_date = f"{day_str} {meeting_date.day} {month_str} {meeting_date.year}"
         formatted_time = meeting_date.strftime("%H h %M")
         
         # App URL for RSVP links
@@ -785,7 +799,7 @@ def send_convocation(req: https_fn.CallableRequest):
                 )
                 
                 resend.Emails.send({
-                    "from": "CCE Val-d'Or <noreply@ccevvd.com>",
+                    "from": "CCE Val-d'Or <coordination_cce@ccevvd.com>",
                     "to": [recipient.get("email")],
                     "subject": f"Ordre du jour du CCE – {formatted_date}",
                     "html": email_html,
