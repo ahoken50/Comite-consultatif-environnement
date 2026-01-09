@@ -407,12 +407,12 @@ def transcribe_with_salad(file_url: str, language_code: str = "fr") -> dict:
     print(f"[Salad] Job submitted successfully: {job_id}")
 
     # 2. Poll for Completion
-    # Timeout after 30 minutes (1800s) for very long audio files
+    # Timeout after 55 minutes (3300s) to stay within Cloud Function 60m limit
     start_time = time.time()
     last_status = None
     
-    while (time.time() - start_time) < 1800:
-        time.sleep(3)  # Poll every 3s (slightly less aggressive)
+    while (time.time() - start_time) < 3300:
+        time.sleep(10)  # Poll every 10s (reduced frequency for long jobs)
         
         status_url = f"{SALAD_API_URL}/{job_id}"
         
@@ -490,13 +490,13 @@ def transcribe_with_salad(file_url: str, language_code: str = "fr") -> dict:
             if status != last_status:
                 print(f"[Salad] Status changed: {last_status} -> {status} (elapsed: {elapsed}s)")
                 last_status = status
-            elif elapsed % 30 == 0:  # Log every 30 seconds
+            elif elapsed % 60 == 0:  # Log every 60 seconds
                 print(f"[Salad] Still {status}... (elapsed: {elapsed}s)")
         
         # Still running/pending...
     
-    print(f"[Salad] Job timed out after 30 minutes. Job ID: {job_id}")
-    raise Exception(f"Salad Job Timeout (30m). Job ID: {job_id}")
+    print(f"[Salad] Job timed out after 55 minutes. Job ID: {job_id}")
+    raise Exception(f"Salad Job Timeout (55m). Job ID: {job_id}")
 
 
 def format_salad_output(output_data: dict) -> str:
