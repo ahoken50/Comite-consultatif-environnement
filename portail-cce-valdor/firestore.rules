@@ -42,8 +42,13 @@ service cloud.firestore {
       // Temporarily allow any authenticated user to write to meetings to unblock development
       allow write: if isAuthenticated(); 
       
-      // Convocations sub-collection
+      // Convocations sub-collection (Phase 2 - with RSVP)
       match /convocations/{convocationId} {
+        allow read, write: if isAuthenticated();
+      }
+      
+      // Avis de convocation sub-collection (Phase 1)
+      match /avis_convocations/{avisId} {
         allow read, write: if isAuthenticated();
       }
     }

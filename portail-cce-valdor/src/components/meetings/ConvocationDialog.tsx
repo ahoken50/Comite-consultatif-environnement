@@ -16,21 +16,36 @@ import {
     Divider,
     CircularProgress,
     Chip,
-    Avatar
+    Avatar,
+    Tabs,
+    Tab,
+    Alert
 } from '@mui/material';
-import { Send, SelectAll, CheckCircle } from '@mui/icons-material';
+import { Send, SelectAll, CheckCircle, Notifications, EventNote } from '@mui/icons-material';
 import type { Member } from '../../types/member.types';
 import type { Meeting } from '../../types/meeting.types';
-import { getActiveMembers, sendConvocations } from '../../services/convocationService';
+import { getActiveMembers, sendConvocations, sendAvisConvocation } from '../../services/convocationService';
 
 interface ConvocationDialogProps {
     open: boolean;
     meeting: Meeting;
     currentMember: Member;
     onClose: () => void;
-    onSuccess: (sentCount: number) => void;
+    onSuccess: (sentCount: number, type: 'avis' | 'confirmation') => void;
     onError: (error: string) => void;
 }
+
+interface TabPanelProps {
+    children?: React.ReactNode;
+    index: number;
+    value: number;
+}
+
+const TabPanel: React.FC<TabPanelProps> = ({ children, value, index }) => (
+    <div role="tabpanel" hidden={value !== index}>
+        {value === index && <Box sx={{ pt: 2 }}>{children}</Box>}
+    </div>
+);
 
 const ConvocationDialog: React.FC<ConvocationDialogProps> = ({
     open,
@@ -44,6 +59,21 @@ const ConvocationDialog: React.FC<ConvocationDialogProps> = ({
     const [selectedMemberIds, setSelectedMemberIds] = useState<Set<string>>(new Set());
     const [loading, setLoading] = useState(true);
     const [sending, setSending] = useState(false);
+    const [tabValue, setTabValue] = useState(0); // 0 = Avis, 1 = Confirmation
+
+    // Calculate dates
+    const meetingDate = new Date(meeting.date);
+    const deadlineDate = new Date(meetingDate);
+    deadlineDate.setDate(deadlineDate.getDate() - 15);
+
+    const dateOptions: Intl.DateTimeFormatOptions = {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+    };
+    const formattedMeetingDate = meetingDate.toLocaleDateString('fr-CA', dateOptions);
+    const formattedDeadline = deadlineDate.toLocaleDateString('fr-CA', dateOptions);
 
     // Load active members when dialog opens
     useEffect(() => {
@@ -57,7 +87,6 @@ const ConvocationDialog: React.FC<ConvocationDialogProps> = ({
         try {
             const activeMembers = await getActiveMembers();
             setMembers(activeMembers);
-            // Select all by default
             setSelectedMemberIds(new Set(activeMembers.map(m => m.id)));
         } catch (err) {
             console.error('Error loading members:', err);
@@ -78,10 +107,8 @@ const ConvocationDialog: React.FC<ConvocationDialogProps> = ({
 
     const handleSelectAll = () => {
         if (selectedMemberIds.size === members.length) {
-            // Deselect all
             setSelectedMemberIds(new Set());
         } else {
-            // Select all
             setSelectedMemberIds(new Set(members.map(m => m.id)));
         }
     };
@@ -94,16 +121,26 @@ const ConvocationDialog: React.FC<ConvocationDialogProps> = ({
 
         setSending(true);
         try {
-            // Filter members to only selected ones
             const selectedMembers = members.filter(m => selectedMemberIds.has(m.id));
 
-            const result = await sendConvocations(meeting, currentMember, selectedMembers);
-
-            if (result.success) {
-                onSuccess(result.sentCount || 0);
-                onClose();
+            if (tabValue === 0) {
+                // Phase 1: Avis de convocation
+                const result = await sendAvisConvocation(meeting, currentMember, selectedMembers);
+                if (result.success) {
+                    onSuccess(result.sentCount || 0, 'avis');
+                    onClose();
+                } else {
+                    onError(result.error || 'Erreur inconnue');
+                }
             } else {
-                onError(result.error || 'Erreur inconnue');
+                // Phase 2: Confirmation avec RSVP
+                const result = await sendConvocations(meeting, currentMember, selectedMembers);
+                if (result.success) {
+                    onSuccess(result.sentCount || 0, 'confirmation');
+                    onClose();
+                } else {
+                    onError(result.error || 'Erreur inconnue');
+                }
             }
         } catch (err) {
             onError('Erreur lors de l\'envoi');
@@ -132,27 +169,66 @@ const ConvocationDialog: React.FC<ConvocationDialogProps> = ({
             <DialogTitle>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                     <Send color="primary" />
-                    <Typography variant="h6">Envoyer les convocations</Typography>
+                    <Typography variant="h6">Envoyer une convocation</Typography>
                 </Box>
             </DialogTitle>
 
             <DialogContent dividers>
+                {/* Meeting info */}
+                <Box sx={{ mb: 2, p: 2, bgcolor: '#f5f5f5', borderRadius: 1 }}>
+                    <Typography variant="subtitle2" color="text.secondary">Réunion :</Typography>
+                    <Typography variant="body1" fontWeight="bold">{meeting.title}</Typography>
+                    <Typography variant="body2" color="text.secondary">
+                        📅 {formattedMeetingDate}
+                    </Typography>
+                </Box>
+
+                {/* Phase selection tabs */}
+                <Tabs
+                    value={tabValue}
+                    onChange={(_, v) => setTabValue(v)}
+                    variant="fullWidth"
+                    sx={{ borderBottom: 1, borderColor: 'divider' }}
+                >
+                    <Tab
+                        icon={<Notifications />}
+                        iconPosition="start"
+                        label="Phase 1 : Avis"
+                    />
+                    <Tab
+                        icon={<EventNote />}
+                        iconPosition="start"
+                        label="Phase 2 : Ordre du jour"
+                    />
+                </Tabs>
+
+                {/* Tab content */}
+                <TabPanel value={tabValue} index={0}>
+                    <Alert severity="info" sx={{ mb: 2 }}>
+                        📨 <strong>Avis de convocation</strong><br />
+                        Email simple avec la date de la réunion et la date limite pour suggérer des sujets.
+                        <br /><br />
+                        <strong>Date limite :</strong> {formattedDeadline}
+                    </Alert>
+                </TabPanel>
+
+                <TabPanel value={tabValue} index={1}>
+                    <Alert severity="success" sx={{ mb: 2 }}>
+                        📋 <strong>Ordre du jour + RSVP</strong><br />
+                        Email avec l'ordre du jour en pièce jointe et boutons pour confirmer la présence.
+                    </Alert>
+                </TabPanel>
+
                 {loading ? (
                     <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
                         <CircularProgress />
                     </Box>
                 ) : (
                     <>
-                        {/* Meeting info */}
-                        <Box sx={{ mb: 2, p: 2, bgcolor: '#f5f5f5', borderRadius: 1 }}>
-                            <Typography variant="subtitle2" color="text.secondary">Réunion :</Typography>
-                            <Typography variant="body1" fontWeight="bold">{meeting.title}</Typography>
-                        </Box>
-
                         {/* Select all button */}
-                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1, mt: 2 }}>
                             <Typography variant="subtitle2" color="text.secondary">
-                                Sélectionner les destinataires :
+                                Destinataires :
                             </Typography>
                             <Button
                                 size="small"
@@ -166,7 +242,7 @@ const ConvocationDialog: React.FC<ConvocationDialogProps> = ({
                         <Divider sx={{ mb: 1 }} />
 
                         {/* Members list */}
-                        <List dense sx={{ maxHeight: 300, overflow: 'auto' }}>
+                        <List dense sx={{ maxHeight: 250, overflow: 'auto' }}>
                             {members.map((member) => (
                                 <ListItem key={member.id} disablePadding>
                                     <ListItemButton onClick={() => handleToggle(member.id)} dense>
@@ -198,7 +274,6 @@ const ConvocationDialog: React.FC<ConvocationDialogProps> = ({
                             ))}
                         </List>
 
-                        {/* Selection count */}
                         <Box sx={{ mt: 2, textAlign: 'right' }}>
                             <Typography variant="body2" color="text.secondary">
                                 {selectedMemberIds.size} membre{selectedMemberIds.size !== 1 ? 's' : ''} sélectionné{selectedMemberIds.size !== 1 ? 's' : ''}
@@ -214,12 +289,17 @@ const ConvocationDialog: React.FC<ConvocationDialogProps> = ({
                 </Button>
                 <Button
                     variant="contained"
-                    color="primary"
+                    color={tabValue === 0 ? "warning" : "primary"}
                     onClick={handleSend}
                     disabled={loading || sending || selectedMemberIds.size === 0}
-                    startIcon={sending ? <CircularProgress size={20} /> : <Send />}
+                    startIcon={sending ? <CircularProgress size={20} /> : (tabValue === 0 ? <Notifications /> : <Send />)}
                 >
-                    {sending ? 'Envoi en cours...' : `Envoyer à ${selectedMemberIds.size} membre${selectedMemberIds.size !== 1 ? 's' : ''}`}
+                    {sending
+                        ? 'Envoi en cours...'
+                        : tabValue === 0
+                            ? `Envoyer l'avis à ${selectedMemberIds.size} membre${selectedMemberIds.size !== 1 ? 's' : ''}`
+                            : `Envoyer l'ordre du jour à ${selectedMemberIds.size} membre${selectedMemberIds.size !== 1 ? 's' : ''}`
+                    }
                 </Button>
             </DialogActions>
         </Dialog>

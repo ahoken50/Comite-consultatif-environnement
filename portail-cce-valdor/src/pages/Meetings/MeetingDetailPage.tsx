@@ -169,8 +169,11 @@ const MeetingDetailPage: React.FC = () => {
         }
     };
 
-    const handleConvocationSuccess = (sentCount: number) => {
-        showInfo(`✅ Convocations envoyées à ${sentCount} membre${sentCount !== 1 ? 's' : ''}!`);
+    const handleConvocationSuccess = (sentCount: number, type: 'avis' | 'confirmation') => {
+        const message = type === 'avis'
+            ? `✅ Avis de convocation envoyé à ${sentCount} membre${sentCount !== 1 ? 's' : ''}!`
+            : `✅ Ordre du jour et RSVP envoyés à ${sentCount} membre${sentCount !== 1 ? 's' : ''}!`;
+        showInfo(message);
     };
 
     const handleConvocationError = (error: string) => {

@@ -837,3 +837,159 @@ def send_convocation(req: https_fn.CallableRequest):
             message=str(e)
         )
 
+
+# ==========================================
+# Avis de Convocation (Phase 1) - Simple notification with deadline
+# ==========================================
+@https_fn.on_call(
+    memory=options.MemoryOption.MB_256,
+    timeout_sec=120,
+    region="us-central1"
+)
+def send_avis_convocation(req: https_fn.CallableRequest):
+    """
+    Send Avis de Convocation emails to CCE members.
+    Phase 1: Simple notification with meeting date and 15-day deadline for agenda suggestions.
+    No RSVP buttons - just informational.
+    """
+    print("[Avis] Starting send_avis_convocation function")
+    
+    try:
+        import resend
+        
+        # Get Resend API key
+        resend_api_key = os.environ.get("RESEND_API_KEY")
+        if not resend_api_key:
+            raise https_fn.HttpsError(
+                code=https_fn.FunctionsErrorCode.FAILED_PRECONDITION,
+                message="RESEND_API_KEY non configurée"
+            )
+        
+        resend.api_key = resend_api_key
+        
+        # Extract data
+        data = req.data
+        meeting_id = data.get("meetingId")
+        avis_id = data.get("avisId")
+        meeting = data.get("meeting", {})
+        deadline = data.get("deadline", {})
+        recipients = data.get("recipients", [])
+        sender = data.get("sender", {})
+        
+        if not meeting_id or not recipients:
+            raise https_fn.HttpsError(
+                code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT,
+                message="meetingId et recipients requis"
+            )
+        
+        # Use pre-formatted dates from frontend
+        formatted_meeting_date = meeting.get("formattedDate", "Date à confirmer")
+        formatted_deadline = deadline.get("formattedDate", "Date limite")
+        sender_email = sender.get("email", "coordonnateur@ville.valdor.qc.ca")
+        sender_name = sender.get("name", "Coordonnateur CCE")
+        
+        # Generate email HTML for Avis de convocation (simpler than confirmation)
+        def generate_avis_email_html(recipient_name: str) -> str:
+            return f"""
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="font-family: Georgia, 'Times New Roman', serif; background-color: #f9fbfa; margin: 0; padding: 20px;">
+    <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+        <!-- Header -->
+        <div style="background-color: #1e4e3d; padding: 30px; text-align: center;">
+            <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-family: Arial, sans-serif;">
+                COMITÉ CONSULTATIF EN ENVIRONNEMENT
+            </h1>
+            <p style="color: #c5a065; margin: 10px 0 0 0; font-size: 14px; text-transform: uppercase; letter-spacing: 2px;">
+                Ville de Val-d'Or
+            </p>
+        </div>
+        
+        <!-- Content -->
+        <div style="padding: 30px;">
+            <p style="font-size: 16px; color: #333; line-height: 1.6;">
+                Bonjour,
+            </p>
+            
+            <p style="font-size: 16px; color: #333; line-height: 1.6;">
+                Vous trouverez, en fichier joint, l'avis de convocation pour la prochaine assemblée du 
+                <strong>Comité consultatif en environnement</strong>, prévue le <strong>{formatted_meeting_date}</strong>.
+            </p>
+            
+            <!-- Deadline box -->
+            <div style="background-color: #fff3cd; border: 1px solid #ffc107; border-radius: 8px; padding: 20px; margin: 25px 0;">
+                <p style="margin: 0; font-size: 16px; color: #856404;">
+                    📅 <strong>Date limite pour suggestions :</strong><br>
+                    Vous avez jusqu'au <strong>{formatted_deadline}</strong> pour faire vos suggestions de sujets 
+                    à l'ordre du jour, par courriel à <a href="mailto:{sender_email}" style="color: #1e4e3d;">{sender_email}</a>
+                </p>
+            </div>
+            
+            <p style="font-size: 16px; color: #333; line-height: 1.6;">
+                Merci et bonne journée !
+            </p>
+        </div>
+        
+        <!-- Footer -->
+        <div style="background-color: #f9fbfa; padding: 20px; border-top: 1px solid #eee;">
+            <p style="margin: 0; font-size: 14px; color: #666; text-align: center;">
+                Cordialement,<br>
+                <strong style="color: #1e4e3d;">{sender_name}</strong><br>
+                Ville de Val-d'Or
+            </p>
+        </div>
+    </div>
+</body>
+</html>
+"""
+        
+        # Send emails to all recipients
+        sent_count = 0
+        errors = []
+        
+        for recipient in recipients:
+            try:
+                email_html = generate_avis_email_html(recipient.get("name", ""))
+                
+                resend.Emails.send({
+                    "from": "CCE Val-d'Or <coordination_cce@ccevvd.com>",
+                    "to": [recipient.get("email")],
+                    "subject": f"Avis de convocation – Assemblée CCE du {formatted_meeting_date}",
+                    "html": email_html,
+                    # TODO: Attach avis letter PDF when available
+                })
+                
+                sent_count += 1
+                print(f"[Avis] Email sent to {recipient.get('email')}")
+                
+            except Exception as email_error:
+                error_msg = f"Failed to send to {recipient.get('email')}: {str(email_error)}"
+                print(f"[Avis] {error_msg}")
+                errors.append(error_msg)
+        
+        # Update avis record with send status
+        if avis_id:
+            db = firestore.client()
+            db.collection("meetings").document(meeting_id).collection("avis_convocations").document(avis_id).update({
+                "emailsSent": sent_count,
+                "emailErrors": errors,
+                "emailSentAt": datetime.now().isoformat()
+            })
+        
+        return {
+            "success": True,
+            "sentCount": sent_count,
+            "errorCount": len(errors),
+            "errors": errors if errors else None
+        }
+        
+    except Exception as e:
+        print(f"[Avis] Error: {str(e)}")
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.INTERNAL,
+            message=str(e)
+        )

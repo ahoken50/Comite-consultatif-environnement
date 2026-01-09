@@ -50,6 +50,22 @@ export interface ConvocationStats {
     declined: number;
 }
 
+// Type of convocation email
+export type ConvocationType = 'avis' | 'confirmation';
+
+// Avis de convocation (Phase 1)
+export interface AvisConvocation {
+    id?: string;
+    meetingId: string;
+    sentAt: string;
+    sentBy: string;
+    sentByName: string;
+    senderEmail: string;
+    deadlineDate: string; // Date limite pour suggestions (15 jours avant réunion)
+    recipients: { memberId: string; email: string; name: string }[];
+    avisLetterPdfUrl?: string;
+}
+
 /**
  * Generate a unique RSVP token
  */
@@ -188,6 +204,116 @@ Ville de Val-d'Or`
 
     } catch (error) {
         console.error('Error sending convocations:', error);
+        return {
+            success: false,
+            error: error instanceof Error ? error.message : 'Erreur inconnue'
+        };
+    }
+};
+
+/**
+ * Send Avis de Convocation (Phase 1)
+ * Simple email with meeting date and 15-day deadline for agenda suggestions
+ */
+export const sendAvisConvocation = async (
+    meeting: Meeting,
+    senderMember: Member,
+    selectedMembers?: Member[]
+): Promise<{ success: boolean; avisId?: string; error?: string; sentCount?: number }> => {
+    try {
+        // 1. Use provided members or get all active members
+        const members = selectedMembers && selectedMembers.length > 0
+            ? selectedMembers
+            : await getActiveMembers();
+
+        if (members.length === 0) {
+            return { success: false, error: 'Aucun membre sélectionné' };
+        }
+
+        // 2. Calculate deadline date (15 days before meeting)
+        const meetingDate = new Date(meeting.date);
+        const deadlineDate = new Date(meetingDate);
+        deadlineDate.setDate(deadlineDate.getDate() - 15);
+
+        // 3. Format dates
+        const dateOptions: Intl.DateTimeFormatOptions = {
+            weekday: 'long',
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric'
+        };
+        const formattedMeetingDate = meetingDate.toLocaleDateString('fr-CA', dateOptions);
+        const formattedDeadline = deadlineDate.toLocaleDateString('fr-CA', dateOptions);
+
+        // 4. Prepare recipients (no tokens needed for avis)
+        const recipients = members.map(member => ({
+            memberId: member.id,
+            email: member.email,
+            name: member.displayName
+        }));
+
+        // 5. Create avis record in Firestore
+        const avisData: Omit<AvisConvocation, 'id'> = {
+            meetingId: meeting.id,
+            sentAt: new Date().toISOString(),
+            sentBy: senderMember.id,
+            sentByName: senderMember.displayName,
+            senderEmail: senderMember.email,
+            deadlineDate: deadlineDate.toISOString(),
+            recipients
+        };
+
+        const avisRef = collection(db, 'meetings', meeting.id, 'avis_convocations');
+        const docRef = await addDoc(avisRef, {
+            ...avisData,
+            createdAt: serverTimestamp()
+        });
+
+        // 6. Call Cloud Function to send avis emails
+        console.log('📨 Calling send_avis_convocation cloud function...', {
+            meetingId: meeting.id,
+            recipientsCount: recipients.length
+        });
+
+        const functions = getFunctions();
+        const sendAvisEmails = httpsCallable(functions, 'send_avis_convocation');
+
+        try {
+            await sendAvisEmails({
+                meetingId: meeting.id,
+                avisId: docRef.id,
+                meeting: {
+                    title: meeting.title,
+                    date: meeting.date,
+                    formattedDate: formattedMeetingDate,
+                    location: meeting.location
+                },
+                deadline: {
+                    date: deadlineDate.toISOString(),
+                    formattedDate: formattedDeadline
+                },
+                recipients,
+                sender: {
+                    name: senderMember.displayName,
+                    email: senderMember.email
+                }
+            });
+            console.log('✅ send_avis_convocation success');
+        } catch (cloudFnError) {
+            console.error('❌ Cloud Function error:', cloudFnError);
+            await updateDoc(doc(db, 'meetings', meeting.id, 'avis_convocations', docRef.id), {
+                emailError: String(cloudFnError)
+            });
+        }
+
+        return {
+            success: true,
+            avisId: docRef.id,
+            sentCount: recipients.length
+        };
+
+    } catch (error) {
+        console.error('Error sending avis convocation:', error);
         return {
             success: false,
             error: error instanceof Error ? error.message : 'Erreur inconnue'
