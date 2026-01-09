@@ -32,11 +32,14 @@ def get_audio_format(mime_type: str) -> str:
     format_map = {
         'audio/mpeg': 'mp3',
         'audio/mp3': 'mp3',
-        'audio/mp4': 'mp4',
+        'audio/mp4': 'm4a',
+        'audio/x-m4a': 'm4a',
         'audio/m4a': 'm4a',
         'audio/wav': 'wav',
         'audio/webm': 'webm',
         'audio/ogg': 'ogg',
+        'video/mp4': 'mp4',
+        'video/webm': 'webm'
     }
     return format_map.get(mime_type, 'mp3')
 
@@ -176,7 +179,10 @@ def process_audio_with_ffmpeg(input_path: str) -> str:
     Returns path to processed file.
     """
     try:
-        output_path = input_path.replace(".", "_processed.")
+        # FORCE output to be WAV (PCM 16kHz) for reliable splitting
+        # We replace the extension with .wav regardless of input
+        base, _ = os.path.splitext(input_path)
+        output_path = f"{base}_processed.wav"
         
         # FFmpeg command for audio preprocessing
         # -af loudnorm: Normalize audio levels
