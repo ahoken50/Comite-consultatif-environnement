@@ -121,12 +121,24 @@ const RSVPPage: React.FC = () => {
         );
     }
 
-    // Format date
+    // Safe date formatting helper
+    const formatDateSafe = (dateStr: string | undefined, formatStr: string) => {
+        if (!dateStr) return '';
+        try {
+            const date = new Date(dateStr);
+            if (isNaN(date.getTime())) return 'Date invalide';
+            return format(date, formatStr, { locale: fr });
+        } catch (e) {
+            return 'Date invalide';
+        }
+    };
+
     const formattedDate = meetingDetails?.date
-        ? format(new Date(meetingDetails.date), 'EEEE d MMMM yyyy', { locale: fr })
+        ? formatDateSafe(meetingDetails.date, 'EEEE d MMMM yyyy')
         : '';
+
     const formattedTime = meetingDetails?.date
-        ? format(new Date(meetingDetails.date), 'HH:mm', { locale: fr })
+        ? formatDateSafe(meetingDetails.date, 'HH:mm')
         : '';
 
     return (
