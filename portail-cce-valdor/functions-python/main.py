@@ -473,12 +473,31 @@ def transcribe_whisper(req: https_fn.CallableRequest) -> dict:
             "dateUpdated": datetime.now().isoformat()
         })
 
-        # 1. Generate Signed URL (valid for 2 hours)
+        # 1. Generate Signed URL using IAM SignBlob (works with Default Identity)
+        # We need the service account email for this. 
+        # In Cloud Functions, this is usually the App Engine default service account.
+        # We can try to get it from context or env, or let the SDK figure it out if we provide the param.
+        # However, for IAM signing to work, we MUST provide 'service_account_email'.
+        
+        # Get actual service account email from auth credentials
+        import google.auth
+        credentials, project_id = google.auth.default()
+        
+        # If credentials have a service account email, use it. Otherwise fallback to App Engine default convention.
+        sa_email = getattr(credentials, 'service_account_email', None)
+        if not sa_email:
+             sa_email = f"{project_id}@appspot.gserviceaccount.com"
+             print(f"[Transcription] Warning: Could not detect SA email, guessing: {sa_email}")
+        else:
+             print(f"[Transcription] Detected Service Account: {sa_email}")
+
         blob = bucket.blob(storage_path)
         signed_url = blob.generate_signed_url(
             version="v4",
             expiration=timedelta(hours=2),
-            method="GET"
+            method="GET",
+            service_account_email=sa_email, 
+            access_token=credentials.token # Pass token if available, though libraries might fetch it
         )
         print(f"[Transcription] Generated Signed URL: {signed_url[:50]}...")
 
