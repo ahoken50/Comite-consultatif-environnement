@@ -1047,6 +1047,7 @@ def generate_avis_pdf(meeting_date: str, meeting_time: str,
                 sig_data = response.read()
                 sig_buffer = io.BytesIO(sig_data)
                 sig_image = Image(sig_buffer, width=1.5*inch, height=0.5*inch)
+                sig_image.hAlign = 'LEFT'  # Align image to left
                 elements.append(sig_image)
                 signature_added = True
                 print(f"[Avis PDF] Signature image added from URL")
@@ -1057,7 +1058,17 @@ def generate_avis_pdf(meeting_date: str, meeting_time: str,
         # Add signature line if no image
         elements.append(Spacer(1, 30))
     
-    elements.append(Paragraph(f"{sender_name}, secrétaire du Comité", signature_style))
+    # Signature name aligned left (same as image)
+    signature_name_style = ParagraphStyle(
+        'SignatureNameStyle',
+        parent=styles['Normal'],
+        fontSize=11,
+        textColor=HexColor('#333333'),
+        alignment=TA_LEFT,
+        fontName='Times-Roman',
+        leftIndent=0  # No indent - align with signature image
+    )
+    elements.append(Paragraph(f"{sender_name}, secrétaire du Comité", signature_name_style))
     
     # Build PDF
     doc.build(elements)
