@@ -338,9 +338,9 @@ def transcribe_with_salad(file_url: str, language_code: str = "fr") -> dict:
     print(f"[Salad] Job submitted: {job_id}")
 
     # 2. Poll for Completion
-    # Timeout after 10 minutes (600s)
+    # Timeout after 30 minutes (1800s) for very long audio files
     start_time = time.time()
-    while (time.time() - start_time) < 600:
+    while (time.time() - start_time) < 1800:
         time.sleep(2) # Poll every 2s
         
         status_url = f"{SALAD_API_URL}/{job_id}"
