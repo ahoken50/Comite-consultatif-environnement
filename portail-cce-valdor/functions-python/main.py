@@ -842,11 +842,15 @@ def send_convocation(req: https_fn.CallableRequest):
 # Avis de Convocation (Phase 1) - Simple notification with deadline + PDF attachment
 # ==========================================
 
-def generate_avis_pdf(meeting_title: str, meeting_date: str, meeting_time: str, 
+def generate_avis_pdf(meeting_date: str, meeting_time: str, 
                       meeting_location: str, deadline: str, sender_name: str, 
-                      sender_email: str) -> bytes:
+                      sender_email: str, signature_url: str = None) -> bytes:
     """
     Generate Avis de Convocation PDF using reportlab.
+    Matches the official memo format:
+    - DESTINATAIRE / EXPÉDITEUR / DATE / OBJET header
+    - Body with meeting details and deadline
+    - Signature at the bottom
     Returns PDF as bytes for email attachment.
     """
     from reportlab.lib.pagesizes import letter
@@ -854,8 +858,9 @@ def generate_avis_pdf(meeting_title: str, meeting_date: str, meeting_time: str,
     from reportlab.lib.units import inch
     from reportlab.lib.colors import HexColor
     from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image
-    from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY, TA_RIGHT
+    from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY, TA_LEFT, TA_RIGHT
     import io
+    import urllib.request
     
     # Colors
     primary_color = HexColor('#1e4e3d')
@@ -864,154 +869,155 @@ def generate_avis_pdf(meeting_title: str, meeting_date: str, meeting_time: str,
     # Create PDF buffer
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=letter, 
-                           topMargin=0.75*inch, bottomMargin=0.75*inch,
+                           topMargin=0.6*inch, bottomMargin=0.6*inch,
                            leftMargin=1*inch, rightMargin=1*inch)
     
     # Styles
     styles = getSampleStyleSheet()
     
-    title_style = ParagraphStyle(
-        'CustomTitle',
+    header_style = ParagraphStyle(
+        'HeaderStyle',
         parent=styles['Heading1'],
-        fontSize=18,
+        fontSize=14,
         textColor=primary_color,
         alignment=TA_CENTER,
-        spaceAfter=6
+        spaceAfter=5,
+        fontName='Helvetica-Bold'
     )
     
-    subtitle_style = ParagraphStyle(
-        'CustomSubtitle',
+    subheader_style = ParagraphStyle(
+        'SubheaderStyle',
         parent=styles['Heading2'],
-        fontSize=12,
+        fontSize=11,
         textColor=accent_color,
         alignment=TA_CENTER,
-        spaceAfter=20
+        spaceAfter=20,
+        fontName='Helvetica'
     )
     
-    heading_style = ParagraphStyle(
-        'CustomHeading',
-        parent=styles['Heading1'],
-        fontSize=16,
-        textColor=primary_color,
-        alignment=TA_CENTER,
-        spaceBefore=30,
-        spaceAfter=20
+    label_style = ParagraphStyle(
+        'LabelStyle',
+        parent=styles['Normal'],
+        fontSize=10,
+        textColor=HexColor('#333333'),
+        fontName='Helvetica-Bold',
+        leading=14
+    )
+    
+    value_style = ParagraphStyle(
+        'ValueStyle',
+        parent=styles['Normal'],
+        fontSize=10,
+        textColor=HexColor('#333333'),
+        fontName='Helvetica',
+        leading=14
     )
     
     body_style = ParagraphStyle(
-        'CustomBody',
+        'BodyStyle',
         parent=styles['Normal'],
         fontSize=11,
-        textColor=HexColor('#2b2b2b'),
+        textColor=HexColor('#333333'),
         alignment=TA_JUSTIFY,
         spaceAfter=12,
-        leading=16
+        leading=16,
+        fontName='Times-Roman'
     )
     
-    date_style = ParagraphStyle(
-        'DateStyle',
+    signature_style = ParagraphStyle(
+        'SignatureStyle',
         parent=styles['Normal'],
-        fontSize=10,
-        textColor=HexColor('#666666'),
-        alignment=TA_RIGHT,
-        spaceAfter=20
+        fontSize=11,
+        textColor=HexColor('#333333'),
+        alignment=TA_LEFT,
+        fontName='Times-Roman',
+        leftIndent=20
     )
     
     # Build document content
     elements = []
     
-    # Header
-    elements.append(Paragraph("COMITÉ CONSULTATIF EN ENVIRONNEMENT", title_style))
-    elements.append(Paragraph("VILLE DE VAL-D'OR", subtitle_style))
-    elements.append(Spacer(1, 10))
+    # === HEADER with logos (if available) ===
+    elements.append(Paragraph("COMITÉ CONSULTATIF EN ENVIRONNEMENT", header_style))
+    elements.append(Paragraph("VILLE DE VAL-D'OR", subheader_style))
     
-    # Document title
-    elements.append(Paragraph("AVIS DE CONVOCATION", heading_style))
+    # Horizontal line
+    from reportlab.platypus import HRFlowable
+    elements.append(HRFlowable(width="100%", thickness=2, color=primary_color, spaceAfter=20))
     
-    # Date
-    today_str = datetime.now().strftime("%d %B %Y").replace("January", "janvier").replace("February", "février").replace("March", "mars").replace("April", "avril").replace("May", "mai").replace("June", "juin").replace("July", "juillet").replace("August", "août").replace("September", "septembre").replace("October", "octobre").replace("November", "novembre").replace("December", "décembre")
-    elements.append(Paragraph(f"Val-d'Or, le {today_str}", date_style))
+    # Format today's date in French
+    months_fr = {
+        1: "janvier", 2: "février", 3: "mars", 4: "avril", 5: "mai", 6: "juin",
+        7: "juillet", 8: "août", 9: "septembre", 10: "octobre", 11: "novembre", 12: "décembre"
+    }
+    today = datetime.now()
+    today_str = f"Le {today.day} {months_fr[today.month]} {today.year}"
+    
+    # === MEMO HEADER TABLE ===
+    # DESTINATAIRE / EXPÉDITEUR / DATE / OBJET format
+    memo_data = [
+        [Paragraph("<b>DESTINATAIRE :</b>", label_style), 
+         Paragraph("Les membres du Comité consultatif en environnement", value_style)],
+        [Paragraph("<b>EXPÉDITEUR :</b>", label_style), 
+         Paragraph(f"{sender_name}, coordonnateur en environnement", value_style)],
+        [Paragraph("<b>DATE :</b>", label_style), 
+         Paragraph(today_str, value_style)],
+        [Paragraph("<b>OBJET :</b>", label_style), 
+         Paragraph("Réunion du Comité consultatif en environnement", value_style)],
+    ]
+    
+    memo_table = Table(memo_data, colWidths=[1.3*inch, 4.7*inch])
+    memo_table.setStyle(TableStyle([
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ('TOPPADDING', (0, 0), (-1, -1), 4),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+    ]))
+    elements.append(memo_table)
     elements.append(Spacer(1, 20))
     
-    # Body
-    elements.append(Paragraph("Bonjour,", body_style))
-    elements.append(Spacer(1, 6))
+    # Horizontal line
+    elements.append(HRFlowable(width="100%", thickness=1, color=HexColor('#cccccc'), spaceAfter=20))
     
-    elements.append(Paragraph(
-        f"Par la présente, nous vous convoquons à la prochaine assemblée du <b>Comité consultatif en environnement</b> de la Ville de Val-d'Or.",
-        body_style
-    ))
+    # === BODY ===
+    elements.append(Paragraph("Mesdames, Messieurs,", body_style))
+    elements.append(Spacer(1, 12))
     
-    elements.append(Spacer(1, 15))
+    # Main paragraph with meeting details
+    body_text = f"""Je vous prie de prendre note qu'une assemblée du Comité consultatif en environnement 
+    est prévue le <b>{meeting_date}</b> à <b>{meeting_time}</b> {meeting_location}."""
+    elements.append(Paragraph(body_text, body_style))
+    elements.append(Spacer(1, 8))
     
-    # Meeting details box
-    meeting_info = f"""
-    <b>📅 Date :</b> {meeting_date}<br/>
-    <b>🕐 Heure :</b> {meeting_time}<br/>
-    <b>📍 Lieu :</b> {meeting_location}
-    """
-    
-    info_style = ParagraphStyle(
-        'InfoBox',
-        parent=styles['Normal'],
-        fontSize=11,
-        textColor=primary_color,
-        leftIndent=20,
-        rightIndent=20,
-        spaceBefore=10,
-        spaceAfter=10,
-        borderColor=accent_color,
-        borderWidth=2,
-        borderPadding=10
-    )
-    elements.append(Paragraph(meeting_info, info_style))
-    elements.append(Spacer(1, 15))
-    
-    # Deadline section
-    deadline_text = f"""
-    <b>📋 Date limite pour soumettre des sujets à l'ordre du jour :</b><br/>
-    <font size="14"><b>{deadline}</b></font><br/><br/>
-    Veuillez faire parvenir vos suggestions par courriel à : {sender_email}
-    """
-    
-    deadline_style = ParagraphStyle(
-        'DeadlineBox',
-        parent=styles['Normal'],
-        fontSize=11,
-        alignment=TA_CENTER,
-        backColor=HexColor('#fff3cd'),
-        borderColor=HexColor('#ffc107'),
-        borderWidth=1,
-        borderPadding=15,
-        spaceBefore=15,
-        spaceAfter=15
-    )
-    elements.append(Paragraph(deadline_text, deadline_style))
-    elements.append(Spacer(1, 15))
+    # Deadline paragraph
+    deadline_text = f"""Vous avez jusqu'au <b>{deadline}</b> pour faire vos suggestions de point à l'ordre du jour."""
+    elements.append(Paragraph(deadline_text, body_style))
+    elements.append(Spacer(1, 8))
     
     # Closing
-    elements.append(Paragraph(
-        "Nous vous prions de bien vouloir accuser réception du présent avis et de confirmer votre présence.",
-        body_style
-    ))
-    elements.append(Spacer(1, 6))
-    
-    elements.append(Paragraph(
-        "Dans l'attente de vous rencontrer, veuillez agréer l'expression de nos salutations distinguées.",
-        body_style
-    ))
-    
+    elements.append(Paragraph("Je vous remercie grandement de votre collaboration.", body_style))
     elements.append(Spacer(1, 40))
     
-    # Signature
-    signature_style = ParagraphStyle(
-        'Signature',
-        parent=styles['Normal'],
-        fontSize=11,
-        alignment=TA_RIGHT
-    )
-    elements.append(Paragraph(f"<b>{sender_name}</b>", signature_style))
-    elements.append(Paragraph("Coordonnateur en environnement<br/>Secrétaire du CCE", signature_style))
+    # === SIGNATURE ===
+    # Try to add signature image if available
+    signature_added = False
+    if signature_url:
+        try:
+            # Download signature image
+            with urllib.request.urlopen(signature_url, timeout=10) as response:
+                sig_data = response.read()
+                sig_buffer = io.BytesIO(sig_data)
+                sig_image = Image(sig_buffer, width=1.5*inch, height=0.5*inch)
+                elements.append(sig_image)
+                signature_added = True
+                print(f"[Avis PDF] Signature image added from URL")
+        except Exception as sig_error:
+            print(f"[Avis PDF] Could not load signature image: {sig_error}")
+    
+    if not signature_added:
+        # Add signature line if no image
+        elements.append(Spacer(1, 30))
+    
+    elements.append(Paragraph(f"{sender_name}, secrétaire du Comité", signature_style))
     
     # Build PDF
     doc.build(elements)
@@ -1072,6 +1078,7 @@ def send_avis_convocation(req: https_fn.CallableRequest):
         sender_name = sender.get("name", "Coordonnateur CCE")
         meeting_title = meeting.get("title", "Assemblée CCE")
         meeting_location = meeting.get("location", "Ville de Val-d'Or")
+        signature_url = sender.get("signatureUrl")
         
         # Format time from meeting date
         try:
@@ -1080,16 +1087,19 @@ def send_avis_convocation(req: https_fn.CallableRequest):
         except:
             meeting_time = "À confirmer"
         
+        # Format location for proper grammar
+        location_text = f"dans {meeting_location}" if meeting_location else "au bureau"
+        
         # Generate PDF
         print("[Avis] Generating PDF...")
         pdf_bytes = generate_avis_pdf(
-            meeting_title=meeting_title,
             meeting_date=formatted_meeting_date,
             meeting_time=meeting_time,
-            meeting_location=meeting_location,
+            meeting_location=location_text,
             deadline=formatted_deadline,
             sender_name=sender_name,
-            sender_email=sender_email
+            sender_email=sender_email,
+            signature_url=signature_url
         )
         pdf_base64 = base64.b64encode(pdf_bytes).decode('utf-8')
         pdf_filename = f"Avis_Convocation_CCE_{formatted_meeting_date.replace(' ', '_').replace(',', '')}.pdf"

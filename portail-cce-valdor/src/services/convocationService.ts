@@ -295,7 +295,9 @@ export const sendAvisConvocation = async (
                 recipients,
                 sender: {
                     name: senderMember.displayName,
-                    email: senderMember.email
+                    email: senderMember.email,
+                    signatureUrl: senderMember.signatureUrl || null,
+                    role: senderMember.role
                 }
             });
             console.log('✅ send_avis_convocation success');
