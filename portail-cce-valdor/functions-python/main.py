@@ -839,23 +839,206 @@ def send_convocation(req: https_fn.CallableRequest):
 
 
 # ==========================================
-# Avis de Convocation (Phase 1) - Simple notification with deadline
+# Avis de Convocation (Phase 1) - Simple notification with deadline + PDF attachment
 # ==========================================
+
+def generate_avis_pdf(meeting_title: str, meeting_date: str, meeting_time: str, 
+                      meeting_location: str, deadline: str, sender_name: str, 
+                      sender_email: str) -> bytes:
+    """
+    Generate Avis de Convocation PDF using reportlab.
+    Returns PDF as bytes for email attachment.
+    """
+    from reportlab.lib.pagesizes import letter
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.units import inch
+    from reportlab.lib.colors import HexColor
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image
+    from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY, TA_RIGHT
+    import io
+    
+    # Colors
+    primary_color = HexColor('#1e4e3d')
+    accent_color = HexColor('#c5a065')
+    
+    # Create PDF buffer
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=letter, 
+                           topMargin=0.75*inch, bottomMargin=0.75*inch,
+                           leftMargin=1*inch, rightMargin=1*inch)
+    
+    # Styles
+    styles = getSampleStyleSheet()
+    
+    title_style = ParagraphStyle(
+        'CustomTitle',
+        parent=styles['Heading1'],
+        fontSize=18,
+        textColor=primary_color,
+        alignment=TA_CENTER,
+        spaceAfter=6
+    )
+    
+    subtitle_style = ParagraphStyle(
+        'CustomSubtitle',
+        parent=styles['Heading2'],
+        fontSize=12,
+        textColor=accent_color,
+        alignment=TA_CENTER,
+        spaceAfter=20
+    )
+    
+    heading_style = ParagraphStyle(
+        'CustomHeading',
+        parent=styles['Heading1'],
+        fontSize=16,
+        textColor=primary_color,
+        alignment=TA_CENTER,
+        spaceBefore=30,
+        spaceAfter=20
+    )
+    
+    body_style = ParagraphStyle(
+        'CustomBody',
+        parent=styles['Normal'],
+        fontSize=11,
+        textColor=HexColor('#2b2b2b'),
+        alignment=TA_JUSTIFY,
+        spaceAfter=12,
+        leading=16
+    )
+    
+    date_style = ParagraphStyle(
+        'DateStyle',
+        parent=styles['Normal'],
+        fontSize=10,
+        textColor=HexColor('#666666'),
+        alignment=TA_RIGHT,
+        spaceAfter=20
+    )
+    
+    # Build document content
+    elements = []
+    
+    # Header
+    elements.append(Paragraph("COMITÉ CONSULTATIF EN ENVIRONNEMENT", title_style))
+    elements.append(Paragraph("VILLE DE VAL-D'OR", subtitle_style))
+    elements.append(Spacer(1, 10))
+    
+    # Document title
+    elements.append(Paragraph("AVIS DE CONVOCATION", heading_style))
+    
+    # Date
+    today_str = datetime.now().strftime("%d %B %Y").replace("January", "janvier").replace("February", "février").replace("March", "mars").replace("April", "avril").replace("May", "mai").replace("June", "juin").replace("July", "juillet").replace("August", "août").replace("September", "septembre").replace("October", "octobre").replace("November", "novembre").replace("December", "décembre")
+    elements.append(Paragraph(f"Val-d'Or, le {today_str}", date_style))
+    elements.append(Spacer(1, 20))
+    
+    # Body
+    elements.append(Paragraph("Bonjour,", body_style))
+    elements.append(Spacer(1, 6))
+    
+    elements.append(Paragraph(
+        f"Par la présente, nous vous convoquons à la prochaine assemblée du <b>Comité consultatif en environnement</b> de la Ville de Val-d'Or.",
+        body_style
+    ))
+    
+    elements.append(Spacer(1, 15))
+    
+    # Meeting details box
+    meeting_info = f"""
+    <b>📅 Date :</b> {meeting_date}<br/>
+    <b>🕐 Heure :</b> {meeting_time}<br/>
+    <b>📍 Lieu :</b> {meeting_location}
+    """
+    
+    info_style = ParagraphStyle(
+        'InfoBox',
+        parent=styles['Normal'],
+        fontSize=11,
+        textColor=primary_color,
+        leftIndent=20,
+        rightIndent=20,
+        spaceBefore=10,
+        spaceAfter=10,
+        borderColor=accent_color,
+        borderWidth=2,
+        borderPadding=10
+    )
+    elements.append(Paragraph(meeting_info, info_style))
+    elements.append(Spacer(1, 15))
+    
+    # Deadline section
+    deadline_text = f"""
+    <b>📋 Date limite pour soumettre des sujets à l'ordre du jour :</b><br/>
+    <font size="14"><b>{deadline}</b></font><br/><br/>
+    Veuillez faire parvenir vos suggestions par courriel à : {sender_email}
+    """
+    
+    deadline_style = ParagraphStyle(
+        'DeadlineBox',
+        parent=styles['Normal'],
+        fontSize=11,
+        alignment=TA_CENTER,
+        backColor=HexColor('#fff3cd'),
+        borderColor=HexColor('#ffc107'),
+        borderWidth=1,
+        borderPadding=15,
+        spaceBefore=15,
+        spaceAfter=15
+    )
+    elements.append(Paragraph(deadline_text, deadline_style))
+    elements.append(Spacer(1, 15))
+    
+    # Closing
+    elements.append(Paragraph(
+        "Nous vous prions de bien vouloir accuser réception du présent avis et de confirmer votre présence.",
+        body_style
+    ))
+    elements.append(Spacer(1, 6))
+    
+    elements.append(Paragraph(
+        "Dans l'attente de vous rencontrer, veuillez agréer l'expression de nos salutations distinguées.",
+        body_style
+    ))
+    
+    elements.append(Spacer(1, 40))
+    
+    # Signature
+    signature_style = ParagraphStyle(
+        'Signature',
+        parent=styles['Normal'],
+        fontSize=11,
+        alignment=TA_RIGHT
+    )
+    elements.append(Paragraph(f"<b>{sender_name}</b>", signature_style))
+    elements.append(Paragraph("Coordonnateur en environnement<br/>Secrétaire du CCE", signature_style))
+    
+    # Build PDF
+    doc.build(elements)
+    
+    # Get PDF bytes
+    pdf_bytes = buffer.getvalue()
+    buffer.close()
+    
+    return pdf_bytes
+
+
 @https_fn.on_call(
-    memory=options.MemoryOption.MB_256,
-    timeout_sec=120,
+    memory=options.MemoryOption.MB_512,  # Increased for PDF generation
+    timeout_sec=180,
     region="us-central1"
 )
 def send_avis_convocation(req: https_fn.CallableRequest):
     """
-    Send Avis de Convocation emails to CCE members.
-    Phase 1: Simple notification with meeting date and 15-day deadline for agenda suggestions.
-    No RSVP buttons - just informational.
+    Send Avis de Convocation emails to CCE members with PDF attachment.
+    Phase 1: Simple notification with meeting date, 15-day deadline for agenda suggestions,
+    and the official convocation letter as PDF attachment.
     """
-    print("[Avis] Starting send_avis_convocation function")
+    print("[Avis] Starting send_avis_convocation function with PDF generation")
     
     try:
         import resend
+        import base64
         
         # Get Resend API key
         resend_api_key = os.environ.get("RESEND_API_KEY")
@@ -887,8 +1070,32 @@ def send_avis_convocation(req: https_fn.CallableRequest):
         formatted_deadline = deadline.get("formattedDate", "Date limite")
         sender_email = sender.get("email", "coordonnateur@ville.valdor.qc.ca")
         sender_name = sender.get("name", "Coordonnateur CCE")
+        meeting_title = meeting.get("title", "Assemblée CCE")
+        meeting_location = meeting.get("location", "Ville de Val-d'Or")
         
-        # Generate email HTML for Avis de convocation (simpler than confirmation)
+        # Format time from meeting date
+        try:
+            meeting_datetime = datetime.fromisoformat(meeting.get("date", "").replace("Z", "+00:00"))
+            meeting_time = meeting_datetime.strftime("%H h %M")
+        except:
+            meeting_time = "À confirmer"
+        
+        # Generate PDF
+        print("[Avis] Generating PDF...")
+        pdf_bytes = generate_avis_pdf(
+            meeting_title=meeting_title,
+            meeting_date=formatted_meeting_date,
+            meeting_time=meeting_time,
+            meeting_location=meeting_location,
+            deadline=formatted_deadline,
+            sender_name=sender_name,
+            sender_email=sender_email
+        )
+        pdf_base64 = base64.b64encode(pdf_bytes).decode('utf-8')
+        pdf_filename = f"Avis_Convocation_CCE_{formatted_meeting_date.replace(' ', '_').replace(',', '')}.pdf"
+        print(f"[Avis] PDF generated: {len(pdf_bytes)} bytes")
+        
+        # Generate email HTML
         def generate_avis_email_html(recipient_name: str) -> str:
             return f"""
 <!DOCTYPE html>
@@ -916,7 +1123,7 @@ def send_avis_convocation(req: https_fn.CallableRequest):
             </p>
             
             <p style="font-size: 16px; color: #333; line-height: 1.6;">
-                Vous trouverez, en fichier joint, l'avis de convocation pour la prochaine assemblée du 
+                Vous trouverez, <strong>en fichier joint</strong>, l'avis de convocation pour la prochaine assemblée du 
                 <strong>Comité consultatif en environnement</strong>, prévue le <strong>{formatted_meeting_date}</strong>.
             </p>
             
@@ -947,7 +1154,7 @@ def send_avis_convocation(req: https_fn.CallableRequest):
 </html>
 """
         
-        # Send emails to all recipients
+        # Send emails to all recipients with PDF attachment
         sent_count = 0
         errors = []
         
@@ -960,11 +1167,16 @@ def send_avis_convocation(req: https_fn.CallableRequest):
                     "to": [recipient.get("email")],
                     "subject": f"Avis de convocation – Assemblée CCE du {formatted_meeting_date}",
                     "html": email_html,
-                    # TODO: Attach avis letter PDF when available
+                    "attachments": [
+                        {
+                            "filename": pdf_filename,
+                            "content": pdf_base64
+                        }
+                    ]
                 })
                 
                 sent_count += 1
-                print(f"[Avis] Email sent to {recipient.get('email')}")
+                print(f"[Avis] Email with PDF sent to {recipient.get('email')}")
                 
             except Exception as email_error:
                 error_msg = f"Failed to send to {recipient.get('email')}: {str(email_error)}"
@@ -977,13 +1189,15 @@ def send_avis_convocation(req: https_fn.CallableRequest):
             db.collection("meetings").document(meeting_id).collection("avis_convocations").document(avis_id).update({
                 "emailsSent": sent_count,
                 "emailErrors": errors,
-                "emailSentAt": datetime.now().isoformat()
+                "emailSentAt": datetime.now().isoformat(),
+                "pdfGenerated": True
             })
         
         return {
             "success": True,
             "sentCount": sent_count,
             "errorCount": len(errors),
+            "pdfGenerated": True,
             "errors": errors if errors else None
         }
         
