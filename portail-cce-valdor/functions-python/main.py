@@ -452,19 +452,25 @@ def transcribe_whisper(req: https_fn.CallableRequest) -> dict:
     data = req.data
     meeting_id = data.get("meetingId")
     storage_path = data.get("storagePath")
-    # mime_type = data.get("mimeType", "audio/mpeg") # Not strictly needed for Signed URL
+    download_url = data.get("downloadUrl")  # NEW: Firebase Storage download URL with token
     
-    if not meeting_id or not storage_path:
+    if not meeting_id:
         raise https_fn.HttpsError(
             code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT,
-            message="Missing meetingId or storagePath."
+            message="Missing meetingId."
+        )
+    
+    # Require either downloadUrl or storagePath
+    if not download_url and not storage_path:
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT,
+            message="Missing downloadUrl or storagePath."
         )
     
     print(f"[Transcription] Starting for meeting {meeting_id} (via Salad Cloud)")
     
     try:
         db = firestore.client()
-        bucket = storage.bucket()
         meeting_ref = db.collection("meetings").document(meeting_id)
         
         # Update status
@@ -473,37 +479,19 @@ def transcribe_whisper(req: https_fn.CallableRequest) -> dict:
             "dateUpdated": datetime.now().isoformat()
         })
 
-        # 1. Generate Signed URL using IAM SignBlob (works with Default Identity)
-        # We need the service account email for this. 
-        # In Cloud Functions, this is usually the App Engine default service account.
-        # We can try to get it from context or env, or let the SDK figure it out if we provide the param.
-        # However, for IAM signing to work, we MUST provide 'service_account_email'.
-        
-        # Get actual service account email from auth credentials
-        import google.auth
-        credentials, project_id = google.auth.default()
-        
-        # If credentials have a service account email, use it. Otherwise fallback to App Engine default convention.
-        sa_email = getattr(credentials, 'service_account_email', None)
-        if not sa_email:
-             sa_email = f"{project_id}@appspot.gserviceaccount.com"
-             print(f"[Transcription] Warning: Could not detect SA email, guessing: {sa_email}")
+        # 1. Use downloadURL directly (preferred - no signing needed)
+        # If not provided, we could fall back to signed URL, but we skip that complexity
+        if download_url:
+            file_url = download_url
+            print(f"[Transcription] Using provided downloadURL: {file_url[:60]}...")
         else:
-             print(f"[Transcription] Detected Service Account: {sa_email}")
-
-        blob = bucket.blob(storage_path)
-        signed_url = blob.generate_signed_url(
-            version="v4",
-            expiration=timedelta(hours=2),
-            method="GET",
-            service_account_email=sa_email, 
-            access_token=credentials.token # Pass token if available, though libraries might fetch it
-        )
-        print(f"[Transcription] Generated Signed URL: {signed_url[:50]}...")
+            # Fallback: This path would require IAM signing, which may not work
+            # For now, we raise an error to force the frontend to pass downloadUrl
+            raise Exception("downloadUrl not provided. Signed URL generation is not supported in this environment.")
 
         # 2. Call Salad Cloud
         print("[Transcription] Offloading to Salad Cloud...")
-        salad_output = transcribe_with_salad(signed_url, language_code="fr")
+        salad_output = transcribe_with_salad(file_url, language_code="fr")
         
         if not salad_output:
             raise Exception("Empty output from Salad")

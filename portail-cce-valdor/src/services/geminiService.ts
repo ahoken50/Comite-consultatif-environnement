@@ -108,7 +108,8 @@ export const transcribeAudio = async (
         const result = await transcribeFunction({
             meetingId,
             storagePath: storagePath || audioUrl,
-            mimeType
+            mimeType,
+            downloadUrl: audioUrl // NEW: Pass the downloadURL directly for Salad Cloud
         });
 
         // The function updates Firestore directly, so we just verify success
