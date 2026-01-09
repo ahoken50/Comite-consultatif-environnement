@@ -937,7 +937,47 @@ def generate_avis_pdf(meeting_date: str, meeting_time: str,
     # Build document content
     elements = []
     
-    # === HEADER with logos (if available) ===
+    # === HEADER with logos ===
+    # Logo URLs from deployed app
+    logo_valdor_url = "https://comite-cce.web.app/logo-valdor.png"
+    logo_cce_url = "https://comite-cce.web.app/logo-cce.png"
+    
+    # Try to download and add logos
+    logo_valdor_img = None
+    logo_cce_img = None
+    
+    try:
+        with urllib.request.urlopen(logo_valdor_url, timeout=10) as response:
+            logo_data = response.read()
+            logo_buffer = io.BytesIO(logo_data)
+            logo_valdor_img = Image(logo_buffer, width=1.2*inch, height=0.8*inch)
+            print("[Avis PDF] Logo Val-d'Or loaded")
+    except Exception as e:
+        print(f"[Avis PDF] Could not load logo Val-d'Or: {e}")
+    
+    try:
+        with urllib.request.urlopen(logo_cce_url, timeout=10) as response:
+            logo_data = response.read()
+            logo_buffer = io.BytesIO(logo_data)
+            logo_cce_img = Image(logo_buffer, width=0.8*inch, height=0.8*inch)
+            print("[Avis PDF] Logo CCE loaded")
+    except Exception as e:
+        print(f"[Avis PDF] Could not load logo CCE: {e}")
+    
+    # Create header with logos (side by side)
+    if logo_valdor_img and logo_cce_img:
+        logo_table = Table(
+            [[logo_valdor_img, logo_cce_img]],
+            colWidths=[3*inch, 3*inch]
+        )
+        logo_table.setStyle(TableStyle([
+            ('ALIGN', (0, 0), (0, 0), 'LEFT'),
+            ('ALIGN', (1, 0), (1, 0), 'RIGHT'),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ]))
+        elements.append(logo_table)
+        elements.append(Spacer(1, 15))
+    
     elements.append(Paragraph("COMITÉ CONSULTATIF EN ENVIRONNEMENT", header_style))
     elements.append(Paragraph("VILLE DE VAL-D'OR", subheader_style))
     
