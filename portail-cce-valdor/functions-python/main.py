@@ -705,7 +705,7 @@ def send_convocation(req: https_fn.CallableRequest):
         formatted_time = meeting_date.strftime("%H h %M")
         
         # App URL for RSVP links
-        app_url = os.environ.get("APP_URL", "https://portail-cce-valdor.web.app")
+        app_url = os.environ.get("APP_URL", "https://comite-cce.web.app")
         
         # Generate email HTML with logos
         def generate_email_html(recipient_name: str, token: str) -> str:
