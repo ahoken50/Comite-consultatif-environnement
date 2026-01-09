@@ -13,8 +13,11 @@ import requests
 from datetime import datetime, timedelta
 from firebase_functions import https_fn, options
 from firebase_admin import initialize_app, firestore, storage
-import openai
-from pydub import AudioSegment
+# NOTE: openai and pydub are no longer needed for Salad Cloud integration.
+# They are still used by the legacy_local transcription function if needed.
+# Importing them lazily inside the legacy function to reduce cold start memory.
+# import openai
+# from pydub import AudioSegment
 from dotenv import load_dotenv
 
 # Load environment variables
