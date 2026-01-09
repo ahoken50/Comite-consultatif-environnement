@@ -431,13 +431,14 @@ def transcribe_with_salad(file_url: str, language_code: str = "fr") -> dict:
         
         if status == "succeeded":
             output = status_data.get("output", {})
-            duration = output.get("duration", "unknown")
+            duration_hours = output.get("duration", 0)
+            duration_min = duration_hours * 60 if isinstance(duration_hours, (int, float)) else "unknown"
             processing_time = output.get("processing_time", "unknown")
             print(f"[Salad] Job succeeded!")
-            print(f"[Salad] Audio duration: {duration}s, Processing time: {processing_time}s")
+            print(f"[Salad] Audio duration: {duration_min:.1f} min, Processing time: {processing_time}s")
             
             # Handle file-based response (for large outputs > 1MB)
-            if "url" in output and "sentence_level_timestamps" not in output:
+            if "url" in output and "sentence_level_timestamps" not in output and "text" not in output:
                 print(f"[Salad] Output returned as file URL, downloading...")
                 file_resp = requests.get(output["url"], timeout=60)
                 if file_resp.ok:
@@ -491,20 +492,24 @@ def transcribe_with_salad(file_url: str, language_code: str = "fr") -> dict:
 
 def format_salad_output(output_data: dict) -> str:
     """
-    Convert Salad JSON output to [MM:SS] Text format.
+    Convert Salad JSON output to [MM:SS] Speaker: Text format.
     Expects 'sentence_level_timestamps' in output.
+    See API docs: output includes 'speaker' field per sentence when diarization is enabled.
     """
     sentences = output_data.get("sentence_level_timestamps", [])
     if not sentences:
         # Fallback to 'text' if available
+        print("[Salad] No sentence_level_timestamps, falling back to raw text")
         return output_data.get("text", "")
 
     formatted_lines = []
+    last_speaker = None
     
     for item in sentences:
-        # item structure: {'text': '...', 'timestamp': [start, end], ...}
+        # Item structure from API: {'text': '...', 'timestamp': [start, end], 'speaker': 'SPEAKER_0', ...}
         text = item.get("text", "").strip()
         timestamp = item.get("timestamp", [0, 0])
+        speaker = item.get("speaker", "")  # e.g., "SPEAKER_0", "SPEAKER_1"
         start_time = timestamp[0] if isinstance(timestamp, list) and len(timestamp) > 0 else 0
         
         if not text:
@@ -515,7 +520,12 @@ def format_salad_output(output_data: dict) -> str:
         s = int(start_time % 60)
         ts_str = f"[{m:02d}:{s:02d}]"
         
-        formatted_lines.append(f"{ts_str} {text}")
+        # Include speaker if available and changed
+        if speaker and speaker != last_speaker:
+            formatted_lines.append(f"{ts_str} {speaker}: {text}")
+            last_speaker = speaker
+        else:
+            formatted_lines.append(f"{ts_str} {text}")
         
     return "\n".join(formatted_lines)
 
