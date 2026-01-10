@@ -403,14 +403,37 @@ def transcribe_with_salad(file_url: str, language_code: str = "fr") -> dict:
 
     print(f"[Salad] Payload: language={language_code}, diarization=True, vocab_len={len(CCE_VOCABULARY)}")
     
-    response = requests.post(SALAD_API_URL, headers=headers, json=payload)
-    
-    if not response.ok:
-        error_detail = response.text[:500] if response.text else "No response body"
-        print(f"[Salad] Submit failed - Status: {response.status_code}, Body: {error_detail}")
-        raise Exception(f"Salad Submit Failed (HTTP {response.status_code}): {error_detail}")
+    # Retry submission up to 3 times for transient 50x errors
+    for attempt in range(3):
+        try:
+            response = requests.post(SALAD_API_URL, headers=headers, json=payload, timeout=30)
+            
+            if not response.ok:
+                error_text = response.text[:500]
+                print(f"[Salad] Submit failed (Attempt {attempt+1}/3) - Status: {response.status_code}, Body: {error_text}")
+                
+                # If 50x error (Gateway/Server), retry
+                if response.status_code >= 500:
+                    time.sleep(2)
+                    continue
+                    
+                raise Exception(f"Salad Submit Failed (HTTP {response.status_code}): {error_text}")
 
-    job_data = response.json()
+            try:
+                job_data = response.json()
+                break # Success
+            except ValueError:
+                error_text = response.text[:500]
+                print(f"[Salad] Critical: Submit returned non-JSON (Attempt {attempt+1}/3): {error_text}")
+                if attempt == 2:
+                    raise Exception(f"Salad API Error (Non-JSON response): {error_text}")
+                time.sleep(2)
+                
+        except requests.exceptions.RequestException as e:
+            print(f"[Salad] Network error during submit (Attempt {attempt+1}/3): {e}")
+            if attempt == 2:
+                raise
+
     job_id = job_data.get("id")
     print(f"[Salad] Job submitted successfully: {job_id}")
 
