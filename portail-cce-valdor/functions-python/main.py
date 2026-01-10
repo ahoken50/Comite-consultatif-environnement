@@ -310,10 +310,16 @@ SALAD_MAX_DURATION_HOURS = 2.5
 # Custom vocabulary for CCE meetings (improves transcription accuracy)
 CCE_VOCABULARY = (
     "CCE, Val-d'Or, Comité consultatif en environnement, "
-    "procès-verbal, ordre du jour, résolution, "
-    "biodiversité, changements climatiques, îlots de chaleur, "
-    "gestion des eaux pluviales, développement durable, "
-    "règlement municipal, consultation publique"
+    "Patricia Boutin, Sébastien Brodeur-Girard, Jacinthe Pothier, Donald Ratté, "
+    "Michaël Ross, Benjamin Turcotte, Marguerite Larochelle, Céline Brindamour, Jocelyn Hébert, "
+    "Maire, Mairesse, Urbanisme, Travaux publics, Environnement, Développement durable, "
+    "MRCVO, SESAT, Société des eaux souterraines de l'Abitibi-Témiscamingue, "
+    "OBVAJ, Organisme de bassin versant Abitibi-Jamésie, Abitibi, Rouyn, Rouyn-Noranda, "
+    "Protection des berges, Gestion des eaux pluviales, Bassin de rétention, Noue végétalisée, "
+    "Puits Feldman, Esker, Domaine des Eskers, Nappe phréatique, Aquifère, "
+    "Biodiversité, Changements climatiques, Îlots de chaleur, Verdissement, "
+    "Zonage, Règlement municipal, Dérogation mineure, PIIA, Consultation publique, "
+    "Procès-verbal, Ordre du jour, Résolution, Adoption"
 )
 
 
@@ -379,21 +385,23 @@ def transcribe_with_salad(file_url: str, language_code: str = "fr") -> dict:
     if not validation.get("valid"):
         raise Exception(f"File validation failed: {validation.get('error')}")
 
-    # 1. Submit Job (simplified - removed sentence_diarization and custom_vocabulary to reduce GPU load)
+    # 1. Submit Job - High Quality Mode
+    # Re-enabled diarization and custom vocabulary now that we have 55m timeout + robust error handling
     payload = {
         "input": {
             "url": file_url,
             "language_code": language_code,
             "return_as_file": False,
             "sentence_level_timestamps": True,
-            "diarization": True
-            # NOTE: sentence_diarization and custom_vocabulary removed to reduce processing complexity
+            "diarization": True,
+            "sentence_diarization": True,  # Improved speaker attribution per sentence
+            "custom_vocabulary": CCE_VOCABULARY  # Boost accuracy for CCE technical terms
         }
     }
 
-    print(f"[Salad] Submitting simplified job (diarization only, no custom vocab)...")
+    print(f"[Salad] Submitting HIGH QUALITY job (with diarization + custom vocab)...")
 
-    print(f"[Salad] Payload: language={language_code}, diarization=True (simplified)")
+    print(f"[Salad] Payload: language={language_code}, diarization=True, vocab_len={len(CCE_VOCABULARY)}")
     
     response = requests.post(SALAD_API_URL, headers=headers, json=payload)
     
