@@ -298,7 +298,423 @@ def transcribe_with_whisper(
 
 
 # =============================================================================
-# SALAD CLOUD INTEGRATION
+# SPEECHMATICS INTEGRATION (Primary Transcription Provider)
+# =============================================================================
+
+SPEECHMATICS_API_BASE = "https://us1.asr.api.speechmatics.com/v2"  # US region
+
+# Custom dictionary for CCE meetings (Speechmatics format)
+# Each entry can have optional "sounds_like" for pronunciation hints
+# Limited to 1000 terms per Speechmatics API
+CCE_CUSTOM_VOCAB = [
+    # =========================================================================
+    # CCE MEMBER NAMES
+    # =========================================================================
+    {"content": "Patricia Boutin"},
+    {"content": "Sébastien Brodeur-Girard", "sounds_like": ["Sébastien Brodeur Girard"]},
+    {"content": "Jacinthe Pothier", "sounds_like": ["Jacinthe Potiè"]},
+    {"content": "Donald Ratté", "sounds_like": ["Donald Raté"]},
+    {"content": "Michaël Ross", "sounds_like": ["Michael Ross"]},
+    {"content": "Benjamin Turcotte"},
+    {"content": "Marguerite Larochelle"},
+    {"content": "Céline Brindamour", "sounds_like": ["Céline Brind'amour"]},
+    {"content": "Jocelyn Hébert", "sounds_like": ["Jocelyn Ébert"]},
+    
+    # =========================================================================
+    # ROLES & GOVERNANCE
+    # =========================================================================
+    {"content": "CCE", "sounds_like": ["C.C.E.", "Cécé"]},
+    {"content": "Président"},
+    {"content": "Présidente"},
+    {"content": "Vice-président"},
+    {"content": "Vice-présidente"},
+    {"content": "Secrétaire"},
+    {"content": "Conseiller"},
+    {"content": "Conseillère"},
+    {"content": "Mairesse"},
+    {"content": "Maire"},
+    {"content": "Directeur général"},
+    {"content": "Greffier"},
+    {"content": "Coordonnateur"},
+    {"content": "Coordonnatrice"},
+    
+    # =========================================================================
+    # ORGANIZATIONS & LOCATIONS
+    # =========================================================================
+    {"content": "MRCVO", "sounds_like": ["M.R.C.V.O."]},
+    {"content": "MRC Vallée-de-l'Or"},
+    {"content": "SESAT", "sounds_like": ["S.E.S.A.T."]},
+    {"content": "OBVAJ", "sounds_like": ["O.B.V.A.J."]},
+    {"content": "Val-d'Or", "sounds_like": ["Valdor", "Val d'Or"]},
+    {"content": "Abitibi"},
+    {"content": "Abitibi-Témiscamingue"},
+    {"content": "Rouyn-Noranda"},
+    {"content": "Ministère de l'Environnement"},
+    {"content": "MELCCFP", "sounds_like": ["M.E.L.C.C.F.P."]},
+    {"content": "MAMH", "sounds_like": ["M.A.M.H."]},
+    {"content": "MTQ", "sounds_like": ["M.T.Q."]},
+    
+    # =========================================================================
+    # MEETING PROCEDURES
+    # =========================================================================
+    {"content": "Procès-verbal", "sounds_like": ["PV"]},
+    {"content": "Ordre du jour"},
+    {"content": "Résolution"},
+    {"content": "Adoption"},
+    {"content": "Approbation"},
+    {"content": "Amendement"},
+    {"content": "Proposition"},
+    {"content": "Seconde"},
+    {"content": "Vote"},
+    {"content": "Unanimité"},
+    {"content": "Majorité"},
+    {"content": "Quorum"},
+    {"content": "Levée de la séance"},
+    {"content": "Point d'information"},
+    {"content": "Suivi"},
+    {"content": "Avis de motion"},
+    {"content": "Huis clos"},
+    
+    # =========================================================================
+    # ENVIRONMENTAL TERMS
+    # =========================================================================
+    # Climate
+    {"content": "Changements climatiques"},
+    {"content": "Réchauffement climatique"},
+    {"content": "Gaz à effet de serre"},
+    {"content": "GES", "sounds_like": ["G.E.S."]},
+    {"content": "Émissions de carbone"},
+    {"content": "Bilan carbone"},
+    {"content": "Carboneutralité"},
+    {"content": "Îlot de chaleur"},
+    {"content": "Îlots de fraîcheur"},
+    {"content": "Adaptation climatique"},
+    {"content": "Résilience climatique"},
+    
+    # Biodiversity
+    {"content": "Biodiversité"},
+    {"content": "Espèces menacées"},
+    {"content": "Espèces vulnérables"},
+    {"content": "Habitat faunique"},
+    {"content": "Corridor écologique"},
+    {"content": "Milieu naturel"},
+    {"content": "Écosystème"},
+    {"content": "Faune"},
+    {"content": "Flore"},
+    {"content": "Espèces envahissantes"},
+    {"content": "Agrile du frêne"},
+    {"content": "Herbe à poux"},
+    {"content": "Berce du Caucase"},
+    
+    # Water
+    {"content": "Gestion des eaux pluviales"},
+    {"content": "Eaux de ruissellement"},
+    {"content": "Bassin de rétention"},
+    {"content": "Bassin versant"},
+    {"content": "Noue végétalisée"},
+    {"content": "Nappe phréatique"},
+    {"content": "Aquifère"},
+    {"content": "Eau potable"},
+    {"content": "Eaux usées"},
+    {"content": "Station d'épuration"},
+    {"content": "Puits Feldman", "sounds_like": ["Puit Feldman"]},
+    {"content": "Esker"},
+    {"content": "Domaine des Eskers"},
+    {"content": "Protection des berges"},
+    {"content": "Bande riveraine"},
+    {"content": "Littoral"},
+    {"content": "Rive"},
+    {"content": "Plaine inondable"},
+    {"content": "Crue"},
+    {"content": "Inondation"},
+    
+    # Waste & Recycling
+    {"content": "Matières résiduelles"},
+    {"content": "Recyclage"},
+    {"content": "Compostage"},
+    {"content": "Bac brun"},
+    {"content": "Bac bleu"},
+    {"content": "Bac noir"},
+    {"content": "Écocentre"},
+    {"content": "Enfouissement"},
+    {"content": "Lieu d'enfouissement"},
+    {"content": "LET", "sounds_like": ["L.E.T."]},
+    {"content": "Économie circulaire"},
+    {"content": "Réduction à la source"},
+    {"content": "Valorisation"},
+    {"content": "3RV", "sounds_like": ["trois R V"]},
+    
+    # Energy
+    {"content": "Efficacité énergétique"},
+    {"content": "Énergies renouvelables"},
+    {"content": "Énergie solaire"},
+    {"content": "Énergie éolienne"},
+    {"content": "Hydro-Québec"},
+    {"content": "Électrification"},
+    {"content": "Bornes de recharge"},
+    {"content": "Véhicules électriques"},
+    
+    # Pollution & Contamination
+    {"content": "Contamination"},
+    {"content": "Sol contaminé"},
+    {"content": "Terrain contaminé"},
+    {"content": "Déversement"},
+    {"content": "Pollution atmosphérique"},
+    {"content": "Qualité de l'air"},
+    {"content": "Poussière"},
+    {"content": "Bruit"},
+    {"content": "Nuisance"},
+    
+    # =========================================================================
+    # URBAN PLANNING TERMS
+    # =========================================================================
+    {"content": "Urbanisme"},
+    {"content": "Aménagement du territoire"},
+    {"content": "Plan d'urbanisme"},
+    {"content": "Schéma d'aménagement"},
+    {"content": "Zonage"},
+    {"content": "Règlement de zonage"},
+    {"content": "Dérogation mineure"},
+    {"content": "PIIA", "sounds_like": ["P.I.I.A."]},
+    {"content": "PAE", "sounds_like": ["P.A.E."]},
+    {"content": "PPU", "sounds_like": ["P.P.U."]},
+    {"content": "Permis de construction"},
+    {"content": "Permis de lotissement"},
+    {"content": "Certificat d'autorisation"},
+    {"content": "Consultation publique"},
+    {"content": "Assemblée publique"},
+    {"content": "Référendum"},
+    {"content": "Registre"},
+    {"content": "Usage conditionnel"},
+    {"content": "Usage dérogatoire"},
+    {"content": "Coefficient d'emprise"},
+    {"content": "Densification"},
+    {"content": "Étalement urbain"},
+    
+    # Green Infrastructure
+    {"content": "Verdissement"},
+    {"content": "Canopée"},
+    {"content": "Indice de canopée"},
+    {"content": "Plantation d'arbres"},
+    {"content": "Forêt urbaine"},
+    {"content": "Parc"},
+    {"content": "Espace vert"},
+    {"content": "Toit vert"},
+    {"content": "Mur végétal"},
+    {"content": "Infrastructure verte"},
+    {"content": "Stationnement perméable"},
+    {"content": "Pavé perméable"},
+    
+    # Transportation
+    {"content": "Transport actif"},
+    {"content": "Piste cyclable"},
+    {"content": "Trottoir"},
+    {"content": "Transport en commun"},
+    {"content": "Covoiturage"},
+    {"content": "Autopartage"},
+    {"content": "Mobilité durable"},
+    
+    # =========================================================================
+    # LEGAL & REGULATORY
+    # =========================================================================
+    {"content": "Règlement municipal"},
+    {"content": "Loi sur la qualité de l'environnement"},
+    {"content": "LQE", "sounds_like": ["L.Q.E."]},
+    {"content": "Étude d'impact"},
+    {"content": "BAPE", "sounds_like": ["B.A.P.E."]},
+    {"content": "Certificat d'autorisation"},
+    {"content": "Attestation d'assainissement"},
+    {"content": "Droits acquis"},
+    {"content": "Servitude"},
+    {"content": "Expropriation"},
+]
+
+
+
+def transcribe_with_speechmatics(file_url: str, language_code: str = "fr") -> dict:
+    """
+    Transcribe audio using Speechmatics API with diarization.
+    Speechmatics is optimized for long-form content and handles French/Quebec accents well.
+    
+    Returns dict with:
+    - text: Full transcript with speaker labels
+    - segments: List of timestamped segments with speaker info
+    - duration_seconds: Audio duration
+    """
+    api_key = os.environ.get("SPEECHMATICS_API_KEY")
+    if not api_key:
+        raise Exception("SPEECHMATICS_API_KEY not configured")
+
+    headers = {"Authorization": f"Bearer {api_key}"}
+
+    # 1. Submit Job with file URL and custom vocabulary
+    config = {
+        "type": "transcription",
+        "transcription_config": {
+            "language": language_code,
+            "operating_point": "enhanced",  # Best accuracy
+            "diarization": "speaker",        # Enable speaker separation
+            "enable_entities": True,         # Detect names, dates, etc.
+            "additional_vocab": CCE_CUSTOM_VOCAB  # Custom dictionary for CCE terms
+        },
+        "fetch_data": {
+            "url": file_url
+        }
+    }
+
+    print(f"[Speechmatics] Submitting job with {len(CCE_CUSTOM_VOCAB)} custom vocab terms...")
+    print(f"[Speechmatics] URL: {file_url[:80]}...")
+    
+    # Speechmatics requires multipart/form-data even for URL-based jobs
+    files = {
+        'config': (None, json.dumps(config), 'application/json')
+    }
+
+    submit_response = requests.post(
+        f"{SPEECHMATICS_API_BASE}/jobs",
+        headers=headers,
+        files=files,
+        timeout=60
+    )
+
+    if not submit_response.ok:
+        error_text = submit_response.text[:500]
+        print(f"[Speechmatics] Submit failed: {submit_response.status_code} - {error_text}")
+        raise Exception(f"Speechmatics Submit Failed: {error_text}")
+
+    job_data = submit_response.json()
+    job_id = job_data.get("id")
+    print(f"[Speechmatics] Job submitted: {job_id}")
+
+    # 2. Poll for Completion (timeout: 55 minutes)
+    start_time = time.time()
+    last_status = None
+    
+    while (time.time() - start_time) < 3300:  # 55 minutes
+        time.sleep(10)
+        
+        status_resp = requests.get(
+            f"{SPEECHMATICS_API_BASE}/jobs/{job_id}",
+            headers=headers,
+            timeout=30
+        )
+
+        if not status_resp.ok:
+            print(f"[Speechmatics] Status check failed: {status_resp.status_code}")
+            continue
+
+        job_status = status_resp.json()
+        status = job_status.get("status")
+
+        if status != last_status:
+            print(f"[Speechmatics] Status: {status}")
+            last_status = status
+
+        if status == "completed" or status == "done":
+            print(f"[Speechmatics] Job completed!")
+            break
+        elif status == "rejected" or status == "failed":
+            error_msg = job_status.get("errors", [{"message": "Unknown error"}])
+            raise Exception(f"Speechmatics Job Failed: {error_msg}")
+
+    else:
+        raise Exception("Speechmatics timeout after 55 minutes")
+
+    # 3. Get Transcript with Speaker Labels
+    transcript_resp = requests.get(
+        f"{SPEECHMATICS_API_BASE}/jobs/{job_id}/transcript?format=json-v2",
+        headers=headers,
+        timeout=60
+    )
+
+    if not transcript_resp.ok:
+        raise Exception(f"Failed to get transcript: {transcript_resp.status_code}")
+
+    result = transcript_resp.json()
+    
+    # 4. Format Output
+    return format_speechmatics_output(result)
+
+
+def format_speechmatics_output(result: dict) -> dict:
+    """
+    Convert Speechmatics JSON-v2 format to our standard output format.
+    Groups words by speaker and sentence.
+    """
+    words = result.get("results", [])
+    metadata = result.get("metadata", {})
+    
+    if not words:
+        return {
+            "text": "",
+            "segments": [],
+            "duration_seconds": metadata.get("duration", 0)
+        }
+
+    # Group words into speaker-labeled segments
+    segments = []
+    current_segment = {
+        "speaker": None,
+        "start": None,
+        "end": None,
+        "text": []
+    }
+
+    for word in words:
+        if word.get("type") == "punctuation":
+            if current_segment["text"]:
+                punct = word.get("alternatives", [{}])[0].get("content", "")
+                current_segment["text"].append(punct)
+            continue
+
+        alt = word.get("alternatives", [{}])[0]
+        content = alt.get("content", "")
+        speaker = alt.get("speaker", "S0")
+        start_time = word.get("start_time", 0)
+        end_time = word.get("end_time", 0)
+
+        # New speaker = new segment
+        if speaker != current_segment["speaker"] and current_segment["text"]:
+            # Finalize current segment
+            segments.append({
+                "speaker": current_segment["speaker"] or "S0",
+                "start": current_segment["start"],
+                "end": current_segment["end"],
+                "text": " ".join(current_segment["text"]).replace(" ,", ",").replace(" .", ".").replace(" ?", "?").replace(" !", "!").strip()
+            })
+            current_segment = {"speaker": speaker, "start": start_time, "end": None, "text": []}
+
+        if current_segment["start"] is None:
+            current_segment["start"] = start_time
+            current_segment["speaker"] = speaker
+
+        current_segment["end"] = end_time
+        current_segment["text"].append(content)
+
+    # Finalize last segment
+    if current_segment["text"]:
+        segments.append({
+            "speaker": current_segment["speaker"] or "S0",
+            "start": current_segment["start"],
+            "end": current_segment["end"],
+            "text": " ".join(current_segment["text"]).replace(" ,", ",").replace(" .", ".").replace(" ?", "?").replace(" !", "!").strip()
+        })
+
+    # Build full text with speaker labels
+    full_text_parts = []
+    for seg in segments:
+        speaker_label = f"[{seg['speaker']}]"
+        full_text_parts.append(f"{speaker_label} {seg['text']}")
+
+    return {
+        "text": "\n\n".join(full_text_parts),
+        "segments": segments,
+        "duration_seconds": metadata.get("duration", 0)
+    }
+
+
+# =============================================================================
+# SALAD CLOUD INTEGRATION (Disabled - kept for reference)
 # =============================================================================
 
 SALAD_API_URL = "https://api.salad.com/api/public/organizations/vvd/inference-endpoints/transcribe/jobs"
@@ -385,23 +801,22 @@ def transcribe_with_salad(file_url: str, language_code: str = "fr") -> dict:
     if not validation.get("valid"):
         raise Exception(f"File validation failed: {validation.get('error')}")
 
-    # 1. Submit Job - High Quality Mode
-    # Re-enabled diarization and custom vocabulary now that we have 55m timeout + robust error handling
+    # 1. Submit Job - Safe Mode (No Diarization to prevent OOM on large files)
+    # We keep custom_vocabulary as it's critical for accuracy but less RAM heavy than diarization
     payload = {
         "input": {
             "url": file_url,
             "language_code": language_code,
             "return_as_file": False,
             "sentence_level_timestamps": True,
-            "diarization": True,
-            "sentence_diarization": True,  # Improved speaker attribution per sentence
-            "custom_vocabulary": CCE_VOCABULARY  # Boost accuracy for CCE technical terms
+            "diarization": False,         # DISABLED to prevent crash
+            "sentence_diarization": False, # DISABLED to prevent crash
+            "custom_vocabulary": CCE_VOCABULARY
         }
     }
 
-    print(f"[Salad] Submitting HIGH QUALITY job (with diarization + custom vocab)...")
-
-    print(f"[Salad] Payload: language={language_code}, diarization=True, vocab_len={len(CCE_VOCABULARY)}")
+    print(f"[Salad] Submitting SAFE MODE job (Custom Vocab only, NO DIARIZATION)...")
+    print(f"[Salad] Payload: language={language_code}, diarization=False, vocab_len={len(CCE_VOCABULARY)}")
     
     # Retry submission up to 3 times for transient 50x errors
     for attempt in range(3):
@@ -622,7 +1037,7 @@ def transcribe_whisper_legacy_local(
 def transcribe_whisper(req: https_fn.CallableRequest) -> dict:
     """
     Cloud Function to transcribe audio.
-    NOW USES SALAD CLOUD API by default.
+    NOW USES SPEECHMATICS API (formerly Salad Cloud).
     """
     # Validate authentication
     if not req.auth:
@@ -634,7 +1049,7 @@ def transcribe_whisper(req: https_fn.CallableRequest) -> dict:
     data = req.data
     meeting_id = data.get("meetingId")
     storage_path = data.get("storagePath")
-    download_url = data.get("downloadUrl")  # NEW: Firebase Storage download URL with token
+    download_url = data.get("downloadUrl")  # Firebase Storage download URL with token
     
     if not meeting_id:
         raise https_fn.HttpsError(
@@ -649,7 +1064,7 @@ def transcribe_whisper(req: https_fn.CallableRequest) -> dict:
             message="Missing downloadUrl or storagePath."
         )
     
-    print(f"[Transcription] Starting for meeting {meeting_id} (via Salad Cloud)")
+    print(f"[Transcription] Starting for meeting {meeting_id} (via Speechmatics)")
     
     try:
         db = firestore.client()
@@ -662,24 +1077,21 @@ def transcribe_whisper(req: https_fn.CallableRequest) -> dict:
         })
 
         # 1. Use downloadURL directly (preferred - no signing needed)
-        # If not provided, we could fall back to signed URL, but we skip that complexity
         if download_url:
             file_url = download_url
             print(f"[Transcription] Using provided downloadURL: {file_url[:60]}...")
         else:
-            # Fallback: This path would require IAM signing, which may not work
-            # For now, we raise an error to force the frontend to pass downloadUrl
             raise Exception("downloadUrl not provided. Signed URL generation is not supported in this environment.")
 
-        # 2. Call Salad Cloud
-        print("[Transcription] Offloading to Salad Cloud...")
-        salad_output = transcribe_with_salad(file_url, language_code="fr")
+        # 2. Call Speechmatics (Primary Provider)
+        print("[Transcription] Offloading to Speechmatics...")
+        speechmatics_output = transcribe_with_speechmatics(file_url, language_code="fr")
         
-        if not salad_output:
-            raise Exception("Empty output from Salad")
+        if not speechmatics_output:
+            raise Exception("Empty output from Speechmatics")
 
-        # 3. Format Result
-        full_transcription = format_salad_output(salad_output)
+        # 3. Get formatted text (already formatted by Speechmatics function)
+        full_transcription = speechmatics_output.get("text", "")
         print(f"[Transcription] Success! Length: {len(full_transcription)} chars")
 
         # 4. Save to Firestore
@@ -687,7 +1099,7 @@ def transcribe_whisper(req: https_fn.CallableRequest) -> dict:
             "audioRecording.transcription": full_transcription,
             "audioRecording.transcriptionStatus": "completed",
             "audioRecording.transcribedAt": datetime.now().isoformat(),
-            "audioRecording.transcriptionEngine": "salad-whisper-large-v3",
+            "audioRecording.transcriptionEngine": "speechmatics-enhanced",
             "dateUpdated": datetime.now().isoformat()
         })
         
