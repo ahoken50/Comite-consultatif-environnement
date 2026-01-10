@@ -552,7 +552,7 @@ def transcribe_with_speechmatics(file_url: str, language_code: str = "fr") -> di
         "type": "transcription",
         "transcription_config": {
             "language": language_code,
-            "operating_point": "enhanced",  # Best accuracy
+            "operating_point": "standard",  # Faster processing (use 'enhanced' for best accuracy)
             "diarization": "speaker",        # Enable speaker separation
             "enable_entities": True,         # Detect names, dates, etc.
             "additional_vocab": CCE_CUSTOM_VOCAB  # Custom dictionary for CCE terms
@@ -586,11 +586,13 @@ def transcribe_with_speechmatics(file_url: str, language_code: str = "fr") -> di
     job_id = job_data.get("id")
     print(f"[Speechmatics] Job submitted: {job_id}")
 
-    # 2. Poll for Completion (timeout: 55 minutes)
+    # 2. Poll for Completion (timeout: 59 minutes - max for Cloud Functions)
+    # NOTE: Cloud Functions have a 60min hard limit. For longer jobs,
+    # consider using a webhook callback or a separate scheduled function.
     start_time = time.time()
     last_status = None
     
-    while (time.time() - start_time) < 3300:  # 55 minutes
+    while (time.time() - start_time) < 3550:  # 59 minutes (leave buffer for cleanup)
         time.sleep(10)
         
         status_resp = requests.get(
@@ -618,7 +620,7 @@ def transcribe_with_speechmatics(file_url: str, language_code: str = "fr") -> di
             raise Exception(f"Speechmatics Job Failed: {error_msg}")
 
     else:
-        raise Exception("Speechmatics timeout after 55 minutes")
+        raise Exception("Speechmatics timeout after 59 minutes (Cloud Function limit reached)")
 
     # 3. Get Transcript with Speaker Labels
     transcript_resp = requests.get(
