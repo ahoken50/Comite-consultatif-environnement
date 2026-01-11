@@ -84,14 +84,15 @@ const uploadToGemini = async (blob: Blob, mimeType: string, displayName: string)
 
 
 /**
- * Transcribe audio file using Gemini API
- * Updated to use Direct GCS URI for large file support
+ * Transcribe audio file using Speechmatics (async pattern)
+ * 1. Submit job (returns immediately)
+ * 2. Poll for completion every 30 seconds
  */
 export const transcribeAudio = async (
     meetingId: string,
     audioUrl: string,
     mimeType: string,
-    storagePath?: string // Optional storage path for direct SDK download
+    storagePath?: string
 ): Promise<{ success: boolean; transcription?: string; error?: string }> => {
     try {
         // Update status to processing
@@ -101,26 +102,49 @@ export const transcribeAudio = async (
             dateUpdated: new Date().toISOString()
         });
 
-        // Call Whisper Python Cloud Function
-        console.log('[Transcription] Calling Whisper Cloud Function...');
-        const transcribeFunction = httpsCallable(functions, 'transcribe_whisper', { timeout: 3600000 }); // 1 hour client timeout
+        // 1. Submit transcription job (returns immediately)
+        console.log('[Transcription] Submitting async job...');
+        const submitFunction = httpsCallable(functions, 'submit_transcription', { timeout: 120000 });
 
-        const result = await transcribeFunction({
+        const submitResult = await submitFunction({
             meetingId,
-            storagePath: storagePath || audioUrl,
-            mimeType,
-            downloadUrl: audioUrl // NEW: Pass the downloadURL directly for Salad Cloud
+            downloadUrl: audioUrl
         });
 
-        // The function updates Firestore directly, so we just verify success
-        const data = result.data as { success: boolean; transcription: string; chunks?: number; error?: string };
+        const submitData = submitResult.data as { success: boolean; jobId?: string; error?: string };
 
-        if (!data.success) {
-            throw new Error(data.error || 'Unknown error from Whisper');
+        if (!submitData.success) {
+            throw new Error(submitData.error || 'Failed to submit transcription');
         }
 
-        console.log(`[Transcription] Whisper success! ${data.chunks || 1} chunk(s)`);
-        return { success: true, transcription: data.transcription };
+        console.log(`[Transcription] Job submitted: ${submitData.jobId}`);
+
+        // 2. Poll for completion (every 30 seconds, max 60 attempts = 30 minutes)
+        const checkFunction = httpsCallable(functions, 'check_transcription', { timeout: 180000 });
+        const maxAttempts = 120; // 60 minutes with 30s intervals
+
+        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+            console.log(`[Transcription] Checking status (attempt ${attempt}/${maxAttempts})...`);
+
+            const checkResult = await checkFunction({ meetingId });
+            const checkData = checkResult.data as { status: string; message?: string; error?: string };
+
+            if (checkData.status === 'completed') {
+                console.log('[Transcription] Completed!');
+                return { success: true, transcription: checkData.message };
+            }
+
+            if (checkData.status === 'failed') {
+                throw new Error(checkData.error || 'Transcription failed');
+            }
+
+            // Still processing - wait 30 seconds before next check
+            if (attempt < maxAttempts) {
+                await new Promise(resolve => setTimeout(resolve, 30000));
+            }
+        }
+
+        throw new Error('Transcription timeout after 60 minutes');
 
     } catch (error) {
         console.error('Transcription error handling:', error);
@@ -140,6 +164,7 @@ export const transcribeAudio = async (
         };
     }
 };
+
 
 
 

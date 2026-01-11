@@ -530,11 +530,115 @@ CCE_CUSTOM_VOCAB = [
 ]
 
 
+# =============================================================================
+# SPEECHMATICS ASYNC FUNCTIONS (No timeout limit)
+# =============================================================================
+
+def submit_speechmatics_job(file_url: str, language_code: str = "fr") -> str:
+    """
+    Submit a transcription job to Speechmatics.
+    Returns the job_id immediately (does NOT wait for completion).
+    """
+    api_key = os.environ.get("SPEECHMATICS_API_KEY")
+    if not api_key:
+        raise Exception("SPEECHMATICS_API_KEY not configured")
+
+    headers = {"Authorization": f"Bearer {api_key}"}
+
+    config = {
+        "type": "transcription",
+        "transcription_config": {
+            "language": language_code,
+            "operating_point": "enhanced",  # Best accuracy (async = no timeout worry)
+            "diarization": "speaker",
+            "enable_entities": True,
+            "additional_vocab": CCE_CUSTOM_VOCAB
+        },
+        "fetch_data": {
+            "url": file_url
+        }
+    }
+
+    print(f"[Speechmatics Async] Submitting job with {len(CCE_CUSTOM_VOCAB)} vocab terms...")
+    
+    files = {
+        'config': (None, json.dumps(config), 'application/json')
+    }
+
+    response = requests.post(
+        f"{SPEECHMATICS_API_BASE}/jobs",
+        headers=headers,
+        files=files,
+        timeout=60
+    )
+
+    if not response.ok:
+        error_text = response.text[:500]
+        print(f"[Speechmatics Async] Submit failed: {response.status_code} - {error_text}")
+        raise Exception(f"Speechmatics Submit Failed: {error_text}")
+
+    job_data = response.json()
+    job_id = job_data.get("id")
+    print(f"[Speechmatics Async] Job submitted: {job_id}")
+    return job_id
+
+
+def check_speechmatics_job(job_id: str) -> dict:
+    """
+    Check the status of a Speechmatics job.
+    Returns: {"status": "running|completed|failed", "result": {...} if completed}
+    """
+    api_key = os.environ.get("SPEECHMATICS_API_KEY")
+    if not api_key:
+        raise Exception("SPEECHMATICS_API_KEY not configured")
+
+    headers = {"Authorization": f"Bearer {api_key}"}
+
+    status_resp = requests.get(
+        f"{SPEECHMATICS_API_BASE}/jobs/{job_id}",
+        headers=headers,
+        timeout=30
+    )
+
+    if not status_resp.ok:
+        return {"status": "error", "error": f"Status check failed: {status_resp.status_code}"}
+
+    job_status = status_resp.json()
+    status = job_status.get("status", "unknown")
+
+    if status in ["completed", "done"]:
+        # Get transcript
+        transcript_resp = requests.get(
+            f"{SPEECHMATICS_API_BASE}/jobs/{job_id}/transcript?format=json-v2",
+            headers=headers,
+            timeout=120
+        )
+        if transcript_resp.ok:
+            result = transcript_resp.json()
+            formatted = format_speechmatics_output(result)
+            return {"status": "completed", "result": formatted}
+        else:
+            return {"status": "error", "error": f"Failed to get transcript: {transcript_resp.status_code}"}
+    
+    elif status in ["rejected", "failed"]:
+        error_msg = job_status.get("errors", [{"message": "Unknown error"}])
+        return {"status": "failed", "error": str(error_msg)}
+    
+    else:
+        return {"status": "running"}
+
+
+# =============================================================================
+# SPEECHMATICS SYNC FUNCTION (Legacy - has timeout limit)
+# =============================================================================
 
 def transcribe_with_speechmatics(file_url: str, language_code: str = "fr") -> dict:
     """
     Transcribe audio using Speechmatics API with diarization.
     Speechmatics is optimized for long-form content and handles French/Quebec accents well.
+    
+    NOTE: This sync function has a 59-minute timeout. Use submit_speechmatics_job + 
+    check_speechmatics_job for async processing without timeout limits.
     
     Returns dict with:
     - text: Full transcript with speaker labels
@@ -1031,6 +1135,169 @@ def transcribe_whisper_legacy_local(
     
     return "LEGACY_PLACEHOLDER" # Should not be reached if we use Salad
 
+
+# =============================================================================
+# ASYNC TRANSCRIPTION ENDPOINTS (No timeout limit)
+# =============================================================================
+
+@https_fn.on_call(
+    timeout_sec=120,  # 2 minutes - just submits job
+    memory=options.MemoryOption.MB_512
+)
+def submit_transcription(req: https_fn.CallableRequest) -> dict:
+    """
+    Submit a transcription job to Speechmatics.
+    Returns immediately with job_id - does NOT wait for completion.
+    """
+    if not req.auth:
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.UNAUTHENTICATED,
+            message="Authentication required."
+        )
+    
+    data = req.data
+    meeting_id = data.get("meetingId")
+    download_url = data.get("downloadUrl")
+    
+    if not meeting_id or not download_url:
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT,
+            message="Missing meetingId or downloadUrl."
+        )
+    
+    print(f"[Async Transcription] Submitting job for meeting {meeting_id}")
+    
+    try:
+        db = firestore.client()
+        meeting_ref = db.collection("meetings").document(meeting_id)
+        
+        # Submit to Speechmatics
+        job_id = submit_speechmatics_job(download_url, language_code="fr")
+        
+        # Save job_id to Firestore
+        meeting_ref.update({
+            "audioRecording.speechmaticsJobId": job_id,
+            "audioRecording.transcriptionStatus": "processing",
+            "audioRecording.transcriptionStartedAt": datetime.now().isoformat(),
+            "dateUpdated": datetime.now().isoformat()
+        })
+        
+        print(f"[Async Transcription] Job {job_id} submitted for meeting {meeting_id}")
+        
+        return {
+            "success": True,
+            "jobId": job_id,
+            "message": "Transcription submitted. Check back in a few minutes."
+        }
+        
+    except Exception as e:
+        print(f"[Async Transcription] Error: {str(e)}")
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.INTERNAL,
+            message=str(e)
+        )
+
+
+@https_fn.on_call(
+    timeout_sec=180,  # 3 minutes - checks status and retrieves result
+    memory=options.MemoryOption.GB_1
+)
+def check_transcription(req: https_fn.CallableRequest) -> dict:
+    """
+    Check the status of a transcription job.
+    If complete, saves the result to Firestore.
+    """
+    if not req.auth:
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.UNAUTHENTICATED,
+            message="Authentication required."
+        )
+    
+    data = req.data
+    meeting_id = data.get("meetingId")
+    
+    if not meeting_id:
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT,
+            message="Missing meetingId."
+        )
+    
+    try:
+        db = firestore.client()
+        meeting_ref = db.collection("meetings").document(meeting_id)
+        meeting_doc = meeting_ref.get()
+        
+        if not meeting_doc.exists:
+            raise https_fn.HttpsError(
+                code=https_fn.FunctionsErrorCode.NOT_FOUND,
+                message="Meeting not found."
+            )
+        
+        meeting_data = meeting_doc.to_dict()
+        audio_recording = meeting_data.get("audioRecording", {})
+        job_id = audio_recording.get("speechmaticsJobId")
+        current_status = audio_recording.get("transcriptionStatus")
+        
+        # Already completed?
+        if current_status == "completed":
+            return {
+                "status": "completed",
+                "message": "Transcription already completed."
+            }
+        
+        if not job_id:
+            return {
+                "status": "not_started",
+                "message": "No transcription job found. Please submit first."
+            }
+        
+        # Check Speechmatics
+        result = check_speechmatics_job(job_id)
+        
+        if result["status"] == "completed":
+            # Save result to Firestore
+            full_transcription = result["result"].get("text", "")
+            meeting_ref.update({
+                "audioRecording.transcription": full_transcription,
+                "audioRecording.transcriptionStatus": "completed",
+                "audioRecording.transcribedAt": datetime.now().isoformat(),
+                "audioRecording.transcriptionEngine": "speechmatics-enhanced-async",
+                "dateUpdated": datetime.now().isoformat()
+            })
+            print(f"[Async Transcription] Job {job_id} completed! {len(full_transcription)} chars saved.")
+            return {
+                "status": "completed",
+                "message": f"Transcription completed. {len(full_transcription)} characters."
+            }
+        
+        elif result["status"] == "failed":
+            meeting_ref.update({
+                "audioRecording.transcriptionStatus": "failed",
+                "audioRecording.transcriptionError": result.get("error", "Unknown error"),
+                "dateUpdated": datetime.now().isoformat()
+            })
+            return {
+                "status": "failed",
+                "error": result.get("error", "Unknown error")
+            }
+        
+        else:
+            return {
+                "status": "processing",
+                "message": "Transcription still in progress. Check again in a few minutes."
+            }
+        
+    except Exception as e:
+        print(f"[Async Transcription] Check error: {str(e)}")
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.INTERNAL,
+            message=str(e)
+        )
+
+
+# =============================================================================
+# LEGACY SYNC TRANSCRIPTION (Kept for backward compatibility)
+# =============================================================================
 
 @https_fn.on_call(
     timeout_sec=3600,  # 1 hour timeout
