@@ -91,8 +91,8 @@ const uploadToGemini = async (blob: Blob, mimeType: string, displayName: string)
 export const transcribeAudio = async (
     meetingId: string,
     audioUrl: string,
-    mimeType: string,
-    storagePath?: string
+    _mimeType: string,
+    _storagePath?: string
 ): Promise<{ success: boolean; transcription?: string; error?: string }> => {
     try {
         // Update status to processing
