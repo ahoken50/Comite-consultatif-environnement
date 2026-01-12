@@ -86,6 +86,9 @@ export interface Meeting {
     type: MeetingType;
     status: MeetingStatus;
 
+    // Meeting sequence number for resolution/comment numbering (e.g., 10, 11, 12)
+    meetingNumber?: number;
+
     // Privacy & Access
     isConfidential?: boolean; // Huis clos vs Public
 

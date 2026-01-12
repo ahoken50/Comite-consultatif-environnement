@@ -58,6 +58,7 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
     // Use custom hook for transcription processing
     const { handleApplyTranscription } = useTranscriptionProcessor({
         localAgendaItems,
+        meetingNumber: meeting.meetingNumber, // For auto-numbering resolutions (XX-N) and comments (XX-A)
         setGlobalNotes,
         setLocalAgendaItems,
         setItemDecisions,
