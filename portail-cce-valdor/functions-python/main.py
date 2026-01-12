@@ -301,7 +301,7 @@ def transcribe_with_whisper(
 # SPEECHMATICS INTEGRATION (Primary Transcription Provider)
 # =============================================================================
 
-SPEECHMATICS_API_BASE = "https://asr.api.speechmatics.com/v2"  # EU region
+SPEECHMATICS_API_BASE = "https://eu1.asr.api.speechmatics.com/v2"  # EU region
 
 # Custom dictionary for CCE meetings (Speechmatics format)
 # Each entry can have optional "sounds_like" for pronunciation hints
