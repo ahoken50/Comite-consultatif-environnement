@@ -59,17 +59,30 @@ const TranscriptionViewer: React.FC<TranscriptionViewerProps> = ({
     // Extract unique speakers from transcription
     const detectedSpeakers = React.useMemo(() => {
         if (!transcription) return [];
-        // Capture all bold text: **Name** or **Name :**
-        const regex = /\*\*([^*]+)\*\*/g;
+
         const speakers = new Set<string>();
+
+        // 1. New Format: [S1], [Speaker 1]
+        // Exclude [00:00] timestamps (start with digits)
+        const bracketRegex = /\[([A-Za-z][^\]]*)\]/g;
         let match;
-        while ((match = regex.exec(transcription)) !== null) {
-            // cleanup: remove colons and spaces
+        while ((match = bracketRegex.exec(transcription)) !== null) {
+            const name = match[1].trim();
+            // Filter out obvious non-speakers if any
+            if (name && !name.match(/^\d{2}:\d{2}$/)) {
+                speakers.add(name);
+            }
+        }
+
+        // 2. Old Format: **Name**
+        const boldRegex = /\*\*([^*]+)\*\*/g;
+        while ((match = boldRegex.exec(transcription)) !== null) {
             const cleanName = match[1].replace(/:\s*$/, '').trim();
-            if (cleanName.length > 0 && cleanName.length < 50) { // Safety length check
+            if (cleanName.length > 0 && cleanName.length < 50) {
                 speakers.add(cleanName);
             }
         }
+
         return Array.from(speakers).sort();
     }, [transcription]);
 
@@ -138,22 +151,20 @@ const TranscriptionViewer: React.FC<TranscriptionViewerProps> = ({
         let newTranscription = transcription;
         Object.entries(speakerMap).forEach(([oldName, newName]) => {
             if (newName.trim()) {
-                // Replace "OldName:" with "NewName:" globally
-                const regex = new RegExp(oldName + ':', 'g');
-                newTranscription = newTranscription.replace(regex, newName + ':');
+                // Strategy 1: Replace [OldName] -> [NewName]
+                // Escape regex special chars in oldName just in case
+                const escapedOldName = oldName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+                // Replace bracketed version: [S1] -> [New Name]
+                const bracketPattern = new RegExp(`\\[${escapedOldName}\\]`, 'g');
+                newTranscription = newTranscription.replace(bracketPattern, `[${newName}]`);
+
+                // Strategy 2: Replace **OldName**: -> **NewName**: (Legacy)
+                const boldPattern = new RegExp(`\\*\\*${escapedOldName}\\*\\*:?`, 'g');
+                newTranscription = newTranscription.replace(boldPattern, `**${newName}**:`);
             }
         });
 
-        // Update in parent/Firestore (assuming we can modify meeting directly or dispatch)
-        // Since we don't have updateMeeting prop directly, we might need to emit an event or use a service.
-        // Wait, current component just displays. We need a way to save back to Firestore.
-        // The best way here is probably to use the updateMeeting from Redux or pass a callback.
-        // But we didn't add onTranscriptionUpdate prop. 
-        // Let's assume for now we can call a service directly or better, add the callback.
-        // For this step, I will use `updateDoc` directly here as 'geminiService' does, 
-        // OR better: add `onTranscriptionUpdate` prop to 'TranscriptionViewer' and let parent handle it.
-        // Let's check props: `onApplyToMinutes` ... no update prop.
-        // I will add `onTranscriptionUpdate` to props.
         onTranscriptionUpdate?.(newTranscription);
         setSpeakerMap({});
         setShowSpeakerMap(false);
