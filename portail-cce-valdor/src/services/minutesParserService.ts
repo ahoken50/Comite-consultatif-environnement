@@ -1,4 +1,5 @@
 import { type AgendaItem, type MinuteEntry } from '../types/meeting.types';
+import { generateNextResolutionNumber, generateNextCommentNumber } from '../utils/resolutionUtils';
 
 interface ParsedPVSection {
     title: string;
@@ -12,11 +13,22 @@ interface ParsedPVSection {
     seconder?: string;
 }
 
+interface ParseOptions {
+    meetingDate?: Date | string;
+    autoNumber?: boolean; // Enable auto-numbering for empty numbers
+}
+
 /**
  * Parses the raw text draft from Claude into structured Agenda Items.
  * Returns separately the intro text (before first item) and the parsed items.
+ * 
+ * @param draftContent - The raw AI-generated text
+ * @param options - Optional settings including meetingDate for auto-numbering
  */
-export const parseMinutesDraft = (draftContent: string): { items: AgendaItem[], intro: string } => {
+export const parseMinutesDraft = (
+    draftContent: string,
+    options: ParseOptions = {}
+): { items: AgendaItem[], intro: string } => {
     const lines = draftContent.split('\n');
     const sections: ParsedPVSection[] = [];
     let intro = '';
@@ -296,6 +308,47 @@ export const parseMinutesDraft = (draftContent: string): { items: AgendaItem[], 
     // Flush last section
     flushSection();
 
+    // ==== AUTO-NUMBERING LOGIC ====
+    // If meetingDate is provided and autoNumber is true (or not explicitly false),
+    // generate numbers for entries that don't have one.
+    const { meetingDate, autoNumber = true } = options;
+    const usedResolutionNumbers: string[] = [];
+    const usedCommentNumbers: string[] = [];
+
+    // First pass: collect existing numbers
+    sections.forEach(sec => {
+        sec.minuteEntries.forEach(entry => {
+            if (entry.number) {
+                if (entry.type === 'resolution') {
+                    usedResolutionNumbers.push(entry.number);
+                } else {
+                    usedCommentNumbers.push(entry.number);
+                }
+            }
+        });
+    });
+
+    // Second pass: assign numbers to entries without one (if autoNumber enabled and meetingDate provided)
+    if (autoNumber && meetingDate) {
+        sections.forEach(sec => {
+            sec.minuteEntries.forEach(entry => {
+                if (!entry.number) {
+                    if (entry.type === 'resolution') {
+                        const newNumber = generateNextResolutionNumber(meetingDate, usedResolutionNumbers, 'CCE');
+                        entry.number = newNumber;
+                        usedResolutionNumbers.push(newNumber);
+                        console.log(`[AutoNumber] Generated resolution number: ${newNumber}`);
+                    } else if (entry.type === 'comment') {
+                        const newNumber = generateNextCommentNumber(meetingDate, usedCommentNumbers, 'COM');
+                        entry.number = newNumber;
+                        usedCommentNumbers.push(newNumber);
+                        console.log(`[AutoNumber] Generated comment number: ${newNumber}`);
+                    }
+                }
+            });
+        });
+    }
+
     // Convert to AgendaItems
     const items = sections.map((sec, idx) => {
         // PER USER REQUEST:
@@ -314,14 +367,21 @@ export const parseMinutesDraft = (draftContent: string): { items: AgendaItem[], 
             (lowerTitle.includes('varia') && (!sec.content || sec.content.length < 50));
 
         if (finalMinuteEntries.length === 0 && sec.content.trim() && !isException) {
-            // Create implicit comment entry
+            // Create implicit comment entry with auto-number if enabled
+            let implicitNumber = '';
+            if (autoNumber && meetingDate) {
+                implicitNumber = generateNextCommentNumber(meetingDate, usedCommentNumbers, 'COM');
+                usedCommentNumbers.push(implicitNumber);
+                console.log(`[AutoNumber] Generated implicit comment number: ${implicitNumber}`);
+            }
+
             finalMinuteEntries.push({
                 type: 'comment',
-                number: '', // No number for implicit comment unless we parse it from content? User said number in box. 
-                // If implicit, we don't have a number. Leave empty.
+                number: implicitNumber,
                 content: sec.content.trim()
             });
             finalMinuteType = 'comment';
+            finalMinuteNumber = implicitNumber;
             finalDecision = sec.content.trim();
         }
 
@@ -336,7 +396,7 @@ export const parseMinutesDraft = (draftContent: string): { items: AgendaItem[], 
             minuteEntries: finalMinuteEntries,
             // Legacy
             minuteType: finalMinuteType,
-            minuteNumber: finalMinuteNumber,
+            minuteNumber: finalMinuteNumber || (finalMinuteEntries[0]?.number || ''),
             decision: finalDecision,
             proposer: sec.proposer || '',
             seconder: sec.seconder || ''
@@ -345,3 +405,4 @@ export const parseMinutesDraft = (draftContent: string): { items: AgendaItem[], 
 
     return { items, intro };
 };
+
