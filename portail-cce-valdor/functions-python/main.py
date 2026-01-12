@@ -1,6 +1,6 @@
-"""
+﻿"""
 Cloud Functions Python pour CCE Val-d'Or
-Transcription audio avec OpenAI Whisper + Génération PV avec Claude
+Transcription audio avec OpenAI Whisper + GÃ©nÃ©ration PV avec Claude
 """
 
 import os
@@ -158,7 +158,7 @@ def build_context_prompt(attendee_names: list, agenda_items: list) -> str:
     parts = []
     
     # Add context about the meeting
-    parts.append("Transcription d'une réunion du Comité consultatif en environnement de Val-d'Or.")
+    parts.append("Transcription d'une rÃ©union du ComitÃ© consultatif en environnement de Val-d'Or.")
     
     # Add attendee names if available
     if attendee_names:
@@ -170,7 +170,7 @@ def build_context_prompt(attendee_names: list, agenda_items: list) -> str:
     if agenda_items:
         topics = ", ".join([item for item in agenda_items if item])
         if topics:
-            parts.append(f"Sujets à l'ordre du jour: {topics}.")
+            parts.append(f"Sujets Ã  l'ordre du jour: {topics}.")
     
     return " ".join(parts)
 
@@ -267,16 +267,16 @@ def transcribe_with_whisper(
     """
     # Base narrative prompt (Zero-shot styling)
     base_prompt = (
-        "Enregistrement audio en français québécois. "
-        "Il s’agit d’une réunion officielle d’un comité consultatif en environnement. "
-        "La rencontre se déroule dans une salle de conférence avec un micro central. "
-        "Les intervenants parlent à tour de rôle, parfois à voix basse ou à distance du micro. "
+        "Enregistrement audio en franÃ§ais quÃ©bÃ©cois. "
+        "Il sâ€™agit dâ€™une rÃ©union officielle dâ€™un comitÃ© consultatif en environnement. "
+        "La rencontre se dÃ©roule dans une salle de confÃ©rence avec un micro central. "
+        "Les intervenants parlent Ã  tour de rÃ´le, parfois Ã  voix basse ou Ã  distance du micro. "
         "Le langage est professionnel, technique et institutionnel. "
-        "Le vocabulaire peut inclure : environnement, développement durable, politique environnementale, "
-        "plan d’action, adaptation aux changements climatiques, gestion des eaux pluviales, "
-        "îlots de chaleur, biodiversité, consultation, règlement municipal. "
-        "Les échanges sont naturels et peuvent contenir des hésitations, des silences et des phrases incomplètes. "
-        "Lorsque le propos est inaudible ou incertain, il doit être laissé tel quel sans tentative de complétion."
+        "Le vocabulaire peut inclure : environnement, dÃ©veloppement durable, politique environnementale, "
+        "plan dâ€™action, adaptation aux changements climatiques, gestion des eaux pluviales, "
+        "Ã®lots de chaleur, biodiversitÃ©, consultation, rÃ¨glement municipal. "
+        "Les Ã©changes sont naturels et peuvent contenir des hÃ©sitations, des silences et des phrases incomplÃ¨tes. "
+        "Lorsque le propos est inaudible ou incertain, il doit Ãªtre laissÃ© tel quel sans tentative de complÃ©tion."
     )
 
     # Specific vocabulary integration
@@ -292,7 +292,7 @@ def transcribe_with_whisper(
     
     # Combine narrative + specific vocabulary
     if extras:
-        return f"{base_prompt} Mots clés spécifiques pour cette réunion : {', '.join(extras)}."
+        return f"{base_prompt} Mots clÃ©s spÃ©cifiques pour cette rÃ©union : {', '.join(extras)}."
     
     return base_prompt
 
@@ -311,29 +311,29 @@ CCE_CUSTOM_VOCAB = [
     # CCE MEMBER NAMES
     # =========================================================================
     {"content": "Patricia Boutin"},
-    {"content": "Sébastien Brodeur-Girard", "sounds_like": ["Sébastien Brodeur Girard"]},
-    {"content": "Jacinthe Pothier", "sounds_like": ["Jacinthe Potiè"]},
-    {"content": "Donald Ratté", "sounds_like": ["Donald Raté"]},
-    {"content": "Michaël Ross", "sounds_like": ["Michael Ross"]},
+    {"content": "SÃ©bastien Brodeur-Girard", "sounds_like": ["SÃ©bastien Brodeur Girard"]},
+    {"content": "Jacinthe Pothier", "sounds_like": ["Jacinthe PotiÃ¨"]},
+    {"content": "Donald RattÃ©", "sounds_like": ["Donald RatÃ©"]},
+    {"content": "MichaÃ«l Ross", "sounds_like": ["Michael Ross"]},
     {"content": "Benjamin Turcotte"},
     {"content": "Marguerite Larochelle"},
-    {"content": "Céline Brindamour", "sounds_like": ["Céline Brind'amour"]},
-    {"content": "Jocelyn Hébert", "sounds_like": ["Jocelyn Ébert"]},
+    {"content": "CÃ©line Brindamour", "sounds_like": ["CÃ©line Brind'amour"]},
+    {"content": "Jocelyn HÃ©bert", "sounds_like": ["Jocelyn Ã‰bert"]},
     
     # =========================================================================
     # ROLES & GOVERNANCE
     # =========================================================================
-    {"content": "CCE", "sounds_like": ["C.C.E.", "Cécé"]},
-    {"content": "Président"},
-    {"content": "Présidente"},
-    {"content": "Vice-président"},
-    {"content": "Vice-présidente"},
-    {"content": "Secrétaire"},
+    {"content": "CCE", "sounds_like": ["C.C.E.", "CÃ©cÃ©"]},
+    {"content": "PrÃ©sident"},
+    {"content": "PrÃ©sidente"},
+    {"content": "Vice-prÃ©sident"},
+    {"content": "Vice-prÃ©sidente"},
+    {"content": "SecrÃ©taire"},
     {"content": "Conseiller"},
-    {"content": "Conseillère"},
+    {"content": "ConseillÃ¨re"},
     {"content": "Mairesse"},
     {"content": "Maire"},
-    {"content": "Directeur général"},
+    {"content": "Directeur gÃ©nÃ©ral"},
     {"content": "Greffier"},
     {"content": "Coordonnateur"},
     {"content": "Coordonnatrice"},
@@ -342,14 +342,14 @@ CCE_CUSTOM_VOCAB = [
     # ORGANIZATIONS & LOCATIONS
     # =========================================================================
     {"content": "MRCVO", "sounds_like": ["M.R.C.V.O."]},
-    {"content": "MRC Vallée-de-l'Or"},
+    {"content": "MRC VallÃ©e-de-l'Or"},
     {"content": "SESAT", "sounds_like": ["S.E.S.A.T."]},
     {"content": "OBVAJ", "sounds_like": ["O.B.V.A.J."]},
     {"content": "Val-d'Or", "sounds_like": ["Valdor", "Val d'Or"]},
     {"content": "Abitibi"},
-    {"content": "Abitibi-Témiscamingue"},
+    {"content": "Abitibi-TÃ©miscamingue"},
     {"content": "Rouyn-Noranda"},
-    {"content": "Ministère de l'Environnement"},
+    {"content": "MinistÃ¨re de l'Environnement"},
     {"content": "MELCCFP", "sounds_like": ["M.E.L.C.C.F.P."]},
     {"content": "MAMH", "sounds_like": ["M.A.M.H."]},
     {"content": "MTQ", "sounds_like": ["M.T.Q."]},
@@ -357,19 +357,19 @@ CCE_CUSTOM_VOCAB = [
     # =========================================================================
     # MEETING PROCEDURES
     # =========================================================================
-    {"content": "Procès-verbal", "sounds_like": ["PV"]},
+    {"content": "ProcÃ¨s-verbal", "sounds_like": ["PV"]},
     {"content": "Ordre du jour"},
-    {"content": "Résolution"},
+    {"content": "RÃ©solution"},
     {"content": "Adoption"},
     {"content": "Approbation"},
     {"content": "Amendement"},
     {"content": "Proposition"},
     {"content": "Seconde"},
     {"content": "Vote"},
-    {"content": "Unanimité"},
-    {"content": "Majorité"},
+    {"content": "UnanimitÃ©"},
+    {"content": "MajoritÃ©"},
     {"content": "Quorum"},
-    {"content": "Levée de la séance"},
+    {"content": "LevÃ©e de la sÃ©ance"},
     {"content": "Point d'information"},
     {"content": "Suivi"},
     {"content": "Avis de motion"},
@@ -380,43 +380,43 @@ CCE_CUSTOM_VOCAB = [
     # =========================================================================
     # Climate
     {"content": "Changements climatiques"},
-    {"content": "Réchauffement climatique"},
-    {"content": "Gaz à effet de serre"},
+    {"content": "RÃ©chauffement climatique"},
+    {"content": "Gaz Ã  effet de serre"},
     {"content": "GES", "sounds_like": ["G.E.S."]},
-    {"content": "Émissions de carbone"},
+    {"content": "Ã‰missions de carbone"},
     {"content": "Bilan carbone"},
-    {"content": "Carboneutralité"},
-    {"content": "Îlot de chaleur"},
-    {"content": "Îlots de fraîcheur"},
+    {"content": "CarboneutralitÃ©"},
+    {"content": "ÃŽlot de chaleur"},
+    {"content": "ÃŽlots de fraÃ®cheur"},
     {"content": "Adaptation climatique"},
-    {"content": "Résilience climatique"},
+    {"content": "RÃ©silience climatique"},
     
     # Biodiversity
-    {"content": "Biodiversité"},
-    {"content": "Espèces menacées"},
-    {"content": "Espèces vulnérables"},
+    {"content": "BiodiversitÃ©"},
+    {"content": "EspÃ¨ces menacÃ©es"},
+    {"content": "EspÃ¨ces vulnÃ©rables"},
     {"content": "Habitat faunique"},
-    {"content": "Corridor écologique"},
+    {"content": "Corridor Ã©cologique"},
     {"content": "Milieu naturel"},
-    {"content": "Écosystème"},
+    {"content": "Ã‰cosystÃ¨me"},
     {"content": "Faune"},
     {"content": "Flore"},
-    {"content": "Espèces envahissantes"},
-    {"content": "Agrile du frêne"},
-    {"content": "Herbe à poux"},
+    {"content": "EspÃ¨ces envahissantes"},
+    {"content": "Agrile du frÃªne"},
+    {"content": "Herbe Ã  poux"},
     {"content": "Berce du Caucase"},
     
     # Water
     {"content": "Gestion des eaux pluviales"},
     {"content": "Eaux de ruissellement"},
-    {"content": "Bassin de rétention"},
+    {"content": "Bassin de rÃ©tention"},
     {"content": "Bassin versant"},
-    {"content": "Noue végétalisée"},
-    {"content": "Nappe phréatique"},
-    {"content": "Aquifère"},
+    {"content": "Noue vÃ©gÃ©talisÃ©e"},
+    {"content": "Nappe phrÃ©atique"},
+    {"content": "AquifÃ¨re"},
     {"content": "Eau potable"},
-    {"content": "Eaux usées"},
-    {"content": "Station d'épuration"},
+    {"content": "Eaux usÃ©es"},
+    {"content": "Station d'Ã©puration"},
     {"content": "Puits Feldman", "sounds_like": ["Puit Feldman"]},
     {"content": "Esker"},
     {"content": "Domaine des Eskers"},
@@ -429,39 +429,39 @@ CCE_CUSTOM_VOCAB = [
     {"content": "Inondation"},
     
     # Waste & Recycling
-    {"content": "Matières résiduelles"},
+    {"content": "MatiÃ¨res rÃ©siduelles"},
     {"content": "Recyclage"},
     {"content": "Compostage"},
     {"content": "Bac brun"},
     {"content": "Bac bleu"},
     {"content": "Bac noir"},
-    {"content": "Écocentre"},
+    {"content": "Ã‰cocentre"},
     {"content": "Enfouissement"},
     {"content": "Lieu d'enfouissement"},
     {"content": "LET", "sounds_like": ["L.E.T."]},
-    {"content": "Économie circulaire"},
-    {"content": "Réduction à la source"},
+    {"content": "Ã‰conomie circulaire"},
+    {"content": "RÃ©duction Ã  la source"},
     {"content": "Valorisation"},
     {"content": "3RV", "sounds_like": ["trois R V"]},
     
     # Energy
-    {"content": "Efficacité énergétique"},
-    {"content": "Énergies renouvelables"},
-    {"content": "Énergie solaire"},
-    {"content": "Énergie éolienne"},
-    {"content": "Hydro-Québec"},
-    {"content": "Électrification"},
+    {"content": "EfficacitÃ© Ã©nergÃ©tique"},
+    {"content": "Ã‰nergies renouvelables"},
+    {"content": "Ã‰nergie solaire"},
+    {"content": "Ã‰nergie Ã©olienne"},
+    {"content": "Hydro-QuÃ©bec"},
+    {"content": "Ã‰lectrification"},
     {"content": "Bornes de recharge"},
-    {"content": "Véhicules électriques"},
+    {"content": "VÃ©hicules Ã©lectriques"},
     
     # Pollution & Contamination
     {"content": "Contamination"},
-    {"content": "Sol contaminé"},
-    {"content": "Terrain contaminé"},
-    {"content": "Déversement"},
-    {"content": "Pollution atmosphérique"},
-    {"content": "Qualité de l'air"},
-    {"content": "Poussière"},
+    {"content": "Sol contaminÃ©"},
+    {"content": "Terrain contaminÃ©"},
+    {"content": "DÃ©versement"},
+    {"content": "Pollution atmosphÃ©rique"},
+    {"content": "QualitÃ© de l'air"},
+    {"content": "PoussiÃ¨re"},
     {"content": "Bruit"},
     {"content": "Nuisance"},
     
@@ -469,12 +469,12 @@ CCE_CUSTOM_VOCAB = [
     # URBAN PLANNING TERMS
     # =========================================================================
     {"content": "Urbanisme"},
-    {"content": "Aménagement du territoire"},
+    {"content": "AmÃ©nagement du territoire"},
     {"content": "Plan d'urbanisme"},
-    {"content": "Schéma d'aménagement"},
+    {"content": "SchÃ©ma d'amÃ©nagement"},
     {"content": "Zonage"},
-    {"content": "Règlement de zonage"},
-    {"content": "Dérogation mineure"},
+    {"content": "RÃ¨glement de zonage"},
+    {"content": "DÃ©rogation mineure"},
     {"content": "PIIA", "sounds_like": ["P.I.I.A."]},
     {"content": "PAE", "sounds_like": ["P.A.E."]},
     {"content": "PPU", "sounds_like": ["P.P.U."]},
@@ -482,28 +482,28 @@ CCE_CUSTOM_VOCAB = [
     {"content": "Permis de lotissement"},
     {"content": "Certificat d'autorisation"},
     {"content": "Consultation publique"},
-    {"content": "Assemblée publique"},
-    {"content": "Référendum"},
+    {"content": "AssemblÃ©e publique"},
+    {"content": "RÃ©fÃ©rendum"},
     {"content": "Registre"},
     {"content": "Usage conditionnel"},
-    {"content": "Usage dérogatoire"},
+    {"content": "Usage dÃ©rogatoire"},
     {"content": "Coefficient d'emprise"},
     {"content": "Densification"},
-    {"content": "Étalement urbain"},
+    {"content": "Ã‰talement urbain"},
     
     # Green Infrastructure
     {"content": "Verdissement"},
-    {"content": "Canopée"},
-    {"content": "Indice de canopée"},
+    {"content": "CanopÃ©e"},
+    {"content": "Indice de canopÃ©e"},
     {"content": "Plantation d'arbres"},
-    {"content": "Forêt urbaine"},
+    {"content": "ForÃªt urbaine"},
     {"content": "Parc"},
     {"content": "Espace vert"},
     {"content": "Toit vert"},
-    {"content": "Mur végétal"},
+    {"content": "Mur vÃ©gÃ©tal"},
     {"content": "Infrastructure verte"},
-    {"content": "Stationnement perméable"},
-    {"content": "Pavé perméable"},
+    {"content": "Stationnement permÃ©able"},
+    {"content": "PavÃ© permÃ©able"},
     
     # Transportation
     {"content": "Transport actif"},
@@ -512,15 +512,15 @@ CCE_CUSTOM_VOCAB = [
     {"content": "Transport en commun"},
     {"content": "Covoiturage"},
     {"content": "Autopartage"},
-    {"content": "Mobilité durable"},
+    {"content": "MobilitÃ© durable"},
     
     # =========================================================================
     # LEGAL & REGULATORY
     # =========================================================================
-    {"content": "Règlement municipal"},
-    {"content": "Loi sur la qualité de l'environnement"},
+    {"content": "RÃ¨glement municipal"},
+    {"content": "Loi sur la qualitÃ© de l'environnement"},
     {"content": "LQE", "sounds_like": ["L.Q.E."]},
-    {"content": "Étude d'impact"},
+    {"content": "Ã‰tude d'impact"},
     {"content": "BAPE", "sounds_like": ["B.A.P.E."]},
     {"content": "Certificat d'autorisation"},
     {"content": "Attestation d'assainissement"},
@@ -593,10 +593,10 @@ def submit_speechmatics_job(file_url: str, meeting_id: str, language_code: str =
         "tracking": tracking_config
     }
 
-    print(f"[Speechmatics Async] 🚀 Submitting job for meeting {meeting_id}")
-    print(f"[Speechmatics Async] 🔗 Webhook URL: {webhook_url}")
-    print(f"[Speechmatics Async] 📋 Tracking: {json.dumps(tracking_config)}")
-    print(f"[Speechmatics Async] 📚 Vocab: {len(CCE_CUSTOM_VOCAB)} terms")
+    print(f"[Speechmatics Async] ðŸš€ Submitting job for meeting {meeting_id}")
+    print(f"[Speechmatics Async] ðŸ”— Webhook URL: {webhook_url}")
+    print(f"[Speechmatics Async] ðŸ“‹ Tracking: {json.dumps(tracking_config)}")
+    print(f"[Speechmatics Async] ðŸ“š Vocab: {len(CCE_CUSTOM_VOCAB)} terms")
     
     files = {
         'config': (None, json.dumps(config), 'application/json')
@@ -611,13 +611,13 @@ def submit_speechmatics_job(file_url: str, meeting_id: str, language_code: str =
 
     if not response.ok:
         error_text = response.text[:500]
-        print(f"[Speechmatics Async] ❌ Submit failed: {response.status_code} - {error_text}")
+        print(f"[Speechmatics Async] âŒ Submit failed: {response.status_code} - {error_text}")
         print(f"[Speechmatics Async] Response headers: {response.headers}")
         raise Exception(f"Speechmatics Submit Failed: {error_text}")
 
     job_data = response.json()
     job_id = job_data.get("id")
-    print(f"[Speechmatics Async] ✅ Job submitted successfully: {job_id}")
+    print(f"[Speechmatics Async] âœ… Job submitted successfully: {job_id}")
     return job_id
 
 
@@ -638,10 +638,10 @@ def check_speechmatics_job(job_id: str) -> dict:
         timeout=30
     )
 
-    print(f"[Speechmatics Check] 🔍 Checking status for Job {job_id}...")
+    print(f"[Speechmatics Check] ðŸ” Checking status for Job {job_id}...")
     
     if not status_resp.ok:
-        print(f"[Speechmatics Check] ❌ API error {status_resp.status_code}: {status_resp.text}")
+        print(f"[Speechmatics Check] âŒ API error {status_resp.status_code}: {status_resp.text}")
         return {"status": "error", "error": f"Status check failed: {status_resp.status_code}"}
 
     job_status = status_resp.json()
@@ -653,16 +653,16 @@ def check_speechmatics_job(job_id: str) -> dict:
     duration = job_details.get("duration", "unknown")
     created_at = job_details.get("created_at", "unknown")
     
-    print(f"[Speechmatics Check] 📊 Job Status: {status.upper()}")
-    print(f"[Speechmatics Check] 🕒 Created: {created_at} | Duration: {duration}s")
-    print(f"[Speechmatics Check] 🏷️ Tracking: {json.dumps(tracking)}")
+    print(f"[Speechmatics Check] ðŸ“Š Job Status: {status.upper()}")
+    print(f"[Speechmatics Check] ðŸ•’ Created: {created_at} | Duration: {duration}s")
+    print(f"[Speechmatics Check] ðŸ·ï¸ Tracking: {json.dumps(tracking)}")
     
     if status == "running":
-        print(f"[Speechmatics Check] ⏳ Job is still running...")
+        print(f"[Speechmatics Check] â³ Job is still running...")
         return {"status": "running"}
 
     if status in ["completed", "done"]:
-        print(f"[Speechmatics Check] ✅ Job COMPLETED! Fetching transcript...")
+        print(f"[Speechmatics Check] âœ… Job COMPLETED! Fetching transcript...")
         # Get transcript
         transcript_resp = requests.get(
             f"{SPEECHMATICS_API_BASE}/jobs/{job_id}/transcript?format=json-v2",
@@ -672,20 +672,20 @@ def check_speechmatics_job(job_id: str) -> dict:
         if transcript_resp.ok:
             result = transcript_resp.json()
             formatted = format_speechmatics_output(result)
-            print(f"[Speechmatics Check] 📝 Transcript retrieved: {len(formatted.get('text', ''))} chars")
+            print(f"[Speechmatics Check] ðŸ“ Transcript retrieved: {len(formatted.get('text', ''))} chars")
             return {"status": "completed", "result": formatted}
         else:
-            print(f"[Speechmatics Check] ❌ Failed to get transcript: {transcript_resp.status_code} - {transcript_resp.text}")
+            print(f"[Speechmatics Check] âŒ Failed to get transcript: {transcript_resp.status_code} - {transcript_resp.text}")
             return {"status": "error", "error": f"Failed to get transcript: {transcript_resp.status_code}"}
     
     elif status in ["rejected", "failed"]:
         error_msg = job_details.get("errors", [{"message": "Unknown error"}])
-        print(f"[Speechmatics Check] ⛔ JOB FAILED")
+        print(f"[Speechmatics Check] â›” JOB FAILED")
         print(f"[Speechmatics Check] Errors: {json.dumps(error_msg)}")
         return {"status": "failed", "error": str(error_msg)}
     
     else:
-        print(f"[Speechmatics Check] ❓ Unknown status: '{status}'")
+        print(f"[Speechmatics Check] â“ Unknown status: '{status}'")
         return {"status": "running"}
 
 
@@ -900,17 +900,17 @@ SALAD_MAX_DURATION_HOURS = 2.5
 
 # Custom vocabulary for CCE meetings (improves transcription accuracy)
 CCE_VOCABULARY = (
-    "CCE, Val-d'Or, Comité consultatif en environnement, "
-    "Patricia Boutin, Sébastien Brodeur-Girard, Jacinthe Pothier, Donald Ratté, "
-    "Michaël Ross, Benjamin Turcotte, Marguerite Larochelle, Céline Brindamour, Jocelyn Hébert, "
-    "Maire, Mairesse, Urbanisme, Travaux publics, Environnement, Développement durable, "
-    "MRCVO, SESAT, Société des eaux souterraines de l'Abitibi-Témiscamingue, "
-    "OBVAJ, Organisme de bassin versant Abitibi-Jamésie, Abitibi, Rouyn, Rouyn-Noranda, "
-    "Protection des berges, Gestion des eaux pluviales, Bassin de rétention, Noue végétalisée, "
-    "Puits Feldman, Esker, Domaine des Eskers, Nappe phréatique, Aquifère, "
-    "Biodiversité, Changements climatiques, Îlots de chaleur, Verdissement, "
-    "Zonage, Règlement municipal, Dérogation mineure, PIIA, Consultation publique, "
-    "Procès-verbal, Ordre du jour, Résolution, Adoption"
+    "CCE, Val-d'Or, ComitÃ© consultatif en environnement, "
+    "Patricia Boutin, SÃ©bastien Brodeur-Girard, Jacinthe Pothier, Donald RattÃ©, "
+    "MichaÃ«l Ross, Benjamin Turcotte, Marguerite Larochelle, CÃ©line Brindamour, Jocelyn HÃ©bert, "
+    "Maire, Mairesse, Urbanisme, Travaux publics, Environnement, DÃ©veloppement durable, "
+    "MRCVO, SESAT, SociÃ©tÃ© des eaux souterraines de l'Abitibi-TÃ©miscamingue, "
+    "OBVAJ, Organisme de bassin versant Abitibi-JamÃ©sie, Abitibi, Rouyn, Rouyn-Noranda, "
+    "Protection des berges, Gestion des eaux pluviales, Bassin de rÃ©tention, Noue vÃ©gÃ©talisÃ©e, "
+    "Puits Feldman, Esker, Domaine des Eskers, Nappe phrÃ©atique, AquifÃ¨re, "
+    "BiodiversitÃ©, Changements climatiques, ÃŽlots de chaleur, Verdissement, "
+    "Zonage, RÃ¨glement municipal, DÃ©rogation mineure, PIIA, Consultation publique, "
+    "ProcÃ¨s-verbal, Ordre du jour, RÃ©solution, Adoption"
 )
 
 
@@ -1231,10 +1231,10 @@ def speechmatics_webhook(req: https_fn.Request) -> https_fn.Response:
         job_id = req.args.get("id", "unknown")
         status = req.args.get("status", "unknown")
         
-        print(f"[Speechmatics Webhook] 📨 Received callback for job {job_id}, status={status}")
+        print(f"[Speechmatics Webhook] ðŸ“¨ Received callback for job {job_id}, status={status}")
         
         if status != "success":
-            print(f"[Speechmatics Webhook] ⚠️ Job {job_id} failed with status: {status}")
+            print(f"[Speechmatics Webhook] âš ï¸ Job {job_id} failed with status: {status}")
             # We don't know the meeting_id here without calling Speechmatics API
             # Just log and return OK to prevent retries
             return https_fn.Response(
@@ -1260,8 +1260,8 @@ def speechmatics_webhook(req: https_fn.Request) -> https_fn.Response:
         tracking = job_info.get("tracking", {})
         metadata = transcript_data.get("metadata", {})
         
-        print(f"[Speechmatics Webhook] 📋 Job Info: {json.dumps(job_info)}")
-        print(f"[Speechmatics Webhook] 🏷️ Tracking Metadata: {json.dumps(tracking)}")
+        print(f"[Speechmatics Webhook] ðŸ“‹ Job Info: {json.dumps(job_info)}")
+        print(f"[Speechmatics Webhook] ðŸ·ï¸ Tracking Metadata: {json.dumps(tracking)}")
         
         # Extract meeting_id from tracking.reference
         meeting_id = tracking.get("reference")
@@ -1270,10 +1270,10 @@ def speechmatics_webhook(req: https_fn.Request) -> https_fn.Response:
             # Fallback to metadata tracking
             tracking_alt = metadata.get("tracking", {})
             meeting_id = tracking_alt.get("reference")
-            print(f"[Speechmatics Webhook] ℹ️ Found meeting_id in fallback metadata: {meeting_id}")
+            print(f"[Speechmatics Webhook] â„¹ï¸ Found meeting_id in fallback metadata: {meeting_id}")
         
         if not meeting_id:
-            print(f"[Speechmatics Webhook] ❌ ERROR: No meeting_id found in tracking.reference for job {job_id}")
+            print(f"[Speechmatics Webhook] âŒ ERROR: No meeting_id found in tracking.reference for job {job_id}")
             print(f"[Speechmatics Webhook] Full data keys: {list(transcript_data.keys())}")
             return https_fn.Response(
                 json.dumps({"error": "No meeting_id in tracking.reference"}),
@@ -1631,8 +1631,8 @@ def generate_minutes_claude(req: https_fn.CallableRequest) -> dict:
             active_members_list.append(f"- {name} ({role})")
         
         if active_members_list:
-            members_context = "\n\n=== LISTE OFFICIELLE DES MEMBRES ACTIFS (POUR VÉRIFICATION DES PRÉSENCES) ===\n" + "\n".join(active_members_list)
-            members_context += "\n\nINSTRUCTION: Utilisez cette liste pour identifier précisément les membres présents et absents. Comparez les locuteurs identifiés dans la transcription avec cette liste.\n"
+            members_context = "\n\n=== LISTE OFFICIELLE DES MEMBRES ACTIFS (POUR VÃ‰RIFICATION DES PRÃ‰SENCES) ===\n" + "\n".join(active_members_list)
+            members_context += "\n\nINSTRUCTION: Utilisez cette liste pour identifier prÃ©cisÃ©ment les membres prÃ©sents et absents. Comparez les locuteurs identifiÃ©s dans la transcription avec cette liste.\n"
             system_prompt += members_context
             print(f"[Claude] Injected {len(active_members_list)} active members into prompt context.")
             
@@ -1903,7 +1903,7 @@ def send_convocation(req: https_fn.CallableRequest):
         if not resend_api_key:
             raise https_fn.HttpsError(
                 code=https_fn.FunctionsErrorCode.FAILED_PRECONDITION,
-                message="RESEND_API_KEY non configurée"
+                message="RESEND_API_KEY non configurÃ©e"
             )
         
         resend.api_key = resend_api_key
@@ -1931,8 +1931,8 @@ def send_convocation(req: https_fn.CallableRequest):
             4: "vendredi", 5: "samedi", 6: "dimanche"
         }
         months = {
-            1: "janvier", 2: "février", 3: "mars", 4: "avril", 5: "mai", 6: "juin",
-            7: "juillet", 8: "août", 9: "septembre", 10: "octobre", 11: "novembre", 12: "décembre"
+            1: "janvier", 2: "fÃ©vrier", 3: "mars", 4: "avril", 5: "mai", 6: "juin",
+            7: "juillet", 8: "aoÃ»t", 9: "septembre", 10: "octobre", 11: "novembre", 12: "dÃ©cembre"
         }
         
         day_str = days[meeting_date.weekday()]
@@ -1960,7 +1960,7 @@ def send_convocation(req: https_fn.CallableRequest):
         <!-- Header with logos -->
         <div style="background-color: #1e4e3d; padding: 30px; text-align: center;">
             <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-family: Arial, sans-serif;">
-                COMITÉ CONSULTATIF EN ENVIRONNEMENT
+                COMITÃ‰ CONSULTATIF EN ENVIRONNEMENT
             </h1>
             <p style="color: #c5a065; margin: 10px 0 0 0; font-size: 14px; text-transform: uppercase; letter-spacing: 2px;">
                 Ville de Val-d'Or
@@ -1974,39 +1974,39 @@ def send_convocation(req: https_fn.CallableRequest):
             </p>
             
             <p style="font-size: 16px; color: #333; line-height: 1.6;">
-                Vous êtes convoqué(e) à la prochaine assemblée du Comité consultatif en environnement de la Ville de Val-d'Or.
+                Vous Ãªtes convoquÃ©(e) Ã  la prochaine assemblÃ©e du ComitÃ© consultatif en environnement de la Ville de Val-d'Or.
             </p>
             
             <!-- Meeting details box -->
             <div style="background-color: #f9fbfa; border-left: 4px solid #c5a065; padding: 20px; margin: 25px 0; border-radius: 0 8px 8px 0;">
                 <p style="margin: 0 0 10px 0; font-size: 16px;">
-                    <strong style="color: #1e4e3d;">📅 Date :</strong> {formatted_date}
+                    <strong style="color: #1e4e3d;">ðŸ“… Date :</strong> {formatted_date}
                 </p>
                 <p style="margin: 0 0 10px 0; font-size: 16px;">
-                    <strong style="color: #1e4e3d;">🕐 Heure :</strong> {formatted_time}
+                    <strong style="color: #1e4e3d;">ðŸ• Heure :</strong> {formatted_time}
                 </p>
                 <p style="margin: 0; font-size: 16px;">
-                    <strong style="color: #1e4e3d;">📍 Lieu :</strong> {meeting.get("location", "Ville de Val-d'Or")}
+                    <strong style="color: #1e4e3d;">ðŸ“ Lieu :</strong> {meeting.get("location", "Ville de Val-d'Or")}
                 </p>
             </div>
             
             <p style="font-size: 16px; color: #333; line-height: 1.6;">
-                📎 L'ordre du jour est joint à ce courriel.
+                ðŸ“Ž L'ordre du jour est joint Ã  ce courriel.
             </p>
             
             <p style="font-size: 16px; color: #333; line-height: 1.6; margin-top: 25px;">
-                <strong>Veuillez confirmer votre présence :</strong>
+                <strong>Veuillez confirmer votre prÃ©sence :</strong>
             </p>
             
             <!-- RSVP buttons -->
             <div style="text-align: center; margin: 30px 0;">
                 <a href="{rsvp_url}?response=confirmed" 
                    style="display: inline-block; background-color: #4caf50; color: white; padding: 15px 30px; text-decoration: none; border-radius: 5px; font-weight: bold; margin: 5px; font-size: 16px;">
-                    ✓ Je serai présent(e)
+                    âœ“ Je serai prÃ©sent(e)
                 </a>
                 <a href="{rsvp_url}?response=declined" 
                    style="display: inline-block; background-color: #f44336; color: white; padding: 15px 30px; text-decoration: none; border-radius: 5px; font-weight: bold; margin: 5px; font-size: 16px;">
-                    ✗ Je serai absent(e)
+                    âœ— Je serai absent(e)
                 </a>
             </div>
         </div>
@@ -2038,7 +2038,7 @@ def send_convocation(req: https_fn.CallableRequest):
                 resend.Emails.send({
                     "from": "CCE Val-d'Or <coordination_cce@ccevvd.com>",
                     "to": [recipient.get("email")],
-                    "subject": f"Ordre du jour du CCE – {formatted_date}",
+                    "subject": f"Ordre du jour du CCE â€“ {formatted_date}",
                     "html": email_html,
                     # TODO: Attach PDF when we have it stored in Cloud Storage
                 })
@@ -2085,7 +2085,7 @@ def generate_avis_pdf(meeting_date: str, meeting_time: str,
     """
     Generate Avis de Convocation PDF using reportlab.
     Matches the official memo format:
-    - DESTINATAIRE / EXPÉDITEUR / DATE / OBJET header
+    - DESTINATAIRE / EXPÃ‰DITEUR / DATE / OBJET header
     - Body with meeting details and deadline
     - Signature at the bottom
     Returns PDF as bytes for email attachment.
@@ -2215,7 +2215,7 @@ def generate_avis_pdf(meeting_date: str, meeting_time: str,
         elements.append(logo_table)
         elements.append(Spacer(1, 15))
     
-    elements.append(Paragraph("COMITÉ CONSULTATIF EN ENVIRONNEMENT", header_style))
+    elements.append(Paragraph("COMITÃ‰ CONSULTATIF EN ENVIRONNEMENT", header_style))
     elements.append(Paragraph("VILLE DE VAL-D'OR", subheader_style))
     
     # Horizontal line
@@ -2224,23 +2224,23 @@ def generate_avis_pdf(meeting_date: str, meeting_time: str,
     
     # Format today's date in French
     months_fr = {
-        1: "janvier", 2: "février", 3: "mars", 4: "avril", 5: "mai", 6: "juin",
-        7: "juillet", 8: "août", 9: "septembre", 10: "octobre", 11: "novembre", 12: "décembre"
+        1: "janvier", 2: "fÃ©vrier", 3: "mars", 4: "avril", 5: "mai", 6: "juin",
+        7: "juillet", 8: "aoÃ»t", 9: "septembre", 10: "octobre", 11: "novembre", 12: "dÃ©cembre"
     }
     today = datetime.now()
     today_str = f"Le {today.day} {months_fr[today.month]} {today.year}"
     
     # === MEMO HEADER TABLE ===
-    # DESTINATAIRE / EXPÉDITEUR / DATE / OBJET format
+    # DESTINATAIRE / EXPÃ‰DITEUR / DATE / OBJET format
     memo_data = [
         [Paragraph("<b>DESTINATAIRE :</b>", label_style), 
-         Paragraph("Les membres du Comité consultatif en environnement", value_style)],
-        [Paragraph("<b>EXPÉDITEUR :</b>", label_style), 
+         Paragraph("Les membres du ComitÃ© consultatif en environnement", value_style)],
+        [Paragraph("<b>EXPÃ‰DITEUR :</b>", label_style), 
          Paragraph(f"{sender_name}, coordonnateur en environnement", value_style)],
         [Paragraph("<b>DATE :</b>", label_style), 
          Paragraph(today_str, value_style)],
         [Paragraph("<b>OBJET :</b>", label_style), 
-         Paragraph("Réunion du Comité consultatif en environnement", value_style)],
+         Paragraph("RÃ©union du ComitÃ© consultatif en environnement", value_style)],
     ]
     
     memo_table = Table(memo_data, colWidths=[1.3*inch, 4.7*inch])
@@ -2260,13 +2260,13 @@ def generate_avis_pdf(meeting_date: str, meeting_time: str,
     elements.append(Spacer(1, 12))
     
     # Main paragraph with meeting details
-    body_text = f"""Je vous prie de prendre note qu'une assemblée du Comité consultatif en environnement 
-    est prévue le <b>{meeting_date}</b> à <b>{meeting_time}</b> {meeting_location}."""
+    body_text = f"""Je vous prie de prendre note qu'une assemblÃ©e du ComitÃ© consultatif en environnement 
+    est prÃ©vue le <b>{meeting_date}</b> Ã  <b>{meeting_time}</b> {meeting_location}."""
     elements.append(Paragraph(body_text, body_style))
     elements.append(Spacer(1, 8))
     
     # Deadline paragraph
-    deadline_text = f"""Vous avez jusqu'au <b>{deadline}</b> pour faire vos suggestions de point à l'ordre du jour."""
+    deadline_text = f"""Vous avez jusqu'au <b>{deadline}</b> pour faire vos suggestions de point Ã  l'ordre du jour."""
     elements.append(Paragraph(deadline_text, body_style))
     elements.append(Spacer(1, 8))
     
@@ -2305,7 +2305,7 @@ def generate_avis_pdf(meeting_date: str, meeting_time: str,
         fontName='Times-Roman',
         leftIndent=0  # No indent - align with signature image
     )
-    elements.append(Paragraph(f"{sender_name}, secrétaire du Comité", signature_name_style))
+    elements.append(Paragraph(f"{sender_name}, secrÃ©taire du ComitÃ©", signature_name_style))
     
     # Build PDF
     doc.build(elements)
@@ -2339,7 +2339,7 @@ def send_avis_convocation(req: https_fn.CallableRequest):
         if not resend_api_key:
             raise https_fn.HttpsError(
                 code=https_fn.FunctionsErrorCode.FAILED_PRECONDITION,
-                message="RESEND_API_KEY non configurée"
+                message="RESEND_API_KEY non configurÃ©e"
             )
         
         resend.api_key = resend_api_key
@@ -2360,11 +2360,11 @@ def send_avis_convocation(req: https_fn.CallableRequest):
             )
         
         # Use pre-formatted dates from frontend
-        formatted_meeting_date = meeting.get("formattedDate", "Date à confirmer")
+        formatted_meeting_date = meeting.get("formattedDate", "Date Ã  confirmer")
         formatted_deadline = deadline.get("formattedDate", "Date limite")
         sender_email = sender.get("email", "coordonnateur@ville.valdor.qc.ca")
         sender_name = sender.get("name", "Coordonnateur CCE")
-        meeting_title = meeting.get("title", "Assemblée CCE")
+        meeting_title = meeting.get("title", "AssemblÃ©e CCE")
         meeting_location = meeting.get("location", "Ville de Val-d'Or")
         signature_url = sender.get("signatureUrl")
         
@@ -2379,7 +2379,7 @@ def send_avis_convocation(req: https_fn.CallableRequest):
             print(f"[Avis] Meeting time: UTC={meeting_datetime}, Local={meeting_datetime_local}, Formatted={meeting_time}")
         except Exception as tz_error:
             print(f"[Avis] Timezone error: {tz_error}")
-            meeting_time = "À confirmer"
+            meeting_time = "Ã€ confirmer"
         
         # Format location for proper grammar
         location_text = f"dans {meeting_location}" if meeting_location else "au bureau"
@@ -2413,7 +2413,7 @@ def send_avis_convocation(req: https_fn.CallableRequest):
         <!-- Header -->
         <div style="background-color: #1e4e3d; padding: 30px; text-align: center;">
             <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-family: Arial, sans-serif;">
-                COMITÉ CONSULTATIF EN ENVIRONNEMENT
+                COMITÃ‰ CONSULTATIF EN ENVIRONNEMENT
             </h1>
             <p style="color: #c5a065; margin: 10px 0 0 0; font-size: 14px; text-transform: uppercase; letter-spacing: 2px;">
                 Ville de Val-d'Or
@@ -2427,21 +2427,21 @@ def send_avis_convocation(req: https_fn.CallableRequest):
             </p>
             
             <p style="font-size: 16px; color: #333; line-height: 1.6;">
-                Vous trouverez, <strong>en fichier joint</strong>, l'avis de convocation pour la prochaine assemblée du 
-                <strong>Comité consultatif en environnement</strong>, prévue le <strong>{formatted_meeting_date}</strong>.
+                Vous trouverez, <strong>en fichier joint</strong>, l'avis de convocation pour la prochaine assemblÃ©e du 
+                <strong>ComitÃ© consultatif en environnement</strong>, prÃ©vue le <strong>{formatted_meeting_date}</strong>.
             </p>
             
             <!-- Deadline box -->
             <div style="background-color: #fff3cd; border: 1px solid #ffc107; border-radius: 8px; padding: 20px; margin: 25px 0;">
                 <p style="margin: 0; font-size: 16px; color: #856404;">
-                    📅 <strong>Date limite pour suggestions :</strong><br>
+                    ðŸ“… <strong>Date limite pour suggestions :</strong><br>
                     Vous avez jusqu'au <strong>{formatted_deadline}</strong> pour faire vos suggestions de sujets 
-                    à l'ordre du jour, par courriel à <a href="mailto:{sender_email}" style="color: #1e4e3d;">{sender_email}</a>
+                    Ã  l'ordre du jour, par courriel Ã  <a href="mailto:{sender_email}" style="color: #1e4e3d;">{sender_email}</a>
                 </p>
             </div>
             
             <p style="font-size: 16px; color: #333; line-height: 1.6;">
-                Merci et bonne journée !
+                Merci et bonne journÃ©e !
             </p>
         </div>
         
@@ -2469,7 +2469,7 @@ def send_avis_convocation(req: https_fn.CallableRequest):
                 resend.Emails.send({
                     "from": "CCE Val-d'Or <coordination_cce@ccevvd.com>",
                     "to": [recipient.get("email")],
-                    "subject": f"Avis de convocation – Assemblée CCE du {formatted_meeting_date}",
+                    "subject": f"Avis de convocation â€“ AssemblÃ©e CCE du {formatted_meeting_date}",
                     "html": email_html,
                     "attachments": [
                         {
@@ -2511,318 +2511,81 @@ def send_avis_convocation(req: https_fn.CallableRequest):
             code=https_fn.FunctionsErrorCode.INTERNAL,
             message=str(e)
         )
- 
- #   = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =  
- #   M A G I C   L I N K   A P P R O V A L   S E R V I C E  
- #   = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =  
-  
- @ h t t p s _ f n . o n _ c a l l (  
-         m e m o r y = o p t i o n s . M e m o r y O p t i o n . M B _ 2 5 6 ,  
-         t i m e o u t _ s e c = 6 0 ,  
-         r e g i o n = " u s - c e n t r a l 1 "  
- )  
- d e f   s e n d _ a p p r o v a l _ l i n k ( r e q :   h t t p s _ f n . C a l l a b l e R e q u e s t )   - >   d i c t :  
-         " " "  
-         G e n e r a t e   a   s e c u r e   m a g i c   l i n k   f o r   P V   a p p r o v a l   a n d   s e n d   i t   b y   e m a i l .  
-         S t o r e s   t h e   t o k e n   i n   a   s u b c o l l e c t i o n   ' a p p r o v a l s '   u n d e r   t h e   m e e t i n g .  
-         " " "  
-         i f   n o t   r e q . a u t h :  
-                 r a i s e   h t t p s _ f n . H t t p s E r r o r (  
-                         c o d e = h t t p s _ f n . F u n c t i o n s E r r o r C o d e . U N A U T H E N T I C A T E D ,  
-                         m e s s a g e = " A u t h e n t i f i c a t i o n   r e q u i s e "  
-                 )  
-  
-         #   1 .   V a l i d a t e   I n p u t  
-         d a t a   =   r e q . d a t a  
-         m e e t i n g _ i d   =   d a t a . g e t ( " m e e t i n g I d " )  
-         m e m b e r _ i d   =   d a t a . g e t ( " m e m b e r I d " )  
-         e m a i l   =   d a t a . g e t ( " e m a i l " )  
-         n a m e   =   d a t a . g e t ( " n a m e " )  
-         r o l e   =   d a t a . g e t ( " r o l e " )     #   ' p r e s i d e n t '   o r   ' e l e c t e d _ o f f i c i a l '  
-  
-         i f   n o t   a l l ( [ m e e t i n g _ i d ,   m e m b e r _ i d ,   e m a i l ,   r o l e ] ) :  
-                 r a i s e   h t t p s _ f n . H t t p s E r r o r (  
-                         c o d e = h t t p s _ f n . F u n c t i o n s E r r o r C o d e . I N V A L I D _ A R G U M E N T ,  
-                         m e s s a g e = " C h a m p s   r e q u i s   m a n q u a n t s   ( m e e t i n g I d ,   m e m b e r I d ,   e m a i l ,   r o l e ) "  
-                 )  
-          
-         #   2 .   G e n e r a t e   S e c u r e   T o k e n  
-         i m p o r t   s e c r e t s  
-         t o k e n   =   s e c r e t s . t o k e n _ u r l s a f e ( 3 2 )  
-          
-         #   3 .   S t o r e   T o k e n   i n   F i r e s t o r e  
-         t r y :  
-                 d b   =   f i r e s t o r e . c l i e n t ( )  
-                 a p p r o v a l _ r e f   =   d b . c o l l e c t i o n ( " m e e t i n g s " ) . d o c u m e n t ( m e e t i n g _ i d ) . c o l l e c t i o n ( " a p p r o v a l s " ) . d o c u m e n t ( m e m b e r _ i d )  
-                  
-                 e x p i r e s _ a t   =   d a t e t i m e . n o w ( )   +   t i m e d e l t a ( d a y s = 7 )   #   T o k e n   v a l i d   f o r   7   d a y s  
-                  
-                 a p p r o v a l _ d a t a   =   {  
-                         " t o k e n " :   t o k e n ,  
-                         " m e m b e r I d " :   m e m b e r _ i d ,  
-                         " e m a i l " :   e m a i l ,  
-                         " n a m e " :   n a m e ,  
-                         " r o l e " :   r o l e ,  
-                         " c r e a t e d A t " :   d a t e t i m e . n o w ( ) . i s o f o r m a t ( ) ,  
-                         " e x p i r e s A t " :   e x p i r e s _ a t . i s o f o r m a t ( ) ,  
-                         " s t a t u s " :   " p e n d i n g " ,   #   p e n d i n g ,   a p p r o v e d ,   r e j e c t e d  
-                         " g e n e r a t e d B y " :   r e q . a u t h . u i d  
-                 }  
-                  
-                 a p p r o v a l _ r e f . s e t ( a p p r o v a l _ d a t a )  
-                  
-         e x c e p t   E x c e p t i o n   a s   e :  
-                 p r i n t ( f " [ A p p r o v a l ]   D B   E r r o r :   { e } " )  
-                 r a i s e   h t t p s _ f n . H t t p s E r r o r (  
-                         c o d e = h t t p s _ f n . F u n c t i o n s E r r o r C o d e . I N T E R N A L ,  
-                         m e s s a g e = f " E r r e u r   b a s e   d e   d o n n � � e s :   { s t r ( e ) } "  
-                 )  
-                  
-         #   4 .   S e n d   E m a i l   v i a   R e s e n d  
-         t r y :  
-                 i m p o r t   r e s e n d  
-                 r e s e n d _ a p i _ k e y   =   o s . e n v i r o n . g e t ( " R E S E N D _ A P I _ K E Y " )  
-                 i f   n o t   r e s e n d _ a p i _ k e y :  
-                           r a i s e   E x c e p t i o n ( " R E S E N D _ A P I _ K E Y   n o n   c o n f i g u r � � e " )  
-                            
-                 r e s e n d . a p i _ k e y   =   r e s e n d _ a p i _ k e y  
-                  
-                 a p p _ u r l   =   o s . e n v i r o n . g e t ( " A P P _ U R L " ,   " h t t p s : / / c o m i t e - c c e . w e b . a p p " )  
-                 m a g i c _ l i n k   =   f " { a p p _ u r l } / a p p r o v e / { m e e t i n g _ i d } / { t o k e n } "  
-                  
-                 h t m l _ c o n t e n t   =   f " " "  
-                 < ! D O C T Y P E   h t m l >  
-                 < h t m l >  
-                 < b o d y   s t y l e = " f o n t - f a m i l y :   A r i a l ,   s a n s - s e r i f ;   c o l o r :   # 3 3 3 ; " >  
-                         < d i v   s t y l e = " m a x - w i d t h :   6 0 0 p x ;   m a r g i n :   0   a u t o ;   p a d d i n g :   2 0 p x ;   b o r d e r :   1 p x   s o l i d   # e e e ;   b o r d e r - r a d i u s :   8 p x ; " >  
-                                 < h 2   s t y l e = " c o l o r :   # 1 e 4 e 3 d ; " > A p p r o b a t i o n   r e q u i s e   :   P r o c � � s - v e r b a l   C C E < / h 2 >  
-                                 < p > B o n j o u r   { n a m e } , < / p >  
-                                 < p > L e   p r o c � � s - v e r b a l   d e   l a   d e r n i � � r e   r � � u n i o n   e s t   p r � � t   p o u r   v o t r e   r � � v i s i o n   e t   a p p r o b a t i o n . < / p >  
-                                 < p > E n   t a n t   q u e   < s t r o n g > { r o l e } < / s t r o n g > ,   v o t r e   s i g n a t u r e   � � l e c t r o n i q u e   e s t   r e q u i s e . < / p >  
-                                  
-                                 < d i v   s t y l e = " t e x t - a l i g n :   c e n t e r ;   m a r g i n :   3 0 p x   0 ; " >  
-                                         < a   h r e f = " { m a g i c _ l i n k } "   s t y l e = " b a c k g r o u n d - c o l o r :   # c 5 a 0 6 5 ;   c o l o r :   w h i t e ;   p a d d i n g :   1 2 p x   2 4 p x ;   t e x t - d e c o r a t i o n :   n o n e ;   b o r d e r - r a d i u s :   4 p x ;   f o n t - w e i g h t :   b o l d ; " >  
-                                                 R � � v i s e r   e t   A p p r o u v e r   l e   P V  
-                                         < / a >  
-                                 < / d i v >  
-                                  
-                                 < p   s t y l e = " f o n t - s i z e :   0 . 9 e m ;   c o l o r :   # 6 6 6 ; " >  
-                                         C e   l i e n   e s t   s � � c u r i s � �   e t   v a l i d e   p o u r   7   j o u r s .   V o u s   p o u r r e z   y   a j o u t e r   d e s   c o m m e n t a i r e s   o u   a p p o s e r   v o t r e   s i g n a t u r e   o f f i c i e l l e .  
-                                 < / p >  
-                                  
-                                 < h r   s t y l e = " b o r d e r :   n o n e ;   b o r d e r - t o p :   1 p x   s o l i d   # e e e ;   m a r g i n :   2 0 p x   0 ; " >  
-                                 < p   s t y l e = " f o n t - s i z e :   0 . 8 e m ;   c o l o r :   # 9 9 9 ;   t e x t - a l i g n :   c e n t e r ; " >  
-                                         C o m i t � �   C o n s u l t a t i f   e n   E n v i r o n n e m e n t   -   V i l l e   d e   V a l - d ' O r  
-                                 < / p >  
-                         < / d i v >  
-                 < / b o d y >  
-                 < / h t m l >  
-                 " " "  
-                  
-                 r e s e n d . E m a i l s . s e n d ( {  
-                         " f r o m " :   " C C E   V a l - d ' O r   < l e g a l @ c c e v v d . c o m > " ,  
-                         " t o " :   [ e m a i l ] ,  
-                         " s u b j e c t " :   " A c t i o n   r e q u i s e   :   A p p r o b a t i o n   d u   P r o c � � s - v e r b a l " ,  
-                         " h t m l " :   h t m l _ c o n t e n t  
-                 } )  
-                  
-                 p r i n t ( f " [ A p p r o v a l ]   L i n k   s e n t   t o   { e m a i l } " )  
-                 r e t u r n   { " s u c c e s s " :   T r u e ,   " t o k e n " :   t o k e n }   #   R e t u r n   t o k e n   f o r   d e b u g / t e s t i n g   i f   n e e d e d  
-                  
-         e x c e p t   E x c e p t i o n   a s   e :  
-                 p r i n t ( f " [ A p p r o v a l ]   E m a i l   E r r o r :   { e } " )  
-                 #   I d e n t i f y   i f   i t ' s   a   c o n f i g u r a t i o n   e r r o r   o r   s e n d i n g   e r r o r  
-                 r a i s e   h t t p s _ f n . H t t p s E r r o r (  
-                         c o d e = h t t p s _ f n . F u n c t i o n s E r r o r C o d e . I N T E R N A L ,  
-                         m e s s a g e = f " E r r e u r   d ' e n v o i   c o u r r i e l :   { s t r ( e ) } "  
-                 )  
-  
- @ h t t p s _ f n . o n _ c a l l ( )  
- d e f   s e n d _ c o n v o c a t i o n ( r e q :   h t t p s _ f n . C a l l a b l e R e q u e s t )   - >   A n y :  
-         " " "  
-         S e n d s   c o n v o c a t i o n   e m a i l s   w i t h   R S V P   t o k e n s   ( P h a s e   2 ) .  
-         " " "  
-         t r y :  
-                 d a t a   =   r e q . d a t a  
-                 m e e t i n g _ i d   =   d a t a . g e t ( " m e e t i n g I d " )  
-                 m e e t i n g _ d a t a   =   d a t a . g e t ( " m e e t i n g " ,   { } )  
-                 r e c i p i e n t s   =   d a t a . g e t ( " r e c i p i e n t s " ,   [ ] )  
-                 s e n d e r   =   d a t a . g e t ( " s e n d e r " ,   { } )  
-                  
-                 i f   n o t   m e e t i n g _ i d   o r   n o t   r e c i p i e n t s :  
-                         r e t u r n   { " s u c c e s s " :   F a l s e ,   " e r r o r " :   " M i s s i n g   p a r a m e t e r s " }  
-  
-                 p r i n t ( f " S e n d i n g   c o n v o c a t i o n   f o r   m e e t i n g   { m e e t i n g _ i d }   t o   { l e n ( r e c i p i e n t s ) }   r e c i p i e n t s " )  
-  
-                 #   B a s e   U R L   f o r   t h e   a p p l i c a t i o n  
-                 b a s e _ u r l   =   " h t t p s : / / p o r t a i l - c c e - v a l d o r . w e b . a p p "  
-                  
-                 e m a i l _ r e s u l t s   =   [ ]  
-                  
-                 f o r   r e c i p i e n t   i n   r e c i p i e n t s :  
-                         t o k e n   =   r e c i p i e n t . g e t ( " t o k e n " )  
-                         #   I f   n o   t o k e n ,   w e   c a n ' t   s e n d   R S V P   l i n k ,   b u t   s h o u l d   s t i l l   s e n d   e m a i l ?    
-                         #   L o g i c   a s s u m e s   t o k e n   i s   p r e s e n t   f o r   P h a s e   2 .  
-                          
-                         #   G e n e r a t e   R S V P   l i n k s  
-                         #   L i n k   t o   t h e   R S V P   p a g e   w i t h   t h e   t o k e n  
-                         i f   t o k e n :  
-                                 r s v p _ l i n k   =   f " { b a s e _ u r l } / r s v p / { m e e t i n g _ i d } / { t o k e n } "  
-                                 c o n f i r m _ l i n k   =   f " { r s v p _ l i n k } ? r e s p o n s e = c o n f i r m e d "  
-                                 d e c l i n e _ l i n k   =   f " { r s v p _ l i n k } ? r e s p o n s e = d e c l i n e d "  
-                                  
-                                 #   B u t t o n s   H T M L  
-                                 a c t i o n s _ h t m l   =   f " " "  
-                                                 < d i v   s t y l e = " t e x t - a l i g n :   c e n t e r ;   m a r g i n :   3 0 p x   0 ; " >  
-                                                         < p   s t y l e = " f o n t - w e i g h t :   b o l d ;   m a r g i n - b o t t o m :   1 5 p x ; " > V e u i l l e z   c o n f i r m e r   v o t r e   p r � � s e n c e   : < / p >  
-                                                          
-                                                         < a   h r e f = " { c o n f i r m _ l i n k } "   s t y l e = " d i s p l a y :   i n l i n e - b l o c k ;   b a c k g r o u n d - c o l o r :   # 2 e 7 d 3 2 ;   c o l o r :   w h i t e ;   p a d d i n g :   1 2 p x   2 4 p x ;   t e x t - d e c o r a t i o n :   n o n e ;   b o r d e r - r a d i u s :   4 p x ;   m a r g i n :   0   1 0 p x ;   f o n t - w e i g h t :   b o l d ; " >  
-                                                                 � S&   J e   s e r a i   p r � � s e n t ( e )  
-                                                         < / a >  
-                                                          
-                                                         < a   h r e f = " { d e c l i n e _ l i n k } "   s t y l e = " d i s p l a y :   i n l i n e - b l o c k ;   b a c k g r o u n d - c o l o r :   # c 6 2 8 2 8 ;   c o l o r :   w h i t e ;   p a d d i n g :   1 2 p x   2 4 p x ;   t e x t - d e c o r a t i o n :   n o n e ;   b o r d e r - r a d i u s :   4 p x ;   m a r g i n :   0   1 0 p x ;   f o n t - w e i g h t :   b o l d ; " >  
-                                                                 � � R  J e   s e r a i   a b s e n t ( e )  
-                                                         < / a >  
-                                                 < / d i v >  
-                                                 < p   s t y l e = " f o n t - s i z e :   1 4 p x ;   t e x t - a l i g n :   c e n t e r ;   m a r g i n - t o p :   2 0 p x ; " >  
-                                                         < a   h r e f = " { r s v p _ l i n k } "   s t y l e = " c o l o r :   # 6 6 6 ; " > V o i r   l e s   d � � t a i l s   d e   l a   r � � u n i o n < / a >  
-                                                 < / p >  
-                                 " " "  
-                         e l s e :  
-                                 a c t i o n s _ h t m l   =   " < p   s t y l e = ' c o l o r :   # 6 6 6 ;   f o n t - s t y l e :   i t a l i c ; ' > L i e n   d e   c o n f i r m a t i o n   n o n   d i s p o n i b l e   p o u r   c e t   u t i l i s a t e u r . < / p > "  
-  
-                          
-                         #   E m a i l   C o n t e n t  
-                         h t m l _ c o n t e n t   =   f " " "  
-                         < ! D O C T Y P E   h t m l >  
-                         < h t m l >  
-                         < b o d y   s t y l e = " f o n t - f a m i l y :   A r i a l ,   s a n s - s e r i f ;   c o l o r :   # 3 3 3 ;   l i n e - h e i g h t :   1 . 6 ; " >  
-                                 < d i v   s t y l e = " m a x - w i d t h :   6 0 0 p x ;   m a r g i n :   0   a u t o ;   b o r d e r :   1 p x   s o l i d   # e e e ;   b o r d e r - r a d i u s :   8 p x ;   o v e r f l o w :   h i d d e n ; " >  
-                                         < d i v   s t y l e = " b a c k g r o u n d - c o l o r :   # 1 e 4 e 3 d ;   c o l o r :   w h i t e ;   p a d d i n g :   2 0 p x ;   t e x t - a l i g n :   c e n t e r ; " >  
-                                                 < h 2   s t y l e = " m a r g i n :   0 ; " > O r d r e   d u   j o u r   d i s p o n i b l e < / h 2 >  
-                                                 < p   s t y l e = " m a r g i n :   5 p x   0   0 ; " > C o m i t � �   C o n s u l t a t i f   e n   E n v i r o n n e m e n t < / p >  
-                                         < / d i v >  
-                                          
-                                         < d i v   s t y l e = " p a d d i n g :   3 0 p x   2 0 p x ; " >  
-                                                 < p > B o n j o u r   { r e c i p i e n t . g e t ( ' n a m e ' ) } , < / p >  
-                                                  
-                                                 < p > V o u s   � � t e s   c o n v o q u � � ( e )   � �   l a   p r o c h a i n e   a s s e m b l � � e   d u   C C E . < / p >  
-                                                  
-                                                 < d i v   s t y l e = " b a c k g r o u n d - c o l o r :   # f 9 f 9 f 9 ;   p a d d i n g :   1 5 p x ;   b o r d e r - r a d i u s :   6 p x ;   m a r g i n :   2 0 p x   0 ; " >  
-                                                         < p   s t y l e = " m a r g i n :   5 p x   0 ; " > < s t r o n g > � x &   D a t e   : < / s t r o n g >   { m e e t i n g _ d a t a . g e t ( ' f o r m a t t e d D a t e ' ,   m e e t i n g _ d a t a . g e t ( ' d a t e ' ) ) } < / p >  
-                                                         < p   s t y l e = " m a r g i n :   5 p x   0 ; " > < s t r o n g > � x �   L i e u   : < / s t r o n g >   { m e e t i n g _ d a t a . g e t ( ' l o c a t i o n ' ,   " V i l l e   d e   V a l - d ' O r " ) } < / p >  
-                                                 < / d i v >  
-                                                  
-                                                 < p > L ' o r d r e   d u   j o u r   e s t   j o i n t   � �   c e   c o u r r i e l   ( s i   a p p l i c a b l e ) . < / p >  
-                                                  
-                                                 { a c t i o n s _ h t m l }  
-                                         < / d i v >  
-                                          
-                                         < d i v   s t y l e = " b a c k g r o u n d - c o l o r :   # f 5 f 5 f 5 ;   p a d d i n g :   1 5 p x ;   t e x t - a l i g n :   c e n t e r ;   f o n t - s i z e :   1 2 p x ;   c o l o r :   # 6 6 6 ; " >  
-                                                 < p > E n v o y � �   p a r   { s e n d e r . g e t ( ' n a m e ' ) } < / p >  
-                                                 < p > V i l l e   d e   V a l - d ' O r < / p >  
-                                         < / d i v >  
-                                 < / d i v >  
-                         < / b o d y >  
-                         < / h t m l >  
-                         " " "  
-                          
-                         t r y :  
-                                 r   =   r e s e n d . E m a i l s . s e n d ( {  
-                                         " f r o m " :   " C o m i t � �   C C E   < o n b o a r d i n g @ r e s e n d . d e v > " ,  
-                                         " t o " :   [ r e c i p i e n t . g e t ( " e m a i l " ) ] ,  
-                                         " s u b j e c t " :   f " C o n v o c a t i o n   C C E   -   { m e e t i n g _ d a t a . g e t ( ' f o r m a t t e d D a t e ' ,   m e e t i n g _ d a t a . g e t ( ' d a t e ' ) ) } " ,  
-                                         " h t m l " :   h t m l _ c o n t e n t ,  
-                                         " r e p l y _ t o " :   s e n d e r . g e t ( " e m a i l " )  
-                                 } )  
-                                 e m a i l _ r e s u l t s . a p p e n d ( { " e m a i l " :   r e c i p i e n t . g e t ( " e m a i l " ) ,   " i d " :   r . g e t ( " i d " ) ,   " s t a t u s " :   " s e n t " } )  
-                         e x c e p t   E x c e p t i o n   a s   e :  
-                                 p r i n t ( f " E r r o r   s e n d i n g   t o   { r e c i p i e n t . g e t ( ' e m a i l ' ) } :   { s t r ( e ) } " )  
-                                 e m a i l _ r e s u l t s . a p p e n d ( { " e m a i l " :   r e c i p i e n t . g e t ( " e m a i l " ) ,   " e r r o r " :   s t r ( e ) ,   " s t a t u s " :   " e r r o r " } )  
-  
-                 r e t u r n   { " s u c c e s s " :   T r u e ,   " r e s u l t s " :   e m a i l _ r e s u l t s }  
-  
-         e x c e p t   E x c e p t i o n   a s   e :  
-                 p r i n t ( f " E r r o r   i n   s e n d _ c o n v o c a t i o n :   { s t r ( e ) } " )  
-                 r e t u r n   { " s u c c e s s " :   F a l s e ,   " e r r o r " :   s t r ( e ) }  
-  
- @ h t t p s _ f n . o n _ c a l l ( )  
- d e f   s e n d _ a v i s _ c o n v o c a t i o n ( r e q :   h t t p s _ f n . C a l l a b l e R e q u e s t )   - >   A n y :  
-         " " "  
-         S e n d s   ' A v i s   d e   c o n v o c a t i o n '   e m a i l s   ( P h a s e   1 ) .  
-         D o e s   N O T   i n c l u d e   R S V P   l i n k s ,   a s   i t ' s   j u s t   a   n o t i c e .  
-         " " "  
-         t r y :  
-                 d a t a   =   r e q . d a t a  
-                 m e e t i n g _ i d   =   d a t a . g e t ( " m e e t i n g I d " )  
-                 m e e t i n g _ d a t a   =   d a t a . g e t ( " m e e t i n g " ,   { } )  
-                 d e a d l i n e   =   d a t a . g e t ( " d e a d l i n e " ,   { } )  
-                 r e c i p i e n t s   =   d a t a . g e t ( " r e c i p i e n t s " ,   [ ] )  
-                 s e n d e r   =   d a t a . g e t ( " s e n d e r " ,   { } )  
-                  
-                 i f   n o t   m e e t i n g _ i d   o r   n o t   r e c i p i e n t s :  
-                         r e t u r n   { " s u c c e s s " :   F a l s e ,   " e r r o r " :   " M i s s i n g   p a r a m e t e r s " }  
-  
-                 p r i n t ( f " S e n d i n g   A V I S   c o n v o c a t i o n   f o r   m e e t i n g   { m e e t i n g _ i d }   t o   { l e n ( r e c i p i e n t s ) }   r e c i p i e n t s " )  
-                  
-                 e m a i l _ r e s u l t s   =   [ ]  
-                  
-                 f o r   r e c i p i e n t   i n   r e c i p i e n t s :  
-                         #   E m a i l   C o n t e n t  
-                         h t m l _ c o n t e n t   =   f " " "  
-                         < ! D O C T Y P E   h t m l >  
-                         < h t m l >  
-                         < b o d y   s t y l e = " f o n t - f a m i l y :   A r i a l ,   s a n s - s e r i f ;   c o l o r :   # 3 3 3 ;   l i n e - h e i g h t :   1 . 6 ; " >  
-                                 < d i v   s t y l e = " m a x - w i d t h :   6 0 0 p x ;   m a r g i n :   0   a u t o ;   b o r d e r :   1 p x   s o l i d   # e e e ;   b o r d e r - r a d i u s :   8 p x ;   o v e r f l o w :   h i d d e n ; " >  
-                                         < d i v   s t y l e = " b a c k g r o u n d - c o l o r :   # E 8 F 5 E 9 ;   c o l o r :   # 1 e 4 e 3 d ;   p a d d i n g :   2 0 p x ;   t e x t - a l i g n :   c e n t e r ;   b o r d e r - b o t t o m :   3 p x   s o l i d   # 1 e 4 e 3 d ; " >  
-                                                 < h 2   s t y l e = " m a r g i n :   0 ; " > A V I S   D E   C O N V O C A T I O N < / h 2 >  
-                                                 < p   s t y l e = " m a r g i n :   5 p x   0   0 ;   f o n t - w e i g h t :   b o l d ; " > C o m i t � �   C o n s u l t a t i f   e n   E n v i r o n n e m e n t < / p >  
-                                         < / d i v >  
-                                          
-                                         < d i v   s t y l e = " p a d d i n g :   3 0 p x   2 0 p x ; " >  
-                                                 < p > B o n j o u r   { r e c i p i e n t . g e t ( ' n a m e ' ) } , < / p >  
-                                                  
-                                                 < p > L a   p r o c h a i n e   a s s e m b l � � e   d u   C C E   e s t   p l a n i f i � � e . < / p >  
-                                                  
-                                                 < d i v   s t y l e = " b a c k g r o u n d - c o l o r :   # f 9 f 9 f 9 ;   p a d d i n g :   1 5 p x ;   b o r d e r - r a d i u s :   6 p x ;   m a r g i n :   2 0 p x   0 ;   b o r d e r - l e f t :   4 p x   s o l i d   # 1 e 4 e 3 d ; " >  
-                                                         < p   s t y l e = " m a r g i n :   5 p x   0 ; " > < s t r o n g > � x &   D a t e   d e   l a   r � � u n i o n   : < / s t r o n g >   { m e e t i n g _ d a t a . g e t ( ' f o r m a t t e d D a t e ' ,   m e e t i n g _ d a t a . g e t ( ' d a t e ' ) ) } < / p >  
-                                                         < p   s t y l e = " m a r g i n :   5 p x   0 ; " > < s t r o n g > � x �   L i e u   : < / s t r o n g >   { m e e t i n g _ d a t a . g e t ( ' l o c a t i o n ' ,   " V i l l e   d e   V a l - d ' O r " ) } < / p >  
-                                                 < / d i v >  
-                                                  
-                                                 < d i v   s t y l e = " b a c k g r o u n d - c o l o r :   # F F F 3 E 0 ;   p a d d i n g :   1 5 p x ;   b o r d e r - r a d i u s :   6 p x ;   m a r g i n :   2 0 p x   0 ;   b o r d e r :   1 p x   s o l i d   # F F E 0 B 2 ; " >  
-                                                         < p   s t y l e = " m a r g i n :   0 ;   c o l o r :   # E 6 5 1 0 0 ;   f o n t - w e i g h t :   b o l d ; " > � x �   A p p e l   d e   s u j e t s < / p >  
-                                                         < p   s t y l e = " m a r g i n :   1 0 p x   0   0 ; " > S i   v o u s   s o u h a i t e z   a j o u t e r   u n   p o i n t   � �   l ' o r d r e   d u   j o u r ,   v e u i l l e z   e n   i n f o r m e r   l e   p r � � s i d e n t   a v a n t   l e   : < / p >  
-                                                         < p   s t y l e = " f o n t - w e i g h t :   b o l d ;   f o n t - s i z e :   1 . 1 e m ;   m a r g i n :   1 0 p x   0 ; " > { d e a d l i n e . g e t ( ' f o r m a t t e d D a t e ' ,   d e a d l i n e . g e t ( ' d a t e ' ) ) } < / p >  
-                                                 < / d i v >  
-                                                  
-                                                 < p > L ' o r d r e   d u   j o u r   d � � t a i l l � �   v o u s   s e r a   e n v o y � �   u l t � � r i e u r e m e n t . < / p >  
-                                         < / d i v >  
-                                          
-                                         < d i v   s t y l e = " b a c k g r o u n d - c o l o r :   # f 5 f 5 f 5 ;   p a d d i n g :   1 5 p x ;   t e x t - a l i g n :   c e n t e r ;   f o n t - s i z e :   1 2 p x ;   c o l o r :   # 6 6 6 ; " >  
-                                                 < p > E n v o y � �   p a r   { s e n d e r . g e t ( ' n a m e ' ) } < / p >  
-                                                 < p > V i l l e   d e   V a l - d ' O r < / p >  
-                                         < / d i v >  
-                                 < / d i v >  
-                         < / b o d y >  
-                         < / h t m l >  
-                         " " "  
-                          
-                         t r y :  
-                                 r   =   r e s e n d . E m a i l s . s e n d ( {  
-                                         " f r o m " :   " C o m i t � �   C C E   < o n b o a r d i n g @ r e s e n d . d e v > " ,  
-                                         " t o " :   [ r e c i p i e n t . g e t ( " e m a i l " ) ] ,  
-                                         " s u b j e c t " :   f " A V I S :   A s s e m b l � � e   C C E   -   { m e e t i n g _ d a t a . g e t ( ' f o r m a t t e d D a t e ' ,   m e e t i n g _ d a t a . g e t ( ' d a t e ' ) ) } " ,  
-                                         " h t m l " :   h t m l _ c o n t e n t ,  
-                                         " r e p l y _ t o " :   s e n d e r . g e t ( " e m a i l " )  
-                                 } )  
-                                 e m a i l _ r e s u l t s . a p p e n d ( { " e m a i l " :   r e c i p i e n t . g e t ( " e m a i l " ) ,   " i d " :   r . g e t ( " i d " ) ,   " s t a t u s " :   " s e n t " } )  
-                         e x c e p t   E x c e p t i o n   a s   e :  
-                                 p r i n t ( f " E r r o r   s e n d i n g   t o   { r e c i p i e n t . g e t ( ' e m a i l ' ) } :   { s t r ( e ) } " )  
-                                 e m a i l _ r e s u l t s . a p p e n d ( { " e m a i l " :   r e c i p i e n t . g e t ( " e m a i l " ) ,   " e r r o r " :   s t r ( e ) ,   " s t a t u s " :   " e r r o r " } )  
-  
-                 r e t u r n   { " s u c c e s s " :   T r u e ,   " r e s u l t s " :   e m a i l _ r e s u l t s }  
-  
-         e x c e p t   E x c e p t i o n   a s   e :  
-                 p r i n t ( f " E r r o r   i n   s e n d _ a v i s _ c o n v o c a t i o n :   { s t r ( e ) } " )  
-                 r e t u r n   { " s u c c e s s " :   F a l s e ,   " e r r o r " :   s t r ( e ) }  
- 
+
+
+# ==============================================================================
+# MAGIC LINK APPROVAL SERVICE
+# ==============================================================================
+
+import uuid
+from datetime import datetime, timedelta
+
+@https_fn.on_call()
+def send_approval_link(req: https_fn.CallableRequest) -> Any:
+    """
+    Generates a secure approval token and sends it via email.
+    """
+    try:
+        data = req.data
+        meeting_id = data.get("meetingId")
+        member_id = data.get("memberId")
+        email = data.get("email")
+        name = data.get("name")
+        role = data.get("role")
+
+        if not meeting_id or not email:
+            return {"success": False, "error": "Missing parameters"}
+
+        # Generate secure token
+        token = str(uuid.uuid4())
+        # expires in 7 days
+        expires_at = (datetime.now() + timedelta(days=7)).isoformat()
+
+        # Store token in Firestore
+        db = firestore.client()
+        db.collection("meetings").document(meeting_id).collection("approval_tokens").document(token).set({
+            "token": token,
+            "meetingId": meeting_id,
+            "memberId": member_id,
+            "name": name,
+            "role": role,
+            "createdAt": datetime.now().isoformat(),
+            "expiresAt": expires_at,
+            "used": False
+        })
+
+        # Construct Link
+        base_url = "https://portail-cce-valdor.web.app"
+        approval_link = f"{base_url}/approval/{token}"
+
+        # Send Email via Resend
+        html_content = f"""
+        <!DOCTYPE html>
+        <html>
+        <body style="font-family: Arial, sans-serif; padding: 20px;">
+            <h2>Demande d'approbation de Procès-Verbal</h2>
+            <p>Bonjour {name},</p>
+            <p>Le procès-verbal de la réunion est prêt pour votre révision et approbation.</p>
+            <p>Veuillez cliquer sur le lien ci-dessous pour accéder au document sécurisé :</p>
+            <p style="text-align: center; margin: 30px 0;">
+                <a href="{approval_link}" style="background-color: #1976d2; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; font-weight: bold;">
+                    Réviser et Approuver
+                </a>
+            </p>
+            <p>Ce lien est valide pour 7 jours.</p>
+        </body>
+        </html>
+        """
+
+        r = resend.Emails.send({
+            "from": "Comité CCE <onboarding@resend.dev>",
+            "to": [email],
+            "subject": "Action requise : Approbation de procès-verbal",
+            "html": html_content
+        })
+
+        return {"success": True, "emailId": r.get("id")}
+
+    except Exception as e:
+        print(f"Error sending approval link: {e}")
+        return {"success": False, "error": str(e)}
