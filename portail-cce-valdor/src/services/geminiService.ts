@@ -84,9 +84,10 @@ const uploadToGemini = async (blob: Blob, mimeType: string, displayName: string)
 
 
 /**
- * Transcribe audio file using Speechmatics (async pattern)
+ * Transcribe audio file using Speechmatics (webhook pattern)
  * 1. Submit job (returns immediately)
- * 2. Poll for completion every 30 seconds
+ * 2. Speechmatics webhook will update Firestore when done
+ * 3. UI listens to Firestore for status changes (real-time)
  */
 export const transcribeAudio = async (
     meetingId: string,
@@ -102,8 +103,9 @@ export const transcribeAudio = async (
             dateUpdated: new Date().toISOString()
         });
 
-        // 1. Submit transcription job (returns immediately)
-        console.log('[Transcription] Submitting async job...');
+        // Submit transcription job (returns immediately)
+        // Speechmatics will call our webhook when done, which updates Firestore
+        console.log('[Transcription] Submitting job to Speechmatics (webhook mode)...');
         const submitFunction = httpsCallable(functions, 'submit_transcription', { timeout: 120000 });
 
         const submitResult = await submitFunction({
@@ -118,33 +120,14 @@ export const transcribeAudio = async (
         }
 
         console.log(`[Transcription] Job submitted: ${submitData.jobId}`);
+        console.log('[Transcription] Webhook will update Firestore when complete. Listen for status changes.');
 
-        // 2. Poll for completion (every 30 seconds, max 60 attempts = 30 minutes)
-        const checkFunction = httpsCallable(functions, 'check_transcription', { timeout: 180000 });
-        const maxAttempts = 120; // 60 minutes with 30s intervals
-
-        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-            console.log(`[Transcription] Checking status (attempt ${attempt}/${maxAttempts})...`);
-
-            const checkResult = await checkFunction({ meetingId });
-            const checkData = checkResult.data as { status: string; message?: string; error?: string };
-
-            if (checkData.status === 'completed') {
-                console.log('[Transcription] Completed!');
-                return { success: true, transcription: checkData.message };
-            }
-
-            if (checkData.status === 'failed') {
-                throw new Error(checkData.error || 'Transcription failed');
-            }
-
-            // Still processing - wait 30 seconds before next check
-            if (attempt < maxAttempts) {
-                await new Promise(resolve => setTimeout(resolve, 30000));
-            }
-        }
-
-        throw new Error('Transcription timeout after 60 minutes');
+        // Return success immediately - the UI should listen to Firestore for updates
+        // The webhook will set transcriptionStatus to "completed" when done
+        return {
+            success: true,
+            transcription: `Transcription en cours (ID: ${submitData.jobId}). La page se mettra à jour automatiquement.`
+        };
 
     } catch (error) {
         console.error('Transcription error handling:', error);

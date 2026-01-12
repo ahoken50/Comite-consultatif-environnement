@@ -534,16 +534,21 @@ CCE_CUSTOM_VOCAB = [
 # SPEECHMATICS ASYNC FUNCTIONS (No timeout limit)
 # =============================================================================
 
-def submit_speechmatics_job(file_url: str, language_code: str = "fr") -> str:
+def submit_speechmatics_job(file_url: str, meeting_id: str, language_code: str = "fr") -> str:
     """
     Submit a transcription job to Speechmatics.
     Returns the job_id immediately (does NOT wait for completion).
+    Uses webhook notification to receive transcript when done.
     """
     api_key = os.environ.get("SPEECHMATICS_API_KEY")
     if not api_key:
         raise Exception("SPEECHMATICS_API_KEY not configured")
 
     headers = {"Authorization": f"Bearer {api_key}"}
+    
+    # Webhook URL for receiving completed transcripts
+    # Firebase Cloud Functions Gen2 URL format
+    webhook_url = "https://speechmatics-webhook-gml5dgz7ya-uc.a.run.app"
 
     config = {
         "type": "transcription",
@@ -556,10 +561,20 @@ def submit_speechmatics_job(file_url: str, language_code: str = "fr") -> str:
         },
         "fetch_data": {
             "url": file_url
+        },
+        "notification_config": [{
+            "url": webhook_url,
+            "contents": ["transcript"]
+        }],
+        "tracking": {
+            "title": f"CCE Meeting Transcription",
+            "reference": meeting_id,  # Link back to our meeting
+            "tags": ["cce", "meeting"]
         }
     }
 
-    print(f"[Speechmatics Async] Submitting job with {len(CCE_CUSTOM_VOCAB)} vocab terms...")
+    print(f"[Speechmatics Async] Submitting job for meeting {meeting_id} with {len(CCE_CUSTOM_VOCAB)} vocab terms...")
+    print(f"[Speechmatics Async] Webhook URL: {webhook_url}")
     
     files = {
         'config': (None, json.dumps(config), 'application/json')
@@ -1146,6 +1161,119 @@ def transcribe_whisper_legacy_local(
 
 
 # =============================================================================
+# SPEECHMATICS WEBHOOK (Receives completed transcripts)
+# =============================================================================
+
+@https_fn.on_request(
+    timeout_sec=120,
+    memory=options.MemoryOption.GB_1,
+    cors=options.CorsOptions(cors_origins="*", cors_methods=["POST", "GET"])
+)
+def speechmatics_webhook(req: https_fn.Request) -> https_fn.Response:
+    """
+    HTTP webhook endpoint that receives completed transcripts from Speechmatics.
+    Speechmatics POSTs the transcript here when the job is done.
+    
+    Query params from Speechmatics:
+    - id: The Speechmatics job ID
+    - status: success, error, fetch_error, trim_error
+    
+    The meeting_id is in the job's tracking.reference field.
+    We also receive the transcript in the request body (json-v2 format).
+    """
+    try:
+        # Get query params
+        job_id = req.args.get("id", "unknown")
+        status = req.args.get("status", "unknown")
+        
+        print(f"[Speechmatics Webhook] Received callback for job {job_id}, status={status}")
+        
+        if status != "success":
+            print(f"[Speechmatics Webhook] Job {job_id} failed with status: {status}")
+            # We don't know the meeting_id here without calling Speechmatics API
+            # Just log and return OK to prevent retries
+            return https_fn.Response(
+                json.dumps({"received": True, "status": status}),
+                status=200,
+                content_type="application/json"
+            )
+        
+        # Parse the transcript from request body (json-v2 format)
+        content_type = req.content_type or ""
+        
+        if "application/json" in content_type:
+            transcript_data = req.get_json(silent=True) or {}
+        else:
+            # Try to parse as JSON anyway
+            try:
+                transcript_data = json.loads(req.get_data(as_text=True))
+            except:
+                transcript_data = {}
+        
+        print(f"[Speechmatics Webhook] Received transcript data: {str(transcript_data)[:500]}...")
+        
+        # Extract meeting_id from tracking.reference
+        job_info = transcript_data.get("job", {})
+        tracking = job_info.get("tracking", {})
+        meeting_id = tracking.get("reference")
+        
+        if not meeting_id:
+            # Try to get from metadata
+            metadata = transcript_data.get("metadata", {})
+            tracking_alt = metadata.get("tracking", {})
+            meeting_id = tracking_alt.get("reference")
+        
+        if not meeting_id:
+            print(f"[Speechmatics Webhook] ERROR: No meeting_id found in tracking.reference for job {job_id}")
+            print(f"[Speechmatics Webhook] Full data keys: {list(transcript_data.keys())}")
+            return https_fn.Response(
+                json.dumps({"error": "No meeting_id in tracking.reference"}),
+                status=200,  # Return 200 to prevent retries
+                content_type="application/json"
+            )
+        
+        print(f"[Speechmatics Webhook] Processing transcript for meeting {meeting_id}")
+        
+        # Format the transcript using existing function
+        formatted = format_speechmatics_output(transcript_data)
+        full_transcription = formatted.get("text", "")
+        
+        print(f"[Speechmatics Webhook] Formatted transcript: {len(full_transcription)} characters")
+        
+        # Save to Firestore
+        db = firestore.client()
+        meeting_ref = db.collection("meetings").document(meeting_id)
+        
+        meeting_ref.update({
+            "audioRecording.transcription": full_transcription,
+            "audioRecording.transcriptionStatus": "completed",
+            "audioRecording.transcribedAt": datetime.now().isoformat(),
+            "audioRecording.transcriptionEngine": "speechmatics-webhook",
+            "audioRecording.speechmaticsJobId": job_id,
+            "dateUpdated": datetime.now().isoformat()
+        })
+        
+        print(f"[Speechmatics Webhook] SUCCESS! Transcript saved for meeting {meeting_id}")
+        
+        return https_fn.Response(
+            json.dumps({"success": True, "meetingId": meeting_id, "chars": len(full_transcription)}),
+            status=200,
+            content_type="application/json"
+        )
+        
+    except Exception as e:
+        print(f"[Speechmatics Webhook] ERROR: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        # Return 200 anyway to prevent Speechmatics retries (we logged the error)
+        return https_fn.Response(
+            json.dumps({"error": str(e)}),
+            status=200,
+            content_type="application/json"
+        )
+
+
+# =============================================================================
 # ASYNC TRANSCRIPTION ENDPOINTS (No timeout limit)
 # =============================================================================
 
@@ -1180,8 +1308,8 @@ def submit_transcription(req: https_fn.CallableRequest) -> dict:
         db = firestore.client()
         meeting_ref = db.collection("meetings").document(meeting_id)
         
-        # Submit to Speechmatics
-        job_id = submit_speechmatics_job(download_url, language_code="fr")
+        # Submit to Speechmatics (with webhook notification)
+        job_id = submit_speechmatics_job(download_url, meeting_id, language_code="fr")
         
         # Save job_id to Firestore
         meeting_ref.update({
