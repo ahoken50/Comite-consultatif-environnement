@@ -14,7 +14,7 @@ interface ParsedPVSection {
 }
 
 interface ParseOptions {
-    meetingDate?: Date | string;
+    meetingNumber?: number | string; // For auto-numbering (e.g., 10, 11, 12)
     autoNumber?: boolean; // Enable auto-numbering for empty numbers
 }
 
@@ -23,7 +23,7 @@ interface ParseOptions {
  * Returns separately the intro text (before first item) and the parsed items.
  * 
  * @param draftContent - The raw AI-generated text
- * @param options - Optional settings including meetingDate for auto-numbering
+ * @param options - Optional settings including meetingNumber for auto-numbering
  */
 export const parseMinutesDraft = (
     draftContent: string,
@@ -309,9 +309,9 @@ export const parseMinutesDraft = (
     flushSection();
 
     // ==== AUTO-NUMBERING LOGIC ====
-    // If meetingDate is provided and autoNumber is true (or not explicitly false),
+    // If meetingNumber is provided and autoNumber is true (or not explicitly false),
     // generate numbers for entries that don't have one.
-    const { meetingDate, autoNumber = true } = options;
+    const { meetingNumber, autoNumber = true } = options;
     const usedResolutionNumbers: string[] = [];
     const usedCommentNumbers: string[] = [];
 
@@ -328,18 +328,18 @@ export const parseMinutesDraft = (
         });
     });
 
-    // Second pass: assign numbers to entries without one (if autoNumber enabled and meetingDate provided)
-    if (autoNumber && meetingDate) {
+    // Second pass: assign numbers to entries without one (if autoNumber enabled and meetingNumber provided)
+    if (autoNumber && meetingNumber) {
         sections.forEach(sec => {
             sec.minuteEntries.forEach(entry => {
                 if (!entry.number) {
                     if (entry.type === 'resolution') {
-                        const newNumber = generateNextResolutionNumber(meetingDate, usedResolutionNumbers, 'CCE');
+                        const newNumber = generateNextResolutionNumber(meetingNumber, usedResolutionNumbers);
                         entry.number = newNumber;
                         usedResolutionNumbers.push(newNumber);
                         console.log(`[AutoNumber] Generated resolution number: ${newNumber}`);
                     } else if (entry.type === 'comment') {
-                        const newNumber = generateNextCommentNumber(meetingDate, usedCommentNumbers, 'COM');
+                        const newNumber = generateNextCommentNumber(meetingNumber, usedCommentNumbers);
                         entry.number = newNumber;
                         usedCommentNumbers.push(newNumber);
                         console.log(`[AutoNumber] Generated comment number: ${newNumber}`);
@@ -369,8 +369,8 @@ export const parseMinutesDraft = (
         if (finalMinuteEntries.length === 0 && sec.content.trim() && !isException) {
             // Create implicit comment entry with auto-number if enabled
             let implicitNumber = '';
-            if (autoNumber && meetingDate) {
-                implicitNumber = generateNextCommentNumber(meetingDate, usedCommentNumbers, 'COM');
+            if (autoNumber && meetingNumber) {
+                implicitNumber = generateNextCommentNumber(meetingNumber, usedCommentNumbers);
                 usedCommentNumbers.push(implicitNumber);
                 console.log(`[AutoNumber] Generated implicit comment number: ${implicitNumber}`);
             }

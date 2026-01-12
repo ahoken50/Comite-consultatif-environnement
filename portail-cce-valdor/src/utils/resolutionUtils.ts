@@ -1,75 +1,108 @@
 /**
- * Resolution Numbering Utilities
- * Handles automatic resolution number generation with reset per meeting
+ * Resolution & Comment Numbering Utilities
+ * 
+ * Format:
+ * - Resolutions: XX-1, XX-2, XX-3 (e.g., 10-1, 10-2, 10-3)
+ * - Comments: XX-A, XX-B, XX-C (e.g., 10-A, 10-B, 10-C)
+ * 
+ * Where XX is the meeting number (e.g., 10, 11, 12 for CCE meetings)
  */
-
-import { format } from 'date-fns';
-
-export interface ResolutionNumber {
-    full: string;      // e.g., "CCE-2024-01-05"
-    prefix: string;    // e.g., "CCE"
-    year: string;      // e.g., "2024"
-    sequence: string;  // e.g., "05"
-}
 
 /**
  * Generate the next resolution number for a meeting
- * Format: PREFIX-YYYY-MM-NN where NN resets to 01 for each new meeting
+ * Format: XX-N where XX is meeting number and N is sequence (1, 2, 3...)
  * 
- * @param meetingDate - Date of the meeting
+ * @param meetingNumber - The meeting number (e.g., 10, 11)
  * @param existingNumbers - Array of existing resolution numbers in this meeting
- * @param prefix - Organization prefix (default: "CCE")
  */
 export const generateNextResolutionNumber = (
-    meetingDate: Date | string,
-    existingNumbers: string[] = [],
-    prefix: string = 'CCE'
+    meetingNumber: number | string,
+    existingNumbers: string[] = []
 ): string => {
-    const date = typeof meetingDate === 'string' ? new Date(meetingDate) : meetingDate;
-    const year = format(date, 'yyyy');
-    const month = format(date, 'MM');
+    const prefix = String(meetingNumber).padStart(2, '0');
 
     // Find the highest sequence number for this meeting
     let maxSequence = 0;
 
-    const meetingPrefix = `${prefix}-${year}-${month}`;
-
     existingNumbers.forEach(num => {
-        if (num.startsWith(meetingPrefix)) {
-            const parts = num.split('-');
-            const seq = parseInt(parts[parts.length - 1], 10);
+        // Match pattern like "10-1", "10-2", etc.
+        const match = num.match(/^(\d+)-(\d+)$/);
+        if (match && match[1] === prefix) {
+            const seq = parseInt(match[2], 10);
             if (!isNaN(seq) && seq > maxSequence) {
                 maxSequence = seq;
             }
         }
     });
 
-    const nextSequence = (maxSequence + 1).toString().padStart(2, '0');
-    return `${meetingPrefix}-${nextSequence}`;
+    const nextSequence = maxSequence + 1;
+    return `${prefix}-${nextSequence}`;
 };
 
 /**
- * Parse a resolution number string
+ * Generate the next comment number for a meeting
+ * Format: XX-A where XX is meeting number and A is sequence (A, B, C...)
+ * 
+ * @param meetingNumber - The meeting number (e.g., 10, 11)
+ * @param existingNumbers - Array of existing comment numbers in this meeting
  */
-export const parseResolutionNumber = (number: string): ResolutionNumber | null => {
-    // Pattern: PREFIX-YYYY-MM-NN or PREFIX-YYYY-NN
-    const pattern = /^([A-Z]+)-(\d{4})-(\d{2})(?:-(\d{2}))?$/;
-    const match = number.match(pattern);
+export const generateNextCommentNumber = (
+    meetingNumber: number | string,
+    existingNumbers: string[] = []
+): string => {
+    const prefix = String(meetingNumber).padStart(2, '0');
 
-    if (!match) return null;
+    // Find the highest letter sequence for this meeting
+    let maxLetterIndex = -1; // -1 means no letters found yet
 
-    return {
-        full: number,
-        prefix: match[1],
-        year: match[2],
-        sequence: match[4] || match[3]
-    };
+    existingNumbers.forEach(num => {
+        // Match pattern like "10-A", "10-B", etc.
+        const match = num.match(/^(\d+)-([A-Z])$/i);
+        if (match && match[1] === prefix) {
+            const letter = match[2].toUpperCase();
+            const letterIndex = letter.charCodeAt(0) - 65; // A=0, B=1, C=2...
+            if (letterIndex > maxLetterIndex) {
+                maxLetterIndex = letterIndex;
+            }
+        }
+    });
+
+    const nextLetterIndex = maxLetterIndex + 1;
+    const nextLetter = String.fromCharCode(65 + nextLetterIndex); // 0->A, 1->B, 2->C...
+    return `${prefix}-${nextLetter}`;
+};
+
+/**
+ * Extract the meeting number from a resolution or comment number
+ */
+export const extractMeetingNumber = (number: string): number | null => {
+    const match = number.match(/^(\d+)-/);
+    if (match) {
+        return parseInt(match[1], 10);
+    }
+    return null;
+};
+
+/**
+ * Check if a number is a resolution (XX-N format with number)
+ */
+export const isResolutionNumber = (number: string): boolean => {
+    return /^\d+-\d+$/.test(number);
+};
+
+/**
+ * Check if a number is a comment (XX-A format with letter)
+ */
+export const isCommentNumber = (number: string): boolean => {
+    return /^\d+-[A-Z]$/i.test(number);
 };
 
 /**
  * Extract all resolution numbers from agenda items
  */
-export const extractResolutionNumbers = (agendaItems: Array<{ minuteEntries?: Array<{ type: string; number: string }> }>): string[] => {
+export const extractResolutionNumbers = (
+    agendaItems: Array<{ minuteEntries?: Array<{ type: string; number: string }> }>
+): string[] => {
     const numbers: string[] = [];
 
     agendaItems.forEach(item => {
@@ -86,57 +119,65 @@ export const extractResolutionNumbers = (agendaItems: Array<{ minuteEntries?: Ar
 };
 
 /**
- * Validate resolution number format
+ * Extract all comment numbers from agenda items
  */
-export const isValidResolutionNumber = (number: string): boolean => {
-    const pattern = /^[A-Z]+-\d{4}-\d{2}(-\d{2})?$/;
-    return pattern.test(number);
+export const extractCommentNumbers = (
+    agendaItems: Array<{ minuteEntries?: Array<{ type: string; number: string }> }>
+): string[] => {
+    const numbers: string[] = [];
+
+    agendaItems.forEach(item => {
+        if (item.minuteEntries) {
+            item.minuteEntries.forEach(entry => {
+                if (entry.type === 'comment' && entry.number) {
+                    numbers.push(entry.number);
+                }
+            });
+        }
+    });
+
+    return numbers;
 };
 
 /**
  * Compare two resolution numbers for sorting
- * Returns negative if a < b, positive if a > b, 0 if equal
  */
 export const compareResolutionNumbers = (a: string, b: string): number => {
-    const parsedA = parseResolutionNumber(a);
-    const parsedB = parseResolutionNumber(b);
+    const meetingA = extractMeetingNumber(a) || 0;
+    const meetingB = extractMeetingNumber(b) || 0;
 
-    if (!parsedA && !parsedB) return 0;
-    if (!parsedA) return 1;
-    if (!parsedB) return -1;
-
-    // Compare by year first
-    if (parsedA.year !== parsedB.year) {
-        return parseInt(parsedA.year) - parseInt(parsedB.year);
+    if (meetingA !== meetingB) {
+        return meetingA - meetingB;
     }
 
-    // Then by sequence
-    return parseInt(parsedA.sequence) - parseInt(parsedB.sequence);
+    // Same meeting, compare sequence
+    const seqMatchA = a.match(/-(\d+)$/);
+    const seqMatchB = b.match(/-(\d+)$/);
+
+    const seqA = seqMatchA ? parseInt(seqMatchA[1], 10) : 0;
+    const seqB = seqMatchB ? parseInt(seqMatchB[1], 10) : 0;
+
+    return seqA - seqB;
 };
 
 /**
- * Get all resolution numbers from a meeting year
- * Useful for generating annual reports
+ * Compare two comment numbers for sorting
  */
-export const getResolutionsByYear = (
-    resolutions: Array<{ number: string; date: string }>,
-    year: number
-): Array<{ number: string; date: string }> => {
-    return resolutions
-        .filter(r => {
-            const parsed = parseResolutionNumber(r.number);
-            return parsed && parseInt(parsed.year) === year;
-        })
-        .sort((a, b) => compareResolutionNumbers(a.number, b.number));
+export const compareCommentNumbers = (a: string, b: string): number => {
+    const meetingA = extractMeetingNumber(a) || 0;
+    const meetingB = extractMeetingNumber(b) || 0;
+
+    if (meetingA !== meetingB) {
+        return meetingA - meetingB;
+    }
+
+    // Same meeting, compare letters
+    const letterMatchA = a.match(/-([A-Z])$/i);
+    const letterMatchB = b.match(/-([A-Z])$/i);
+
+    const letterA = letterMatchA ? letterMatchA[1].toUpperCase().charCodeAt(0) : 0;
+    const letterB = letterMatchB ? letterMatchB[1].toUpperCase().charCodeAt(0) : 0;
+
+    return letterA - letterB;
 };
 
-/**
- * Generate a comment number (same format but with different prefix)
- */
-export const generateNextCommentNumber = (
-    meetingDate: Date | string,
-    existingNumbers: string[] = [],
-    prefix: string = 'COM'
-): string => {
-    return generateNextResolutionNumber(meetingDate, existingNumbers, prefix);
-};

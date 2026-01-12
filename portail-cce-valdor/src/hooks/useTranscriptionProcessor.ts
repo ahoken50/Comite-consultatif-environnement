@@ -4,7 +4,7 @@ import { useToast } from './useToast';
 
 interface UseTranscriptionProcessorProps {
     localAgendaItems: AgendaItem[];
-    meetingDate?: Date | string; // Added for auto-numbering
+    meetingNumber?: number | string; // For auto-numbering (e.g., 10, 11, 12)
     setGlobalNotes: (notes: string) => void;
     setLocalAgendaItems: (items: AgendaItem[]) => void;
     setItemDecisions: (decisions: Record<string, string>) => void;
@@ -13,7 +13,7 @@ interface UseTranscriptionProcessorProps {
 
 export const useTranscriptionProcessor = ({
     localAgendaItems,
-    meetingDate,
+    meetingNumber,
     setGlobalNotes,
     setLocalAgendaItems,
     setItemDecisions,
@@ -27,9 +27,9 @@ export const useTranscriptionProcessor = ({
             const { parseMinutesDraft } = await import('../services/minutesParserService');
             const { matchPVToAgenda } = await import('../services/docxParserService');
 
-            // Pass meetingDate for auto-numbering resolutions and comments
+            // Pass meetingNumber for auto-numbering resolutions (XX-N) and comments (XX-A)
             const { items: parsedItems, intro } = parseMinutesDraft(content, {
-                meetingDate,
+                meetingNumber,
                 autoNumber: true
             });
 
@@ -89,7 +89,7 @@ export const useTranscriptionProcessor = ({
             console.error('Error parsing minutes:', e);
             showError("Erreur lors de l'application intelligente");
         }
-    }, [localAgendaItems, meetingDate, setGlobalNotes, setLocalAgendaItems, setItemDecisions, setHasUnsavedChanges, showSuccess, showError]);
+    }, [localAgendaItems, meetingNumber, setGlobalNotes, setLocalAgendaItems, setItemDecisions, setHasUnsavedChanges, showSuccess, showError]);
 
     return {
         handleApplyTranscription
