@@ -574,9 +574,12 @@ def submit_speechmatics_job(file_url: str, meeting_id: str, language_code: str =
         "type": "transcription",
         "transcription_config": {
             "language": language_code,
-            "operating_point": "standard",  # Standard = faster (0.5x realtime). Enhanced was too slow for 1h30+ files
-            "diarization": "speaker",
-            "enable_entities": True,
+            "operating_point": "enhanced",  # UPDATED: Use 'enhanced' for max accuracy as requested
+            "diarization": "speaker",       # Activates speaker diarization
+            "enable_entities": True,        # E.g. dates, numbers formatting
+            "punctuation_overrides": {
+                "permitted_marks": [".", ",", "?", "!"] # Standard punctuation
+            },
             "additional_vocab": CCE_CUSTOM_VOCAB
         },
         "fetch_data": {
@@ -585,7 +588,7 @@ def submit_speechmatics_job(file_url: str, meeting_id: str, language_code: str =
         "notification_config": [{
             "url": webhook_url,
             "contents": ["transcript"],
-            "auth_headers": ["X-Source: speechmatics-webhook"] # Must be list of strings "Header: Value"
+            "auth_headers": ["X-Source: speechmatics-webhook"]
         }],
         "tracking": tracking_config
     }
@@ -864,11 +867,19 @@ def format_speechmatics_output(result: dict) -> dict:
             "text": " ".join(current_segment["text"]).replace(" ,", ",").replace(" .", ".").replace(" ?", "?").replace(" !", "!").strip()
         })
 
-    # Build full text with speaker labels
+    # Build full text with speaker labels and timestamps
     full_text_parts = []
+    
     for seg in segments:
+        # Format timestamp [MM:SS]
+        start_seconds = seg['start']
+        m = int(start_seconds // 60)
+        s = int(start_seconds % 60)
+        timestamp = f"[{m:02d}:{s:02d}]"
+        
+        # Format: [MM:SS] [Speaker] Text
         speaker_label = f"[{seg['speaker']}]"
-        full_text_parts.append(f"{speaker_label} {seg['text']}")
+        full_text_parts.append(f"{timestamp} {speaker_label} {seg['text']}")
 
     return {
         "text": "\n\n".join(full_text_parts),
