@@ -547,8 +547,12 @@ def submit_speechmatics_job(file_url: str, meeting_id: str, language_code: str =
     headers = {"Authorization": f"Bearer {api_key}"}
     
     # Webhook URL for receiving completed transcripts
-    # Firebase Cloud Functions Gen2 URL format
-    webhook_url = "https://speechmatics-webhook-gml5dgz7ya-uc.a.run.app"
+    # Set via SPEECHMATICS_WEBHOOK_URL env var, or use the deployed function URL
+    # For project comite-cce, the URL is determined by Firebase at deploy time
+    webhook_url = os.environ.get(
+        "SPEECHMATICS_WEBHOOK_URL",
+        "https://speechmatics-webhook-ay7g55ek2a-uc.a.run.app"  # Will be updated after first deploy
+    )
 
     config = {
         "type": "transcription",
