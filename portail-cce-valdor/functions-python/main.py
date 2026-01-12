@@ -547,12 +547,28 @@ def submit_speechmatics_job(file_url: str, meeting_id: str, language_code: str =
     headers = {"Authorization": f"Bearer {api_key}"}
     
     # Webhook URL for receiving completed transcripts
-    # Set via SPEECHMATICS_WEBHOOK_URL env var, or use the deployed function URL
-    # For project comite-cce, the URL is determined by Firebase at deploy time
-    webhook_url = os.environ.get(
-        "SPEECHMATICS_WEBHOOK_URL",
-        "https://speechmatics-webhook-bubhsf2gpa-uc.a.run.app"  # Will be updated after first deploy
-    )
+    # Dynamic construction based on Project ID (Option B)
+    # NOTE: Gen 2 functions use a random hash in the URL (e.g. .a.run.app).
+    # We prioritize the env var, and fall back to the known URL for 'comite-cce'.
+    
+    known_urls = {
+        "comite-cce": "https://speechmatics-webhook-bubhsf2gpa-uc.a.run.app"
+    }
+    
+    project_id = os.environ.get("GCLOUD_PROJECT", "comite-cce")
+    default_url = known_urls.get(project_id, f"https://us-central1-{project_id}.cloudfunctions.net/speechmatics_webhook")
+    
+    webhook_url = os.environ.get("SPEECHMATICS_WEBHOOK_URL", default_url)
+
+    tracking_config = {
+        "title": f"CCE Meeting {meeting_id}",
+        "reference": meeting_id,  # Link back to our meeting
+        "tags": ["cce", "meeting", "shpeechmatics-integration"],
+        "details": {
+             "system": "comite-cce-valdor",
+             "env": os.environ.get("GCLOUD_PROJECT", "local")
+        }
+    }
 
     config = {
         "type": "transcription",
@@ -568,17 +584,16 @@ def submit_speechmatics_job(file_url: str, meeting_id: str, language_code: str =
         },
         "notification_config": [{
             "url": webhook_url,
-            "contents": ["transcript"]
+            "contents": ["transcript"],
+            "auth_headers": {"X-Source": "speechmatics-webhook"} # Verify source if needed
         }],
-        "tracking": {
-            "title": f"CCE Meeting Transcription",
-            "reference": meeting_id,  # Link back to our meeting
-            "tags": ["cce", "meeting"]
-        }
+        "tracking": tracking_config
     }
 
-    print(f"[Speechmatics Async] Submitting job for meeting {meeting_id} with {len(CCE_CUSTOM_VOCAB)} vocab terms...")
-    print(f"[Speechmatics Async] Webhook URL: {webhook_url}")
+    print(f"[Speechmatics Async] 🚀 Submitting job for meeting {meeting_id}")
+    print(f"[Speechmatics Async] 🔗 Webhook URL: {webhook_url}")
+    print(f"[Speechmatics Async] 📋 Tracking: {json.dumps(tracking_config)}")
+    print(f"[Speechmatics Async] 📚 Vocab: {len(CCE_CUSTOM_VOCAB)} terms")
     
     files = {
         'config': (None, json.dumps(config), 'application/json')
@@ -593,12 +608,13 @@ def submit_speechmatics_job(file_url: str, meeting_id: str, language_code: str =
 
     if not response.ok:
         error_text = response.text[:500]
-        print(f"[Speechmatics Async] Submit failed: {response.status_code} - {error_text}")
+        print(f"[Speechmatics Async] ❌ Submit failed: {response.status_code} - {error_text}")
+        print(f"[Speechmatics Async] Response headers: {response.headers}")
         raise Exception(f"Speechmatics Submit Failed: {error_text}")
 
     job_data = response.json()
     job_id = job_data.get("id")
-    print(f"[Speechmatics Async] Job submitted: {job_id}")
+    print(f"[Speechmatics Async] ✅ Job submitted successfully: {job_id}")
     return job_id
 
 
@@ -619,18 +635,31 @@ def check_speechmatics_job(job_id: str) -> dict:
         timeout=30
     )
 
+    print(f"[Speechmatics Check] 🔍 Checking status for Job {job_id}...")
+    
     if not status_resp.ok:
-        print(f"[Speechmatics Check] Job {job_id}: API error {status_resp.status_code}")
+        print(f"[Speechmatics Check] ❌ API error {status_resp.status_code}: {status_resp.text}")
         return {"status": "error", "error": f"Status check failed: {status_resp.status_code}"}
 
     job_status = status_resp.json()
-    status = job_status.get("status", "unknown")
+    job_details = job_status.get("job", {})
+    status = job_details.get("status", "unknown")
     
-    # Log full status for debugging
-    print(f"[Speechmatics Check] Job {job_id}: status='{status}' | full_response={json.dumps(job_status)[:500]}")
+    # Log full tracking and status details
+    tracking = job_details.get("config", {}).get("tracking", {})
+    duration = job_details.get("duration", "unknown")
+    created_at = job_details.get("created_at", "unknown")
+    
+    print(f"[Speechmatics Check] 📊 Job Status: {status.upper()}")
+    print(f"[Speechmatics Check] 🕒 Created: {created_at} | Duration: {duration}s")
+    print(f"[Speechmatics Check] 🏷️ Tracking: {json.dumps(tracking)}")
+    
+    if status == "running":
+        print(f"[Speechmatics Check] ⏳ Job is still running...")
+        return {"status": "running"}
 
     if status in ["completed", "done"]:
-        print(f"[Speechmatics Check] Job {job_id}: COMPLETED! Fetching transcript...")
+        print(f"[Speechmatics Check] ✅ Job COMPLETED! Fetching transcript...")
         # Get transcript
         transcript_resp = requests.get(
             f"{SPEECHMATICS_API_BASE}/jobs/{job_id}/transcript?format=json-v2",
@@ -640,19 +669,20 @@ def check_speechmatics_job(job_id: str) -> dict:
         if transcript_resp.ok:
             result = transcript_resp.json()
             formatted = format_speechmatics_output(result)
-            print(f"[Speechmatics Check] Job {job_id}: Transcript retrieved, {len(formatted.get('text', ''))} chars")
+            print(f"[Speechmatics Check] 📝 Transcript retrieved: {len(formatted.get('text', ''))} chars")
             return {"status": "completed", "result": formatted}
         else:
-            print(f"[Speechmatics Check] Job {job_id}: Failed to get transcript: {transcript_resp.status_code}")
+            print(f"[Speechmatics Check] ❌ Failed to get transcript: {transcript_resp.status_code} - {transcript_resp.text}")
             return {"status": "error", "error": f"Failed to get transcript: {transcript_resp.status_code}"}
     
     elif status in ["rejected", "failed"]:
-        error_msg = job_status.get("errors", [{"message": "Unknown error"}])
-        print(f"[Speechmatics Check] Job {job_id}: FAILED - {error_msg}")
+        error_msg = job_details.get("errors", [{"message": "Unknown error"}])
+        print(f"[Speechmatics Check] ⛔ JOB FAILED")
+        print(f"[Speechmatics Check] Errors: {json.dumps(error_msg)}")
         return {"status": "failed", "error": str(error_msg)}
     
     else:
-        print(f"[Speechmatics Check] Job {job_id}: Still running (status='{status}')")
+        print(f"[Speechmatics Check] ❓ Unknown status: '{status}'")
         return {"status": "running"}
 
 
@@ -1190,10 +1220,10 @@ def speechmatics_webhook(req: https_fn.Request) -> https_fn.Response:
         job_id = req.args.get("id", "unknown")
         status = req.args.get("status", "unknown")
         
-        print(f"[Speechmatics Webhook] Received callback for job {job_id}, status={status}")
+        print(f"[Speechmatics Webhook] 📨 Received callback for job {job_id}, status={status}")
         
         if status != "success":
-            print(f"[Speechmatics Webhook] Job {job_id} failed with status: {status}")
+            print(f"[Speechmatics Webhook] ⚠️ Job {job_id} failed with status: {status}")
             # We don't know the meeting_id here without calling Speechmatics API
             # Just log and return OK to prevent retries
             return https_fn.Response(
@@ -1214,21 +1244,25 @@ def speechmatics_webhook(req: https_fn.Request) -> https_fn.Response:
             except:
                 transcript_data = {}
         
-        print(f"[Speechmatics Webhook] Received transcript data: {str(transcript_data)[:500]}...")
-        
-        # Extract meeting_id from tracking.reference
+        # Log metadata for verification
         job_info = transcript_data.get("job", {})
         tracking = job_info.get("tracking", {})
+        metadata = transcript_data.get("metadata", {})
+        
+        print(f"[Speechmatics Webhook] 📋 Job Info: {json.dumps(job_info)}")
+        print(f"[Speechmatics Webhook] 🏷️ Tracking Metadata: {json.dumps(tracking)}")
+        
+        # Extract meeting_id from tracking.reference
         meeting_id = tracking.get("reference")
         
         if not meeting_id:
-            # Try to get from metadata
-            metadata = transcript_data.get("metadata", {})
+            # Fallback to metadata tracking
             tracking_alt = metadata.get("tracking", {})
             meeting_id = tracking_alt.get("reference")
+            print(f"[Speechmatics Webhook] ℹ️ Found meeting_id in fallback metadata: {meeting_id}")
         
         if not meeting_id:
-            print(f"[Speechmatics Webhook] ERROR: No meeting_id found in tracking.reference for job {job_id}")
+            print(f"[Speechmatics Webhook] ❌ ERROR: No meeting_id found in tracking.reference for job {job_id}")
             print(f"[Speechmatics Webhook] Full data keys: {list(transcript_data.keys())}")
             return https_fn.Response(
                 json.dumps({"error": "No meeting_id in tracking.reference"}),
