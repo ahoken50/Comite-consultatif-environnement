@@ -301,7 +301,7 @@ def transcribe_with_whisper(
 # SPEECHMATICS INTEGRATION (Primary Transcription Provider)
 # =============================================================================
 
-SPEECHMATICS_API_BASE = "https://us1.asr.api.speechmatics.com/v2"  # US region
+SPEECHMATICS_API_BASE = "https://asr.api.speechmatics.com/v2"  # EU region
 
 # Custom dictionary for CCE meetings (Speechmatics format)
 # Each entry can have optional "sounds_like" for pronunciation hints
@@ -549,7 +549,7 @@ def submit_speechmatics_job(file_url: str, language_code: str = "fr") -> str:
         "type": "transcription",
         "transcription_config": {
             "language": language_code,
-            "operating_point": "enhanced",  # Best accuracy (async = no timeout worry)
+            "operating_point": "standard",  # Standard = faster (0.5x realtime). Enhanced was too slow for 1h30+ files
             "diarization": "speaker",
             "enable_entities": True,
             "additional_vocab": CCE_CUSTOM_VOCAB
@@ -601,12 +601,17 @@ def check_speechmatics_job(job_id: str) -> dict:
     )
 
     if not status_resp.ok:
+        print(f"[Speechmatics Check] Job {job_id}: API error {status_resp.status_code}")
         return {"status": "error", "error": f"Status check failed: {status_resp.status_code}"}
 
     job_status = status_resp.json()
     status = job_status.get("status", "unknown")
+    
+    # Log full status for debugging
+    print(f"[Speechmatics Check] Job {job_id}: status='{status}' | full_response={json.dumps(job_status)[:500]}")
 
     if status in ["completed", "done"]:
+        print(f"[Speechmatics Check] Job {job_id}: COMPLETED! Fetching transcript...")
         # Get transcript
         transcript_resp = requests.get(
             f"{SPEECHMATICS_API_BASE}/jobs/{job_id}/transcript?format=json-v2",
@@ -616,15 +621,19 @@ def check_speechmatics_job(job_id: str) -> dict:
         if transcript_resp.ok:
             result = transcript_resp.json()
             formatted = format_speechmatics_output(result)
+            print(f"[Speechmatics Check] Job {job_id}: Transcript retrieved, {len(formatted.get('text', ''))} chars")
             return {"status": "completed", "result": formatted}
         else:
+            print(f"[Speechmatics Check] Job {job_id}: Failed to get transcript: {transcript_resp.status_code}")
             return {"status": "error", "error": f"Failed to get transcript: {transcript_resp.status_code}"}
     
     elif status in ["rejected", "failed"]:
         error_msg = job_status.get("errors", [{"message": "Unknown error"}])
+        print(f"[Speechmatics Check] Job {job_id}: FAILED - {error_msg}")
         return {"status": "failed", "error": str(error_msg)}
     
     else:
+        print(f"[Speechmatics Check] Job {job_id}: Still running (status='{status}')")
         return {"status": "running"}
 
 
