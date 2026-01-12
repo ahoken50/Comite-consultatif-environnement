@@ -2591,3 +2591,144 @@ def send_approval_link(req: https_fn.CallableRequest) -> Any:
     except Exception as e:
         print(f"Error sending approval link: {e}")
         return {"success": False, "error": str(e)}
+
+
+
+# =============================================================================
+# SPEECHMATICS COST PROTECTION & JOB MANAGEMENT
+# =============================================================================
+
+def list_speechmatics_jobs(status_filter: str = "running") -> list:
+    """
+    List Speechmatics jobs by status.
+    Useful for monitoring costs and detecting zombie jobs.
+    """
+    api_key = os.environ.get("SPEECHMATICS_API_KEY")
+    if not api_key:
+        raise Exception("SPEECHMATICS_API_KEY not configured")
+
+    headers = {"Authorization": f"Bearer {api_key}"}
+    
+    url = f"{SPEECHMATICS_API_BASE}/jobs"
+    if status_filter and status_filter != "all":
+        url += f"?status={status_filter}"
+    
+    print(f"[Speechmatics Admin] Listing jobs (filter: {status_filter})...")
+    
+    response = requests.get(url, headers=headers, timeout=30)
+    
+    if not response.ok:
+        print(f"[Speechmatics Admin] Failed to list jobs: {response.status_code}")
+        return []
+    
+    data = response.json()
+    jobs = data.get("jobs", [])
+    
+    print(f"[Speechmatics Admin] Found {len(jobs)} job(s)")
+    
+    return [{
+        "id": job.get("id"),
+        "status": job.get("status"),
+        "created_at": job.get("created_at"),
+        "duration": job.get("duration"),
+        "tracking": job.get("config", {}).get("tracking", {})
+    } for job in jobs]
+
+
+def delete_speechmatics_job(job_id: str) -> bool:
+    """
+    Delete/cancel a Speechmatics job.
+    Use this to stop runaway jobs that are incurring costs.
+    """
+    api_key = os.environ.get("SPEECHMATICS_API_KEY")
+    if not api_key:
+        raise Exception("SPEECHMATICS_API_KEY not configured")
+
+    headers = {"Authorization": f"Bearer {api_key}"}
+    
+    print(f"[Speechmatics Admin] Deleting job {job_id}...")
+    
+    response = requests.delete(
+        f"{SPEECHMATICS_API_BASE}/jobs/{job_id}",
+        headers=headers,
+        timeout=30
+    )
+    
+    if response.ok or response.status_code == 204:
+        print(f"[Speechmatics Admin] Job {job_id} deleted successfully")
+        return True
+    else:
+        print(f"[Speechmatics Admin] Failed to delete job: {response.status_code} - {response.text}")
+        return False
+
+
+@https_fn.on_call(
+    memory=options.MemoryOption.MB_256,
+    timeout_sec=60,
+    region="us-central1"
+)
+def admin_speechmatics_cleanup(req: https_fn.CallableRequest) -> Any:
+    """
+    Admin function to list and optionally cancel stale Speechmatics jobs.
+    Helps prevent unexpected charges from zombie jobs.
+    
+    Request data:
+        action: "list" | "cleanup"
+        max_age_hours: Number of hours after which a running job is considered stale (default: 2)
+    """
+    if not req.auth:
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.UNAUTHENTICATED,
+            message="Authentification requise"
+        )
+    
+    data = req.data or {}
+    action = data.get("action", "list")
+    max_age_hours = data.get("max_age_hours", 2)
+    
+    try:
+        running_jobs = list_speechmatics_jobs("running")
+        
+        if action == "list":
+            return {
+                "success": True,
+                "jobs": running_jobs,
+                "count": len(running_jobs),
+                "message": f"Found {len(running_jobs)} running job(s)"
+            }
+        
+        elif action == "cleanup":
+            now = datetime.now()
+            stale_jobs = []
+            deleted_jobs = []
+            
+            for job in running_jobs:
+                created_at_str = job.get("created_at", "")
+                if created_at_str:
+                    try:
+                        created_at = datetime.fromisoformat(created_at_str.replace("Z", "+00:00"))
+                        age_hours = (now - created_at.replace(tzinfo=None)).total_seconds() / 3600
+                        
+                        if age_hours > max_age_hours:
+                            stale_jobs.append(job)
+                            job_id = job.get("id")
+                            
+                            if delete_speechmatics_job(job_id):
+                                deleted_jobs.append(job_id)
+                    except Exception as parse_error:
+                        print(f"[Speechmatics Admin] Could not parse date: {created_at_str} - {parse_error}")
+            
+            return {
+                "success": True,
+                "stale_count": len(stale_jobs),
+                "deleted_jobs": deleted_jobs,
+                "deleted_count": len(deleted_jobs),
+                "message": f"Cleaned up {len(deleted_jobs)} stale job(s) older than {max_age_hours}h"
+            }
+        
+        else:
+            return {"success": False, "error": f"Unknown action: {action}"}
+    
+    except Exception as e:
+        print(f"[Speechmatics Admin] Error: {str(e)}")
+        return {"success": False, "error": str(e)}
