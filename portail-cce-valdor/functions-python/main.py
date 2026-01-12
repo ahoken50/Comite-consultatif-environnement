@@ -11,6 +11,7 @@ import json
 import time
 import requests
 from datetime import datetime, timedelta
+from typing import Any
 from firebase_functions import https_fn, options
 from firebase_admin import initialize_app, firestore, storage
 # NOTE: openai and pydub are no longer needed for Salad Cloud integration.
@@ -2519,6 +2520,7 @@ def send_avis_convocation(req: https_fn.CallableRequest):
 
 import uuid
 from datetime import datetime, timedelta
+from typing import Any
 
 @https_fn.on_call()
 def send_approval_link(req: https_fn.CallableRequest) -> Any:
