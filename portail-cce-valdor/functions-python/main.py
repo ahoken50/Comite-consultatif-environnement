@@ -585,7 +585,7 @@ def submit_speechmatics_job(file_url: str, meeting_id: str, language_code: str =
         "notification_config": [{
             "url": webhook_url,
             "contents": ["transcript"],
-            "auth_headers": {"X-Source": "speechmatics-webhook"} # Verify source if needed
+            "auth_headers": ["X-Source: speechmatics-webhook"] # Must be list of strings "Header: Value"
         }],
         "tracking": tracking_config
     }
