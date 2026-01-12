@@ -551,7 +551,7 @@ def submit_speechmatics_job(file_url: str, meeting_id: str, language_code: str =
     # For project comite-cce, the URL is determined by Firebase at deploy time
     webhook_url = os.environ.get(
         "SPEECHMATICS_WEBHOOK_URL",
-        "https://speechmatics-webhook-ay7g55ek2a-uc.a.run.app"  # Will be updated after first deploy
+        "https://speechmatics-webhook-bubhsf2gpa-uc.a.run.app"  # Will be updated after first deploy
     )
 
     config = {
