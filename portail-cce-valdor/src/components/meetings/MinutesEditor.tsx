@@ -10,11 +10,12 @@ import {
     Alert,
     Snackbar
 } from '@mui/material';
-import { Save, PictureAsPdf, UploadFile, DeleteSweep, Shield } from '@mui/icons-material';
+import { Save, PictureAsPdf, UploadFile, DeleteSweep, Shield, Send, AutoAwesome } from '@mui/icons-material';
 import type { Meeting, AgendaItem, AudioRecording, MinutesDraft } from '../../types/meeting.types';
 import { generateMinutesPDF } from '../../services/pdfServiceMinutes';
 // import { sanitizeMinutes } from '../../services/geminiService'; // Removed in favor of Claude
 import MinutesImportDialog from './MinutesImportDialog';
+import ApprovalRequestDialog from './ApprovalRequestDialog';
 import AudioUpload from './AudioUpload';
 import TranscriptionViewer from './TranscriptionViewer';
 import AgendaItemEditor from './AgendaItemEditor';
@@ -23,6 +24,11 @@ import { useMinutesFile } from '../../hooks/useMinutesFile';
 import { useToast } from '../../hooks/useToast';
 import { generateNextResolutionNumber } from '../../utils/resolutionUtils';
 import { useTranscriptionProcessor } from '../../hooks/useTranscriptionProcessor';
+import { useSelector } from 'react-redux'; // [NEW] For getting user info
+import type { RootState } from '../../store/rootReducer'; // [NEW] For Redux state type
+import pvVersioningService from '../../services/pvVersioningService'; // [NEW] For versioning
+import { format } from 'date-fns'; // [NEW] For displaying last saved time
+import { fr } from 'date-fns/locale'; // [NEW] locale
 // Note: parseAgendaDOCX is imported dynamically when needed
 
 interface MinutesEditorProps {
@@ -32,11 +38,15 @@ interface MinutesEditorProps {
 
 const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
     const { showSuccess, showError } = useToast();
+    const { user } = useSelector((state: RootState) => state.auth); // [NEW] Get user for versioning
     const [globalNotes, setGlobalNotes] = useState(meeting.minutes || '');
     const [itemDecisions, setItemDecisions] = useState<Record<string, string>>({});
     const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+    const [lastSaved, setLastSaved] = useState<Date | null>(null); // [NEW] Track last save time
+    const [isSaving, setIsSaving] = useState(false); // [NEW] Track saving state
     const [showSaveSuccess, setShowSaveSuccess] = useState(false);
     const [isImportOpen, setIsImportOpen] = useState(false);
+    const [isApprovalDialogOpen, setIsApprovalDialogOpen] = useState(false);
 
     // Local state for agenda item fields that need to be saved manually
     const [localAgendaItems, setLocalAgendaItems] = useState<AgendaItem[]>(meeting.agendaItems || []);
@@ -131,44 +141,85 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
         setHasUnsavedChanges(true);
     };
 
-    const handleSave = () => {
-        // Save agenda items
-        const updatedAgendaItems = localAgendaItems.map(item => {
-            // Check if we are in 'Legacy/Simple' mode for this item (no structured entries)
-            const isLegacyMode = !item.minuteEntries || item.minuteEntries.length === 0;
+    // [NEW] Unified Save Handler (Handles both Auto-save and Manual Versioning)
+    const handleSave = async (createVersion: boolean = false) => {
+        setIsSaving(true);
+        try {
+            // Save agenda items
+            const updatedAgendaItems = localAgendaItems.map(item => {
+                // Check if we are in 'Legacy/Simple' mode for this item (no structured entries)
+                const isLegacyMode = !item.minuteEntries || item.minuteEntries.length === 0;
 
-            if (isLegacyMode) {
-                // In legacy mode, we SAVE the decision field from the tracked state
-                // In legacy mode, we SAVE the decision field from the tracked state
-                // This ensures manual edits to the "Contenu du PV" box are saved
-                return {
-                    ...item,
-                    decision: itemDecisions[item.id] || item.decision || '',
-                    minuteEntries: []
+                if (isLegacyMode) {
+                    // In legacy mode, we SAVE the decision field from the tracked state
+                    // This ensures manual edits to the "Contenu du PV" box are saved
+                    return {
+                        ...item,
+                        decision: itemDecisions[item.id] || item.decision || '',
+                        minuteEntries: []
+                    };
+                } else {
+                    // In structured mode (Parsed PV), we PRESERVE the ODJ decision field (don't overwrite with empty)
+                    // and save the structured minuteEntries (Resolutions/Comments)
+                    return {
+                        ...item,
+                        minuteEntries: item.minuteEntries
+                        // decision is kept as-is (from ODJ)
+                    };
+                }
+            });
+
+            console.log('[DEBUG] handleSave called', { createVersion });
+
+            // 1. Update Firestore Main Document (Always)
+            onUpdate({
+                minutes: globalNotes,
+                agendaItems: updatedAgendaItems
+            });
+
+            // 2. Create Historical Version (Only if Manual Save)
+            if (createVersion && user) {
+                // We need to pass the FULL meeting object combined with current changes
+                const fullMeetingState: Meeting = {
+                    ...meeting,
+                    minutes: globalNotes,
+                    agendaItems: updatedAgendaItems
                 };
-            } else {
-                // In structured mode (Parsed PV), we PRESERVE the ODJ decision field (don't overwrite with empty)
-                // and save the structured minuteEntries (Resolutions/Comments)
-                return {
-                    ...item,
-                    minuteEntries: item.minuteEntries
-                    // decision is kept as-is (from ODJ)
-                };
+
+                await pvVersioningService.createPVVersion(
+                    meeting.id,
+                    fullMeetingState,
+                    user.uid,
+                    "Sauvegarde manuelle"
+                );
+                showSuccess("Version sauvegardée dans l'historique");
             }
-        });
 
-        console.log('[DEBUG] handleSave called');
-        console.log('[DEBUG] globalNotes:', globalNotes);
-        console.log('[DEBUG] First agenda item after merge:', updatedAgendaItems[0]);
+            setHasUnsavedChanges(false);
+            setLastSaved(new Date());
 
-        onUpdate({
-            minutes: globalNotes,
-            agendaItems: updatedAgendaItems
-        });
-
-        setHasUnsavedChanges(false);
-        setShowSaveSuccess(true);
+            if (createVersion) {
+                setShowSaveSuccess(true);
+            }
+        } catch (error) {
+            console.error('Save failed:', error);
+            showError('Erreur lors de la sauvegarde');
+        } finally {
+            setIsSaving(false);
+        }
     };
+
+    // [NEW] Auto-Save Effect
+    useEffect(() => {
+        if (!hasUnsavedChanges) return;
+
+        const timer = setTimeout(() => {
+            console.log('[Auto-Save] Triggering auto-save...');
+            handleSave(false); // False = No new version history, just update draft
+        }, 30000); // 30 seconds debounce
+
+        return () => clearTimeout(timer);
+    }, [hasUnsavedChanges, globalNotes, itemDecisions, localAgendaItems]); // Dependencies triggering auto-save
 
     const handleGeneratePDF = () => {
         // Create a temporary meeting object with current state
@@ -245,6 +296,37 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
         } catch (error) {
             console.error('Sanitization failed:', error);
             if (printWindow) printWindow.close();
+            showError("Erreur technique lors de l'appel IA");
+        }
+    };
+
+    const handleGenerateSummary = async () => {
+        if (!meeting.audioRecording?.transcription) {
+            showError("Veuillez d'abord transcrire l'audio pour générer un résumé.");
+            return;
+        }
+
+        if (globalNotes && !window.confirm("Le champ 'Notes Générales' n'est pas vide. Voulez-vous remplacer son contenu par le résumé IA ?")) {
+            return;
+        }
+
+        try {
+            showSuccess("Génération du résumé exécutif en cours (via Claude)...");
+
+            // Dynamically import service
+            const { generateExecutiveSummaryClaude } = await import('../../services/claudeService');
+
+            const result = await generateExecutiveSummaryClaude(meeting.audioRecording.transcription);
+
+            if (result.success && result.summary) {
+                setGlobalNotes(result.summary);
+                setHasUnsavedChanges(true);
+                showSuccess("Résumé généré avec succès !");
+            } else {
+                showError(result.error || "Erreur lors de la génération");
+            }
+        } catch (error) {
+            console.error('Summary generation failed:', error);
             showError("Erreur technique lors de l'appel IA");
         }
     };
@@ -517,15 +599,37 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
                         PDF Anonymisé (IA)
                     </Button>
                     <Button
+                        variant="outlined"
+                        color="info"
+                        startIcon={<Send />}
+                        onClick={() => setIsApprovalDialogOpen(true)}
+                        title="Envoyer le lien d'approbation au président"
+                    >
+                        Approbation
+                    </Button>
+                    <Button
                         variant="contained"
                         startIcon={<Save />}
-                        onClick={handleSave}
-                        disabled={!hasUnsavedChanges}
+                        onClick={() => handleSave(true)} // True = Create Version
+                        disabled={isSaving} // Only disable while saving
+                        color={hasUnsavedChanges ? "primary" : "inherit"} // Highlight if changes
                     >
-                        Enregistrer
+                        {isSaving ? 'Sauvegarde...' : 'Enregistrer (Version)'}
                     </Button>
                 </Box>
             </Box>
+
+            {/* [NEW] Last Saved Indicator */}
+            {lastSaved && (
+                <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
+                    <Typography variant="caption" color="text.secondary">
+                        {hasUnsavedChanges
+                            ? "⚠️ Modifications non enregistrées..."
+                            : `✅ Dernière sauvegarde automatique : ${format(lastSaved, 'HH:mm:ss', { locale: fr })}`
+                        }
+                    </Typography>
+                </Box>
+            )}
 
             {/* Section Transcription IA */}
             <Paper sx={{ p: 2, mb: 3, bgcolor: 'background.default' }}>
@@ -602,6 +706,13 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
                 onImport={handleImport}
             />
 
+            <ApprovalRequestDialog
+                open={isApprovalDialogOpen}
+                onClose={() => setIsApprovalDialogOpen(false)}
+                meetingId={meeting.id}
+                onSuccess={() => showSuccess("Lien d'approbation envoyé avec succès !")}
+            />
+
             {/* Cross Validation Panel - Compare ODJ with PV */}
             {meeting.agendaItems && meeting.agendaItems.length > 0 && localAgendaItems.length > 0 && (
                 <CrossValidationPanel
@@ -617,7 +728,18 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
             )}
 
             <Paper sx={{ p: 3, mb: 3 }}>
-                <Typography variant="subtitle1" gutterBottom fontWeight="bold">Notes Générales / Introduction</Typography>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                    <Typography variant="subtitle1" fontWeight="bold">Notes Générales / Introduction</Typography>
+                    <Button
+                        startIcon={<AutoAwesome />}
+                        size="small"
+                        onClick={handleGenerateSummary}
+                        disabled={!meeting.audioRecording?.transcription}
+                        title="Génère un résumé exécutif basé sur la transcription audio"
+                    >
+                        Générer avec IA
+                    </Button>
+                </Box>
                 <TextField
                     fullWidth
                     multiline

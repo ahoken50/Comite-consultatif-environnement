@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate, useLocation } from 'react-router-dom';
+import { useParams, useLocation } from 'react-router-dom';
 import { useMeetingSubscription } from '../../hooks/useMeetingSubscription';
 import {
     Box,
@@ -12,7 +12,7 @@ import {
     Chip,
     Grid
 } from '@mui/material';
-import { ArrowBack, CalendarToday, LocationOn } from '@mui/icons-material';
+import { CalendarToday, LocationOn } from '@mui/icons-material';
 import { useDispatch, useSelector } from 'react-redux';
 import type { AppDispatch } from '../../store/store';
 import type { RootState } from '../../store/rootReducer';
@@ -61,11 +61,12 @@ function TabPanel(props: TabPanelProps) {
 
 import MeetingApprovalCard from '../../components/meetings/MeetingApprovalCard';
 import { fetchMembers } from '../../features/members/membersSlice';
+import Breadcrumbs from '../../components/common/Breadcrumbs'; // [NEW]
 
 const MeetingDetailPage: React.FC = () => {
     const { id } = useParams<{ id: string }>();
     useMeetingSubscription(id);
-    const navigate = useNavigate();
+    // navigate removed as it was unused after Breadcrumbs update
     const dispatch = useDispatch<AppDispatch>();
     const { showInfo } = useToast();
     const meeting = useSelector((state: RootState) =>
@@ -220,13 +221,14 @@ const MeetingDetailPage: React.FC = () => {
 
     return (
         <Box>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                <Button
-                    startIcon={<ArrowBack />}
-                    onClick={() => navigate('/meetings')}
-                >
-                    Retour aux réunions
-                </Button>
+            <Breadcrumbs
+                items={[
+                    { label: 'Accueil', to: '/dashboard' },
+                    { label: 'Réunions', to: '/meetings' },
+                    { label: meeting.title || 'Détail de la réunion' }
+                ]}
+            />
+            <Box sx={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', mb: 2 }}>
                 <Box sx={{ display: 'flex', gap: 2 }}>
                     <Button
                         variant="outlined"

@@ -26,6 +26,7 @@ const MinutesPage = lazy(() => import('./pages/Minutes/MinutesPage'));
 const CouncilTrackingPage = lazy(() => import('./pages/Governance/CouncilTrackingPage'));
 const AnnualReportPage = lazy(() => import('./pages/Reports/AnnualReportPage'));
 const RSVPPage = lazy(() => import('./pages/RSVP/RSVPPage'));
+const ApprovalPage = lazy(() => import('./pages/Approval/ApprovalPage'));
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -84,6 +85,8 @@ function App() {
               <Route path="/signup" element={<SignUpPage />} />
               {/* Public RSVP page - no auth required */}
               <Route path="/rsvp/:meetingId/:token" element={<RSVPPage />} />
+              {/* Public Approval page - no auth required (Magic Link) */}
+              <Route path="/approve/:meetingId/:token" element={<ApprovalPage />} />
 
               <Route path="/" element={
                 <ProtectedRoute>

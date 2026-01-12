@@ -1,0 +1,105 @@
+
+@https_fn.on_call()
+def send_convocation(req: https_fn.CallableRequest) -> Any:
+    """
+    Sends convocation emails with RSVP tokens.
+    """
+    try:
+        data = req.data
+        meeting_id = data.get("meetingId")
+        meeting_data = data.get("meeting", {})
+        recipients = data.get("recipients", [])
+        sender = data.get("sender", {})
+        
+        if not meeting_id or not recipients:
+            return {"success": False, "error": "Missing parameters"}
+
+        print(f"Sending convocation for meeting {meeting_id} to {len(recipients)} recipients")
+
+        # Base URL for the application
+        # In production use the real URL, in dev could use localhost but token links need to work for user
+        base_url = "https://portail-cce-valdor.web.app"
+        
+        email_results = []
+        
+        for recipient in recipients:
+            token = recipient.get("token")
+            if not token:
+                print(f"Skipping recipient {recipient.get('email')} - No token")
+                continue
+                
+            # Generate RSVP links
+            # Link to the RSVP page with the token
+            rsvp_link = f"{base_url}/rsvp/{meeting_id}/{token}"
+            
+            # Direct action links (optional, can pre-fill the state)
+            confirm_link = f"{rsvp_link}?response=confirmed"
+            decline_link = f"{rsvp_link}?response=declined"
+            
+            # Email Content
+            html_content = f"""
+            <!DOCTYPE html>
+            <html>
+            <body style="font-family: Arial, sans-serif; color: #333; line-height: 1.6;">
+                <div style="max-width: 600px; margin: 0 auto; border: 1px solid #eee; border-radius: 8px; overflow: hidden;">
+                    <div style="background-color: #1e4e3d; color: white; padding: 20px; text-align: center;">
+                        <h2 style="margin: 0;">Avis de convocation</h2>
+                        <p style="margin: 5px 0 0;">Comité Consultatif en Environnement</p>
+                    </div>
+                    
+                    <div style="padding: 30px 20px;">
+                        <p>Bonjour {recipient.get('name')},</p>
+                        
+                        <p>Vous êtes convoqué(e) à la prochaine assemblée du CCE.</p>
+                        
+                        <div style="background-color: #f9f9f9; padding: 15px; border-radius: 6px; margin: 20px 0;">
+                            <p style="margin: 5px 0;"><strong>📅 Date :</strong> {meeting_data.get('date')}</p>
+                            <p style="margin: 5px 0;"><strong>📍 Lieu :</strong> {meeting_data.get('location', 'Hôtel de Ville')}</p>
+                        </div>
+                        
+                        <p>L'ordre du jour est joint à ce courriel.</p>
+                        
+                        <div style="text-align: center; margin: 30px 0;">
+                            <p style="font-weight: bold; margin-bottom: 15px;">Veuillez confirmer votre présence :</p>
+                            
+                            <a href="{confirm_link}" style="display: inline-block; background-color: #2e7d32; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; margin: 0 10px; font-weight: bold;">
+                                ✅ Je serai présent(e)
+                            </a>
+                            
+                            <a href="{decline_link}" style="display: inline-block; background-color: #c62828; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; margin: 0 10px; font-weight: bold;">
+                                ❌ Je serai absent(e)
+                            </a>
+                        </div>
+                        
+                        <p style="font-size: 14px; text-align: center; margin-top: 20px;">
+                            <a href="{rsvp_link}" style="color: #666;">Voir les détails de la réunion</a>
+                        </p>
+                    </div>
+                    
+                    <div style="background-color: #f5f5f5; padding: 15px; text-align: center; font-size: 12px; color: #666;">
+                        <p>Envoyé par {sender.get('name')}</p>
+                        <p>Ville de Val-d'Or</p>
+                    </div>
+                </div>
+            </body>
+            </html>
+            """
+            
+            try:
+                r = resend.Emails.send({
+                    "from": "Comité CCE <onboarding@resend.dev>",
+                    "to": [recipient.get("email")],
+                    "subject": f"Convocation CCE - {meeting_data.get('formattedDate', meeting_data.get('date'))}",
+                    "html": html_content,
+                    "reply_to": sender.get("email")
+                })
+                email_results.append({"email": recipient.get("email"), "id": r.get("id"), "status": "sent"})
+            except Exception as e:
+                print(f"Error sending to {recipient.get('email')}: {str(e)}")
+                email_results.append({"email": recipient.get("email"), "error": str(e), "status": "error"})
+
+        return {"success": True, "results": email_results}
+
+    except Exception as e:
+        print(f"Error in send_convocation: {str(e)}")
+        return {"success": False, "error": str(e)}

@@ -13,7 +13,7 @@ import {
     IconButton,
     LinearProgress
 } from '@mui/material';
-import { ArrowBack, Edit, Delete } from '@mui/icons-material';
+import { Edit, Delete } from '@mui/icons-material';
 import { useDispatch, useSelector } from 'react-redux';
 import type { AppDispatch } from '../../store/store';
 import type { RootState } from '../../store/rootReducer';
@@ -28,6 +28,7 @@ import ProjectForm from '../../components/projects/ProjectForm';
 import ProjectComments from '../../components/projects/ProjectComments';
 import ProjectDecisions from '../../components/projects/ProjectDecisions';
 import LinkedResolutions from '../../components/projects/LinkedResolutions';
+import Breadcrumbs from '../../components/common/Breadcrumbs'; // [NEW]
 
 interface TabPanelProps {
     children?: React.ReactNode;
@@ -122,13 +123,13 @@ const ProjectDetailPage: React.FC = () => {
 
     return (
         <Box>
-            <Button
-                startIcon={<ArrowBack />}
-                onClick={() => navigate('/projects')}
-                sx={{ mb: 2 }}
-            >
-                Retour aux projets
-            </Button>
+            <Breadcrumbs
+                items={[
+                    { label: 'Accueil', to: '/dashboard' },
+                    { label: 'Projets', to: '/projects' },
+                    { label: project.name || 'Détail du projet' }
+                ]}
+            />
 
             <Paper sx={{ p: 3, mb: 3 }}>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>

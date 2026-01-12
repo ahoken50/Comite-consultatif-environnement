@@ -9,13 +9,32 @@ import { queryClient } from './lib/queryClient'
 import App from './App'
 import './index.css'
 
+// [NEW] Sentry Initialization
+import * as Sentry from "@sentry/react";
+import SentryErrorBoundary from './components/ErrorBoundary';
+
+Sentry.init({
+  dsn: import.meta.env.VITE_SENTRY_DSN || "https://placeholder@sentry.io/123", // Placeholder
+  integrations: [
+    Sentry.browserTracingIntegration(),
+    Sentry.replayIntegration(),
+  ],
+  // Performance Monitoring
+  tracesSampleRate: 1.0,
+  // Session Replay
+  replaysSessionSampleRate: 0.1,
+  replaysOnErrorSampleRate: 1.0,
+});
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
       <Provider store={store}>
         <ThemeProvider theme={theme}>
           <CssBaseline />
-          <App />
+          <SentryErrorBoundary>
+            <App />
+          </SentryErrorBoundary>
         </ThemeProvider>
       </Provider>
     </QueryClientProvider>

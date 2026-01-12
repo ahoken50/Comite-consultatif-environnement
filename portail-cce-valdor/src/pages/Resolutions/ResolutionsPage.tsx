@@ -13,7 +13,11 @@ import {
     TextField,
     InputAdornment,
     Button,
-    Link as MuiLink
+    Link as MuiLink,
+    FormControl,
+    InputLabel,
+    Select,
+    MenuItem
 } from '@mui/material';
 import { Search, Gavel, Assignment } from '@mui/icons-material';
 import { useDispatch, useSelector } from 'react-redux';
@@ -24,6 +28,7 @@ import { fetchMeetings } from '../../features/meetings/meetingsSlice';
 import { fetchProjects } from '../../features/projects/projectsSlice';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
+import Breadcrumbs from '../../components/common/Breadcrumbs'; // [NEW]
 
 interface ResolutionRow {
     id: string; // Unique ID (meetingId-agendaId-entryIndex)
@@ -35,12 +40,14 @@ interface ResolutionRow {
     topicTitle: string;
     projectId?: string;
     projectCode?: string;
+    status?: string; // [NEW] Status derived from linked project
 }
 
 const ResolutionsPage: React.FC = () => {
     const dispatch = useDispatch<AppDispatch>();
     const navigate = useNavigate();
     const [searchTerm, setSearchTerm] = useState('');
+    const [statusFilter, setStatusFilter] = useState<string>('all'); // [NEW]
 
     const { items: meetings } = useSelector((state: RootState) => state.meetings);
     const { items: projects } = useSelector((state: RootState) => state.projects);
@@ -64,7 +71,6 @@ const ResolutionsPage: React.FC = () => {
                     item.minuteEntries.forEach((entry, index) => {
                         if (entry.type === 'resolution') {
                             // Find linked project - optimized with O(1) lookup
-                            // Previously O(P) inside O(M*A*E) loop, now O(1)
                             const project = item.linkedProjectId ? projectsMap.get(item.linkedProjectId) : undefined;
 
                             rows.push({
@@ -76,7 +82,8 @@ const ResolutionsPage: React.FC = () => {
                                 meetingTitle: meeting.title,
                                 topicTitle: item.title,
                                 projectId: item.linkedProjectId,
-                                projectCode: project?.code
+                                projectCode: project?.code,
+                                status: project?.status || 'Non lié' // [NEW] Default to 'Non lié' if no project
                             });
                         }
                     });
@@ -88,17 +95,53 @@ const ResolutionsPage: React.FC = () => {
         return rows.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
     }, [meetings, projectsMap]);
 
+    // [NEW] Get unique statuses for filter
+    const uniqueStatuses = useMemo(() => {
+        const statuses = new Set(resolutions.map(r => r.status).filter(Boolean));
+        return Array.from(statuses).sort();
+    }, [resolutions]);
+
     const filteredResolutions = useMemo(() => {
-        return resolutions.filter(r =>
-            r.number.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            r.content.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            r.topicTitle.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            (r.projectCode && r.projectCode.toLowerCase().includes(searchTerm.toLowerCase()))
-        );
-    }, [resolutions, searchTerm]);
+        return resolutions.filter(r => {
+            const matchesSearch =
+                r.number.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                r.content.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                r.topicTitle.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                (r.projectCode && r.projectCode.toLowerCase().includes(searchTerm.toLowerCase()));
+
+            const matchesStatus = statusFilter === 'all' || r.status === statusFilter;
+
+            return matchesSearch && matchesStatus;
+        });
+    }, [resolutions, searchTerm, statusFilter]);
+
+    // [NEW] Helper for status colors
+    const getStatusColor = (status?: string) => {
+        switch (status?.toLowerCase()) {
+            case 'complété':
+            case 'terminé':
+                return 'success';
+            case 'en cours':
+                return 'primary';
+            case 'en attente':
+                return 'warning';
+            case 'annulé':
+                return 'error';
+            case 'nouveau':
+                return 'info';
+            default:
+                return 'default';
+        }
+    };
 
     return (
         <Box>
+            <Breadcrumbs
+                items={[
+                    { label: 'Accueil', to: '/dashboard' },
+                    { label: 'Résolutions' }
+                ]}
+            />
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                     <Gavel color="primary" sx={{ fontSize: 32 }} />
@@ -109,19 +152,35 @@ const ResolutionsPage: React.FC = () => {
             </Box>
 
             <Paper sx={{ p: 2, mb: 3 }}>
-                <TextField
-                    fullWidth
-                    placeholder="Rechercher par numéro, contenu, sujet ou code projet..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    InputProps={{
-                        startAdornment: (
-                            <InputAdornment position="start">
-                                <Search color="action" />
-                            </InputAdornment>
-                        ),
-                    }}
-                />
+                <Box sx={{ display: 'flex', gap: 2 }}>
+                    <TextField
+                        fullWidth
+                        placeholder="Rechercher par numéro, contenu, sujet ou code projet..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        InputProps={{
+                            startAdornment: (
+                                <InputAdornment position="start">
+                                    <Search color="action" />
+                                </InputAdornment>
+                            ),
+                        }}
+                    />
+                    <FormControl sx={{ minWidth: 200 }}>
+                        <InputLabel size="small">Filtrer par statut</InputLabel>
+                        <Select
+                            value={statusFilter}
+                            label="Filtrer par statut"
+                            onChange={(e) => setStatusFilter(e.target.value)}
+                            size="small"
+                        >
+                            <MenuItem value="all"><em>Tous les statuts</em></MenuItem>
+                            {uniqueStatuses.map(status => (
+                                <MenuItem key={status} value={status}>{status}</MenuItem>
+                            ))}
+                        </Select>
+                    </FormControl>
+                </Box>
             </Paper>
 
             <TableContainer component={Paper}>
@@ -133,6 +192,7 @@ const ResolutionsPage: React.FC = () => {
                             <TableCell><strong>Sujet</strong></TableCell>
                             <TableCell><strong>Contenu de la décision</strong></TableCell>
                             <TableCell><strong>Projet Lié</strong></TableCell>
+                            <TableCell><strong>Statut</strong></TableCell> {/* [NEW] */}
                             <TableCell align="right"><strong>Action</strong></TableCell>
                         </TableRow>
                     </TableHead>
@@ -189,6 +249,14 @@ const ResolutionsPage: React.FC = () => {
                                             <Typography variant="caption" color="textSecondary">-</Typography>
                                         )}
                                     </TableCell>
+                                    <TableCell>
+                                        <Chip
+                                            label={row.status || 'N/A'}
+                                            color={getStatusColor(row.status) as any}
+                                            size="small"
+                                            variant="outlined"
+                                        />
+                                    </TableCell>
                                     <TableCell align="right">
                                         <Button
                                             size="small"
@@ -201,7 +269,7 @@ const ResolutionsPage: React.FC = () => {
                             ))
                         ) : (
                             <TableRow>
-                                <TableCell colSpan={6} align="center" sx={{ py: 3 }}>
+                                <TableCell colSpan={7} align="center" sx={{ py: 3 }}>
                                     <Typography color="textSecondary">
                                         Aucune résolution trouvée {searchTerm && `pour "${searchTerm}"`}
                                     </Typography>

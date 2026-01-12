@@ -201,6 +201,53 @@ Retourne uniquement le texte traité, sans introduction ni conclusion.`;
 };
 
 /**
+ * Generate Executive Summary (Introduction) for the meeting
+ */
+export const generateExecutiveSummaryClaude = async (
+    transcription: string
+): Promise<{ success: boolean; summary?: string; error?: string }> => {
+    try {
+        const systemPrompt = `Tu es une adjointe administrative experte en rédaction de procès-verbaux pour une ville.
+TA MISSION : Rédiger un résumé exécutif (introduction) concis et professionnel basé sur la transcription fournie.
+
+RÈGLES DE RÉDACTION :
+1. TON : Formel, neutre et administratif (pas de "je", pas de familiarités).
+2. CONTENU : Résume l'objectif de la rencontre, les principaux présents (ou mentionner qu'il y avait quorum), et l'ambiance générale ou les thèmes majeurs discutés.
+3. LONGUEUR : Environ 1 paragraphe (3-5 phrases).
+4. STYLE : Doit pouvoir servir de texte d'introduction ("Notes Générales") dans le logiciel de gestion des réunions.
+5. SANS TITRE : Ne mets pas de titre "Résumé" ou "Intro", donne juste le texte.`;
+
+        const userMessage = `TRANSCRIPTION DE LA RÉUNION :
+${transcription.substring(0, 50000)}... (Tronqué si trop long)
+
+Générer le résumé exécutif.`;
+
+        console.log('[Claude] Calling Cloud Function chat_claude (for summary)...');
+
+        const chatFunction = httpsCallable(functions, 'chat_claude', { timeout: 120000 }); // 2 mins
+
+        const result = await chatFunction({
+            systemPrompt,
+            userMessage,
+            temperature: 0.3 // Balanced creativity/consistency
+        });
+
+        const data = result.data as { success: boolean; content: string; error?: string };
+
+        if (!data.success) {
+            throw new Error(data.error || 'Erreur inconnue de la fonction Claude');
+        }
+
+        return { success: true, summary: data.content };
+
+    } catch (error) {
+        const err = error as Error;
+        console.error('Claude summary error:', err);
+        return { success: false, error: err.message };
+    }
+};
+
+/**
  * Sanitize the entire meeting object for PDF export
  */
 /**
