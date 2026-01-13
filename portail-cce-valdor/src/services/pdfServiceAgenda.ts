@@ -8,51 +8,46 @@ export interface PDFGenerationResult {
 }
 
 /**
- * Generates a beautifully styled Agenda PDF from meeting data using HTML template.
+ * Generates a beautifully styled Agenda PDF (Legal Size One-Pager) using HTML template.
  */
 export const generateAgendaPDF = async (meeting: Meeting): Promise<PDFGenerationResult> => {
     // Format date
     const meetingDate = new Date(meeting.date);
     const dateStr = format(meetingDate, 'EEEE d MMMM yyyy', { locale: fr });
     const formattedDate = dateStr.charAt(0).toUpperCase() + dateStr.slice(1);
-    const timeStr = format(meetingDate, 'HH', { locale: fr }) + ' h';
+    const timeStr = format(meetingDate, 'HH', { locale: fr }) + ' h ' + format(meetingDate, 'mm', { locale: fr });
 
-    // Generate agenda items HTML
-    const agendaItemsHtml = meeting.agendaItems.map((item, index) => {
-        // Determine objective class
-        let objectiveClass = 'obj-info';
-        let objectiveLabel = item.objective || 'Information';
+    // Helper for objective color coding
+    const getObjectiveStyle = (objective: string = 'Information') => {
+        const obj = objective.toLowerCase();
+        if (obj.includes('décision') || obj.includes('résolution')) return 'background-color: #fce4ec; color: #880e4f; border: 1px solid #f8bbd0;'; // Pink/Red
+        if (obj.includes('information')) return 'background-color: #e3f2fd; color: #0d47a1; border: 1px solid #bbdefb;'; // Blue
+        if (obj.includes('discussion') || obj.includes('consultation')) return 'background-color: #f3e5f5; color: #4a148c; border: 1px solid #e1bee7;'; // Purple
+        return 'background-color: #eee; color: #333;'; // Default logic
+    };
 
-        if (objectiveLabel.toLowerCase().includes('décision')) {
-            objectiveClass = 'obj-decision';
-        } else if (objectiveLabel.toLowerCase().includes('discussion') || objectiveLabel.toLowerCase().includes('consultation')) {
-            objectiveClass = 'obj-discussion';
-        }
-
-        // Handle special last item style
-        const isLastItem = item.title.toLowerCase().includes('levée') || item.title.toLowerCase().includes('ajournement');
-        const borderStyle = isLastItem ? 'style="border-left-color: #333;"' : '';
+    // Generate agenda items HTML rows
+    const agendaRowsHtml = meeting.agendaItems.map((item, index) => {
+        const rowClass = index % 2 === 0 ? 'even' : 'row';
+        const itemNumber = item.order || index + 1;
+        const objectiveStyle = getObjectiveStyle(item.objective);
 
         return `
-            <div class="agenda-item" ${borderStyle}>
-                <div class="agenda-header">
-                    <span class="agenda-num">${item.order || index + 1}.</span>
-                    <span class="agenda-title">${item.title}</span>
-                    <span class="agenda-time">${item.duration || 10} min</span>
-                </div>
-                <div class="agenda-body">
-                    <div class="agenda-details">
-                        ${(item.agendaNote || item.description) ? `<div class="agenda-note-box">${item.agendaNote || item.description}</div>` : ''}
-                        <div class="agenda-meta">Responsable : <span>${item.presenter || 'Coordonnateur'}</span></div>
+            <tr class="row ${rowClass}">
+                <td class="col-num">${itemNumber}</td>
+                <td class="cell col-title">
+                    <span class="title-text">${item.title}</span>
+                    ${(item.description || item.agendaNote) ? `<span class="desc-text">${item.description || item.agendaNote}</span>` : ''}
+                    <div style="margin-top: 4px;">
+                        <span class="chip" style="${objectiveStyle}">${item.objective || 'Information'}</span>
                     </div>
-                    <div class="agenda-objective-section">
-                        <span class="objective-label">Objectif</span>
-                        <div class="objective-box ${objectiveClass}">
-                            ${objectiveLabel}
-                        </div>
-                    </div>
-                </div>
-            </div>
+                </td>
+                <td class="cell col-lead">
+                    ${item.presenter || 'Président/Coordonnateur'}
+                    <br>
+                    <span class="chip" style="background: #e0e0e0; color: #333;">${item.duration || 10} min</span>
+                </td>
+            </tr>
         `;
     }).join('');
 
@@ -63,301 +58,266 @@ export const generateAgendaPDF = async (meeting: Meeting): Promise<PDFGeneration
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ordre du Jour CCE - Ville de Val-d'Or</title>
+    <title>Ordre du Jour - CCE Val-d'Or</title>
     <style>
-        /* CONFIGURATION GÉNÉRALE */
-        :root {
-            --primary-color: #1e4e3d;
-            --accent-color: #c5a065;
-            --text-color: #2b2b2b;
-            --bg-color: #ffffff;
-            --light-bg: #f9fbfa;
+        @page {
+            size: 8.5in 14in; /* Legal Size */
+            margin: 0;
         }
 
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
+        :root {
+            --primary: #00563f; /* Vert Application */
+            --secondary: #333333;
+            --accent: #e8f5e9;
+            --paper-width: 8.5in;
+            --paper-height: 14in;
         }
 
         body {
-            background-color: var(--bg-color);
-            font-family: 'Georgia', 'Times New Roman', serif;
-            color: var(--text-color);
-            padding: 40px;
-            line-height: 1.4;
+            font-family: 'Segoe UI', 'Roboto', 'Helvetica', sans-serif;
+            background-color: #fff;
+            margin: 0;
+            color: var(--secondary);
+            -webkit-print-color-adjust: exact;
         }
 
-        /* EN-TÊTE AVEC LOGOS */
-        header {
-            text-align: center;
-            margin-bottom: 30px;
-            border-bottom: 3px double var(--primary-color);
-            padding-bottom: 20px;
-        }
-
-        .logo-container {
+        .sheet {
+            width: 100%;
+            height: 100%;
+            padding: 0.6in 0.8in;
+            box-sizing: border-box;
             display: flex;
-            justify-content: center;
+            flex-direction: column;
+            position: relative;
+        }
+
+        /* HEADER */
+        .header {
+            display: flex;
+            justify-content: space-between;
             align-items: center;
-            gap: 40px;
-            margin-bottom: 20px;
+            border-bottom: 3px solid var(--primary);
+            padding-bottom: 15px;
+            margin-bottom: 25px;
+        }
+
+        .header-logos {
+            display: flex;
+            align-items: center;
+            gap: 20px;
         }
 
         .logo-img {
-            max-width: 120px;
-            height: auto;
+            height: 65px;
+            object-fit: contain;
+        }
+
+        .header-text {
+            text-align: right;
         }
 
         h1 {
-            font-family: 'Arial', sans-serif;
-            font-size: 22px;
+            margin: 0;
+            font-size: 20pt;
+            color: var(--primary);
             text-transform: uppercase;
-            letter-spacing: 2px;
-            color: var(--primary-color);
-            margin: 0 0 8px 0;
             font-weight: 700;
-        }
-
-        h2 {
-            font-family: 'Arial', sans-serif;
-            font-size: 14px;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            color: var(--accent-color);
-            margin: 0 0 15px 0;
-            font-weight: 600;
-        }
-
-        .meeting-info {
-            font-size: 16px;
-            font-style: italic;
-            color: #555;
-            line-height: 1.5;
-        }
-
-        .meeting-info strong {
-            color: var(--primary-color);
-        }
-
-        /* ITEMS DE L'AGENDA */
-        .agenda-container {
-            width: 100%;
-        }
-
-        .agenda-item {
-            display: flex;
-            flex-direction: column;
-            background-color: #fff;
-            border-left: 5px solid var(--accent-color);
-            margin-bottom: 20px;
-            border: 1px solid #eee;
-            border-left-width: 5px;
-            border-left-color: var(--accent-color);
-            border-radius: 0 4px 4px 0;
-            page-break-inside: avoid;
-        }
-
-        .agenda-header {
-            background-color: var(--light-bg);
-            padding: 10px 15px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            border-bottom: 1px solid #eee;
-        }
-
-        .agenda-num {
-            font-family: 'Arial', sans-serif;
-            font-weight: 700;
-            font-size: 16px;
-            color: var(--primary-color);
-            margin-right: 10px;
-            min-width: 25px;
-        }
-
-        .agenda-title {
-            font-family: 'Arial', sans-serif;
-            font-weight: 600;
-            font-size: 14px;
-            color: #333;
-            flex-grow: 1;
-        }
-
-        .agenda-time {
-            font-family: 'Arial', sans-serif;
-            font-weight: 600;
-            font-size: 11px;
-            color: var(--primary-color);
-            background-color: #e8f5e9;
-            padding: 4px 8px;
-            border-radius: 4px;
-            white-space: nowrap;
-        }
-
-        .agenda-body {
-            padding: 12px 15px;
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
-        }
-
-        .agenda-details {
-            flex-grow: 1;
-            padding-right: 15px;
-        }
-
-        .agenda-note-box {
-            font-size: 13px;
-            color: #444;
-            line-height: 1.5;
-            margin-bottom: 10px;
-            font-style: italic;
-        }
-
-        .agenda-meta {
-            font-family: 'Arial', sans-serif;
-            font-size: 10px;
-            text-transform: uppercase;
-            color: #888;
             letter-spacing: 0.5px;
         }
 
-        .agenda-meta span {
-            color: var(--accent-color);
-            font-weight: 700;
+        .sub-header {
+            font-size: 10pt;
+            margin-top: 4px;
+            color: #555;
+            font-weight: 500;
         }
 
-        /* SECTION OBJECTIF */
-        .agenda-objective-section {
-            min-width: 100px;
-            max-width: 130px;
+        /* CONTENT */
+        .content {
+            flex-grow: 1;
+        }
+
+        /* TABLE LAYOUT */
+        .agenda-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .agenda-table th {
             text-align: left;
+            padding-bottom: 10px;
+            color: var(--primary);
+            font-size: 9pt;
+            border-bottom: 1px solid #eee;
+            text-transform: uppercase;
         }
 
-        .objective-label {
-            font-family: 'Arial', sans-serif;
-            font-size: 9px;
-            text-transform: uppercase;
-            color: #999;
-            margin-bottom: 4px;
-            letter-spacing: 1px;
+        .row {
+            border-bottom: 1px solid #f0f0f0;
+        }
+        
+        .row.even {
+            background-color: #fafafa;
+        }
+
+        .cell {
+            padding: 8px 5px;
+            vertical-align: top;
+        }
+
+        .col-num {
+            width: 40px;
+            font-weight: bold;
+            color: var(--primary);
+            font-size: 11pt;
+            text-align: center;
+            padding-top: 8px;
+        }
+
+        .col-lead {
+            width: 140px;
+            font-size: 9pt;
+            color: #666;
+            text-align: right;
+        }
+
+        .title-text {
+            font-weight: 600;
+            font-size: 11pt;
+            display: block;
+            margin-bottom: 2px;
+            color: #222;
+        }
+
+        .desc-text {
+            font-size: 9pt;
+            color: #555;
+            font-style: italic;
+            line-height: 1.3;
             display: block;
         }
 
-        .objective-box {
-            font-family: 'Arial', sans-serif;
-            font-size: 11px;
-            font-weight: 600;
-            padding: 6px 10px;
+        .chip {
+            display: inline-block;
             border-radius: 4px;
-            text-align: center;
-            text-transform: uppercase;
-        }
-        
-        .obj-decision { 
-            background-color: #fce4ec;
-            color: #880e4f; 
-            border: 1px solid #f8bbd0;
-        }
-        .obj-info { 
-            background-color: #e3f2fd;
-            color: #0d47a1; 
-            border: 1px solid #bbdefb;
-        }
-        .obj-discussion {
-            background-color: #f3e5f5;
-            color: #4a148c; 
-            border: 1px solid #e1bee7;
+            padding: 2px 6px;
+            font-size: 8pt;
+            font-weight: 600;
         }
 
-        /* SECTION SIGNATURE */
+        /* SIGNATURE SECTION */
         .signature-section {
-            margin-top: 50px;
+            margin-top: auto; /* Push to bottom */
+            padding-top: 30px;
             display: flex;
             justify-content: flex-end;
             page-break-inside: avoid;
         }
 
         .signature-block {
-            width: 220px;
+            width: 250px;
             text-align: center;
         }
 
         .signature-line {
             border-bottom: 1px solid #333;
-            height: 1px;
+            height: 40px; /* Space for digital signature */
             margin-bottom: 8px;
             width: 100%;
         }
 
         .signature-name {
-            font-family: 'Arial', sans-serif;
             font-weight: 700;
-            font-size: 12px;
+            font-size: 11pt;
             text-transform: uppercase;
-            color: var(--text-color);
-            margin-bottom: 2px;
+            color: var(--secondary);
         }
 
         .signature-title {
-            font-size: 12px;
+            font-size: 10pt;
             font-style: italic;
-            color: #555;
+            color: #666;
+        }
+
+        /* FOOTER */
+        .footer {
+            margin-top: 15px;
+            border-top: 1px solid #eee;
+            padding-top: 10px;
+            font-size: 8pt;
+            color: #999;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        @media print {
+            body { margin: 0; background: none; }
+            .sheet { padding: 0.5in; }
         }
     </style>
 </head>
 <body>
-    <!-- EN-TÊTE AVEC LOGOS -->
-    <header>
-        <div class="logo-container">
-            <img src="/logo-cce.png" alt="Logo CCE" class="logo-img" onerror="this.style.display='none';">
-            <img src="/logo-valdor.png" alt="Logo Val-d'Or" class="logo-img" onerror="this.style.display='none';">
-        </div>
-        
-        <h1>Ordre du Jour</h1>
-        <h2>Comité Consultatif en Environnement (CCE)</h2>
-        <div class="meeting-info">
-            ${meeting.title}<br>
-            ${formattedDate}, à <strong>${timeStr}</strong><br>
-            ${meeting.location || 'Ville de Val-d\'Or'}
-        </div>
-    </header>
 
-    <!-- LISTE DES ITEMS -->
-    <div class="agenda-container">
-        ${agendaItemsHtml}
+    <div class="sheet">
+        <header class="header">
+            <div class="header-logos">
+                <img src="/logo-valdor.png" alt="Ville de Val-d'Or" class="logo-img" onerror="this.style.display='none';">
+                <img src="/logo-cce.png" alt="CCE" class="logo-img" onerror="this.style.display='none';">
+            </div>
+            <div class="header-text">
+                <h1>Ordre du Jour</h1>
+                <div class="sub-header">${formattedDate} • ${timeStr}</div>
+                <div class="sub-header">${meeting.location || 'Salle du Conseil'}</div>
+            </div>
+        </header>
+
+        <div class="content">
+            <table class="agenda-table">
+                <thead>
+                    <tr>
+                        <th class="col-num">#</th>
+                        <th class="col-title">Sujet</th>
+                        <th class="col-lead">Responsable / Durée</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${agendaRowsHtml}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="signature-section">
+            <div class="signature-block">
+                <!-- Espace pour signature numérique -->
+                <div class="signature-line"></div> 
+                <div class="signature-name">Michaël Ross</div>
+                <div class="signature-title">Coordonnateur en environnement<br>Secrétaire</div>
+            </div>
+        </div>
+
+        <footer class="footer">
+            <div>Comité Consultatif en Environnement - Ville de Val-d'Or</div>
+            <div>Généré le ${format(new Date(), "dd/MM/yyyy HH:mm")}</div>
+        </footer>
     </div>
 
-    <!-- SECTION SIGNATURE -->
-    <div class="signature-section">
-        <div class="signature-block">
-            <div class="signature-line"></div>
-            <div class="signature-name">Michaël Ross</div>
-            <div class="signature-title">Coordonnateur en environnement<br>Secrétaire</div>
-        </div>
-    </div>
 </body>
 </html>
     `;
 
-    // Open a new window for printing (same approach as pdfServiceMinutes.ts)
-    const printWindow = window.open('', '_blank', 'width=816,height=1056');
+    // Open text window
+    const printWindow = window.open('', '_blank', 'width=850,height=1100'); // Approx dimension ratio
 
     if (!printWindow) {
-        return { success: false, error: 'Veuillez autoriser les pop-ups pour générer le PDF.' };
+        return { success: false, error: 'Veuillez autoriser les pop-ups.' };
     }
 
-    // Write the HTML content
     printWindow.document.write(htmlContent);
     printWindow.document.close();
 
-    // Wait for fonts and images to load
-    await new Promise(resolve => setTimeout(resolve, 1500));
-
-    // Trigger print dialog - user can choose "Microsoft Print to PDF" or similar
+    // Wait slightly
+    await new Promise(resolve => setTimeout(resolve, 1000));
     printWindow.print();
 
-    // Note: Window closes automatically in most browsers after print dialog
     return { success: true };
 };
