@@ -334,11 +334,22 @@ const generateHTMLDocument = (meeting: Meeting, _globalNotes?: string): string =
             padding-bottom: 25px;
         }
 
+        .logos-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 30px;
+            margin-bottom: 20px;
+        }
+
         .logo-placeholder {
-            width: 150px;
+            width: 120px;
             height: auto;
-            margin: 0 auto 20px auto;
-            display: block;
+        }
+
+        .logo-cce {
+            width: 100px;
+            height: auto;
         }
 
         h1 {
@@ -634,7 +645,10 @@ const generateHTMLDocument = (meeting: Meeting, _globalNotes?: string): string =
 
         <!-- EN-TÊTE -->
         <header>
-            <img src="/logo-valdor.png" alt="Logo Ville de Val-d'Or" class="logo-placeholder" onerror="this.style.display='none';">
+            <div class="logos-container">
+                <img src="/logo-valdor.png" alt="Logo Ville de Val-d'Or" class="logo-placeholder" onerror="this.style.display='none';">
+                <img src="/logo-cce.png" alt="Logo CCE" class="logo-cce" onerror="this.style.display='none';">
+            </div>
             
             <h1>Procès-Verbal</h1>
             <h2>Comité Consultatif en Environnement (CCE)</h2>

@@ -17,9 +17,10 @@ import {
     Grid,
     Chip,
     Stack,
-    DialogContentText
+    DialogContentText,
+    Autocomplete
 } from '@mui/material';
-import { DragIndicator, Add, Delete, Edit, AttachFile, Print } from '@mui/icons-material';
+import { DragIndicator, Add, Delete, Edit, AttachFile, Print, Schedule } from '@mui/icons-material';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import type { DragEndEvent } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
@@ -30,6 +31,8 @@ import DocumentUpload from '../documents/DocumentUpload';
 import DocumentPreviewModal from '../documents/DocumentPreviewModal';
 import type { Meeting } from '../../types/meeting.types';
 import { generateAgendaPDF } from '../../services/pdfServiceAgenda';
+import { useSelector } from 'react-redux';
+import type { RootState } from '../../store/rootReducer';
 
 interface AgendaBuilderProps {
     items: AgendaItem[];
@@ -102,6 +105,18 @@ const AgendaBuilder: React.FC<AgendaBuilderProps> = ({ items, onItemsChange, mee
     const [previewDoc, setPreviewDoc] = useState<Document | null>(null);
     const [documentToAction, setDocumentToAction] = useState<Document | null>(null);
 
+    // Get members for presenter dropdown
+    const { items: members } = useSelector((state: RootState) => state.members);
+    const presenterOptions = [
+        ...members.map(m => m.displayName),
+        'Invité(e)'
+    ];
+
+    // Calculate total time
+    const totalMinutes = items.reduce((sum, item) => sum + (item.duration || 0), 0);
+    const totalHours = Math.floor(totalMinutes / 60);
+    const totalMins = totalMinutes % 60;
+
     // Auto-open edit dialog if initialAgendaItemId is provided
     React.useEffect(() => {
         if (initialAgendaItemId && items.length > 0) {
@@ -168,7 +183,15 @@ const AgendaBuilder: React.FC<AgendaBuilderProps> = ({ items, onItemsChange, mee
     return (
         <Box>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                <Typography variant="h6">Ordre du jour</Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                    <Typography variant="h6">Ordre du jour</Typography>
+                    <Chip
+                        icon={<Schedule />}
+                        label={`Durée totale: ${totalHours > 0 ? `${totalHours} h ` : ''}${totalMins.toString().padStart(2, '0')} min`}
+                        color="primary"
+                        variant="outlined"
+                    />
+                </Box>
                 <Box sx={{ display: 'flex', gap: 1 }}>
                     {meeting && (
                         <Button
@@ -232,11 +255,20 @@ const AgendaBuilder: React.FC<AgendaBuilderProps> = ({ items, onItemsChange, mee
                                 />
                             </Grid>
                             <Grid size={{ xs: 6 }}>
-                                <TextField
-                                    label="Responsable"
-                                    fullWidth
+                                <Autocomplete
+                                    freeSolo
+                                    options={presenterOptions}
                                     value={editingItem.presenter}
-                                    onChange={(e) => setEditingItem({ ...editingItem, presenter: e.target.value })}
+                                    onChange={(_, value) => setEditingItem({ ...editingItem, presenter: value || '' })}
+                                    onInputChange={(_, value) => setEditingItem({ ...editingItem, presenter: value })}
+                                    renderInput={(params) => (
+                                        <TextField
+                                            {...params}
+                                            label="Responsable"
+                                            fullWidth
+                                            placeholder="Sélectionner ou saisir un nom"
+                                        />
+                                    )}
                                 />
                             </Grid>
                             <Grid size={{ xs: 12 }}>
