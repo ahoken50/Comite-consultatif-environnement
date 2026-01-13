@@ -52,6 +52,7 @@ const meetingSchema = z.object({
     location: z.string().min(1, 'Le lieu est requis'),
     type: z.nativeEnum(MeetingType),
     status: z.nativeEnum(MeetingStatus),
+    meetingNumber: z.coerce.number().optional(), // For resolution/comment numbering (e.g., 10, 11, 12)
     agendaItems: z.array(agendaItemSchema).optional(),
 });
 
@@ -221,6 +222,7 @@ const MeetingForm: React.FC<MeetingFormProps> = ({ open, onClose, onSubmit, init
             location: initialData?.location || "Salle de l'urbanisme et de l'environnement",
             type: initialData?.type || MeetingType.REGULAR,
             status: initialData?.status || MeetingStatus.SCHEDULED,
+            meetingNumber: initialData?.meetingNumber || undefined,
             agendaItems: initialData?.agendaItems || [],
         },
     });
@@ -510,6 +512,24 @@ const MeetingForm: React.FC<MeetingFormProps> = ({ open, onClose, onSubmit, init
                                                 </MenuItem>
                                             ))}
                                         </TextField>
+                                    )}
+                                />
+                            </Grid>
+                            <Grid size={{ xs: 12, sm: 6 }}>
+                                <Controller
+                                    name="meetingNumber"
+                                    control={control}
+                                    render={({ field }) => (
+                                        <TextField
+                                            {...field}
+                                            id={`${formId}-meetingNumber`}
+                                            label="N° de réunion (numérotation)"
+                                            type="number"
+                                            fullWidth
+                                            placeholder="ex: 10, 11, 12..."
+                                            helperText="Pour résolutions (10-1, 10-2) et commentaires (10-A, 10-B)"
+                                            InputProps={{ inputProps: { min: 1 } }}
+                                        />
                                     )}
                                 />
                             </Grid>
