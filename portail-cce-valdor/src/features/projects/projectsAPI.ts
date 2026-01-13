@@ -108,11 +108,38 @@ export const projectsAPI = {
 
     // Link a CCE resolution/comment to a project
     linkResolution: async (projectId: string, resolution: LinkedResolution): Promise<void> => {
+        // 1. Update project
         const docRef = doc(db, COLLECTION_NAME, projectId);
         await updateDoc(docRef, {
             linkedResolutions: arrayUnion(resolution),
             dateUpdated: Timestamp.now()
         });
+
+        // 2. Update meeting agenda item
+        try {
+            const meetingRef = doc(db, 'meetings', resolution.meetingId);
+            const meetingSnap = await getDoc(meetingRef);
+
+            if (meetingSnap.exists()) {
+                const meetingData = meetingSnap.data();
+                const agendaItems = meetingData.agendaItems || [];
+
+                // Find and update item
+                const updatedItems = agendaItems.map((item: any) => {
+                    if (item.id === resolution.agendaItemId) {
+                        return { ...item, linkedProjectId: projectId };
+                    }
+                    return item;
+                });
+
+                await updateDoc(meetingRef, {
+                    agendaItems: updatedItems
+                });
+            }
+        } catch (error) {
+            console.error('Failed to update meeting with linked project:', error);
+            // Non-blocking error, but should track
+        }
     },
 
     // Unlink a CCE resolution/comment from a project
@@ -120,15 +147,53 @@ export const projectsAPI = {
         const docRef = doc(db, COLLECTION_NAME, projectId);
         // Need to fetch current array and filter
         const docSnap = await getDoc(docRef);
+
+        let removedResolution: LinkedResolution | undefined;
+
         if (docSnap.exists()) {
             const data = docSnap.data();
             const linkedResolutions = (data.linkedResolutions || []).filter(
-                (r: LinkedResolution) => r.id !== resolutionId
+                (r: LinkedResolution) => {
+                    if (r.id === resolutionId) {
+                        removedResolution = r; // Capture for meeting update
+                        return false;
+                    }
+                    return true;
+                }
             );
+
             await updateDoc(docRef, {
                 linkedResolutions,
                 dateUpdated: Timestamp.now()
             });
+
+            // 2. Update meeting agenda item (remove link)
+            if (removedResolution) {
+                try {
+                    const meetingRef = doc(db, 'meetings', removedResolution.meetingId);
+                    const meetingSnap = await getDoc(meetingRef);
+
+                    if (meetingSnap.exists()) {
+                        const meetingData = meetingSnap.data();
+                        const agendaItems = meetingData.agendaItems || [];
+
+                        // Find and update item
+                        const updatedItems = agendaItems.map((item: any) => {
+                            if (item.id === removedResolution!.agendaItemId) {
+                                const { linkedProjectId, ...rest } = item; // Remove property
+                                return rest;
+                            }
+                            return item;
+                        });
+
+                        await updateDoc(meetingRef, {
+                            agendaItems: updatedItems
+                        });
+                    }
+                } catch (error) {
+                    console.error('Failed to update meeting to remove linked project:', error);
+                }
+            }
         }
     }
 };

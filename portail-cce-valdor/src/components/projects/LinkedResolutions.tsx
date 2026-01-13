@@ -39,6 +39,7 @@ import type { AppDispatch } from '../../store/store';
 import type { RootState } from '../../store/rootReducer';
 import type { Project, LinkedResolution } from '../../types/project.types';
 import { linkResolutionToProject, unlinkResolutionFromProject } from '../../features/projects/projectsSlice';
+import { fetchMeetings } from '../../features/meetings/meetingsSlice';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { useNavigate } from 'react-router-dom';
@@ -208,6 +209,11 @@ const LinkedResolutions: React.FC<LinkedResolutionsProps> = ({ project }) => {
                 userName: user.displayName || user.email || 'Utilisateur'
             })).unwrap();
 
+
+
+            // Refresh meetings to update the resolution status in the UI
+            dispatch(fetchMeetings());
+
             handleCloseDialog();
         } catch (error) {
             console.error('Failed to link resolution:', error);
@@ -229,6 +235,9 @@ const LinkedResolutions: React.FC<LinkedResolutionsProps> = ({ project }) => {
                 userId: user.uid,
                 userName: user.displayName || user.email || 'Utilisateur'
             })).unwrap();
+
+            // Refresh meetings to update the resolution status in the UI
+            dispatch(fetchMeetings());
         } catch (error) {
             console.error('Failed to unlink resolution:', error);
         }
