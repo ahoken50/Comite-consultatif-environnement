@@ -3,11 +3,10 @@ import { generateNextResolutionNumber, generateNextCommentNumber } from '../util
 
 interface ParsedPVSection {
     title: string;
-    orderNumber: number; // Extracted from "## N." format
+    orderNumber: number;
     content: string;
-    entryType: 'resolution' | 'comment' | 'none'; // Determined from header
+    entryType: 'resolution' | 'comment' | 'none';
     minuteEntries: MinuteEntry[];
-    // Legacy fields
     minuteType?: 'resolution' | 'comment';
     minuteNumber?: string;
     decision?: string;
@@ -16,23 +15,20 @@ interface ParsedPVSection {
 }
 
 interface ParseOptions {
-    meetingNumber?: number | string; // For auto-numbering (e.g., 10, 11, 12)
-    autoNumber?: boolean; // Enable auto-numbering for empty numbers
+    meetingNumber?: number | string;
+    autoNumber?: boolean;
 }
 
 /**
  * Parses the raw AI-generated PV draft into structured Agenda Items.
  * 
- * Format expected:
- * - `## N. Title` starts a new section (N is the order number)
- * - `---` ends the current section
- * - Text between header and `---` is the content
- * - "Décision" in header = resolution
- * - "Information" or "Consultation" in header = comment
- * - "Ouverture", "Levée", "Bienvenue" = neither (just text)
- * 
- * @param draftContent - The raw AI-generated text
- * @param options - Optional settings including meetingNumber for auto-numbering
+ * Format:
+ * - `## N. Title` = section header
+ * - `---` = section delimiter
+ * - "Décision" or "Adoption" in header = resolution
+ * - "Information" or "Consultation" = comment  
+ * - "Ouverture", "Levée", "Varia" = none (but content still preserved)
+ * - Embedded RÉSOLUTION/COMMENTAIRE headers create additional entries
  */
 export const parseMinutesDraft = (
     draftContent: string,
@@ -40,17 +36,15 @@ export const parseMinutesDraft = (
 ): { items: AgendaItem[], intro: string } => {
     const { meetingNumber, autoNumber = true } = options;
 
-    // Split content by section delimiter (---)
-    const rawSections = draftContent.split(/^---+$/m);
+    console.log(`[Parser] Starting parse with meetingNumber: ${meetingNumber}, autoNumber: ${autoNumber}`);
 
+    const rawSections = draftContent.split(/^---+$/m);
     const sections: ParsedPVSection[] = [];
     let intro = '';
 
-    // Regex for section headers: ## N. Title or ## TITLE (like ÉTAIENT PRÉSENTS)
     const sectionHeaderRegex = /^##\s*(\d+)?\.\s*(.+)$/im;
     const standaloneHeaderRegex = /^##\s+(.+)$/im;
 
-    // Track used numbers for auto-numbering
     const usedResolutionNumbers: string[] = [];
     const usedCommentNumbers: string[] = [];
 
@@ -58,95 +52,102 @@ export const parseMinutesDraft = (
         const trimmed = rawSection.trim();
         if (!trimmed) continue;
 
-        // Check if this section has a numbered header (## N. Title)
         const numberedMatch = trimmed.match(sectionHeaderRegex);
 
         if (numberedMatch) {
             const orderNumber = numberedMatch[1] ? parseInt(numberedMatch[1], 10) : 0;
             const fullTitle = numberedMatch[2].trim();
-
-            // Extract content (everything after the header line)
             const headerLine = numberedMatch[0];
-            let content = trimmed.slice(trimmed.indexOf(headerLine) + headerLine.length).trim();
+            let rawContent = trimmed.slice(trimmed.indexOf(headerLine) + headerLine.length).trim();
 
-            // Clean content: remove any RÉSOLUTION XX-X or COMMENTAIRE XX-X headers
-            content = cleanContent(content);
+            // Determine primary entry type from title
+            const primaryEntryType = determineEntryType(fullTitle);
+            console.log(`[Parser] Section ${orderNumber}: "${fullTitle}" -> primaryType: ${primaryEntryType}`);
 
-            // Determine entry type from title
-            const entryType = determineEntryType(fullTitle);
+            // Parse for embedded RÉSOLUTION/COMMENTAIRE markers
+            const embeddedEntries = parseEmbeddedEntries(rawContent, meetingNumber, autoNumber, usedResolutionNumbers, usedCommentNumbers);
+
+            // Clean content for display (remove headers but keep text)
+            const cleanedContent = cleanContent(rawContent);
 
             const section: ParsedPVSection = {
                 title: `${orderNumber}. ${fullTitle}`,
                 orderNumber,
-                content,
-                entryType,
+                content: cleanedContent,
+                entryType: primaryEntryType,
                 minuteEntries: []
             };
 
-            // Create minute entry if applicable and content exists
-            if (entryType !== 'none' && content) {
-                let entryNumber = '';
-
-                // Auto-number if meetingNumber is provided
-                if (autoNumber && meetingNumber) {
-                    if (entryType === 'resolution') {
-                        entryNumber = generateNextResolutionNumber(meetingNumber, usedResolutionNumbers);
-                        usedResolutionNumbers.push(entryNumber);
-                    } else if (entryType === 'comment') {
-                        entryNumber = generateNextCommentNumber(meetingNumber, usedCommentNumbers);
-                        usedCommentNumbers.push(entryNumber);
+            // If embedded entries found, use those
+            if (embeddedEntries.length > 0) {
+                section.minuteEntries = embeddedEntries;
+                console.log(`[Parser] Found ${embeddedEntries.length} embedded entries in section ${orderNumber}`);
+            }
+            // Otherwise, create a single entry based on title type (if content exists)
+            else if (cleanedContent) {
+                if (primaryEntryType !== 'none') {
+                    let entryNumber = '';
+                    if (autoNumber && meetingNumber) {
+                        if (primaryEntryType === 'resolution') {
+                            entryNumber = generateNextResolutionNumber(meetingNumber, usedResolutionNumbers);
+                            usedResolutionNumbers.push(entryNumber);
+                        } else {
+                            entryNumber = generateNextCommentNumber(meetingNumber, usedCommentNumbers);
+                            usedCommentNumbers.push(entryNumber);
+                        }
+                        console.log(`[Parser] Auto-generated ${primaryEntryType} number: ${entryNumber}`);
                     }
-                    console.log(`[Parser] Auto-generated ${entryType} number: ${entryNumber}`);
+
+                    section.minuteEntries.push({
+                        type: primaryEntryType,
+                        number: entryNumber,
+                        content: cleanedContent
+                    });
+                } else {
+                    // For 'none' type (Ouverture, Levée, etc.), still store content but without type/number
+                    // User requested: "Point 1 Ouverture doit avoir son texte copié"
+                    section.decision = cleanedContent;
+                    console.log(`[Parser] Section ${orderNumber} is type 'none' - content preserved in decision field`);
                 }
+            }
 
-                section.minuteEntries.push({
-                    type: entryType,
-                    number: entryNumber,
-                    content: content
-                });
-
-                // Legacy fields
-                section.minuteType = entryType;
-                section.minuteNumber = entryNumber;
-                section.decision = content;
+            // Legacy field sync
+            if (section.minuteEntries.length > 0) {
+                section.minuteType = section.minuteEntries[0].type;
+                section.minuteNumber = section.minuteEntries[0].number;
+                section.decision = section.minuteEntries[0].content;
             }
 
             sections.push(section);
         } else {
-            // Check for standalone header (## ÉTAIENT PRÉSENTS, ## PROCÈS-VERBAL, etc.)
+            // Standalone header or intro text
             const standaloneMatch = trimmed.match(standaloneHeaderRegex);
 
             if (standaloneMatch) {
                 const title = standaloneMatch[1].trim();
                 const headerLine = standaloneMatch[0];
                 let content = trimmed.slice(trimmed.indexOf(headerLine) + headerLine.length).trim();
-
-                // Clean content
                 content = cleanContent(content);
 
-                // These are typically intro sections (PROCÈS-VERBAL, ÉTAIENT PRÉSENTS)
-                // or special sections without numbers
                 if (title.toUpperCase().includes('PRÉSENTS') ||
                     title.toUpperCase().includes('PROCÈS-VERBAL') ||
                     title.toUpperCase().includes('FIN DU')) {
-                    // Add to intro
                     if (!intro) {
                         intro = `## ${title}\n\n${content}`;
                     } else {
                         intro += `\n\n## ${title}\n\n${content}`;
                     }
                 } else {
-                    // Create a section without order number
                     sections.push({
                         title: title,
                         orderNumber: 0,
                         content,
                         entryType: 'none',
-                        minuteEntries: []
+                        minuteEntries: [],
+                        decision: content
                     });
                 }
             } else {
-                // No header found - this is intro text or orphan content
                 if (!intro) {
                     intro = cleanContent(trimmed);
                 } else if (trimmed) {
@@ -156,100 +157,172 @@ export const parseMinutesDraft = (
         }
     }
 
-    // Convert sections to AgendaItems
-    const items = sections.map((sec, idx) => {
-        return {
-            id: `draft-parsed-${Date.now()}-${idx}`,
-            order: sec.orderNumber || idx,
-            title: sec.title,
-            duration: 10,
-            presenter: '',
-            objective: sec.entryType === 'resolution' ? 'Décision' :
-                sec.entryType === 'comment' ? 'Information' : '',
-            description: '',
-            minuteEntries: sec.minuteEntries,
-            // Legacy fields
-            minuteType: sec.minuteType,
-            minuteNumber: sec.minuteNumber || (sec.minuteEntries[0]?.number || ''),
-            decision: sec.decision || sec.content,
-            proposer: sec.proposer || '',
-            seconder: sec.seconder || ''
-        };
-    });
+    console.log(`[Parser] Parsed ${sections.length} sections, intro length: ${intro.length}`);
+
+    // Convert to AgendaItems
+    const items = sections.map((sec, idx) => ({
+        id: `draft-parsed-${Date.now()}-${idx}`,
+        order: sec.orderNumber || idx,
+        title: sec.title,
+        duration: 10,
+        presenter: '',
+        objective: sec.entryType === 'resolution' ? 'Décision' :
+            sec.entryType === 'comment' ? 'Information' : '',
+        description: '',
+        minuteEntries: sec.minuteEntries,
+        minuteType: sec.minuteType,
+        minuteNumber: sec.minuteNumber || (sec.minuteEntries[0]?.number || ''),
+        decision: sec.decision || sec.content,
+        proposer: sec.proposer || '',
+        seconder: sec.seconder || ''
+    }));
 
     return { items, intro };
 };
 
 /**
- * Determines the entry type based on the section title/header.
- * - "Décision" -> resolution
- * - "Information" or "Consultation" -> comment
- * - "Ouverture", "Levée", "Bienvenue", "Varia" -> none
+ * Parse embedded RÉSOLUTION and COMMENTAIRE entries within content.
+ * Returns an array of MinuteEntry objects found in the text.
+ */
+function parseEmbeddedEntries(
+    content: string,
+    meetingNumber: number | string | undefined,
+    autoNumber: boolean,
+    usedResolutionNumbers: string[],
+    usedCommentNumbers: string[]
+): MinuteEntry[] {
+    const entries: MinuteEntry[] = [];
+
+    // Regex to find RÉSOLUTION XX-N or RÉSOLUTION (without number)
+    const resolutionRegex = /(?:\*\*|__)?R[ÉE]SOLUTION(?:\*\*|__)?(?:[\s:]*(\d{2}-\d+))?[\s:.-]*/gi;
+    // Regex to find COMMENTAIRE XX-A or COMMENTAIRE (without number)
+    const commentaireRegex = /(?:\*\*|__)?COMMENTAIRE(?:\*\*|__)?(?:[\s:]*(\d{2}-[A-Z]))?[\s:.-]*/gi;
+
+    let resMatches = [...content.matchAll(resolutionRegex)];
+    let comMatches = [...content.matchAll(commentaireRegex)];
+
+    // Collect all markers with their positions
+    interface Marker {
+        type: 'resolution' | 'comment';
+        number: string;
+        position: number;
+        fullMatch: string;
+    }
+
+    const markers: Marker[] = [];
+
+    for (const match of resMatches) {
+        markers.push({
+            type: 'resolution',
+            number: match[1] || '',
+            position: match.index || 0,
+            fullMatch: match[0]
+        });
+    }
+
+    for (const match of comMatches) {
+        markers.push({
+            type: 'comment',
+            number: match[1] || '',
+            position: match.index || 0,
+            fullMatch: match[0]
+        });
+    }
+
+    // Sort by position
+    markers.sort((a, b) => a.position - b.position);
+
+    if (markers.length === 0) {
+        return [];
+    }
+
+    console.log(`[Parser] Found ${markers.length} embedded markers: ${markers.map(m => `${m.type}(${m.number})`).join(', ')}`);
+
+    // Extract content for each marker
+    for (let i = 0; i < markers.length; i++) {
+        const marker = markers[i];
+        const startPos = marker.position + marker.fullMatch.length;
+        const endPos = i < markers.length - 1 ? markers[i + 1].position : content.length;
+
+        let entryContent = content.substring(startPos, endPos).trim();
+        entryContent = cleanContent(entryContent);
+
+        let entryNumber = marker.number;
+
+        // Auto-number if no number found and meetingNumber is provided
+        if (!entryNumber && autoNumber && meetingNumber) {
+            if (marker.type === 'resolution') {
+                entryNumber = generateNextResolutionNumber(meetingNumber, usedResolutionNumbers);
+                usedResolutionNumbers.push(entryNumber);
+            } else {
+                entryNumber = generateNextCommentNumber(meetingNumber, usedCommentNumbers);
+                usedCommentNumbers.push(entryNumber);
+            }
+            console.log(`[Parser] Auto-numbered embedded ${marker.type}: ${entryNumber}`);
+        }
+
+        entries.push({
+            type: marker.type,
+            number: entryNumber,
+            content: entryContent
+        });
+    }
+
+    return entries;
+}
+
+/**
+ * Determine entry type from title keywords.
  */
 function determineEntryType(title: string): 'resolution' | 'comment' | 'none' {
-    const lowerTitle = title.toLowerCase();
+    const lower = title.toLowerCase();
 
-    // Exceptions: these are never resolutions or comments
-    if (lowerTitle.includes('ouverture') ||
-        lowerTitle.includes('levée') ||
-        lowerTitle.includes('bienvenue') ||
-        lowerTitle.includes('varia') ||
-        lowerTitle.includes('adoption') === false && lowerTitle.includes('ordre du jour')) {
+    // Exceptions - never resolution or comment
+    if (lower.includes('ouverture') ||
+        lower.includes('levée') ||
+        lower.includes('bienvenue') ||
+        lower.includes('varia')) {
         return 'none';
     }
 
-    // Check for decision keywords
-    if (lowerTitle.includes('décision') || lowerTitle.includes('decision')) {
+    // Decision keywords -> resolution
+    if (lower.includes('décision') ||
+        lower.includes('decision') ||
+        lower.includes('adoption')) {
         return 'resolution';
     }
 
-    // Check for adoption (usually a resolution)
-    if (lowerTitle.includes('adoption')) {
-        return 'resolution';
-    }
-
-    // Check for information/consultation keywords
-    if (lowerTitle.includes('information') || lowerTitle.includes('consultation')) {
+    // Information/Consultation -> comment
+    if (lower.includes('information') || lower.includes('consultation')) {
         return 'comment';
     }
 
-    // Default: if content exists but no keyword, treat as comment
-    // This matches the user's request that most items are comments
+    // Default to comment for other content
     return 'comment';
 }
 
 /**
- * Cleans the content by removing:
- * - RÉSOLUTION XX-X headers
- * - COMMENTAIRE XX-X headers  
- * - Markdown delimiters (## and ---)
- * - Leading/trailing whitespace
+ * Clean content by removing headers and delimiters.
  */
 function cleanContent(content: string): string {
     if (!content) return '';
 
     let cleaned = content;
 
-    // Remove RÉSOLUTION headers (with or without markdown bold)
+    // Remove RÉSOLUTION headers
     cleaned = cleaned.replace(/(?:\*\*|__)?R[ÉE]SOLUTION(?:\*\*|__)?[\s:]*(\d{2}-\d+)?[\s:.-]*/gi, '');
 
-    // Remove COMMENTAIRE headers (with or without markdown bold)
+    // Remove COMMENTAIRE headers
     cleaned = cleaned.replace(/(?:\*\*|__)?COMMENTAIRE(?:\*\*|__)?[\s:]*(\d{2}-[A-Z])?[\s:.-]*/gi, '');
 
-    // Remove standalone markdown headers (## Title)
+    // Remove ## headers
     cleaned = cleaned.replace(/^##\s+.+$/gm, '');
 
-    // Remove horizontal rules (---)
+    // Remove ---
     cleaned = cleaned.replace(/^---+$/gm, '');
 
-    // Remove "IL EST RÉSOLU" type headers (keep content after)
-    // These are part of resolution text, not headers to strip
-
-    // Clean up multiple consecutive newlines
+    // Clean up extra newlines
     cleaned = cleaned.replace(/\n{3,}/g, '\n\n');
 
-    // Trim
-    cleaned = cleaned.trim();
-
-    return cleaned;
+    return cleaned.trim();
 }
