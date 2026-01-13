@@ -38,6 +38,7 @@ export const parseMinutesDraft = (
 
     console.log(`[Parser] Starting parse with meetingNumber: ${meetingNumber}, autoNumber: ${autoNumber}`);
 
+
     const rawSections = draftContent.split(/^---+$/m);
     const sections: ParsedPVSection[] = [];
     let intro = '';
@@ -48,9 +49,14 @@ export const parseMinutesDraft = (
     const usedResolutionNumbers: string[] = [];
     const usedCommentNumbers: string[] = [];
 
-    for (const rawSection of rawSections) {
+    console.log(`[Parser] Split into ${rawSections.length} raw sections`);
+
+    for (let sectionIndex = 0; sectionIndex < rawSections.length; sectionIndex++) {
+        const rawSection = rawSections[sectionIndex];
         const trimmed = rawSection.trim();
         if (!trimmed) continue;
+
+        console.log(`[Parser] Processing raw section ${sectionIndex}:`, trimmed.substring(0, 80) + '...');
 
         const numberedMatch = trimmed.match(sectionHeaderRegex);
 
@@ -75,12 +81,17 @@ export const parseMinutesDraft = (
                 orderNumber,
                 content: cleanedContent,
                 entryType: primaryEntryType,
-                minuteEntries: []
+                minuteEntries: [],
+                // ALWAYS set decision for content preservation (for Ouverture, etc.)
+                decision: cleanedContent
             };
 
             // If embedded entries found, use those
             if (embeddedEntries.length > 0) {
                 section.minuteEntries = embeddedEntries;
+                section.minuteType = embeddedEntries[0].type;
+                section.minuteNumber = embeddedEntries[0].number;
+                section.decision = embeddedEntries[0].content;
                 console.log(`[Parser] Found ${embeddedEntries.length} embedded entries in section ${orderNumber}`);
             }
             // Otherwise, create a single entry based on title type (if content exists)
@@ -103,22 +114,18 @@ export const parseMinutesDraft = (
                         number: entryNumber,
                         content: cleanedContent
                     });
+
+                    section.minuteType = primaryEntryType;
+                    section.minuteNumber = entryNumber;
                 } else {
-                    // For 'none' type (Ouverture, Levée, etc.), still store content but without type/number
-                    // User requested: "Point 1 Ouverture doit avoir son texte copié"
-                    section.decision = cleanedContent;
-                    console.log(`[Parser] Section ${orderNumber} is type 'none' - content preserved in decision field`);
+                    // For 'none' type (Ouverture, Levée, etc.), content is already in decision
+                    // Create an entry without type/number to allow content display
+                    console.log(`[Parser] Section ${orderNumber} is type 'none' - content preserved: ${cleanedContent.substring(0, 50)}...`);
                 }
             }
 
-            // Legacy field sync
-            if (section.minuteEntries.length > 0) {
-                section.minuteType = section.minuteEntries[0].type;
-                section.minuteNumber = section.minuteEntries[0].number;
-                section.decision = section.minuteEntries[0].content;
-            }
-
             sections.push(section);
+            console.log(`[Parser] Added section: "${section.title}" with ${section.minuteEntries.length} entries, decision length: ${section.decision?.length || 0}`);
         } else {
             // Standalone header or intro text
             const standaloneMatch = trimmed.match(standaloneHeaderRegex);
@@ -277,12 +284,17 @@ function parseEmbeddedEntries(
 function determineEntryType(title: string): 'resolution' | 'comment' | 'none' {
     const lower = title.toLowerCase();
 
-    // Exceptions - never resolution or comment
+    // Exceptions - never resolution or comment (just informational text, no numbering)
+    // Note: "Levée de l'assemblée" is a resolution, NOT an exception
     if (lower.includes('ouverture') ||
-        lower.includes('levée') ||
         lower.includes('bienvenue') ||
         lower.includes('varia')) {
         return 'none';
+    }
+
+    // "Levée de l'assemblée" is always a resolution
+    if (lower.includes('levée')) {
+        return 'resolution';
     }
 
     // Decision keywords -> resolution
