@@ -618,19 +618,48 @@ export const matchPVToAgenda = (
 ): Map<string, AgendaItem> => {
     const matchMap = new Map<string, AgendaItem>();
 
+    // Synonym groups for common equivalent titles
+    const synonymGroups = [
+        ['ouverture', 'mot de bienvenue', 'mots de bienvenue', 'bienvenue', 'début'],
+        ['levée', 'clôture', 'fin de la réunion', 'fin de l\'assemblée', 'ajournement'],
+        ['varia', 'divers', 'points divers', 'autres sujets'],
+        ['adoption ordre du jour', 'adoption de l\'ordre du jour', 'approbation ordre du jour'],
+    ];
+
     // Helper to normalize title for comparison
     const normalizeTitle = (title: string): string => {
         return title
             .toLowerCase()
+            .replace(/^\d+[\.\)\-]?\s*/, '') // Remove leading numbers like "1. " or "2) "
             .replace(/[;:,.]/g, '')
             .replace(/\s+/g, ' ')
             .trim();
+    };
+
+    // Check if two titles are synonyms
+    const areSynonyms = (title1: string, title2: string): boolean => {
+        const norm1 = normalizeTitle(title1);
+        const norm2 = normalizeTitle(title2);
+
+        for (const group of synonymGroups) {
+            const match1 = group.some(syn => norm1.includes(syn));
+            const match2 = group.some(syn => norm2.includes(syn));
+            if (match1 && match2) {
+                return true;
+            }
+        }
+        return false;
     };
 
     // Helper to check if titles are similar enough
     const titlesMatch = (pvTitle: string, agendaTitle: string): boolean => {
         const normalPV = normalizeTitle(pvTitle);
         const normalAgenda = normalizeTitle(agendaTitle);
+
+        // Check for synonyms first
+        if (areSynonyms(pvTitle, agendaTitle)) {
+            return true;
+        }
 
         // Check if one contains the other
         if (normalPV.includes(normalAgenda) || normalAgenda.includes(normalPV)) {
@@ -640,6 +669,10 @@ export const matchPVToAgenda = (
         // Check if they share significant words
         const pvWords = normalPV.split(' ').filter(w => w.length > 3);
         const agendaWords = normalAgenda.split(' ').filter(w => w.length > 3);
+
+        if (pvWords.length === 0 || agendaWords.length === 0) {
+            return false;
+        }
 
         const sharedWords = pvWords.filter(w => agendaWords.includes(w));
         const matchRatio = sharedWords.length / Math.min(pvWords.length, agendaWords.length);
