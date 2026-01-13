@@ -51,6 +51,11 @@ service cloud.firestore {
       match /avis_convocations/{avisId} {
         allow read, write: if isAuthenticated();
       }
+      
+      // PV Versions sub-collection (for version history)
+      match /pv_versions/{versionId} {
+        allow read, write: if isAuthenticated();
+      }
     }
 
     // Council Recommendations collection
