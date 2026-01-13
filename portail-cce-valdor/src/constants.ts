@@ -152,6 +152,32 @@ export const Roles = {
     ADVISOR: 'Conseiller responsable'
 } as const;
 
+/** Role labels for English keys to French display */
+export const RoleLabels: Record<string, string> = {
+    president: 'Président(e)',
+    vice_president: 'Vice-président(e)',
+    secretary: 'Secrétaire',
+    coordinator: 'Coordonnateur',
+    member: 'Membre',
+    observer: 'Observateur',
+    elected_official: 'Élu(e)',
+    advisor: 'Conseiller responsable',
+    guest: 'Invité(e)',
+    // Fallback for already French values
+    'Président(e)': 'Président(e)',
+    'Vice-président(e)': 'Vice-président(e)',
+    'Secrétaire': 'Secrétaire',
+    'Coordonnateur': 'Coordonnateur',
+    'Membre': 'Membre',
+    'Invité': 'Invité(e)',
+    'Élu(e)': 'Élu(e)'
+};
+
+/** Helper to get French role label */
+export const getRoleLabel = (role: string): string => {
+    return RoleLabels[role] || RoleLabels[role.toLowerCase()] || role;
+};
+
 // ============================================
 // ERROR MESSAGES (User-friendly)
 // ============================================

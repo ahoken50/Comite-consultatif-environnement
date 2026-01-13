@@ -177,22 +177,43 @@ const generateHTMLDocument = (meeting: Meeting, _globalNotes?: string): string =
     const year = format(dateObj, 'yyyy', { locale: fr });
     const timeStr = format(dateObj, 'HH', { locale: fr }) + ' h';
 
-    // Attendees processing
-    const members = meeting.attendees?.filter(a =>
-        a.role !== 'Secrétaire' && a.role !== 'Conseiller responsable' &&
-        a.role !== 'Conseiller' && a.role !== 'Invité'
-    ) || [];
-    const others = meeting.attendees?.filter(a =>
-        a.role === 'Secrétaire' || a.role === 'Conseiller responsable' ||
-        a.role === 'Conseiller' || a.role === 'Invité'
-    ) || [];
-    const absents = meeting.attendees?.filter(a => !a.isPresent) || [];
-    const presents = members.filter(a => a.isPresent);
-    const othersPresent = others.filter(a => a.isPresent);
+    // Attendees processing - correct grouping per user request:
+    // "Étaient présents(es):" - members, president, vice_president
+    // "Étaient absents(es):" - anyone not checked as present
+    // "Étaient également présents(es):" - coordinator, elected_official (élu), guest (invité)
 
-    const formatName = (a: typeof members[0]) => {
-        const roleLabel = a.role && a.role !== 'Membre' ? ` (${a.role})` : '';
-        return `${a.name}${roleLabel}`;
+    const memberRoles = ['member', 'Membre', 'president', 'Président(e)', 'vice_president', 'Vice-président(e)'];
+    const otherRoles = ['coordinator', 'Coordonnateur', 'elected_official', 'Élu(e)', 'guest', 'Invité', 'Invité(e)', 'observer', 'Observateur'];
+
+    const isMemberRole = (role: string) => memberRoles.some(r => r.toLowerCase() === role.toLowerCase());
+    const isOtherRole = (role: string) => otherRoles.some(r => r.toLowerCase() === role.toLowerCase());
+
+    // All absents (not present, any role)
+    const absents = meeting.attendees?.filter(a => !a.isPresent) || [];
+
+    // Presents: members/president/VP who are checked as present
+    const presents = meeting.attendees?.filter(a => a.isPresent && isMemberRole(a.role)) || [];
+
+    // Others present: coordinator/élu/invité who are checked as present
+    const othersPresent = meeting.attendees?.filter(a => a.isPresent && isOtherRole(a.role)) || [];
+
+    // Role label mapping for PDF display
+    const getRoleLabelPDF = (role: string): string => {
+        const labels: Record<string, string> = {
+            president: 'présidente',
+            vice_president: 'vice-président',
+            coordinator: 'coordonnateur',
+            elected_official: 'conseiller responsable',
+            guest: 'invité',
+            member: '',
+            observer: 'observateur'
+        };
+        return labels[role.toLowerCase()] || labels[role] || role;
+    };
+
+    const formatName = (a: typeof presents[0]) => {
+        const roleLabel = getRoleLabelPDF(a.role);
+        return roleLabel ? `${a.name}, ${roleLabel}` : a.name;
     };
 
     // Get president and secretary for signatures

@@ -25,6 +25,7 @@ import { useSelector, useDispatch } from 'react-redux';
 import type { AppDispatch } from '../../store/store';
 import type { RootState } from '../../store/rootReducer';
 import { fetchMembers } from '../../features/members/membersSlice';
+import { getRoleLabel } from '../../constants';
 
 interface AttendanceManagerProps {
     meeting: Meeting;
@@ -231,10 +232,10 @@ const AttendanceManager: React.FC<AttendanceManagerProps> = ({ meeting, onUpdate
                                 <TableCell>{attendee.name}</TableCell>
                                 <TableCell>
                                     <Chip
-                                        label={attendee.role}
+                                        label={getRoleLabel(attendee.role)}
                                         size="small"
                                         variant="outlined"
-                                        color={attendee.role === 'Secrétaire' || attendee.role === 'Conseiller' ? 'info' : 'default'}
+                                        color={attendee.role === 'coordinator' || attendee.role === 'elected_official' ? 'info' : 'default'}
                                     />
                                 </TableCell>
                                 <TableCell align="right">
