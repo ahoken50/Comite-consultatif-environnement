@@ -237,14 +237,11 @@ const generateHTMLDocument = (meeting: Meeting, _globalNotes?: string): string =
             }
         }
 
-        // Build section title with order number (1-based)
-        const orderNum = (item.order ?? 0) + 1;
-        const titleWithNumber = `${orderNum}. ${item.title.replace(/^\d+\.\s*/, '')}`; // Remove existing number if present
-
+        // Use title as-is - it already contains the order number from the UI (e.g., "1. Ouverture")
         sectionsHTML += `
             <section class="content-section">
                 <div class="section-title">
-                    ${titleWithNumber}
+                    ${item.title}
                     ${commentRef}
                 </div>
         `;
