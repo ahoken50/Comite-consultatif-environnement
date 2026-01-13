@@ -237,10 +237,14 @@ const generateHTMLDocument = (meeting: Meeting, _globalNotes?: string): string =
             }
         }
 
+        // Build section title with order number (1-based)
+        const orderNum = (item.order ?? 0) + 1;
+        const titleWithNumber = `${orderNum}. ${item.title.replace(/^\d+\.\s*/, '')}`; // Remove existing number if present
+
         sectionsHTML += `
             <section class="content-section">
                 <div class="section-title">
-                    ${item.title}
+                    ${titleWithNumber}
                     ${commentRef}
                 </div>
         `;
@@ -632,7 +636,7 @@ const generateHTMLDocument = (meeting: Meeting, _globalNotes?: string): string =
             <h1>Procès-Verbal</h1>
             <h2>Comité Consultatif en Environnement (CCE)</h2>
             <div class="meeting-info">
-                ${meetingNum.replace(/^0/, '')}e assemblée ordinaire<br>
+                <strong class="assembly-number">${meetingNum.replace(/^0/, '')}e assemblée ordinaire</strong><br>
                 Tenue le ${dayName} ${dayOfMonth} ${monthName} ${year}, ${timeStr}<br>
                 ${meeting.location || 'Salle de conférence des bureaux du Service permis, inspection et environnement'}
             </div>
