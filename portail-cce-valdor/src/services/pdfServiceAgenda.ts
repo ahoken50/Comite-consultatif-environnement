@@ -350,23 +350,38 @@ export const generateAgendaPDFBase64 = async (meeting: Meeting): Promise<string>
     // Create a temporary container
     const container = document.createElement('div');
     container.innerHTML = htmlContent;
-    container.style.position = 'absolute';
-    container.style.left = '-9999px';
-    container.style.width = '816px'; // 8.5in at 96dpi
-    container.style.background = '#fff'; // Ensure white background
+
+    // Key fix: Use fixed position with z-index instead of far off-screen
+    // This ensures the element is "visible" to the rendering engine but not the user
+    container.style.position = 'fixed';
+    container.style.top = '0';
+    container.style.left = '0';
+    container.style.zIndex = '-9999';
+    container.style.width = '816px'; // 8.5in at 96dpi matches CSS
+    container.style.background = '#fff';
     document.body.appendChild(container);
 
     const opt = {
         margin: 0,
         filename: `Ordre_du_jour_${meeting.date}.pdf`,
         image: { type: 'jpeg' as const, quality: 0.98 },
-        html2canvas: { scale: 2, useCORS: true },
+        html2canvas: {
+            scale: 2,
+            useCORS: true,
+            logging: false,
+            // Ensure we capture the specific container
+            windowWidth: 816
+        },
         jsPDF: { unit: 'in' as const, format: 'legal' as const, orientation: 'portrait' as const }
     };
 
     try {
+        // Small delay to ensure DOM update and image loading if any
+        await new Promise(resolve => setTimeout(resolve, 500));
+
         // Generate PDF and get output as data URI string
         const pdfBase64 = await html2pdf().from(container).set(opt).outputPdf('datauristring');
+
         // Remove the prefix "data:application/pdf;base64," if present
         if (typeof pdfBase64 === 'string' && pdfBase64.includes(',')) {
             return pdfBase64.split(',')[1];
