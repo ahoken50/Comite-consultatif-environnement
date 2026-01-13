@@ -84,7 +84,7 @@ export const generateAgendaPDF = async (meeting: Meeting): Promise<PDFGeneration
         .sheet {
             width: 100%;
             height: 100%;
-            padding: 0.6in 0.8in;
+            padding: 0.5in 0.6in; /* Reduced margins */
             box-sizing: border-box;
             display: flex;
             flex-direction: column;
@@ -96,19 +96,19 @@ export const generateAgendaPDF = async (meeting: Meeting): Promise<PDFGeneration
             display: flex;
             justify-content: space-between;
             align-items: center;
-            border-bottom: 3px solid var(--primary);
-            padding-bottom: 15px;
-            margin-bottom: 25px;
+            border-bottom: 2px solid var(--primary); /* Thinner border */
+            padding-bottom: 10px; /* Reduced */
+            margin-bottom: 15px; /* Reduced */
         }
 
         .header-logos {
             display: flex;
             align-items: center;
-            gap: 20px;
+            gap: 15px;
         }
 
         .logo-img {
-            height: 65px;
+            height: 55px; /* Smaller logos */
             object-fit: contain;
         }
 
@@ -118,7 +118,7 @@ export const generateAgendaPDF = async (meeting: Meeting): Promise<PDFGeneration
 
         h1 {
             margin: 0;
-            font-size: 20pt;
+            font-size: 18pt; /* Smaller title */
             color: var(--primary);
             text-transform: uppercase;
             font-weight: 700;
@@ -126,8 +126,8 @@ export const generateAgendaPDF = async (meeting: Meeting): Promise<PDFGeneration
         }
 
         .sub-header {
-            font-size: 10pt;
-            margin-top: 4px;
+            font-size: 9pt; /* Smaller subtitle */
+            margin-top: 2px;
             color: #555;
             font-weight: 500;
         }
@@ -145,9 +145,9 @@ export const generateAgendaPDF = async (meeting: Meeting): Promise<PDFGeneration
 
         .agenda-table th {
             text-align: left;
-            padding-bottom: 10px;
+            padding-bottom: 6px; /* Reduced */
             color: var(--primary);
-            font-size: 9pt;
+            font-size: 8.5pt;
             border-bottom: 1px solid #eee;
             text-transform: uppercase;
         }
@@ -161,47 +161,47 @@ export const generateAgendaPDF = async (meeting: Meeting): Promise<PDFGeneration
         }
 
         .cell {
-            padding: 8px 5px;
+            padding: 5px 4px; /* Reduced cell padding */
             vertical-align: top;
         }
 
         .col-num {
-            width: 40px;
+            width: 35px;
             font-weight: bold;
             color: var(--primary);
-            font-size: 11pt;
+            font-size: 10pt;
             text-align: center;
-            padding-top: 8px;
+            padding-top: 5px;
         }
 
         .col-lead {
-            width: 140px;
-            font-size: 9pt;
+            width: 120px;
+            font-size: 8.5pt;
             color: #666;
             text-align: right;
         }
 
         .title-text {
             font-weight: 600;
-            font-size: 11pt;
+            font-size: 10pt; /* Smaller regular text */
             display: block;
-            margin-bottom: 2px;
+            margin-bottom: 1px;
             color: #222;
         }
 
         .desc-text {
-            font-size: 9pt;
+            font-size: 8.5pt;
             color: #555;
             font-style: italic;
-            line-height: 1.3;
+            line-height: 1.2;
             display: block;
         }
 
         .chip {
             display: inline-block;
-            border-radius: 4px;
-            padding: 2px 6px;
-            font-size: 8pt;
+            border-radius: 3px;
+            padding: 1px 5px;
+            font-size: 7.5pt;
             font-weight: 600;
         }
 
