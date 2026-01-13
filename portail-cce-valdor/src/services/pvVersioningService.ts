@@ -96,8 +96,8 @@ export const createPVVersion = async (
             };
         }
 
-        // Create the version document
-        const versionData = {
+        // Create the version document - filter out undefined values for Firestore
+        const versionData: Record<string, unknown> = {
             versionNumber: newVersionNumber,
             createdAt: serverTimestamp(),
             createdBy: userId,
@@ -105,8 +105,12 @@ export const createPVVersion = async (
             changeDescription: changeDescription || `Version ${newVersionNumber}`,
             minutes: meeting.minutes || '',
             agendaItems: meeting.agendaItems || [],
-            changesFromPrevious
         };
+
+        // Only add changesFromPrevious if it's defined (not for first version)
+        if (changesFromPrevious) {
+            versionData.changesFromPrevious = changesFromPrevious;
+        }
 
         const docRef = await addDoc(getVersionsRef(meetingId), versionData);
 
@@ -115,8 +119,14 @@ export const createPVVersion = async (
 
         return {
             id: docRef.id,
-            ...versionData,
-            createdAt: new Date()
+            versionNumber: newVersionNumber,
+            createdAt: new Date(),
+            createdBy: userId,
+            status: 'draft' as const,
+            changeDescription: changeDescription || `Version ${newVersionNumber}`,
+            minutes: meeting.minutes || '',
+            agendaItems: meeting.agendaItems || [],
+            changesFromPrevious
         };
 
     } catch (error) {
