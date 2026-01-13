@@ -10,7 +10,7 @@ import {
 } from '@mui/material';
 import { CheckCircle, Cancel, Event, AccessTime, LocationOn } from '@mui/icons-material';
 import { getRSVPDetails, updateRSVP } from '../../services/convocationService';
-import { format } from 'date-fns';
+import { format, parseISO, isValid } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
 const RSVPPage: React.FC = () => {
@@ -125,10 +125,19 @@ const RSVPPage: React.FC = () => {
     const formatDateSafe = (dateStr: string | undefined, formatStr: string) => {
         if (!dateStr) return '';
         try {
-            const date = new Date(dateStr);
-            if (isNaN(date.getTime())) return 'Date invalide';
+            // Try parsing as ISO
+            let date = parseISO(dateStr);
+
+            // If invalid, try standard Date constructor (fallback for legacy/other formats)
+            if (!isValid(date)) {
+                date = new Date(dateStr);
+            }
+
+            if (!isValid(date)) return 'Date invalide';
+
             return format(date, formatStr, { locale: fr });
         } catch (e) {
+            console.error("Date parsing error:", e);
             return 'Date invalide';
         }
     };

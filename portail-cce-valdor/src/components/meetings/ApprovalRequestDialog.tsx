@@ -9,6 +9,7 @@ import {
     InputLabel,
     Select,
     MenuItem,
+    ListSubheader,
     Typography,
     Box,
     CircularProgress,
@@ -44,11 +45,13 @@ const ApprovalRequestDialog: React.FC<ApprovalRequestDialogProps> = ({ open, onC
         }
     }, [open, dispatch, members.length]);
 
-    // Filter potential approvers (President, Vice-President, Elected Official)
-    const candidates = members.filter((m: Member) =>
-        m.isActive &&
-        (m.role === 'president' || m.role === 'vice_president' || m.role === 'elected_official')
-    );
+    // Filter groups
+    const presidents = members.filter(m => m.isActive && (m.role === 'president' || m.role === 'vice_president'));
+    const elected = members.filter(m => m.isActive && m.role === 'elected_official');
+    const substitutes = members.filter(m => m.isActive && m.isSubstitute);
+    const coordinators = members.filter(m => m.isActive && m.role === 'coordinator'); // For testing
+
+    const hasCandidates = presidents.length > 0 || elected.length > 0 || substitutes.length > 0 || coordinators.length > 0;
 
     const handleSend = async () => {
         if (!selectedMemberId) return;
@@ -98,17 +101,43 @@ const ApprovalRequestDialog: React.FC<ApprovalRequestDialogProps> = ({ open, onC
                             label="Signataire"
                             onChange={(e) => setSelectedMemberId(e.target.value)}
                         >
-                            {candidates.map((member: Member) => (
-                                <MenuItem key={member.id} value={member.id}>
-                                    {member.displayName} ({member.role === 'elected_official' ? 'Élu responsable' : 'Président'})
-                                </MenuItem>
-                            ))}
+                            {/* Présidence */}
+                            {presidents.length > 0 && [
+                                <ListSubheader key="header-pres">Présidence</ListSubheader>,
+                                ...presidents.map(m => (
+                                    <MenuItem key={m.id} value={m.id}>{m.displayName} ({m.role === 'vice_president' ? 'Vice-Président' : 'Président'})</MenuItem>
+                                ))
+                            ]}
+
+                            {/* Élus */}
+                            {elected.length > 0 && [
+                                <ListSubheader key="header-elected">Élus Responsables</ListSubheader>,
+                                ...elected.map(m => (
+                                    <MenuItem key={m.id} value={m.id}>{m.displayName}</MenuItem>
+                                ))
+                            ]}
+
+                            {/* Suppléants */}
+                            {substitutes.length > 0 && [
+                                <ListSubheader key="header-sub">Suppléants</ListSubheader>,
+                                ...substitutes.map(m => (
+                                    <MenuItem key={m.id} value={m.id}>{m.displayName}</MenuItem>
+                                ))
+                            ]}
+
+                            {/* Tests */}
+                            {coordinators.length > 0 && [
+                                <ListSubheader key="header-test">Tests (Coordination)</ListSubheader>,
+                                ...coordinators.map(m => (
+                                    <MenuItem key={m.id} value={m.id}>{m.displayName}</MenuItem>
+                                ))
+                            ]}
                         </Select>
                     </FormControl>
 
-                    {candidates.length === 0 && !membersLoading && members.length > 0 && (
+                    {!hasCandidates && !membersLoading && members.length > 0 && (
                         <Alert severity="warning" sx={{ mt: 2 }}>
-                            Aucun membre avec le rôle 'Président' ou 'Élu responsable' trouvé. Veuillez vérifier la liste des membres.
+                            Aucun membre avec le rôle approprié trouvé (Président, Élu, Suppléant).
                         </Alert>
                     )}
                 </Box>

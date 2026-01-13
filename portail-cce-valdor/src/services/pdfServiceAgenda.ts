@@ -351,13 +351,14 @@ export const generateAgendaPDFBase64 = async (meeting: Meeting): Promise<string>
     const container = document.createElement('div');
     container.innerHTML = htmlContent;
 
-    // Key fix: Use fixed position with z-index instead of far off-screen
-    // This ensures the element is "visible" to the rendering engine but not the user
-    container.style.position = 'fixed';
+    // Position absolute but off-viewport is safer than fixed/z-index for some renderers
+    // Resetting transforms/transitions is also good practice
+    container.style.position = 'absolute';
     container.style.top = '0';
-    container.style.left = '0';
-    container.style.zIndex = '-9999';
-    container.style.width = '816px'; // 8.5in at 96dpi matches CSS
+    container.style.left = '-2000px'; // Off-screen left
+    container.style.width = '816px';
+    container.style.height = 'auto';
+    container.style.zIndex = '1000'; // Positive z-index to ensure it's "top" layer
     container.style.background = '#fff';
     document.body.appendChild(container);
 
@@ -368,16 +369,19 @@ export const generateAgendaPDFBase64 = async (meeting: Meeting): Promise<string>
         html2canvas: {
             scale: 2,
             useCORS: true,
-            logging: false,
-            // Ensure we capture the specific container
-            windowWidth: 816
+            logging: true, // Enable logging to debug if needed
+            windowWidth: 816,
+            x: 0,
+            y: 0,
+            scrollX: 0,
+            scrollY: 0
         },
         jsPDF: { unit: 'in' as const, format: 'legal' as const, orientation: 'portrait' as const }
     };
 
     try {
-        // Small delay to ensure DOM update and image loading if any
-        await new Promise(resolve => setTimeout(resolve, 500));
+        // Increase delay to 1s to be absolutely sure of rendering (fonts, images)
+        await new Promise(resolve => setTimeout(resolve, 1000));
 
         // Generate PDF and get output as data URI string
         const pdfBase64 = await html2pdf().from(container).set(opt).outputPdf('datauristring');
