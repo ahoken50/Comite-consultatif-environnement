@@ -3,7 +3,9 @@ import { generateNextResolutionNumber, generateNextCommentNumber } from '../util
 
 interface ParsedPVSection {
     title: string;
+    orderNumber: number; // Extracted from "## N." format
     content: string;
+    entryType: 'resolution' | 'comment' | 'none'; // Determined from header
     minuteEntries: MinuteEntry[];
     // Legacy fields
     minuteType?: 'resolution' | 'comment';
@@ -19,8 +21,15 @@ interface ParseOptions {
 }
 
 /**
- * Parses the raw text draft from Claude into structured Agenda Items.
- * Returns separately the intro text (before first item) and the parsed items.
+ * Parses the raw AI-generated PV draft into structured Agenda Items.
+ * 
+ * Format expected:
+ * - `## N. Title` starts a new section (N is the order number)
+ * - `---` ends the current section
+ * - Text between header and `---` is the content
+ * - "Décision" in header = resolution
+ * - "Information" or "Consultation" in header = comment
+ * - "Ouverture", "Levée", "Bienvenue" = neither (just text)
  * 
  * @param draftContent - The raw AI-generated text
  * @param options - Optional settings including meetingNumber for auto-numbering
@@ -29,375 +38,140 @@ export const parseMinutesDraft = (
     draftContent: string,
     options: ParseOptions = {}
 ): { items: AgendaItem[], intro: string } => {
-    const lines = draftContent.split('\n');
+    const { meetingNumber, autoNumber = true } = options;
+
+    // Split content by section delimiter (---)
+    const rawSections = draftContent.split(/^---+$/m);
+
     const sections: ParsedPVSection[] = [];
     let intro = '';
 
-    let currentSection: ParsedPVSection | null = null;
-    let buffer: string[] = [];
+    // Regex for section headers: ## N. Title or ## TITLE (like ÉTAIENT PRÉSENTS)
+    const sectionHeaderRegex = /^##\s*(\d+)?\.\s*(.+)$/im;
+    const standaloneHeaderRegex = /^##\s+(.+)$/im;
 
-    // Regex helpers - Updated to handle Markdown bold (** or __) and various formats
-    const resolutionRegex = /(?:\*\*|__)?R[ÉE]SOLUTION(?:\*\*|__)?\s+(\d{2}|[A-Z]{3,})-(\d+)/i;
-    // FIXED: Now captures number format "XX-Y" or "XX-YY" after COMMENTAIRE with space/colon
-    // Test cases: "COMMENTAIRE 25-A", "COMMENTAIRE: 09-B", "**COMMENTAIRE** 25-C"
-    const commentaireRegex = /(?:\*\*|__)?COMMENTAIRE(?:\*\*|__)?[\s:]*(\d{2}-[A-Za-z0-9]+)?/i;
-    // Matches "1. Title", "3.1 Title", "10 - Title", "1) Title"
-    const numberedTitleRegex = /^(\d+([.-]\d+)*)[.)-]?\s+(.+)$/;
-
-    // Function to flush current section or intro
-    const flushSection = () => {
-        if (currentSection) {
-            // Append remaining buffer to content if not empty
-            if (buffer.length > 0) {
-                const text = buffer.join('\n').trim();
-                currentSection.content = currentSection.content ? currentSection.content + '\n' + text : text;
-            }
-            sections.push(currentSection);
-        } else if (buffer.length > 0) {
-            // If no section active, this is the intro
-            const text = buffer.join('\n').trim();
-            if (text) intro = text;
-        }
-    };
-
-    // Helper to check if a title is a sub-title of the current section
-    const isSubTitle = (titleLine: string, currentSectionTitle: string | undefined): boolean => {
-        if (!currentSectionTitle) return false;
-
-        // Extract numbers from titles (e.g., "4. Revue..." -> "4", "4.1 Amenagement" -> "4.1")
-        const currentMatch = currentSectionTitle.match(/^(\d+(?:[.-]\d+)*)/);
-        const newMatch = titleLine.match(/^(\d+(?:[.-]\d+)*)/);
-
-        if (!currentMatch || !newMatch) return false;
-
-        const currentNum = currentMatch[1];
-        const newNum = newMatch[1];
-
-        // It is a sub-title if it starts with the current section number AND is longer
-        // e.g. "4.1" starts with "4" -> TRUE
-        // e.g. "5" starts with "4" -> FALSE
-        // e.g. "4" starts with "4" -> FALSE (same level)
-        return newNum.startsWith(currentNum) && newNum.length > currentNum.length;
-    };
-
-    // Iterate through lines to identify structure
-    for (let i = 0; i < lines.length; i++) {
-        const line = lines[i].trim();
-        if (!line) {
-            buffer.push(line);
-            continue;
-        }
-
-        // 1. Check for Resolution Start
-        const resMatch = line.match(resolutionRegex);
-        if (resMatch) {
-            const minuteNumber = `${resMatch[1]}-${resMatch[2]}`;
-
-            // We read ahead to capture the full resolution text until end of block
-            // CLEANUP: Strip the "RÉSOLUTION XX-XX" header from the content
-            let resolutionText = line.replace(resolutionRegex, '').trim();
-            // Remove leading separator chars like ": " or "- "
-            resolutionText = resolutionText.replace(/^[:\s-]+/, '');
-
-            let j = i + 1;
-            while (j < lines.length) {
-                const nextLine = lines[j].trim();
-                let shouldBreak = false;
-
-                // Check for hard breaks
-                if (resolutionRegex.test(nextLine) || commentaireRegex.test(nextLine)) {
-                    shouldBreak = true;
-                }
-                // Check for title breaks (UNLESS it's a sub-title of the current section)
-                else if (numberedTitleRegex.test(nextLine)) {
-                    // If we are deep inside a content block attached to section "4.", 
-                    // and we see "4.1", we should treat it as text content, not a new section.
-                    const isSub = currentSection ? isSubTitle(nextLine, currentSection.title) : false;
-                    if (!isSub) {
-                        shouldBreak = true;
-                    }
-                }
-
-                if (shouldBreak) {
-                    break;
-                }
-                if (resolutionText) {
-                    resolutionText += '\n' + lines[j];
-                } else {
-                    resolutionText = lines[j]; // If first line was empty after strip
-                }
-                j++;
-            }
-            i = j - 1;
-
-            if (currentSection) {
-                currentSection.minuteEntries.push({
-                    type: 'resolution',
-                    number: minuteNumber,
-                    content: resolutionText.trim()
-                });
-
-                // Legacy support (first one wins)
-                if (!currentSection.minuteType) {
-                    currentSection.minuteType = 'resolution';
-                    currentSection.minuteNumber = minuteNumber;
-                    currentSection.decision = resolutionText.trim();
-                }
-            } else {
-                // Should ideally create a section, but if we are in intro, maybe start a section "Résolutions préliminaires"?
-                currentSection = {
-                    title: "Section Sans Titre",
-                    content: "",
-                    minuteEntries: [{
-                        type: 'resolution',
-                        number: minuteNumber,
-                        content: resolutionText.trim()
-                    }]
-                };
-            }
-            buffer = [];
-            continue;
-        }
-
-        // 2. Check for Comment Start
-        const comMatch = line.match(commentaireRegex);
-        if (comMatch) {
-            // If number captured, use it.
-            let capturedNumber = comMatch[1] ? comMatch[1] : '';
-
-            // CLEANUP: Strip header from the current line
-            let commentText = line.replace(commentaireRegex, '').trim();
-            commentText = commentText.replace(/^[:\s-]+/, ''); // remove separators
-
-            // Advanced Clean: If line 1 was JUST the header, check line 2 for the number "25-B"
-            // Case: 
-            // **COMMENTAIRE**
-            // 25-B
-            // Content...
-            let j = i + 1;
-
-            // Peek at next line if we didn't catch a number yet, or if text is empty
-            if (j < lines.length && (!commentText || !capturedNumber)) {
-                let nextPeek = lines[j].trim();
-                console.log('[Parser Debug] Peeking next line for number:', nextPeek);
-
-                // CLEANUP MARKDOWN from nextPeek to handle "**25-A**" or "__25-A__"
-                // remove only surrounding * or _ but keep content
-                const cleanNextPeek = nextPeek.replace(/^[*_]+|[*_]+$/g, '').trim();
-                console.log('[Parser Debug] Cleaned peek:', cleanNextPeek);
-
-                // Simple regex to catch standalone number "DD-L" or "DD-LL" or "DD-D"
-                // e.g. "09-35" or "09-A" or "25-B"
-                const standaloneNumberMatch = cleanNextPeek.match(/^(\d{2}-[A-Z0-9]+)$/i);
-
-                if (standaloneNumberMatch) {
-                    if (!capturedNumber) capturedNumber = standaloneNumberMatch[1];
-                    // Skip this line as it is just the number
-                    j++;
-                }
-                // Also check if next line is just "25-B :" 
-                else if (/^(\d{2}-[A-Z0-9]+)\s*[:.-]/.test(cleanNextPeek)) {
-                    const match = cleanNextPeek.match(/^(\d{2}-[A-Z0-9]+)/);
-                    if (match) {
-                        if (!capturedNumber) capturedNumber = match[1];
-                        // Strip the number from this next line, but keep the rest
-                        const remaining = cleanNextPeek.replace(/^(\d{2}-[A-Z0-9]+)\s*[:.-]?\s*/, '');
-                        if (remaining) {
-                            // If there was text after the number on the clean line, use it.
-                            commentText = remaining;
-                            j++; // consume line
-                        } else {
-                            j++; // pure number line
-                        }
-                    }
-                }
-            }
-
-            const minuteNumber = capturedNumber || '';
-
-            while (j < lines.length) {
-                const nextLine = lines[j].trim();
-                let shouldBreak = false;
-
-                // Check for hard breaks
-                if (resolutionRegex.test(nextLine) || commentaireRegex.test(nextLine)) {
-                    shouldBreak = true;
-                }
-                // Check for title breaks (UNLESS it's a sub-title)
-                else if (numberedTitleRegex.test(nextLine)) {
-                    const isSub = currentSection ? isSubTitle(nextLine, currentSection.title) : false;
-                    if (!isSub) {
-                        shouldBreak = true;
-                    }
-                }
-
-                if (shouldBreak) {
-                    break;
-                }
-                if (commentText) {
-                    commentText += '\n' + lines[j];
-                } else {
-                    commentText = lines[j];
-                }
-                j++;
-            }
-            i = j - 1;
-
-            if (currentSection) {
-                // MERGE LOGIC: If last entry was also a comment and we just parsed another comment...
-                // The user says "ce commentaire ne devrait en être qu'un".
-                // If it's a "broken" comment (multiple headers for same point), we merge.
-                // UNLESS the number is different?
-                const lastEntry = currentSection.minuteEntries[currentSection.minuteEntries.length - 1];
-
-                if (lastEntry && lastEntry.type === 'comment' && (!minuteNumber || minuteNumber === lastEntry.number)) {
-                    // It's likely a continuation broken by a header
-                    lastEntry.content += '\n\n' + commentText.trim();
-                } else {
-                    currentSection.minuteEntries.push({
-                        type: 'comment',
-                        number: minuteNumber,
-                        content: commentText.trim()
-                    });
-                }
-
-                // Legacy support
-                if (!currentSection.minuteType) {
-                    currentSection.minuteType = 'comment';
-                    currentSection.minuteNumber = minuteNumber;
-                    currentSection.decision = commentText.trim();
-                }
-            } else {
-                currentSection = {
-                    title: "Section Sans Titre",
-                    content: "",
-                    minuteEntries: [{
-                        type: 'comment',
-                        number: minuteNumber,
-                        content: commentText.trim()
-                    }]
-                };
-            }
-            buffer = [];
-            continue;
-        }
-
-        // 3. Identifiers for New Section (Numbered Titles)
-        const titleMatch = line.match(numberedTitleRegex);
-        if (titleMatch) {
-            // New section detected.
-            flushSection();
-
-            // Start new section
-            // Clean title structure (remove leading number if needed, or keep it consistent)
-            // Currently we keep raw line as title, but maybe cleaner to normalize?
-            // For now, let's keep it as is, but trim.
-            currentSection = {
-                title: line.trim(), // e.g., "3.1 Approbation du PV"
-                content: "",
-                minuteEntries: []
-            };
-            buffer = [];
-            continue;
-        }
-
-        // 4. Default: Buffer text
-        buffer.push(line);
-    }
-
-    // Flush last section
-    flushSection();
-
-    // ==== AUTO-NUMBERING LOGIC ====
-    // If meetingNumber is provided and autoNumber is true (or not explicitly false),
-    // generate numbers for entries that don't have one.
-    const { meetingNumber, autoNumber = true } = options;
+    // Track used numbers for auto-numbering
     const usedResolutionNumbers: string[] = [];
     const usedCommentNumbers: string[] = [];
 
-    // First pass: collect existing numbers
-    sections.forEach(sec => {
-        sec.minuteEntries.forEach(entry => {
-            if (entry.number) {
-                if (entry.type === 'resolution') {
-                    usedResolutionNumbers.push(entry.number);
+    for (const rawSection of rawSections) {
+        const trimmed = rawSection.trim();
+        if (!trimmed) continue;
+
+        // Check if this section has a numbered header (## N. Title)
+        const numberedMatch = trimmed.match(sectionHeaderRegex);
+
+        if (numberedMatch) {
+            const orderNumber = numberedMatch[1] ? parseInt(numberedMatch[1], 10) : 0;
+            const fullTitle = numberedMatch[2].trim();
+
+            // Extract content (everything after the header line)
+            const headerLine = numberedMatch[0];
+            let content = trimmed.slice(trimmed.indexOf(headerLine) + headerLine.length).trim();
+
+            // Clean content: remove any RÉSOLUTION XX-X or COMMENTAIRE XX-X headers
+            content = cleanContent(content);
+
+            // Determine entry type from title
+            const entryType = determineEntryType(fullTitle);
+
+            const section: ParsedPVSection = {
+                title: `${orderNumber}. ${fullTitle}`,
+                orderNumber,
+                content,
+                entryType,
+                minuteEntries: []
+            };
+
+            // Create minute entry if applicable and content exists
+            if (entryType !== 'none' && content) {
+                let entryNumber = '';
+
+                // Auto-number if meetingNumber is provided
+                if (autoNumber && meetingNumber) {
+                    if (entryType === 'resolution') {
+                        entryNumber = generateNextResolutionNumber(meetingNumber, usedResolutionNumbers);
+                        usedResolutionNumbers.push(entryNumber);
+                    } else if (entryType === 'comment') {
+                        entryNumber = generateNextCommentNumber(meetingNumber, usedCommentNumbers);
+                        usedCommentNumbers.push(entryNumber);
+                    }
+                    console.log(`[Parser] Auto-generated ${entryType} number: ${entryNumber}`);
+                }
+
+                section.minuteEntries.push({
+                    type: entryType,
+                    number: entryNumber,
+                    content: content
+                });
+
+                // Legacy fields
+                section.minuteType = entryType;
+                section.minuteNumber = entryNumber;
+                section.decision = content;
+            }
+
+            sections.push(section);
+        } else {
+            // Check for standalone header (## ÉTAIENT PRÉSENTS, ## PROCÈS-VERBAL, etc.)
+            const standaloneMatch = trimmed.match(standaloneHeaderRegex);
+
+            if (standaloneMatch) {
+                const title = standaloneMatch[1].trim();
+                const headerLine = standaloneMatch[0];
+                let content = trimmed.slice(trimmed.indexOf(headerLine) + headerLine.length).trim();
+
+                // Clean content
+                content = cleanContent(content);
+
+                // These are typically intro sections (PROCÈS-VERBAL, ÉTAIENT PRÉSENTS)
+                // or special sections without numbers
+                if (title.toUpperCase().includes('PRÉSENTS') ||
+                    title.toUpperCase().includes('PROCÈS-VERBAL') ||
+                    title.toUpperCase().includes('FIN DU')) {
+                    // Add to intro
+                    if (!intro) {
+                        intro = `## ${title}\n\n${content}`;
+                    } else {
+                        intro += `\n\n## ${title}\n\n${content}`;
+                    }
                 } else {
-                    usedCommentNumbers.push(entry.number);
+                    // Create a section without order number
+                    sections.push({
+                        title: title,
+                        orderNumber: 0,
+                        content,
+                        entryType: 'none',
+                        minuteEntries: []
+                    });
+                }
+            } else {
+                // No header found - this is intro text or orphan content
+                if (!intro) {
+                    intro = cleanContent(trimmed);
+                } else if (trimmed) {
+                    intro += '\n\n' + cleanContent(trimmed);
                 }
             }
-        });
-    });
-
-    // Second pass: assign numbers to entries without one (if autoNumber enabled and meetingNumber provided)
-    if (autoNumber && meetingNumber) {
-        sections.forEach(sec => {
-            sec.minuteEntries.forEach(entry => {
-                if (!entry.number) {
-                    if (entry.type === 'resolution') {
-                        const newNumber = generateNextResolutionNumber(meetingNumber, usedResolutionNumbers);
-                        entry.number = newNumber;
-                        usedResolutionNumbers.push(newNumber);
-                        console.log(`[AutoNumber] Generated resolution number: ${newNumber}`);
-                    } else if (entry.type === 'comment') {
-                        const newNumber = generateNextCommentNumber(meetingNumber, usedCommentNumbers);
-                        entry.number = newNumber;
-                        usedCommentNumbers.push(newNumber);
-                        console.log(`[AutoNumber] Generated comment number: ${newNumber}`);
-                    }
-                }
-            });
-        });
+        }
     }
 
-    // Convert to AgendaItems
+    // Convert sections to AgendaItems
     const items = sections.map((sec, idx) => {
-        // PER USER REQUEST:
-        // If a section has content but NO explicit entries (Resolution/Comment), it is implied to be a COMMENT.
-        // Exceptions: "Mot de bienvenue", "Ouverture", "Levée", "Varia" (if empty/simple).
-
-        let finalMinuteEntries = [...sec.minuteEntries];
-        let finalMinuteType = sec.minuteType;
-        let finalMinuteNumber = sec.minuteNumber;
-        let finalDecision = sec.decision || sec.content;
-
-        const lowerTitle = sec.title.toLowerCase();
-        const isException = lowerTitle.includes('bienvenue') ||
-            lowerTitle.includes('ouverture') ||
-            lowerTitle.includes('levée') ||
-            (lowerTitle.includes('varia') && (!sec.content || sec.content.length < 50));
-
-        if (finalMinuteEntries.length === 0 && sec.content.trim() && !isException) {
-            // Create implicit comment entry with auto-number if enabled
-            let implicitNumber = '';
-            if (autoNumber && meetingNumber) {
-                implicitNumber = generateNextCommentNumber(meetingNumber, usedCommentNumbers);
-                usedCommentNumbers.push(implicitNumber);
-                console.log(`[AutoNumber] Generated implicit comment number: ${implicitNumber}`);
-            }
-
-            finalMinuteEntries.push({
-                type: 'comment',
-                number: implicitNumber,
-                content: sec.content.trim()
-            });
-            finalMinuteType = 'comment';
-            finalMinuteNumber = implicitNumber;
-            finalDecision = sec.content.trim();
-        }
-
         return {
             id: `draft-parsed-${Date.now()}-${idx}`,
-            order: idx,
+            order: sec.orderNumber || idx,
             title: sec.title,
             duration: 10,
             presenter: '',
-            objective: finalMinuteEntries.some(e => e.type === 'resolution') ? 'Décision' : 'Information',
+            objective: sec.entryType === 'resolution' ? 'Décision' :
+                sec.entryType === 'comment' ? 'Information' : '',
             description: '',
-            minuteEntries: finalMinuteEntries,
-            // Legacy
-            minuteType: finalMinuteType,
-            minuteNumber: finalMinuteNumber || (finalMinuteEntries[0]?.number || ''),
-            decision: finalDecision,
+            minuteEntries: sec.minuteEntries,
+            // Legacy fields
+            minuteType: sec.minuteType,
+            minuteNumber: sec.minuteNumber || (sec.minuteEntries[0]?.number || ''),
+            decision: sec.decision || sec.content,
             proposer: sec.proposer || '',
             seconder: sec.seconder || ''
         };
@@ -406,3 +180,76 @@ export const parseMinutesDraft = (
     return { items, intro };
 };
 
+/**
+ * Determines the entry type based on the section title/header.
+ * - "Décision" -> resolution
+ * - "Information" or "Consultation" -> comment
+ * - "Ouverture", "Levée", "Bienvenue", "Varia" -> none
+ */
+function determineEntryType(title: string): 'resolution' | 'comment' | 'none' {
+    const lowerTitle = title.toLowerCase();
+
+    // Exceptions: these are never resolutions or comments
+    if (lowerTitle.includes('ouverture') ||
+        lowerTitle.includes('levée') ||
+        lowerTitle.includes('bienvenue') ||
+        lowerTitle.includes('varia') ||
+        lowerTitle.includes('adoption') === false && lowerTitle.includes('ordre du jour')) {
+        return 'none';
+    }
+
+    // Check for decision keywords
+    if (lowerTitle.includes('décision') || lowerTitle.includes('decision')) {
+        return 'resolution';
+    }
+
+    // Check for adoption (usually a resolution)
+    if (lowerTitle.includes('adoption')) {
+        return 'resolution';
+    }
+
+    // Check for information/consultation keywords
+    if (lowerTitle.includes('information') || lowerTitle.includes('consultation')) {
+        return 'comment';
+    }
+
+    // Default: if content exists but no keyword, treat as comment
+    // This matches the user's request that most items are comments
+    return 'comment';
+}
+
+/**
+ * Cleans the content by removing:
+ * - RÉSOLUTION XX-X headers
+ * - COMMENTAIRE XX-X headers  
+ * - Markdown delimiters (## and ---)
+ * - Leading/trailing whitespace
+ */
+function cleanContent(content: string): string {
+    if (!content) return '';
+
+    let cleaned = content;
+
+    // Remove RÉSOLUTION headers (with or without markdown bold)
+    cleaned = cleaned.replace(/(?:\*\*|__)?R[ÉE]SOLUTION(?:\*\*|__)?[\s:]*(\d{2}-\d+)?[\s:.-]*/gi, '');
+
+    // Remove COMMENTAIRE headers (with or without markdown bold)
+    cleaned = cleaned.replace(/(?:\*\*|__)?COMMENTAIRE(?:\*\*|__)?[\s:]*(\d{2}-[A-Z])?[\s:.-]*/gi, '');
+
+    // Remove standalone markdown headers (## Title)
+    cleaned = cleaned.replace(/^##\s+.+$/gm, '');
+
+    // Remove horizontal rules (---)
+    cleaned = cleaned.replace(/^---+$/gm, '');
+
+    // Remove "IL EST RÉSOLU" type headers (keep content after)
+    // These are part of resolution text, not headers to strip
+
+    // Clean up multiple consecutive newlines
+    cleaned = cleaned.replace(/\n{3,}/g, '\n\n');
+
+    // Trim
+    cleaned = cleaned.trim();
+
+    return cleaned;
+}
