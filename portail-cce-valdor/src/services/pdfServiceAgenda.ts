@@ -29,10 +29,18 @@ const getAgendaHTML = (meeting: Meeting): string => {
         return 'background-color: #eee; color: #333;'; // Default logic
     };
 
+    // Sort items by order if possible, otherwise keep as is
+    const sortedItems = [...meeting.agendaItems].sort((a, b) => {
+        if (a.order !== undefined && b.order !== undefined) {
+            return a.order - b.order;
+        }
+        return 0;
+    });
+
     // Generate agenda items HTML rows
-    const agendaRowsHtml = meeting.agendaItems.map((item, index) => {
+    const agendaRowsHtml = sortedItems.map((item, index) => {
         const rowClass = index % 2 === 0 ? 'even' : 'row';
-        const itemNumber = item.order || index + 1;
+        const itemNumber = index + 1; // Enforce sequential numbering 1..N
         const objectiveStyle = getObjectiveStyle(item.objective);
 
         return `
