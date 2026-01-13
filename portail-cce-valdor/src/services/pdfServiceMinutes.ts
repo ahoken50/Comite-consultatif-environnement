@@ -224,10 +224,13 @@ const generateHTMLDocument = (meeting: Meeting, _globalNotes?: string): string =
     const presidentName = president ? president.name : 'Président(e)';
     const secretaryName = secretary ? secretary.name : 'Secrétaire';
 
-    // Build sections HTML
+    // Build sections HTML with proper numbering
     let sectionsHTML = '';
 
-    for (const item of meeting.agendaItems) {
+    for (let i = 0; i < meeting.agendaItems.length; i++) {
+        const item = meeting.agendaItems[i];
+        const orderNum = i + 1; // 1-based numbering
+
         // Get comment reference if any
         let commentRef = '';
         if (item.minuteEntries && item.minuteEntries.length > 0) {
@@ -237,11 +240,14 @@ const generateHTMLDocument = (meeting: Meeting, _globalNotes?: string): string =
             }
         }
 
-        // Use title as-is - it already contains the order number from the UI (e.g., "1. Ouverture")
+        // Build title with order number - strip any existing number prefix from title
+        const cleanTitle = item.title.replace(/^\d+[\.\)\-]?\s*/, '');
+        const titleWithNumber = `${orderNum}. ${cleanTitle}`;
+
         sectionsHTML += `
             <section class="content-section">
                 <div class="section-title">
-                    ${item.title}
+                    ${titleWithNumber}
                     ${commentRef}
                 </div>
         `;
