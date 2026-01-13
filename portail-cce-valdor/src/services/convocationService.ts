@@ -87,6 +87,8 @@ export const getActiveMembers = async (): Promise<Member[]> => {
     } as Member));
 };
 
+import { generateAgendaPDFBase64 } from './pdfServiceAgenda';
+
 /**
  * Send convocations to selected members (or all active members if none specified)
  */
@@ -103,6 +105,15 @@ export const sendConvocations = async (
 
         if (members.length === 0) {
             return { success: false, error: 'Aucun membre sélectionné' };
+        }
+
+        // 1.1 Generate Agenda PDF as Base64
+        console.log('📄 Generating Agenda PDF for attachment...');
+        let pdfBase64 = null;
+        try {
+            pdfBase64 = await generateAgendaPDFBase64(meeting);
+        } catch (pdfError) {
+            console.error("⚠️ Failed to generate agenda PDF, sending without attachment:", pdfError);
         }
 
         // 2. Prepare recipients with tokens
@@ -160,7 +171,8 @@ Ville de Val-d'Or`
         console.log('📨 Calling send_convocation cloud function...', {
             meetingId: meeting.id,
             recipientsCount: recipients.length,
-            recipients: recipients.map(r => r.email)
+            recipients: recipients.map(r => r.email),
+            hasAttachment: !!pdfBase64
         });
 
         const functions = getFunctions();
@@ -185,7 +197,8 @@ Ville de Val-d'Or`
                 sender: {
                     name: senderMember.displayName,
                     email: senderMember.email
-                }
+                },
+                agendaPdf: pdfBase64 // Attachment
             });
             console.log('✅ send_convocation success:', result.data);
         } catch (cloudFnError) {

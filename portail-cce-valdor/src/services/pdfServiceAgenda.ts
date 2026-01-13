@@ -1,6 +1,8 @@
 import type { Meeting } from '../types/meeting.types';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
+// @ts-ignore
+import html2pdf from 'html2pdf.js';
 
 export interface PDFGenerationResult {
     success: boolean;
@@ -8,9 +10,10 @@ export interface PDFGenerationResult {
 }
 
 /**
- * Generates a beautifully styled Agenda PDF (Legal Size One-Pager) using HTML template.
+ * Helper to generate the HTML string for the agenda.
+ * Shared between print and base64 generation.
  */
-export const generateAgendaPDF = async (meeting: Meeting): Promise<PDFGenerationResult> => {
+const getAgendaHTML = (meeting: Meeting): string => {
     // Format date
     const meetingDate = new Date(meeting.date);
     const dateStr = format(meetingDate, 'EEEE d MMMM yyyy', { locale: fr });
@@ -36,23 +39,23 @@ export const generateAgendaPDF = async (meeting: Meeting): Promise<PDFGeneration
             <tr class="row ${rowClass}">
                 <td class="col-num">${itemNumber}</td>
                 <td class="cell col-title">
-                    <span class="title-text">${item.title}</span>
-                    ${(item.description || item.agendaNote) ? `<span class="desc-text">${item.description || item.agendaNote}</span>` : ''}
-                    <div style="margin-top: 4px;">
-                        <span class="chip" style="${objectiveStyle}">${item.objective || 'Information'}</span>
+                    <div class="title-container">
+                        <span class="title-text">${item.title}</span>
                     </div>
+                    ${(item.description || item.agendaNote) ? `<span class="desc-text">${item.description || item.agendaNote}</span>` : ''}
                 </td>
                 <td class="cell col-lead">
-                    ${item.presenter || 'Président/Coordonnateur'}
-                    <br>
-                    <span class="chip" style="background: #e0e0e0; color: #333;">${item.duration || 10} min</span>
+                    <div style="margin-bottom: 3px;">${item.presenter || 'Président'}</div>
+                    <div style="display: flex; gap: 6px; justify-content: flex-end; align-items: center; flex-wrap: wrap;">
+                         <span class="chip" style="${objectiveStyle}">${item.objective || 'Information'}</span>
+                         <span class="chip" style="background: #e0e0e0; color: #333;">${item.duration || 10} min</span>
+                    </div>
                 </td>
             </tr>
         `;
     }).join('');
 
-    // Full HTML template
-    const htmlContent = `
+    return `
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -175,7 +178,7 @@ export const generateAgendaPDF = async (meeting: Meeting): Promise<PDFGeneration
         }
 
         .col-lead {
-            width: 120px;
+            width: 140px; /* Slightly wider for the chips */
             font-size: 8.5pt;
             color: #666;
             text-align: right;
@@ -184,7 +187,6 @@ export const generateAgendaPDF = async (meeting: Meeting): Promise<PDFGeneration
         .title-text {
             font-weight: 600;
             font-size: 10pt; /* Smaller regular text */
-            display: block;
             margin-bottom: 1px;
             color: #222;
         }
@@ -201,14 +203,15 @@ export const generateAgendaPDF = async (meeting: Meeting): Promise<PDFGeneration
             display: inline-block;
             border-radius: 3px;
             padding: 1px 5px;
-            font-size: 7.5pt;
+            font-size: 7pt; /* Smaller chips */
             font-weight: 600;
+            white-space: nowrap;
         }
 
         /* SIGNATURE SECTION */
         .signature-section {
             margin-top: auto; /* Push to bottom */
-            padding-top: 30px;
+            padding-top: 20px;
             display: flex;
             justify-content: flex-end;
             page-break-inside: avoid;
@@ -304,6 +307,13 @@ export const generateAgendaPDF = async (meeting: Meeting): Promise<PDFGeneration
 </body>
 </html>
     `;
+};
+
+/**
+ * Generates a beautifully styled Agenda PDF (Legal Size One-Pager) using HTML template.
+ */
+export const generateAgendaPDF = async (meeting: Meeting): Promise<PDFGenerationResult> => {
+    const htmlContent = getAgendaHTML(meeting);
 
     // Open text window
     const printWindow = window.open('', '_blank', 'width=850,height=1100'); // Approx dimension ratio
@@ -320,4 +330,46 @@ export const generateAgendaPDF = async (meeting: Meeting): Promise<PDFGeneration
     printWindow.print();
 
     return { success: true };
+};
+
+/**
+ * Generates the Agenda PDF as a Base64 string for email attachment.
+ * Uses html2pdf.js to render the HTML canvas to PDF.
+ */
+export const generateAgendaPDFBase64 = async (meeting: Meeting): Promise<string> => {
+    const htmlContent = getAgendaHTML(meeting);
+
+    // Create a temporary container
+    const container = document.createElement('div');
+    container.innerHTML = htmlContent;
+    container.style.position = 'absolute';
+    container.style.left = '-9999px';
+    container.style.width = '816px'; // 8.5in at 96dpi
+    container.style.background = '#fff'; // Ensure white background
+    document.body.appendChild(container);
+
+    const opt = {
+        margin: 0,
+        filename: `Ordre_du_jour_${meeting.date}.pdf`,
+        image: { type: 'jpeg' as const, quality: 0.98 },
+        html2canvas: { scale: 2, useCORS: true },
+        jsPDF: { unit: 'in' as const, format: 'legal' as const, orientation: 'portrait' as const }
+    };
+
+    try {
+        // Generate PDF and get output as data URI string
+        const pdfBase64 = await html2pdf().from(container).set(opt).outputPdf('datauristring');
+        // Remove the prefix "data:application/pdf;base64," if present
+        if (typeof pdfBase64 === 'string' && pdfBase64.includes(',')) {
+            return pdfBase64.split(',')[1];
+        }
+        return pdfBase64;
+    } catch (error) {
+        console.error("Error generating PDF base64:", error);
+        throw error;
+    } finally {
+        if (document.body.contains(container)) {
+            document.body.removeChild(container);
+        }
+    }
 };

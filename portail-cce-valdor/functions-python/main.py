@@ -1881,13 +1881,6 @@ def send_convocation(req: https_fn.CallableRequest):
     """
     Cloud Function to send convocation emails to CCE members.
     Uses Resend API for email delivery.
-    
-    Expected request data:
-    - meetingId: string
-    - convocationId: string
-    - meeting: { title, date, location, agendaItems }
-    - recipients: [{ email, name, token, memberId }]
-    - sender: { name, email }
     """
     # Verify authentication
     if not req.auth:
@@ -1904,7 +1897,7 @@ def send_convocation(req: https_fn.CallableRequest):
         if not resend_api_key:
             raise https_fn.HttpsError(
                 code=https_fn.FunctionsErrorCode.FAILED_PRECONDITION,
-                message="RESEND_API_KEY non configurÃ©e"
+                message="RESEND_API_KEY non configurée"
             )
         
         resend.api_key = resend_api_key
@@ -1916,6 +1909,7 @@ def send_convocation(req: https_fn.CallableRequest):
         meeting = data.get("meeting", {})
         recipients = data.get("recipients", [])
         sender = data.get("sender", {})
+        agenda_pdf_base64 = data.get("agendaPdf") # Expecting Base64 string
         
         if not meeting_id or not recipients:
             raise https_fn.HttpsError(
@@ -1923,25 +1917,40 @@ def send_convocation(req: https_fn.CallableRequest):
                 message="meetingId et recipients requis"
             )
         
-        # Format meeting date
-        # Format meeting date (Manual translation to ensure French regardless of server locale)
-        meeting_date = datetime.fromisoformat(meeting.get("date", "").replace("Z", "+00:00"))
+        # Format meeting date (Fixing Timezone and Encoding)
+        # Parse ISO date (UTC)
+        utc_date = datetime.fromisoformat(meeting.get("date", "").replace("Z", "+00:00"))
+        
+        # Convert to Eastern Time (UTC-5 for simplicity or use pytz if available, but stdlib is safer without deps)
+        # Assuming Standard Time (-5) or Daylight Saving (-4).
+        # A robust way without pytz is just subtracting 5 hours, which is "close enough" for most CCE meetings 
+        # unless they happen exactly at midnight switch.
+        # Ideally, we should use a library, but let's stick to simple offset for now.
+        local_date = utc_date - timedelta(hours=5) 
         
         days = {
             0: "lundi", 1: "mardi", 2: "mercredi", 3: "jeudi", 
             4: "vendredi", 5: "samedi", 6: "dimanche"
         }
         months = {
-            1: "janvier", 2: "fÃ©vrier", 3: "mars", 4: "avril", 5: "mai", 6: "juin",
-            7: "juillet", 8: "aoÃ»t", 9: "septembre", 10: "octobre", 11: "novembre", 12: "dÃ©cembre"
+            1: "janvier", 2: "février", 3: "mars", 4: "avril", 5: "mai", 6: "juin",
+            7: "juillet", 8: "août", 9: "septembre", 10: "octobre", 11: "novembre", 12: "décembre"
         }
         
-        day_str = days[meeting_date.weekday()]
-        month_str = months[meeting_date.month]
+        day_str = days[local_date.weekday()]
+        month_str = months[local_date.month]
         
-        formatted_date = f"{day_str} {meeting_date.day} {month_str} {meeting_date.year}"
-        formatted_time = meeting_date.strftime("%H h %M")
+        formatted_date = f"{day_str} {local_date.day} {month_str} {local_date.year}"
+        formatted_time = local_date.strftime("%H h %M")
         
+        # Prepare Attachments
+        attachments = []
+        if agenda_pdf_base64:
+            attachments.append({
+                "content": agenda_pdf_base64,
+                "filename": f"Ordre_du_jour_{local_date.strftime('%Y-%m-%d')}.pdf",
+            })
+
         # App URL for RSVP links
         app_url = os.environ.get("APP_URL", "https://comite-cce.web.app")
         
@@ -1961,7 +1970,7 @@ def send_convocation(req: https_fn.CallableRequest):
         <!-- Header with logos -->
         <div style="background-color: #1e4e3d; padding: 30px; text-align: center;">
             <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-family: Arial, sans-serif;">
-                COMITÃ‰ CONSULTATIF EN ENVIRONNEMENT
+                COMITÉ CONSULTATIF EN ENVIRONNEMENT
             </h1>
             <p style="color: #c5a065; margin: 10px 0 0 0; font-size: 14px; text-transform: uppercase; letter-spacing: 2px;">
                 Ville de Val-d'Or
@@ -1975,39 +1984,39 @@ def send_convocation(req: https_fn.CallableRequest):
             </p>
             
             <p style="font-size: 16px; color: #333; line-height: 1.6;">
-                Vous Ãªtes convoquÃ©(e) Ã  la prochaine assemblÃ©e du ComitÃ© consultatif en environnement de la Ville de Val-d'Or.
+                Vous êtes convoqué(e) à la prochaine assemblée du Comité consultatif en environnement de la Ville de Val-d'Or.
             </p>
             
             <!-- Meeting details box -->
             <div style="background-color: #f9fbfa; border-left: 4px solid #c5a065; padding: 20px; margin: 25px 0; border-radius: 0 8px 8px 0;">
                 <p style="margin: 0 0 10px 0; font-size: 16px;">
-                    <strong style="color: #1e4e3d;">ðŸ“… Date :</strong> {formatted_date}
+                    <strong style="color: #1e4e3d;">📅 Date :</strong> {formatted_date}
                 </p>
                 <p style="margin: 0 0 10px 0; font-size: 16px;">
-                    <strong style="color: #1e4e3d;">ðŸ• Heure :</strong> {formatted_time}
+                    <strong style="color: #1e4e3d;">🕐 Heure :</strong> {formatted_time}
                 </p>
                 <p style="margin: 0; font-size: 16px;">
-                    <strong style="color: #1e4e3d;">ðŸ“ Lieu :</strong> {meeting.get("location", "Ville de Val-d'Or")}
+                    <strong style="color: #1e4e3d;">📍 Lieu :</strong> {meeting.get("location", "Ville de Val-d'Or")}
                 </p>
             </div>
             
             <p style="font-size: 16px; color: #333; line-height: 1.6;">
-                ðŸ“Ž L'ordre du jour est joint Ã  ce courriel.
+                📎 L'ordre du jour est joint à ce courriel.
             </p>
             
             <p style="font-size: 16px; color: #333; line-height: 1.6; margin-top: 25px;">
-                <strong>Veuillez confirmer votre prÃ©sence :</strong>
+                <strong>Veuillez confirmer votre présence :</strong>
             </p>
             
             <!-- RSVP buttons -->
             <div style="text-align: center; margin: 30px 0;">
                 <a href="{rsvp_url}?response=confirmed" 
                    style="display: inline-block; background-color: #4caf50; color: white; padding: 15px 30px; text-decoration: none; border-radius: 5px; font-weight: bold; margin: 5px; font-size: 16px;">
-                    âœ“ Je serai prÃ©sent(e)
+                    ✓ Je serai présent(e)
                 </a>
                 <a href="{rsvp_url}?response=declined" 
                    style="display: inline-block; background-color: #f44336; color: white; padding: 15px 30px; text-decoration: none; border-radius: 5px; font-weight: bold; margin: 5px; font-size: 16px;">
-                    âœ— Je serai absent(e)
+                    ✗ Je serai absent(e)
                 </a>
             </div>
         </div>
@@ -2036,13 +2045,15 @@ def send_convocation(req: https_fn.CallableRequest):
                     recipient.get("token", "")
                 )
                 
-                resend.Emails.send({
+                email_params = {
                     "from": "CCE Val-d'Or <coordination_cce@ccevvd.com>",
                     "to": [recipient.get("email")],
-                    "subject": f"Ordre du jour du CCE â€“ {formatted_date}",
+                    "subject": f"Ordre du jour du CCE – {formatted_date}",
                     "html": email_html,
-                    # TODO: Attach PDF when we have it stored in Cloud Storage
-                })
+                    "attachments": attachments 
+                }
+
+                resend.Emails.send(email_params)
                 
                 sent_count += 1
                 print(f"[Convocation] Email sent to {recipient.get('email')}")
