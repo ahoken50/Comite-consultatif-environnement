@@ -256,17 +256,19 @@ const AgendaBuilder: React.FC<AgendaBuilderProps> = ({ items, onItemsChange, mee
                             </Grid>
                             <Grid size={{ xs: 6 }}>
                                 <Autocomplete
+                                    multiple
                                     freeSolo
+                                    disableCloseOnSelect
                                     options={presenterOptions}
-                                    value={editingItem.presenter}
-                                    onChange={(_, value) => setEditingItem({ ...editingItem, presenter: value || '' })}
-                                    onInputChange={(_, value) => setEditingItem({ ...editingItem, presenter: value })}
+                                    value={editingItem.presenter ? editingItem.presenter.split(', ').filter(Boolean) : []}
+                                    onChange={(_, newValue) => setEditingItem({ ...editingItem, presenter: newValue.join(', ') })}
                                     renderInput={(params) => (
                                         <TextField
                                             {...params}
-                                            label="Responsable"
+                                            label="Responsable(s)"
                                             fullWidth
                                             placeholder="Sélectionner ou saisir un nom"
+                                            helperText="Appuyez sur Entrée pour valider un nouveau nom"
                                         />
                                     )}
                                 />
