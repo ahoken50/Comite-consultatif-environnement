@@ -485,6 +485,11 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
                             setItemDecisions(newDecisions);
                             setHasUnsavedChanges(true);
 
+                            // AUTO-SAVE: Save immediately to prevent race condition with Firestore listener
+                            // The file upload triggers a document update, which might cause the listener to
+                            // overwrite local state with old data if we don't save these changes now.
+                            onUpdate({ agendaItems: updatedItems });
+
                             console.log('[DEBUG] Updated local agenda items with parsed data');
                         }
                     }
