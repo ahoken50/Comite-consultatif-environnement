@@ -218,7 +218,8 @@ export const parseAgendaDOCX = async (file: File): Promise<ParsedMeetingData> =>
     const resolutionRegex = /^R[ÉE]SOLUTION[\s\u00A0]*(\d{2})?[-–—.]?(\d+)?/i; // Made numbers optional for detection purposes
     const commentaireRegex = /^COMMENTAIRE[\s\u00A0]*(\d{2})?[-–—.]?([A-Z])?/i;
     const formalLanguageRegex = /^(CONSID[ÉE]RANT|ATTENDU|RECONNAISSANT|IL EST R[ÉE]SOLU)/i;
-    const titleBlacklistRegex = /^(PROCES-VERBAL|PROCÈS-VERBAL|ORDRE DU JOUR|COMITÉ CONSULTATIF)/i;
+    // Updated Blacklist: Now includes resolution keywords and table headers found in logs
+    const titleBlacklistRegex = /^(PROCES-VERBAL|PROCÈS-VERBAL|ORDRE DU JOUR|COMITÉ CONSULTATIF|R[ÉE]SOLUTION|COMMENTAIRE|NOM|MANDAT|SIÈGE|DÉBUT DU|FIN DU)/i;
 
     // Get all block elements
     const elements = doc.body.querySelectorAll('p, h1, h2, h3, h4, h5, h6, li');
@@ -254,7 +255,8 @@ export const parseAgendaDOCX = async (file: File): Promise<ParsedMeetingData> =>
 
         // --- 1. DETECT SECTION TITLES (H1) ---
         if (tagName === 'H1') {
-            if (!titleBlacklistRegex.test(text)) {
+            // Extra safety: Check against resolution regex too, in case formatting is weird
+            if (!titleBlacklistRegex.test(text) && !resolutionRegex.test(text) && !commentaireRegex.test(text)) {
                 startNewSection(text);
                 continue;
             }
@@ -566,6 +568,7 @@ export const parseAgendaDOCX = async (file: File): Promise<ParsedMeetingData> =>
 
 /**
  * Match parsed PV items to existing agenda items by title similarity
+ * Uses Levenshtein distance for robust "fuzzy" matching
  */
 export const matchPVToAgenda = (
     pvItems: AgendaItem[],
@@ -585,17 +588,48 @@ export const matchPVToAgenda = (
     const normalizeTitle = (title: string): string => {
         return title
             .toLowerCase()
-            .replace(/^\d+[\.\)\-]?\s*/, '') // Remove leading numbers like "1. " or "2) "
+            .replace(/^\d+[\.\)\-]?\s*/, '') // Remove leading numbers
             .replace(/[;:,.]/g, '')
             .replace(/\s+/g, ' ')
             .trim();
     };
 
-    // Check if two titles are synonyms
-    const areSynonyms = (title1: string, title2: string): boolean => {
-        const norm1 = normalizeTitle(title1);
-        const norm2 = normalizeTitle(title2);
+    // Calculate Levenshtein distance between two strings
+    const levenshteinDistance = (a: string, b: string): number => {
+        if (a.length === 0) return b.length;
+        if (b.length === 0) return a.length;
 
+        const matrix = [];
+
+        for (let i = 0; i <= b.length; i++) {
+            matrix[i] = [i];
+        }
+
+        for (let j = 0; j <= a.length; j++) {
+            matrix[0][j] = j;
+        }
+
+        for (let i = 1; i <= b.length; i++) {
+            for (let j = 1; j <= a.length; j++) {
+                if (b.charAt(i - 1) === a.charAt(j - 1)) {
+                    matrix[i][j] = matrix[i - 1][j - 1];
+                } else {
+                    matrix[i][j] = Math.min(
+                        matrix[i - 1][j - 1] + 1, // substitution
+                        Math.min(
+                            matrix[i][j - 1] + 1, // insertion
+                            matrix[i - 1][j] + 1 // deletion
+                        )
+                    );
+                }
+            }
+        }
+
+        return matrix[b.length][a.length];
+    };
+
+    // Check if two titles are synonyms
+    const areSynonyms = (norm1: string, norm2: string): boolean => {
         for (const group of synonymGroups) {
             const match1 = group.some(syn => norm1.includes(syn));
             const match2 = group.some(syn => norm2.includes(syn));
@@ -606,53 +640,45 @@ export const matchPVToAgenda = (
         return false;
     };
 
-    // Helper to check if titles are similar enough
-    const titlesMatch = (pvTitle: string, agendaTitle: string): boolean => {
-        const normalPV = normalizeTitle(pvTitle);
-        const normalAgenda = normalizeTitle(agendaTitle);
 
-        // Check for synonyms first
-        if (areSynonyms(pvTitle, agendaTitle)) {
-            return true;
-        }
-
-        // Safety check: Don't match on short generic strings
-        if (normalPV.length < 5 || normalAgenda.length < 5) return false;
-
-        // Check if one contains the other
-        if (normalPV.includes(normalAgenda) || normalAgenda.includes(normalPV)) {
-            return true;
-        }
-
-        // Check if they share significant words
-        const pvWords = normalPV.split(' ').filter(w => w.length > 3);
-        const agendaWords = normalAgenda.split(' ').filter(w => w.length > 3);
-
-        if (pvWords.length === 0 || agendaWords.length === 0) {
-            return false;
-        }
-
-        const sharedWords = pvWords.filter(w => agendaWords.includes(w));
-        const matchRatio = sharedWords.length / Math.min(pvWords.length, agendaWords.length);
-
-        return matchRatio >= 0.6; // Increased threshold
-    };
 
     // Track which agenda items have been matched to avoid duplicates
     const matchedAgendaIds = new Set<string>();
 
     // Try to match each PV item to an agenda item
     for (const pvItem of pvItems) {
+        let bestMatch: AgendaItem | null = null;
+        let bestScore = 0;
+
         for (const agendaItem of agendaItems) {
             // Skip if this agenda item is already matched
             if (matchedAgendaIds.has(agendaItem.id)) continue;
 
-            if (titlesMatch(pvItem.title, agendaItem.title)) {
-                matchMap.set(agendaItem.id, pvItem);
-                matchedAgendaIds.add(agendaItem.id);
-                console.log('[matchPVToAgenda] Matched:', pvItem.title, '->', agendaItem.title);
-                break;
+            const normPV = normalizeTitle(pvItem.title);
+            const normAgenda = normalizeTitle(agendaItem.title);
+
+            // Exact match or Inclusion
+            if (normPV.includes(normAgenda) || normAgenda.includes(normPV) || areSynonyms(normPV, normAgenda)) {
+                bestMatch = agendaItem;
+                bestScore = 1.0;
+                break; // Found a high-confidence match
             }
+
+            // Levenshtein Score
+            const distance = levenshteinDistance(normPV, normAgenda);
+            const maxLength = Math.max(normPV.length, normAgenda.length);
+            const similarity = 1 - (distance / maxLength);
+
+            if (similarity > 0.6 && similarity > bestScore) {
+                bestMatch = agendaItem;
+                bestScore = similarity;
+            }
+        }
+
+        if (bestMatch) {
+            matchMap.set(bestMatch.id, pvItem);
+            matchedAgendaIds.add(bestMatch.id);
+            console.log('[matchPVToAgenda] Matched:', pvItem.title, '->', bestMatch.title, `(Score: ${bestScore})`);
         }
     }
 
