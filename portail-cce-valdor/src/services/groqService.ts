@@ -14,7 +14,7 @@ const GROQ_API_KEY = import.meta.env.VITE_GROQ_API_KEY;
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
 
 // Best model for structured extraction
-const GROQ_MODEL = 'llama-3.3-70b-versatile'; // Llama 3.3 70B - excellent for structured JSON extraction
+const GROQ_MODEL = 'qwen/qwen3-32b'; // Qwen3 32B - good reasoning and structured output
 
 /**
  * Response structure from AI extraction
@@ -115,21 +115,27 @@ ${constraintSection}
 - Inclure TOUS les paragraphes, même s'ils sont longs
 - Préserver chaque intervention de chaque personne
 
-### 3. TITRES DES RÉSOLUTIONS ET COMMENTAIRES (CRITIQUE)
-- CHAQUE résolution et commentaire a un TITRE SPÉCIFIQUE
-- Le titre est généralement EN GRAS, situé JUSTE AU-DESSUS du numéro "RÉSOLUTION XX-XX" ou "COMMENTAIRE XX-X"
-- OBLIGATOIRE : Extrait ce titre et place-le dans le champ "titre" de chaque résolution/commentaire
-- Le titre décrit LE SUJET TRAITÉ (pas le numéro ODJ)
+### 3. STRUCTURE DES TITRES (CRITIQUE)
 
-🔍 COMMENT TROUVER LE TITRE :
-- Regarde 1-3 lignes AU-DESSUS de "RÉSOLUTION XX-XX"
-- C'est souvent une phrase courte descriptive (ex: "Interdiction bouteilles d'eau", "Élection du président")
-- Si pas de titre explicite, utilise le sujet principal du dispositif (IL EST RÉSOLU de...)
+📌 DISTINCTION IMPORTANTE :
+- **TITRE ODJ** = Le titre du point de l'ordre du jour (ex: "Mot de bienvenue", "Renouvellement des mandats")
+  → C'est le titre PRINCIPAL fourni dans l'ODJ ci-dessus
+  → Place-le dans "titre" au niveau du point ("points_traites.titre")
 
-📋 EXEMPLES DE TITRES :
-- "Recommandation visant à interdire l'achat de bouteilles d'eau" → titre de RÉSOLUTION 03-07
-- "Élection d'une présidente et d'un vice-président" → titre de RÉSOLUTION 03-05
-- "Discussion sur les ruches de Goldex" → titre de COMMENTAIRE 03-A
+- **SOUS-TITRE** = Le titre spécifique d'une résolution ou commentaire (en gras AU-DESSUS de RÉSOLUTION XX-XX)
+  → C'est le sujet SPÉCIFIQUE de cette résolution (ex: "Élection du président", "Bouteilles d'eau")
+  → Place-le dans le champ "titre" DE LA RÉSOLUTION ("resolutions[].titre")
+
+🔍 COMMENT TROUVER LE SOUS-TITRE :
+- Regarde 1-3 lignes AU-DESSUS de "RÉSOLUTION XX-XX" ou "COMMENTAIRE XX-X"
+- C'est généralement en **gras** dans le document
+- Si pas de sous-titre explicite, laisse le champ "titre" vide pour la résolution
+
+📋 EXEMPLE CONCRET :
+Point ODJ #3 : "Renouvellement des mandats" (titre ODJ)
+  ├─ RÉSOLUTION 03-04 → sous-titre: "Reconduction des membres sortants"
+  ├─ COMMENTAIRE 03-A → sous-titre: "Discussion sur les absences"
+  └─ RÉSOLUTION 03-05 → sous-titre: "Élection d'une présidente"
 
 ### 4. UN POINT ODJ = PLUSIEURS RÉSOLUTIONS/COMMENTAIRES POSSIBLES
 - IMPORTANT: Un seul point de l'ordre du jour peut contenir PLUSIEURS résolutions ET commentaires.
@@ -271,8 +277,10 @@ export const extractPVWithGroq = async (
                         content: prompt
                     }
                 ],
-                temperature: 0.1, // Low temperature for deterministic output
+                temperature: 0.1, // Qwen recommended temperature
                 max_tokens: 32000, // Large to capture full verbatim content
+                top_p: 0.95, // Qwen recommended top_p
+                reasoning_effort: 'default', // Qwen3 reasoning mode
                 response_format: { type: 'json_object' } // Force JSON output
             })
         });
