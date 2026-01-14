@@ -54,6 +54,19 @@ export const parseMinutesDOCX = async (file: File): Promise<ParsedPVData> => {
 // ============================================================================
 // SHARED TEXT PARSING LOGIC (The Core "PV" Logic)
 // ============================================================================
+// Intermediate structure
+interface ParsedSection {
+    title: string;
+    content: string[];
+    entries: {
+        type: 'resolution' | 'comment';
+        number: string;
+        content: string[];
+        proposer?: string;
+        seconder?: string;
+    }[];
+}
+
 const parseRawTextToPV = (text: string): ParsedPVData => {
     // 1. Text Cleanup / Normalization
     // Fix weird PDF spacing in numbers (e.g. "0 7 - 3 1" -> "07-31")
@@ -65,19 +78,6 @@ const parseRawTextToPV = (text: string): ParsedPVData => {
     });
 
     const lines = cleanText.split('\n').map(l => l.trim()).filter(l => l);
-
-    // Intermediate structure
-    interface ParsedSection {
-        title: string;
-        content: string[];
-        entries: {
-            type: 'resolution' | 'comment';
-            number: string;
-            content: string[];
-            proposer?: string;
-            seconder?: string;
-        }[];
-    }
 
     const sections: ParsedSection[] = [];
     let currentSection: ParsedSection | null = null;
@@ -205,7 +205,7 @@ const parseRawTextToPV = (text: string): ParsedPVData => {
 
         // --- 5. CONTENT ---
         if (currentSection) {
-            const activeSection = currentSection;
+            const activeSection = currentSection as ParsedSection;
             // Filter noise (page numbers)
             if (/^page \d+/i.test(line)) continue;
 
