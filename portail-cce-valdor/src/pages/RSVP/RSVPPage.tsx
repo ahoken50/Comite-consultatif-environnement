@@ -121,25 +121,34 @@ const RSVPPage: React.FC = () => {
         );
     }
 
-    // Safe date formatting helper
-    const formatDateSafe = (dateStr: string | undefined, formatStr: string) => {
-        if (!dateStr) return '';
-
-        // Debug: Log the actual date string received
-        console.log('📅 RSVP Date received:', dateStr, typeof dateStr);
+    // Safe date formatting helper - handles both string and Timestamp objects
+    const formatDateSafe = (dateValue: any, formatStr: string) => {
+        if (!dateValue) return '';
 
         try {
-            // Try parsing as ISO
-            let date = parseISO(dateStr);
+            let date: Date;
 
-            // If invalid, try standard Date constructor (fallback for legacy/other formats)
-            if (!isValid(date)) {
-                console.log('📅 parseISO failed, trying new Date()');
-                date = new Date(dateStr);
+            // Handle Firestore Timestamp object (has seconds property)
+            if (dateValue && typeof dateValue === 'object' && 'seconds' in dateValue) {
+                date = new Date(dateValue.seconds * 1000);
+            }
+            // Handle Date object
+            else if (dateValue instanceof Date) {
+                date = dateValue;
+            }
+            // Handle string
+            else if (typeof dateValue === 'string') {
+                date = parseISO(dateValue);
+                if (!isValid(date)) {
+                    date = new Date(dateValue);
+                }
+            }
+            // Unknown type - try to convert
+            else {
+                return 'Date invalide';
             }
 
             if (!isValid(date)) {
-                console.log('📅 Both parsing methods failed');
                 return 'Date invalide';
             }
 
