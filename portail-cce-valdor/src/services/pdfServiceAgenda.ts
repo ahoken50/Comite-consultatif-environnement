@@ -347,20 +347,39 @@ export const generateAgendaPDF = async (meeting: Meeting): Promise<PDFGeneration
 export const generateAgendaPDFBase64 = async (meeting: Meeting): Promise<string> => {
     const htmlContent = getAgendaHTML(meeting);
 
-    // Create a temporary container
+    // Create a temporary container - MUST BE VISIBLE for html2canvas to work
     const container = document.createElement('div');
     container.innerHTML = htmlContent;
-
-    // Position absolute but off-viewport is safer than fixed/z-index for some renderers
-    // Resetting transforms/transitions is also good practice
-    container.style.position = 'absolute';
+    container.style.position = 'fixed';
     container.style.top = '0';
-    container.style.left = '-2000px'; // Off-screen left
+    container.style.left = '0';
     container.style.width = '816px';
-    container.style.height = 'auto';
-    container.style.zIndex = '1000'; // Positive z-index to ensure it's "top" layer
+    container.style.minHeight = '1000px';
+    container.style.zIndex = '99999';
     container.style.background = '#fff';
+    container.style.overflow = 'visible';
+    container.style.visibility = 'visible';
+    container.style.opacity = '1';
+
+    // White overlay to hide the visible element from user view
+    const overlay = document.createElement('div');
+    overlay.style.position = 'fixed';
+    overlay.style.top = '0';
+    overlay.style.left = '0';
+    overlay.style.right = '0';
+    overlay.style.bottom = '0';
+    overlay.style.background = '#fff';
+    overlay.style.zIndex = '99998';
+
+    document.body.appendChild(overlay);
     document.body.appendChild(container);
+
+    const sheetElement = container.querySelector('.sheet') as HTMLElement;
+    const targetElement = sheetElement || container;
+
+    // Force layout calculation
+    const computedHeight = targetElement.offsetHeight;
+    console.log('📏 PDF Element dimensions:', targetElement.offsetWidth, 'x', computedHeight);
 
     const opt = {
         margin: 0,
@@ -369,24 +388,17 @@ export const generateAgendaPDFBase64 = async (meeting: Meeting): Promise<string>
         html2canvas: {
             scale: 2,
             useCORS: true,
-            logging: true, // Enable logging to debug if needed
-            windowWidth: 816,
-            x: 0,
-            y: 0,
-            scrollX: 0,
-            scrollY: 0
+            logging: true,
+            width: 816,
+            height: computedHeight > 0 ? computedHeight : 1000,
         },
         jsPDF: { unit: 'in' as const, format: 'legal' as const, orientation: 'portrait' as const }
     };
 
     try {
-        // Increase delay to 1s to be absolutely sure of rendering (fonts, images)
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        await new Promise(resolve => setTimeout(resolve, 300));
+        const pdfBase64 = await html2pdf().from(targetElement).set(opt).outputPdf('datauristring');
 
-        // Generate PDF and get output as data URI string
-        const pdfBase64 = await html2pdf().from(container).set(opt).outputPdf('datauristring');
-
-        // Remove the prefix "data:application/pdf;base64," if present
         if (typeof pdfBase64 === 'string' && pdfBase64.includes(',')) {
             return pdfBase64.split(',')[1];
         }
@@ -397,6 +409,9 @@ export const generateAgendaPDFBase64 = async (meeting: Meeting): Promise<string>
     } finally {
         if (document.body.contains(container)) {
             document.body.removeChild(container);
+        }
+        if (document.body.contains(overlay)) {
+            document.body.removeChild(overlay);
         }
     }
 };

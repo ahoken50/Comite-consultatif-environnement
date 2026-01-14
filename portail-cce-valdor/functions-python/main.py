@@ -2539,6 +2539,9 @@ def send_approval_link(req: https_fn.CallableRequest) -> Any:
     Generates a secure approval token and sends it via email.
     """
     try:
+        import resend
+        resend.api_key = os.environ.get("RESEND_API_KEY", "")
+        
         data = req.data
         meeting_id = data.get("meetingId")
         member_id = data.get("memberId")
@@ -2567,8 +2570,8 @@ def send_approval_link(req: https_fn.CallableRequest) -> Any:
             "used": False
         })
 
-        # Construct Link
-        base_url = "https://portail-cce-valdor.web.app"
+        # Construct Link - using correct deployed URL
+        base_url = "https://comite-cce.web.app"
         approval_link = f"{base_url}/approval/{token}"
 
         # Send Email via Resend
