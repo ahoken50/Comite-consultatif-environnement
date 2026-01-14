@@ -383,9 +383,9 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
                     let parsedData;
 
                     if (isDocx) {
-                        // Use the robust HTML/Table parser for DOCX
-                        const { parseAgendaDOCX } = await import('../../services/docxParserService');
-                        parsedData = await parseAgendaDOCX(file);
+                        // Use AI-powered parser for DOCX (with Groq) - falls back to regex if not configured
+                        const { parseAgendaDOCXWithAI } = await import('../../services/docxParserService');
+                        parsedData = await parseAgendaDOCXWithAI(file, localAgendaItems);
                     } else if (isPdf) {
                         // Use the OCR/Text parser for PDF
                         const { parseMinutesPDF } = await import('../../services/pvParserService');
