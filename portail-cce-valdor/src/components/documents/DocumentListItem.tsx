@@ -106,7 +106,7 @@ const DocumentListItem: React.FC<DocumentListItemProps> = React.memo(({ doc, onP
                 </ListItemAvatar>
                 <ListItemText
                     primary={
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, cursor: 'pointer' }} onClick={() => onPreview(doc)}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, cursor: 'pointer', flexWrap: 'wrap', pr: 12 }} onClick={() => onPreview(doc)}>
                             <Typography variant="body1" sx={{ textDecoration: 'underline', color: 'primary.main' }}>
                                 {doc.name}
                             </Typography>

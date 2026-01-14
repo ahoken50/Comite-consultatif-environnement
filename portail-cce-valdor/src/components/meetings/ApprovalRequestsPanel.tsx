@@ -12,7 +12,9 @@ import {
     ListItemIcon,
     Divider,
     Collapse,
-    IconButton
+    IconButton,
+    Button,
+    Tooltip
 } from '@mui/material';
 import {
     CheckCircle,
@@ -21,9 +23,12 @@ import {
     ExpandMore,
     ExpandLess,
     Person,
-    Comment
+    Comment,
+    Done,
+    Delete,
+    Refresh
 } from '@mui/icons-material';
-import { collection, query, orderBy, onSnapshot } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, doc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '../../services/firebase';
 
 interface ApprovalToken {
@@ -48,6 +53,57 @@ const ApprovalRequestsPanel: React.FC<ApprovalRequestsPanelProps> = ({ meetingId
     const [approvals, setApprovals] = useState<ApprovalToken[]>([]);
     const [loading, setLoading] = useState(true);
     const [expanded, setExpanded] = useState(true);
+    const [actionLoading, setActionLoading] = useState<string | null>(null);
+
+    // Mark change request as handled (set status back to pending for re-approval)
+    const handleResendRequest = async (approvalId: string) => {
+        try {
+            setActionLoading(approvalId);
+            const approvalRef = doc(db, 'meetings', meetingId, 'approval_tokens', approvalId);
+            await updateDoc(approvalRef, {
+                status: 'pending',
+                comments: '',
+                updatedAt: new Date().toISOString()
+            });
+        } catch (err) {
+            console.error('Error resetting approval:', err);
+            alert('Erreur lors de la reinitialisation');
+        } finally {
+            setActionLoading(null);
+        }
+    };
+
+    // Mark as fully approved by coordinator (override)
+    const handleAcceptChanges = async (approvalId: string) => {
+        try {
+            setActionLoading(approvalId);
+            const approvalRef = doc(db, 'meetings', meetingId, 'approval_tokens', approvalId);
+            await updateDoc(approvalRef, {
+                status: 'approved',
+                approvedAt: new Date().toISOString()
+            });
+        } catch (err) {
+            console.error('Error accepting changes:', err);
+            alert('Erreur lors de l\'acceptation');
+        } finally {
+            setActionLoading(null);
+        }
+    };
+
+    // Delete the approval request
+    const handleDismiss = async (approvalId: string) => {
+        if (!window.confirm('Supprimer cette demande d\'approbation ?')) return;
+        try {
+            setActionLoading(approvalId);
+            const approvalRef = doc(db, 'meetings', meetingId, 'approval_tokens', approvalId);
+            await deleteDoc(approvalRef);
+        } catch (err) {
+            console.error('Error deleting approval:', err);
+            alert('Erreur lors de la suppression');
+        } finally {
+            setActionLoading(null);
+        }
+    };
 
     useEffect(() => {
         if (!meetingId) return;
@@ -234,6 +290,47 @@ const ApprovalRequestsPanel: React.FC<ApprovalRequestsPanelProps> = ({ meetingId
                                                     </Typography>
                                                 </Box>
                                             )}
+                                            {/* Action buttons for coordinator */}
+                                            <Box sx={{ mt: 1.5, display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                                                {approval.status === 'changes_requested' && (
+                                                    <>
+                                                        <Tooltip title="Marquer comme traite et renvoyer le lien d'approbation">
+                                                            <Button
+                                                                size="small"
+                                                                variant="outlined"
+                                                                color="primary"
+                                                                startIcon={<Refresh />}
+                                                                onClick={() => handleResendRequest(approval.id)}
+                                                                disabled={actionLoading === approval.id}
+                                                            >
+                                                                Reinitialiser
+                                                            </Button>
+                                                        </Tooltip>
+                                                        <Tooltip title="Approuver malgre les commentaires">
+                                                            <Button
+                                                                size="small"
+                                                                variant="contained"
+                                                                color="success"
+                                                                startIcon={<Done />}
+                                                                onClick={() => handleAcceptChanges(approval.id)}
+                                                                disabled={actionLoading === approval.id}
+                                                            >
+                                                                Accepter
+                                                            </Button>
+                                                        </Tooltip>
+                                                    </>
+                                                )}
+                                                <Tooltip title="Supprimer cette demande">
+                                                    <IconButton
+                                                        size="small"
+                                                        color="error"
+                                                        onClick={() => handleDismiss(approval.id)}
+                                                        disabled={actionLoading === approval.id}
+                                                    >
+                                                        <Delete fontSize="small" />
+                                                    </IconButton>
+                                                </Tooltip>
+                                            </Box>
                                         </Box>
                                     }
                                 />

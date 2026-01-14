@@ -209,7 +209,7 @@ const ResolutionsPage: React.FC = () => {
                                             sx={{ fontWeight: 'bold' }}
                                         />
                                     </TableCell>
-                                    <TableCell>
+                                    <TableCell sx={{ maxWidth: 180, minWidth: 120 }}>
                                         <Typography variant="body2" fontWeight={500}>
                                             {format(new Date(row.date), 'd MMMM yyyy', { locale: fr })}
                                         </Typography>
@@ -217,6 +217,15 @@ const ResolutionsPage: React.FC = () => {
                                             component="button"
                                             variant="caption"
                                             onClick={() => navigate(`/meetings/${row.meetingId}`)}
+                                            sx={{
+                                                display: 'block',
+                                                textAlign: 'left',
+                                                maxWidth: '100%',
+                                                overflow: 'hidden',
+                                                textOverflow: 'ellipsis',
+                                                whiteSpace: 'nowrap'
+                                            }}
+                                            title={row.meetingTitle}
                                         >
                                             {row.meetingTitle}
                                         </MuiLink>
