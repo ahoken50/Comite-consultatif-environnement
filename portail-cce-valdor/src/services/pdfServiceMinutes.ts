@@ -59,9 +59,13 @@ const formatDecisionHTML = (decision: string): string => {
                 html += '</ul>';
                 inResolvedList = false;
             }
-            const match = trimmed.match(/^(CONSID[ÉE]RANT)\s*(.*)/i);
+            // Split detection: CONSIDÉRANT (label) + text
+            const match = trimmed.match(/^(CONSID[ÉE]RANT)\s+(.*)/i);
             if (match) {
-                html += `<span class="considerant"><strong>${match[1].toUpperCase()}</strong> ${match[2] || ''}</span>`;
+                html += `<div class="considerant-row"><div class="considerant-label">${match[1].toUpperCase()}</div><div class="considerant-text">${match[2]}</div></div>`;
+            } else {
+                // Fallback
+                html += `<div class="considerant-row"><div class="considerant-label">${trimmed.toUpperCase()}</div><div class="considerant-text"></div></div>`;
             }
         }
         // ATTENDU / RECONNAISSANT
@@ -70,9 +74,11 @@ const formatDecisionHTML = (decision: string): string => {
                 html += '</ul>';
                 inResolvedList = false;
             }
-            const match = trimmed.match(/^((?:ATTENDU|RECONNAISSANT)(?:\s+QUE)?)\s*(.*)/i);
+            const match = trimmed.match(/^((?:ATTENDU|RECONNAISSANT))\s+(.*)/i);
             if (match) {
-                html += `<span class="considerant"><strong>${match[1].toUpperCase()}</strong> ${match[2] || ''}</span>`;
+                html += `<div class="considerant-row"><div class="considerant-label">${match[1].toUpperCase()}</div><div class="considerant-text">${match[2]}</div></div>`;
+            } else {
+                html += `<div class="considerant-row"><div class="considerant-label">${trimmed.toUpperCase()}</div><div class="considerant-text"></div></div>`;
             }
         }
         // IL EST RÉSOLU
@@ -83,10 +89,12 @@ const formatDecisionHTML = (decision: string): string => {
             }
             const match = trimmed.match(/^(IL EST R[ÉE]SOLU(?:\s+QUE)?\s*:?)\s*(.*)/i);
             if (match) {
-                html += `<span class="il-est-resolu">${match[1]}</span>`;
+                html += `<div class="il-est-resolu">${match[1]}</div>`;
                 if (match[2]) {
-                    html += `<span class="resolution-text">${match[2]}</span>`;
+                    html += `<div class="resolution-text">${match[2]}</div>`;
                 }
+            } else {
+                html += `<div class="il-est-resolu">${trimmed}</div>`;
             }
         }
         // Bullet points
@@ -103,7 +111,7 @@ const formatDecisionHTML = (decision: string): string => {
                 html += '</ul>';
                 inResolvedList = false;
             }
-            html += `<span class="resolution-text">${trimmed}</span>`;
+            html += `<div class="resolution-text">${trimmed}</div>`;
         }
     }
 
@@ -465,18 +473,23 @@ const generateHTMLDocument = (meeting: Meeting, _globalNotes?: string): string =
             color: #444;
         }
 
-        .considerant {
+        .considerant-row {
+            display: flex;
             margin-bottom: 8px;
-            display: block;
-            text-indent: -20px;
-            padding-left: 20px;
+            align-items: baseline;
         }
         
-        .considerant strong {
+        .considerant-label {
             font-family: 'Montserrat', sans-serif;
             font-size: 12px;
+            font-weight: 700;
             color: var(--primary-color);
-            margin-right: 5px;
+            min-width: 110px; /* Largeur fixe pour l'alignement */
+            flex-shrink: 0;
+        }
+
+        .considerant-text {
+            flex-grow: 1;
         }
 
         .il-est-resolu {
