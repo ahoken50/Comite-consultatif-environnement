@@ -43,6 +43,7 @@ export interface AIExtractedPV {
         // Un seul point ODJ peut contenir PLUSIEURS résolutions et commentaires
         resolutions: Array<{
             code: string;
+            titre?: string; // Title extracted from bold text above resolution
             type: 'resolution' | 'comment';
             considerants?: string[];
             dispositif?: string;
@@ -73,15 +74,27 @@ const buildPVExtractionPrompt = (
     rawText: string,
     agendaItems: AgendaItem[]
 ): string => {
-    // Format agenda items as reference (or note if none)
+    // Format agenda items as reference with explicit IDs
     const hasODJ = agendaItems.length > 0;
+    const odjCount = agendaItems.length;
+
+    // Build ODJ section with explicit IDs for better AI matching
     const odjSection = hasODJ
-        ? `## ORDRE DU JOUR (Structure de référence)
-${agendaItems.map((item, i) => `${i + 1}. ${item.title}`).join('\n')}`
+        ? `## ORDRE DU JOUR OFFICIEL (${odjCount} points - TU DOIS EN RETOURNER EXACTEMENT ${odjCount})
+${agendaItems.map((item, i) => `POINT ${i + 1} (ordre_du_jour_id: "${i + 1}"): ${item.title}`).join('\n')}`
         : '## NOTE: Aucun ordre du jour fourni. Identifie CHAQUE point discuté dans le PV comme un point séparé.';
 
-    return `Tu es un extracteur de données VERBATIM pour procès-verbaux municipaux. Ton travail est CRUCIAL.
+    // Constraint section for exact point matching
+    const constraintSection = hasODJ ? `
+## ⚠️ CONTRAINTE CRITIQUE - NOMBRE DE POINTS
+- Tu DOIS retourner EXACTEMENT ${odjCount} objets dans "points_traites"
+- Chaque objet correspond à UN point de l'ODJ ci-dessus
+- NE CRÉE JAMAIS de nouveaux points - REGROUPE tout sous les ${odjCount} points existants
+- Si du contenu ne correspond pas clairement à un point, place-le dans "Varia" (ou le dernier point)
+` : '';
 
+    return `Tu es un extracteur de données VERBATIM pour procès-verbaux municipaux. Ton travail est CRUCIAL.
+${constraintSection}
 ## RÈGLES ABSOLUES (NE JAMAIS DÉROGER)
 
 ### 1. EXTRACTION DES PRÉSENCES
@@ -102,11 +115,21 @@ ${agendaItems.map((item, i) => `${i + 1}. ${item.title}`).join('\n')}`
 - Inclure TOUS les paragraphes, même s'ils sont longs
 - Préserver chaque intervention de chaque personne
 
-### 3. TITRES DES RÉSOLUTIONS ET COMMENTAIRES
-- CHAQUE résolution et commentaire a un TITRE qui apparaît EN GRAS juste AVANT le numéro (ex: RÉSOLUTION 03-07).
-- Ce titre doit être extrait et placé dans le champ "titre" de la résolution/commentaire.
-- Exemple: "Recommandation visant à interdire l'achat de bouteilles d'eau" est le titre de RÉSOLUTION 03-07.
-- Le titre se trouve dans le texte AVANT "RÉSOLUTION XX-XX" ou "COMMENTAIRE XX-X".
+### 3. TITRES DES RÉSOLUTIONS ET COMMENTAIRES (CRITIQUE)
+- CHAQUE résolution et commentaire a un TITRE SPÉCIFIQUE
+- Le titre est généralement EN GRAS, situé JUSTE AU-DESSUS du numéro "RÉSOLUTION XX-XX" ou "COMMENTAIRE XX-X"
+- OBLIGATOIRE : Extrait ce titre et place-le dans le champ "titre" de chaque résolution/commentaire
+- Le titre décrit LE SUJET TRAITÉ (pas le numéro ODJ)
+
+🔍 COMMENT TROUVER LE TITRE :
+- Regarde 1-3 lignes AU-DESSUS de "RÉSOLUTION XX-XX"
+- C'est souvent une phrase courte descriptive (ex: "Interdiction bouteilles d'eau", "Élection du président")
+- Si pas de titre explicite, utilise le sujet principal du dispositif (IL EST RÉSOLU de...)
+
+📋 EXEMPLES DE TITRES :
+- "Recommandation visant à interdire l'achat de bouteilles d'eau" → titre de RÉSOLUTION 03-07
+- "Élection d'une présidente et d'un vice-président" → titre de RÉSOLUTION 03-05
+- "Discussion sur les ruches de Goldex" → titre de COMMENTAIRE 03-A
 
 ### 4. UN POINT ODJ = PLUSIEURS RÉSOLUTIONS/COMMENTAIRES POSSIBLES
 - IMPORTANT: Un seul point de l'ordre du jour peut contenir PLUSIEURS résolutions ET commentaires.
@@ -284,6 +307,59 @@ export const extractPVWithGroq = async (
 };
 
 /**
+ * Simple string similarity score (0-1) based on common words
+ */
+const calculateSimilarity = (str1: string, str2: string): number => {
+    const normalize = (s: string) => s.toLowerCase().replace(/[^a-zàâäéèêëïîôùûüç0-9\s]/g, '').split(/\s+/);
+    const words1 = new Set(normalize(str1));
+    const words2 = new Set(normalize(str2));
+    const intersection = [...words1].filter(w => words2.has(w) && w.length > 2);
+    const union = new Set([...words1, ...words2]);
+    return intersection.length / union.size;
+};
+
+/**
+ * Find the best matching agenda item for a point
+ */
+const findBestMatch = (
+    point: { ordre_du_jour_id: string; titre: string },
+    items: AgendaItem[]
+): { item: AgendaItem | null; index: number; matchType: string } => {
+    // Priority 1: Match by ID
+    const idIndex = parseInt(point.ordre_du_jour_id) - 1;
+    if (idIndex >= 0 && idIndex < items.length) {
+        return { item: items[idIndex], index: idIndex, matchType: 'id' };
+    }
+
+    // Priority 2: Fuzzy match by title
+    let bestScore = 0;
+    let bestIndex = -1;
+    for (let i = 0; i < items.length; i++) {
+        const score = calculateSimilarity(point.titre, items[i].title);
+        if (score > bestScore && score > 0.3) { // Minimum 30% similarity
+            bestScore = score;
+            bestIndex = i;
+        }
+    }
+    if (bestIndex >= 0) {
+        return { item: items[bestIndex], index: bestIndex, matchType: `fuzzy(${(bestScore * 100).toFixed(0)}%)` };
+    }
+
+    // Priority 3: Fallback to "Varia" or last item
+    const variaIndex = items.findIndex(item =>
+        item.title.toLowerCase().includes('varia') ||
+        item.title.toLowerCase().includes('divers')
+    );
+    if (variaIndex >= 0) {
+        return { item: items[variaIndex], index: variaIndex, matchType: 'varia-fallback' };
+    }
+
+    // Ultimate fallback: last item
+    const lastIndex = items.length - 1;
+    return { item: items[lastIndex], index: lastIndex, matchType: 'last-fallback' };
+};
+
+/**
  * Map AI-extracted PV to AgendaItems format
  * Merges extracted data with existing agenda items
  */
@@ -295,14 +371,23 @@ export const mapAIExtractedToAgendaItems = (
 
     const updatedItems = [...existingItems];
 
+    // Track which items have been updated to allow merging
+    const itemEntriesMap = new Map<number, MinuteEntry[]>();
+
     for (const point of aiData.points_traites) {
-        // Find matching agenda item by ID or title similarity
-        const itemIndex = parseInt(point.ordre_du_jour_id) - 1;
-        const matchedItem = updatedItems[itemIndex];
+        // Find matching agenda item using intelligent matching
+        const { item: matchedItem, index: matchedIndex, matchType } = findBestMatch(
+            { ordre_du_jour_id: point.ordre_du_jour_id, titre: point.titre },
+            updatedItems
+        );
 
         if (!matchedItem) {
-            console.warn(`[groqService] No agenda item found for point ${point.ordre_du_jour_id}`);
+            console.warn(`[groqService] No agenda item found for point ${point.ordre_du_jour_id} - "${point.titre}"`);
             continue;
+        }
+
+        if (matchType !== 'id') {
+            console.log(`[groqService] Point ${point.ordre_du_jour_id} matched to "${matchedItem.title}" via ${matchType}`);
         }
 
         // Build MinuteEntries from resolutions and comments
@@ -312,6 +397,11 @@ export const mapAIExtractedToAgendaItems = (
         if (point.resolutions) {
             for (const res of point.resolutions) {
                 let content = '';
+
+                // Add title if present (extracted from bold text above resolution)
+                if (res.titre) {
+                    content += `**${res.titre}**\n\n`;
+                }
 
                 if (res.considerants && res.considerants.length > 0) {
                     content += res.considerants.join('\n\n') + '\n\n';
@@ -327,7 +417,8 @@ export const mapAIExtractedToAgendaItems = (
                 }
 
                 if (res.contenu) {
-                    content = res.contenu; // For comments stored as resolutions
+                    // For comments stored as resolutions - still prepend title
+                    content = res.titre ? `**${res.titre}**\n\n${res.contenu}` : res.contenu;
                 }
 
                 minuteEntries.push({
@@ -353,16 +444,20 @@ export const mapAIExtractedToAgendaItems = (
             }
         }
 
-        // Update the agenda item
-        updatedItems[itemIndex] = {
+        // Update the agenda item - merge entries if already updated
+        const existingEntries = itemEntriesMap.get(matchedIndex) || [];
+        const mergedEntries = [...existingEntries, ...minuteEntries];
+        itemEntriesMap.set(matchedIndex, mergedEntries);
+
+        updatedItems[matchedIndex] = {
             ...matchedItem,
-            minuteEntries: minuteEntries,
+            minuteEntries: mergedEntries,
             decision: point.discussion_verbatim || matchedItem.decision,
-            minuteType: minuteEntries[0]?.type,
-            minuteNumber: minuteEntries[0]?.number
+            minuteType: mergedEntries[0]?.type,
+            minuteNumber: mergedEntries[0]?.number
         };
 
-        console.log(`[groqService] Updated item ${itemIndex + 1}: "${matchedItem.title}" with ${minuteEntries.length} entries`);
+        console.log(`[groqService] Updated item ${matchedIndex + 1}: "${matchedItem.title}" with ${mergedEntries.length} entries`);
     }
 
     return updatedItems;
