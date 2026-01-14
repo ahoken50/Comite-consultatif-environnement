@@ -381,12 +381,14 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
                     console.log(`[DEBUG] Parsing ${isDocx ? 'DOCX' : 'PDF'} file as Minutes (PV)...`);
 
                     let parsedData;
-                    // Dynamically import the specialized PV parser (distinct from ODJ parser)
-                    const { parseMinutesDOCX, parseMinutesPDF } = await import('../../services/pvParserService');
 
                     if (isDocx) {
-                        parsedData = await parseMinutesDOCX(file);
+                        // Use the robust HTML/Table parser for DOCX
+                        const { parseAgendaDOCX } = await import('../../services/docxParserService');
+                        parsedData = await parseAgendaDOCX(file);
                     } else if (isPdf) {
+                        // Use the OCR/Text parser for PDF
+                        const { parseMinutesPDF } = await import('../../services/pvParserService');
                         // PDF parsing with progress callback for OCR
                         parsedData = await parseMinutesPDF(file, (message: string) => {
                             console.log(`[OCR Progress] ${message}`);
@@ -490,13 +492,23 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
                     // Also update attendees if parsed from DOCX/PDF
                     if (parsedData?.attendees && parsedData.attendees.length > 0) {
                         console.log('[DEBUG] Found', parsedData.attendees.length, 'attendees in parsed file');
-                        // Update meeting with parsed attendees, converting strings to Attendee objects
-                        const newAttendees = parsedData.attendees.map(name => ({
-                            id: `att-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-                            name: name,
-                            role: 'Participant', // Default role
-                            isPresent: true
-                        }));
+                        // Update meeting with parsed attendees
+                        // Handle both string[] (from PDF/PV parser) and Attendee[] (from DOCX parser)
+                        const newAttendees = parsedData.attendees.map((item: any) => {
+                            if (typeof item === 'string') {
+                                return {
+                                    id: `att-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                                    name: item,
+                                    role: 'Participant', // Default role
+                                    isPresent: true
+                                };
+                            }
+                            // If it's already an object, return it (ensure ID exists)
+                            return {
+                                ...item,
+                                id: item.id || `att-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+                            };
+                        });
 
                         onUpdate({
                             attendees: newAttendees
