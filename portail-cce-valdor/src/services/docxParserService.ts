@@ -203,23 +203,52 @@ export const parseAgendaDOCX = async (file: File): Promise<ParsedMeetingData> =>
     // ============================================================
     // 3. Parse HTML structure for sections and resolutions
     // ============================================================
-    // Strategy: 
-    // - Bold text (<strong>) that's a standalone paragraph = section title
-    // - <h2> with RÉSOLUTION = resolution marker
-    // - <strong> with COMMENTAIRE = comment marker
 
-    const parsedItems: ParsedPVItem[] = [];
-    let currentSectionTitle = '';
-    let lastPotentialTitle = ''; // Track last non-formal paragraph as potential title
-    let currentItem: ParsedPVItem | null = null;
-    let currentContent: string[] = [];
+    // Intermediate structure to capture sections and their inner entries
+    interface ParsedSection {
+        title: string;
+        content: string[]; // General content (preamble or info item text)
+        entries: {
+            type: 'resolution' | 'comment';
+            number: string;
+            content: string[];
+            proposer?: string;
+            seconder?: string;
+        }[];
+    }
 
-    const resolutionRegex = /^R[ÉE]SOLUTION\s+(\d{2})-(\d+)/i;
-    const commentaireRegex = /^COMMENTAIRE\s+(\d{2})-([A-Za-z])/i;
+    const sections: ParsedSection[] = [];
+    let currentSection: ParsedSection | null = null;
+    let currentEntry: ParsedSection['entries'][0] | null = null;
+
+    // Regex - Relaxed for better matching (handle NBSP, dashes, etc.)
+    const resolutionRegex = /^R[ÉE]SOLUTION[\s\u00A0]*(\d{2})[-–—.](\d+)/i;
+    const commentaireRegex = /^COMMENTAIRE[\s\u00A0]*(\d{2})[-–—.]?([A-Z])/i;
     const formalLanguageRegex = /^(CONSID[ÉE]RANT|ATTENDU|RECONNAISSANT|IL EST R[ÉE]SOLU)/i;
+    const titleBlacklistRegex = /^(PROCES-VERBAL|PROCÈS-VERBAL|ORDRE DU JOUR|COMITÉ CONSULTATIF)/i;
 
     // Get all block elements
     const elements = doc.body.querySelectorAll('p, h1, h2, h3, h4, h5, h6, li');
+
+    // Helper to close current section
+    const closeCurrentSection = () => {
+        if (currentSection) {
+            sections.push(currentSection);
+            currentSection = null;
+            currentEntry = null;
+        }
+    };
+
+    // Helper to start a new section
+    const startNewSection = (title: string) => {
+        closeCurrentSection();
+        currentSection = {
+            title: title || 'Sans titre',
+            content: [],
+            entries: []
+        };
+        console.log('[docxParser] Started new section:', title);
+    };
 
     for (const element of elements) {
         const text = element.textContent?.trim() || '';
@@ -227,216 +256,146 @@ export const parseAgendaDOCX = async (file: File): Promise<ParsedMeetingData> =>
 
         const tagName = element.tagName;
 
-        // ============================================================
-        // PRIORITY 1: Detect H1 as section titles (Titre 1 in Word)
-        // ============================================================
+        // --- 1. DETECT SECTION TITLES (H1) ---
         if (tagName === 'H1') {
-            // Save previous item if exists
-            if (currentItem) {
-                currentItem.decision = currentContent.join('\n').trim();
-                parsedItems.push(currentItem);
-                currentItem = null;
-                currentContent = [];
-            }
-
-            currentSectionTitle = text;
-            lastPotentialTitle = text;
-            console.log('[docxParser] Found section title (H1):', currentSectionTitle);
-            continue;
-        }
-
-        // Check for RÉSOLUTION - can be in h4, h2, bold text, or regular paragraph
-        const resMatch = text.match(resolutionRegex);
-        if (resMatch) {
-            // Save previous item
-            if (currentItem) {
-                currentItem.decision = currentContent.join('\n').trim();
-                parsedItems.push(currentItem);
-            }
-
-            // Use currentSectionTitle if set, otherwise fall back to lastPotentialTitle
-            const titleToUse = currentSectionTitle || lastPotentialTitle;
-
-            currentItem = {
-                sectionTitle: titleToUse,
-                minuteType: 'resolution',
-                minuteNumber: `${resMatch[1]}-${resMatch[2]}`,
-                decision: ''
-            };
-            currentContent = [];
-            console.log('[docxParser] Found resolution:', currentItem.minuteNumber, 'for section:', titleToUse);
-            continue;
-        }
-
-        // Check for COMMENTAIRE - can be in bold text or regular paragraph
-        const comMatch = text.match(commentaireRegex);
-        if (comMatch) {
-            // Save previous item
-            if (currentItem) {
-                currentItem.decision = currentContent.join('\n').trim();
-                parsedItems.push(currentItem);
-            }
-
-            // Use currentSectionTitle if set, otherwise fall back to lastPotentialTitle
-            const titleToUse = currentSectionTitle || lastPotentialTitle;
-
-            currentItem = {
-                sectionTitle: titleToUse,
-                minuteType: 'comment',
-                minuteNumber: `${comMatch[1]}-${comMatch[2].toUpperCase()}`,
-                decision: ''
-            };
-            currentContent = [];
-            console.log('[docxParser] Found comment:', currentItem.minuteNumber, 'for section:', titleToUse);
-            continue;
-        }
-
-        // Special case for "Levée de l'assemblée" - treat as explicit item/delimiter
-        const isLeveeRegex = /lev[ée]e\s+de\s+l['’]?\s*assembl[ée]e/i;
-        const isLevee = isLeveeRegex.test(text);
-        if (isLevee) {
-            // Close previous item if exists
-            if (currentItem) {
-                currentItem.decision = currentContent.join('\n').trim();
-                parsedItems.push(currentItem);
-            }
-
-            currentItem = {
-                sectionTitle: text.trim(), // Use the text itself as title
-                minuteType: 'resolution', // Often implies a resolution
-                minuteNumber: '',
-                decision: ''
-            };
-            currentContent = [];
-            console.log('[docxParser] Found special section (Levée):', text);
-            continue;
-        }
-
-        // Check for bold text - could be section title
-        const strongElement = element.querySelector('strong');
-        const isBoldParagraph = strongElement && strongElement.textContent?.trim() === text;
-
-        // Common patterns
-        const numberedItemPattern = /^\d+(\.|-)?\s+/;
-
-        if (isBoldParagraph) {
-            // If not formal language and not too short, it could be a section title
-            if (!formalLanguageRegex.test(text) && text.length > 15 && text.length < 250) {
-                // Don't treat RÉSOLUTION/COMMENTAIRE as section titles
-                if (!resolutionRegex.test(text) && !commentaireRegex.test(text)) {
-                    // EXCLUDE METADATA HEADERS
-                    const isMetadata =
-                        /COMIT[ÉE]\s+CONSULTATIF|ASSEMBL[ÉE]E\s+ORDINAIRE|ASSEMBL[ÉE]E\s+SP[ÉE]CIALE/i.test(text) ||
-                        /^(Lundi|Mardi|Mercredi|Jeudi|Vendredi|Samedi|Dimanche)\s+\d+/i.test(text);
-
-                    if (isMetadata) {
-                        console.log('[docxParser] Skipping metadata header:', text);
-                        continue;
-                    }
-
-                    // Only treat as section title if NOT a numbered item
-                    if (!numberedItemPattern.test(text)) {
-                        // Save previous item if exists
-                        if (currentItem) {
-                            currentItem.decision = currentContent.join('\n').trim();
-                            parsedItems.push(currentItem);
-                            currentItem = null;
-                            currentContent = [];
-                        }
-
-                        currentSectionTitle = text;
-                        lastPotentialTitle = text; // Also update potential title
-                        console.log('[docxParser] Found section title (bold):', currentSectionTitle);
-                        continue;
-                    }
-                    // Numbered items fall through to content collection below
-                }
-            }
-        }
-
-        // Track potential titles: non-formal, non-marker text that could be a section header
-        if (!currentItem && !formalLanguageRegex.test(text) &&
-            !resolutionRegex.test(text) && !commentaireRegex.test(text) &&
-            !numberedItemPattern.test(text) &&
-            text.length > 10 && text.length < 300 && !text.startsWith('Sur une proposition')) {
-            lastPotentialTitle = text;
-        }
-
-        // If we're in an item, collect content
-        if (currentItem) {
-            // Skip signature lines
-            if (/^_{3,}|^PATRICIA BOUTIN|^MICHA[EË]L ROSS|^Président|^Secrétaire/i.test(text)) {
+            if (!titleBlacklistRegex.test(text)) {
+                startNewSection(text);
                 continue;
             }
-            currentContent.push(text);
+        }
+
+        // --- 2. DETECT VISUAL TITLES (Bold P) ---
+        // If not H1, check if it's a bold paragraph that looks like a title
+        const strongElement = element.querySelector('strong');
+        const isBoldParagraph = strongElement && strongElement.textContent?.trim() === text;
+        const isSuspiciouslyShort = text.length < 100;
+        const isNotMetadata = !titleBlacklistRegex.test(text) && !/^\d{4}/.test(text); // Don't match years alone
+
+        if (tagName === 'P' && isBoldParagraph && isSuspiciouslyShort && isNotMetadata) {
+            // Heuristics: Not a resolution, not formal language, not a list item
+            if (!resolutionRegex.test(text) && !commentaireRegex.test(text) &&
+                !formalLanguageRegex.test(text) && !/^\d+[\.\)]/.test(text)) {
+
+                // Treat as section title
+                startNewSection(text);
+                continue;
+            }
+        }
+
+        // --- 3. DETECT RESOLUTIONS / COMMENTS ---
+        const resMatch = text.match(resolutionRegex);
+        const comMatch = text.match(commentaireRegex);
+
+        // Handling Resolution
+        if (resMatch) {
+            if (!currentSection) {
+                startNewSection('Point sans titre'); // Fallback if resolution appears before any title
+            }
+
+            // Create new entry
+            currentEntry = {
+                type: 'resolution',
+                number: `${resMatch[1]}-${resMatch[2]}`,
+                content: []
+            };
+            currentSection!.entries.push(currentEntry);
+            console.log('[docxParser] Found resolution:', currentEntry.number);
+            continue;
+        }
+
+        // Handling Comment
+        if (comMatch) {
+            if (!currentSection) {
+                startNewSection('Point sans titre');
+            }
+
+            currentEntry = {
+                type: 'comment',
+                number: `${comMatch[1]}-${comMatch[2].toUpperCase()}`,
+                content: []
+            };
+            currentSection!.entries.push(currentEntry);
+            console.log('[docxParser] Found comment:', currentEntry.number);
+            continue;
+        }
+
+        // --- 4. DETECT LEVÉE (Special Case) ---
+        if (/lev[ée]e\s+de\s+l['’]?\s*assembl[ée]e/i.test(text)) {
+            closeCurrentSection();
+            currentSection = {
+                title: text,
+                content: ['Levée de l\'assemblée'], // Dummy content
+                entries: []
+            };
+            continue;
+        }
+
+        // --- 5. CAPTURE CONTENT ---
+        // If we are here, it's regular content
+        if (currentSection) {
+            // Skip metadata/signatures
+            if (/^(M\.|Mme|Président|Secrétaire|_)/.test(text) && text.length < 50) continue;
+
+            // If we have an active entry (Resolution/Comment), add to it
+            if (currentEntry) {
+                currentEntry.content.push(text);
+            } else {
+                // Otherwise add to generic section content
+                currentSection.content.push(text);
+            }
         }
     }
 
-    // Don't forget the last item
-    if (currentItem) {
-        currentItem.decision = currentContent.join('\n').trim();
-        parsedItems.push(currentItem);
-    }
-
-    console.log('[docxParser] Total parsed items:', parsedItems.length);
+    // Close last section
+    closeCurrentSection();
 
     // ============================================================
-    // 4. Convert ParsedPVItems to AgendaItems (grouped by section)
+    // 4. Convert Parsed Sections to AgendaItems
     // ============================================================
-    // Group parsed items by section title to support multiple resolutions/comments per item
-    const groupedBySectionTitle = new Map<string, ParsedPVItem[]>();
+    parsedResult.agendaItems = sections.map((section, index) => {
 
-    for (const item of parsedItems) {
-        const title = item.sectionTitle || 'Sans titre';
-        if (!groupedBySectionTitle.has(title)) {
-            groupedBySectionTitle.set(title, []);
-        }
-        groupedBySectionTitle.get(title)!.push(item);
-    }
-
-    console.log('[docxParser] Grouped into', groupedBySectionTitle.size, 'sections');
-
-    // Convert grouped items to AgendaItems with minuteEntries arrays
-    let order = 0;
-    parsedResult.agendaItems = [];
-
-    for (const [sectionTitle, items] of groupedBySectionTitle) {
-        // Create minuteEntries from all items in this section
-        const minuteEntries: MinuteEntry[] = items.map(item => ({
-            type: item.minuteType,
-            number: item.minuteNumber,
-            content: item.decision,
-            proposer: item.proposer,
-            seconder: item.seconder
+        // Map entries to MinuteEntry
+        const minuteEntries: MinuteEntry[] = section.entries.map(e => ({
+            type: e.type,
+            number: e.number,
+            content: e.content.join('\n').trim(),
+            proposer: '', // TODO: Could extract from content if needed
+            seconder: ''
         }));
 
-        // Determine objective based on whether there are resolutions
-        const hasResolution = items.some(i => i.minuteType === 'resolution');
+        // Determine if decision or info
+        const hasResolution = section.entries.some(e => e.type === 'resolution');
 
-        // Keep legacy fields for backward compatibility (use first item's data)
-        const firstItem = items[0];
+        // If no entries, the section content IS the "decision" or description
+        // For compatibility with UI that expects 'decision' to show text
+        const mainDecisionText = hasResolution
+            ? minuteEntries.find(e => e.type === 'resolution')?.content || ''
+            : section.content.join('\n').trim();
 
-        const agendaItem: AgendaItem = {
-            id: `imported-pv-${Date.now()}-${order}`,
-            order: order++,
-            title: sectionTitle,
+        // Legacy support: Populate top-level fields from first entry if available
+        const primaryEntry = section.entries[0];
+
+        return {
+            id: `imported-pv-${Date.now()}-${index}`,
+            order: index + 1,
+            title: section.title,
             duration: 15,
             presenter: 'Coordonnateur',
             objective: hasResolution ? 'Décision' : 'Information',
-            description: '',
-            // NEW: Array of all resolutions/comments for this section
-            minuteEntries: minuteEntries,
-            // Legacy fields (kept for backward compatibility)
-            minuteType: firstItem.minuteType,
-            minuteNumber: firstItem.minuteNumber,
-            decision: firstItem.decision,
-            proposer: firstItem.proposer || '',
-            seconder: firstItem.seconder || ''
-        };
+            description: '', // Could put preamble here
 
-        parsedResult.agendaItems.push(agendaItem);
-        console.log('[docxParser] Created agenda item:', sectionTitle, 'with', minuteEntries.length, 'entries');
-    }
+            minuteEntries: minuteEntries,
+
+            // Legacy/Top-level fields
+            decision: mainDecisionText,
+            minuteType: primaryEntry?.type,
+            minuteNumber: primaryEntry?.number,
+            proposer: '',
+            seconder: ''
+        } as AgendaItem;
+    });
+
+    console.log('[docxParser] Created', parsedResult.agendaItems.length, 'agenda items from sections');
 
     // ============================================================
     // 5. Fallbacks (if no items found)

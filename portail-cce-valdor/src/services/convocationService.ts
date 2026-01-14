@@ -383,18 +383,30 @@ export const updateRSVP = async (
     response: 'confirmed' | 'declined'
 ): Promise<{ success: boolean; error?: string }> => {
     try {
-        const convocation = await getLatestConvocation(meetingId);
-        if (!convocation || !convocation.id) {
-            return { success: false, error: 'Convocation non trouvée' };
+        // Find convocation containing this token
+        // Use a broad search across all convocations for this meeting
+        const convocationsRef = collection(db, 'meetings', meetingId, 'convocations');
+        const snapshot = await getDocs(convocationsRef);
+
+        let targetConvocation: Convocation | null = null;
+        let recipientIndex = -1;
+
+        for (const doc of snapshot.docs) {
+            const data = doc.data() as Convocation;
+            const idx = data.recipients.findIndex(r => r.token === token);
+            if (idx !== -1) {
+                targetConvocation = { ...data, id: doc.id };
+                recipientIndex = idx;
+                break;
+            }
         }
 
-        const recipientIndex = convocation.recipients.findIndex(r => r.token === token);
-        if (recipientIndex === -1) {
-            return { success: false, error: 'Token invalide' };
+        if (!targetConvocation || recipientIndex === -1) {
+            return { success: false, error: 'Token invalide ou expiré' };
         }
 
         // Update the recipient's response
-        const updatedRecipients = [...convocation.recipients];
+        const updatedRecipients = [...targetConvocation.recipients];
         updatedRecipients[recipientIndex] = {
             ...updatedRecipients[recipientIndex],
             status: response,
@@ -402,7 +414,7 @@ export const updateRSVP = async (
         };
 
         await updateDoc(
-            doc(db, 'meetings', meetingId, 'convocations', convocation.id),
+            doc(db, 'meetings', meetingId, 'convocations', targetConvocation.id!),
             { recipients: updatedRecipients }
         );
 
@@ -437,15 +449,23 @@ export const getRSVPDetails = async (
         }
         const meeting = meetingDoc.data() as Meeting;
 
-        // Get convocation
-        const convocation = await getLatestConvocation(meetingId);
-        if (!convocation) {
-            return { success: false, error: 'Convocation non trouvée' };
+        // Find convocation containing this token
+        const convocationsRef = collection(db, 'meetings', meetingId, 'convocations');
+        const snapshot = await getDocs(convocationsRef);
+
+        let targetRecipient: ConvocationRecipient | null = null;
+
+        for (const doc of snapshot.docs) {
+            const data = doc.data() as Convocation;
+            const found = data.recipients.find(r => r.token === token);
+            if (found) {
+                targetRecipient = found;
+                break;
+            }
         }
 
-        const recipient = convocation.recipients.find(r => r.token === token);
-        if (!recipient) {
-            return { success: false, error: 'Token invalide' };
+        if (!targetRecipient) {
+            return { success: false, error: 'Invitation invalide' };
         }
 
         return {
@@ -455,8 +475,8 @@ export const getRSVPDetails = async (
                 date: meeting.date,
                 location: meeting.location || 'Ville de Val-d\'Or'
             },
-            recipientName: recipient.name,
-            currentStatus: recipient.status
+            recipientName: targetRecipient.name,
+            currentStatus: targetRecipient.status
         };
     } catch (error) {
         console.error('Error getting RSVP details:', error);

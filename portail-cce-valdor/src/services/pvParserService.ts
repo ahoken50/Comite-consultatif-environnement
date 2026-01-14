@@ -64,20 +64,21 @@ const parseRawTextToPV = (text: string): ParsedPVData => {
     const resolutionRegex = /R[ÉE]SOLUTION\s+(\d{2}-\d+)/i; // "RÉSOLUTION 23-100"
     const proposerRegex = /(?:Propos[ée] par|Sur la proposition de)\s*[:\s](.*)/i;
     const seconderRegex = /(?:Appuy[ée] par|Et l['’]appui de)\s*[:\s](.*)/i;
-    // const voteRegex = /(?:Adopt[ée] [àa] l['’]unanimit[ée]|Vote\s*:\s*(.*))/i;
 
     let currentMinuteEntry: MinuteEntry | null = null;
+    let recentLines: string[] = []; // Track recent lines to use as implicit titles
 
     for (const line of lines) {
-        // 1. Detect New Agenda Item (e.g., "4.1 Adoption...")
-        // Ignore simple numbers or dates
+        // 1. Detect New Agenda Item (Numbered)
         const itemMatch = line.match(itemStartRegex);
+        // Ignore simple dates or page numbers
         const isDate = /^\d{1,2}\s+[a-z]+\s+\d{4}/i.test(line);
+        const isPageNum = /^\d+$/.test(line);
 
-        if (itemMatch && !isDate && itemMatch[2].length > 5) {
+        // Explicit Numbered Item
+        if (itemMatch && !isDate && !isPageNum && itemMatch[2].length > 5) {
             // Push previous item
             if (currentItem && currentItem.title) {
-                // Determine implicit decision if present
                 if (currentMinuteEntry) {
                     if (!currentItem.minuteEntries) currentItem.minuteEntries = [];
                     currentItem.minuteEntries.push(currentMinuteEntry);
@@ -96,13 +97,13 @@ const parseRawTextToPV = (text: string): ParsedPVData => {
                 duration: 10,
                 presenter: ''
             };
+            recentLines = [];
             continue;
         }
 
         // 1.5 Special Case: Levée de l'assemblée (Unnumbered)
         const isLevee = /lev[ée]e\s+de\s+l['’]?\s*assembl[ée]e/i.test(line);
         if (isLevee) {
-            // Push previous item
             if (currentItem && currentItem.title) {
                 if (currentMinuteEntry) {
                     if (!currentItem.minuteEntries) currentItem.minuteEntries = [];
@@ -112,7 +113,6 @@ const parseRawTextToPV = (text: string): ParsedPVData => {
                 agendaItems.push(currentItem as AgendaItem);
             }
 
-            // Start new item for Levée
             currentItem = {
                 id: `pv-import-${Date.now()}-${agendaItems.length}`,
                 order: agendaItems.length + 1,
@@ -122,12 +122,30 @@ const parseRawTextToPV = (text: string): ParsedPVData => {
                 duration: 5,
                 presenter: ''
             };
+            recentLines = [];
             continue;
         }
 
         // 2. Detect Resolution
         const resMatch = line.match(resolutionRegex);
-        if (resMatch && currentItem) {
+        if (resMatch) {
+            // CRITICAL FIX: If we found a resolution but have no currentItem (failed to detect title),
+            // OR if the current item is very old, try to creating a new one from context.
+            if (!currentItem) {
+                // Try to use the last significant line as a title
+                const fallbackTitle = recentLines.length > 0
+                    ? recentLines[recentLines.length - 1]
+                    : 'Point sans titre';
+
+                currentItem = {
+                    id: `pv-import-${Date.now()}-${agendaItems.length}`,
+                    order: agendaItems.length + 1,
+                    title: fallbackTitle,
+                    minuteEntries: [],
+                    decision: '',
+                };
+            }
+
             // If we had a previous entry pending, push it
             if (currentMinuteEntry) {
                 if (!currentItem.minuteEntries) currentItem.minuteEntries = [];
@@ -143,23 +161,38 @@ const parseRawTextToPV = (text: string): ParsedPVData => {
             continue;
         }
 
-        // 3. Detect Proposer/Seconder (Metadata for the current resolution)
+        // 3. Detect Proposer/Seconder
         const propMatch = line.match(proposerRegex);
         const secMatch = line.match(seconderRegex);
 
         if (propMatch && currentItem) {
-            // Often stored on the item itself in legacy mode, or could be part of resolution content
-            currentItem.proposer = propMatch[1].trim();
+            // Applies to the *current resolution* if exists, or the item
+            if (currentMinuteEntry) {
+                currentMinuteEntry.proposer = propMatch[1].trim();
+            } else {
+                currentItem.proposer = propMatch[1].trim();
+            }
         }
         if (secMatch && currentItem) {
-            currentItem.seconder = secMatch[1].trim();
+            if (currentMinuteEntry) {
+                currentMinuteEntry.seconder = secMatch[1].trim();
+            } else {
+                currentItem.seconder = secMatch[1].trim();
+            }
         }
 
         // 4. Capture Content for Resolution
         if (currentMinuteEntry) {
-            // Stop capturing if we hit metadata keywords
+            // Stop capturing if we hit metadat keywords
             if (!propMatch && !secMatch && !line.match(/R[ÉE]SOLU/)) {
                 currentMinuteEntry.content += (currentMinuteEntry.content ? '\n' : '') + line;
+            }
+        } else {
+            // Keep track of lines that might be titles for the NEXT item
+            // Only keep if it looks like a title (short-ish)
+            if (line.length < 150 && !isDate && !isPageNum) {
+                recentLines.push(line);
+                if (recentLines.length > 3) recentLines.shift(); // Keep last 3
             }
         }
     }
