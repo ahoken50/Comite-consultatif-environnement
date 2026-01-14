@@ -55,156 +55,203 @@ export const parseMinutesDOCX = async (file: File): Promise<ParsedPVData> => {
 // SHARED TEXT PARSING LOGIC (The Core "PV" Logic)
 // ============================================================================
 const parseRawTextToPV = (text: string): ParsedPVData => {
-    const lines = text.split('\n').map(l => l.trim()).filter(l => l);
-    const agendaItems: AgendaItem[] = [];
-    let currentItem: Partial<AgendaItem> | null = null;
+    // 1. Text Cleanup / Normalization
+    // Fix weird PDF spacing in numbers (e.g. "0 7 - 3 1" -> "07-31")
+    let cleanText = text.replace(/R[ÉE]SOLUTION\s+((?:\d\s*)+)-((?:\s*\d)+)/gi, (match, p1, p2) => {
+        return `RÉSOLUTION ${p1.replace(/\s/g, '')}-${p2.replace(/\s/g, '')}`;
+    });
+    cleanText = cleanText.replace(/COMMENTAIRE\s+((?:\d\s*)+)-((?:\s*[A-Z])+)/gi, (match, p1, p2) => {
+        return `COMMENTAIRE ${p1.replace(/\s/g, '')}-${p2.replace(/\s/g, '')}`;
+    });
 
-    // Regex Definitions specific to PV
-    const itemStartRegex = /^(\d+(?:\.\d+)*)\.?\s+(.*)/; // "4.1 Titre"
-    const resolutionRegex = /R[ÉE]SOLUTION\s+(\d{2}-\d+)/i; // "RÉSOLUTION 23-100"
+    const lines = cleanText.split('\n').map(l => l.trim()).filter(l => l);
+
+    // Intermediate structure
+    interface ParsedSection {
+        title: string;
+        content: string[];
+        entries: {
+            type: 'resolution' | 'comment';
+            number: string;
+            content: string[];
+            proposer?: string;
+            seconder?: string;
+        }[];
+    }
+
+    const sections: ParsedSection[] = [];
+    let currentSection: ParsedSection | null = null;
+    let currentEntry: ParsedSection['entries'][0] | null = null;
+    let recentLines: string[] = []; // To capture titles that appeared before we realized (e.g. Resolution detected)
+
+    // Regex Definitions
+    const resolutionRegex = /^R[ÉE]SOLUTION\s*[\d\s]*(\d{2})[-–—.](\d+)/i;
+    // Allow flexible spacing after Commentaire
+    const commentaireRegex = /^COMMENTAIRE\s*[\d\s]*(\d{2})[-–—.]?([A-Z])/i;
+
     const proposerRegex = /(?:Propos[ée] par|Sur la proposition de)\s*[:\s](.*)/i;
     const seconderRegex = /(?:Appuy[ée] par|Et l['’]appui de)\s*[:\s](.*)/i;
 
-    let currentMinuteEntry: MinuteEntry | null = null;
-    let recentLines: string[] = []; // Track recent lines to use as implicit titles
+    // Heuristics for Title Detection in Plain Text
+    const isTitleCandidate = (line: string): boolean => {
+        // Must be reasonably short
+        if (line.length > 200) return false;
+
+        // Should not start with metadata keywords
+        if (/^(ÉTAIENT|ABSENT|PRÉSENT|PROCÈS|M\.|Mme|RÉSOLUTION|COMMENTAIRE)/i.test(line)) return false;
+
+        // Strong indicators
+        if (/^(Adoption|Retour|Suivi|Présentation|Varia|Mot de bienvenue|Levée)/i.test(line)) return true;
+
+        // Capitalized start but not a sentence ending with dot
+        if (/^[A-Z]/.test(line)) {
+            if (line.endsWith('.')) return false;
+            return true;
+        }
+
+        return false;
+    };
+
+    const closeCurrentSection = () => {
+        if (currentSection) {
+            sections.push(currentSection);
+            currentSection = null;
+            currentEntry = null;
+        }
+    };
+
+    const startNewSection = (title: string) => {
+        closeCurrentSection();
+        currentSection = {
+            title: title,
+            content: [],
+            entries: []
+        };
+    };
 
     for (const line of lines) {
-        // 1. Detect New Agenda Item (Numbered)
-        const itemMatch = line.match(itemStartRegex);
-        // Ignore simple dates or page numbers
-        const isDate = /^\d{1,2}\s+[a-z]+\s+\d{4}/i.test(line);
-        const isPageNum = /^\d+$/.test(line);
+        // --- 1. DETECT RESOLUTION / COMMENT ---
+        const resMatch = line.match(resolutionRegex);
+        const comMatch = line.match(commentaireRegex);
 
-        // Explicit Numbered Item
-        if (itemMatch && !isDate && !isPageNum && itemMatch[2].length > 5) {
-            // Push previous item
-            if (currentItem && currentItem.title) {
-                if (currentMinuteEntry) {
-                    if (!currentItem.minuteEntries) currentItem.minuteEntries = [];
-                    currentItem.minuteEntries.push(currentMinuteEntry);
-                    currentMinuteEntry = null;
-                }
-                agendaItems.push(currentItem as AgendaItem);
+        if (resMatch) {
+            // If no current section, try to recover a title
+            if (!currentSection) {
+                const fallbackTitle = recentLines.length > 0 ? recentLines[recentLines.length - 1] : 'Point sans titre';
+                startNewSection(fallbackTitle);
             }
 
-            // Start new item
-            currentItem = {
-                id: `pv-import-${Date.now()}-${agendaItems.length}`,
-                order: agendaItems.length + 1,
-                title: itemMatch[2],
-                minuteEntries: [],
-                decision: '',
-                duration: 10,
-                presenter: ''
+            currentEntry = {
+                type: 'resolution',
+                number: `${resMatch[1]}-${resMatch[2]}`,
+                content: []
             };
+            currentSection!.entries.push(currentEntry);
             recentLines = [];
             continue;
         }
 
-        // 1.5 Special Case: Levée de l'assemblée (Unnumbered)
+        if (comMatch) {
+            if (!currentSection) {
+                const fallbackTitle = recentLines.length > 0 ? recentLines[recentLines.length - 1] : 'Point sans titre';
+                startNewSection(fallbackTitle);
+            }
+
+            currentEntry = {
+                type: 'comment',
+                number: `${comMatch[1]}-${comMatch[2].toUpperCase()}`,
+                content: []
+            };
+            currentSection!.entries.push(currentEntry);
+            recentLines = [];
+            continue;
+        }
+
+        // --- 2. DETECT LEVÉE ---
         const isLevee = /lev[ée]e\s+de\s+l['’]?\s*assembl[ée]e/i.test(line);
         if (isLevee) {
-            if (currentItem && currentItem.title) {
-                if (currentMinuteEntry) {
-                    if (!currentItem.minuteEntries) currentItem.minuteEntries = [];
-                    currentItem.minuteEntries.push(currentMinuteEntry);
-                    currentMinuteEntry = null;
-                }
-                agendaItems.push(currentItem as AgendaItem);
-            }
-
-            currentItem = {
-                id: `pv-import-${Date.now()}-${agendaItems.length}`,
-                order: agendaItems.length + 1,
-                title: line.trim(),
-                minuteEntries: [],
-                decision: '',
-                duration: 5,
-                presenter: ''
-            };
+            startNewSection(line.trim());
             recentLines = [];
             continue;
         }
 
-        // 2. Detect Resolution
-        const resMatch = line.match(resolutionRegex);
-        if (resMatch) {
-            // CRITICAL FIX: If we found a resolution but have no currentItem (failed to detect title),
-            // OR if the current item is very old, try to creating a new one from context.
-            if (!currentItem) {
-                // Try to use the last significant line as a title
-                const fallbackTitle = recentLines.length > 0
-                    ? recentLines[recentLines.length - 1]
-                    : 'Point sans titre';
+        // --- 3. DETECT NEW SECTION (TITLE) ---
+        if (isTitleCandidate(line)) {
+            const numberedTitleMatch = line.match(/^(\d+(?:\.\d+)*)\.?\s+(.*)/);
 
-                currentItem = {
-                    id: `pv-import-${Date.now()}-${agendaItems.length}`,
-                    order: agendaItems.length + 1,
-                    title: fallbackTitle,
-                    minuteEntries: [],
-                    decision: '',
-                };
+            const isStrongTitle = numberedTitleMatch ||
+                /^(Adoption|Retour|Présentation|Varia|Mot de bienvenue)/i.test(line);
+
+            if (isStrongTitle) {
+                startNewSection(line);
+                recentLines = [];
+                continue;
             }
-
-            // If we had a previous entry pending, push it
-            if (currentMinuteEntry) {
-                if (!currentItem.minuteEntries) currentItem.minuteEntries = [];
-                currentItem.minuteEntries.push(currentMinuteEntry);
-            }
-
-            // Start new resolution entry
-            currentMinuteEntry = {
-                type: 'resolution',
-                number: resMatch[1],
-                content: ''
-            };
-            continue;
+            // Logic for weak titles: they stay candidates in recentLines
         }
 
-        // 3. Detect Proposer/Seconder
+        // --- 4. DATA EXTRACTION ---
         const propMatch = line.match(proposerRegex);
         const secMatch = line.match(seconderRegex);
 
-        if (propMatch && currentItem) {
-            // Applies to the *current resolution* if exists, or the item
-            if (currentMinuteEntry) {
-                currentMinuteEntry.proposer = propMatch[1].trim();
-            } else {
-                currentItem.proposer = propMatch[1].trim();
-            }
+        if (propMatch && currentSection) {
+            if (currentEntry) currentEntry.proposer = propMatch[1].trim();
+            continue;
         }
-        if (secMatch && currentItem) {
-            if (currentMinuteEntry) {
-                currentMinuteEntry.seconder = secMatch[1].trim();
+        if (secMatch && currentSection) {
+            if (currentEntry) currentEntry.seconder = secMatch[1].trim();
+            continue;
+        }
+
+        // --- 5. CONTENT ---
+        if (currentSection) {
+            // Filter noise (page numbers)
+            if (/^page \d+/i.test(line)) continue;
+
+            if (currentEntry) {
+                currentEntry.content.push(line);
             } else {
-                currentItem.seconder = secMatch[1].trim();
+                currentSection.content.push(line);
             }
         }
 
-        // 4. Capture Content for Resolution
-        if (currentMinuteEntry) {
-            // Stop capturing if we hit metadat keywords
-            if (!propMatch && !secMatch && !line.match(/R[ÉE]SOLU/)) {
-                currentMinuteEntry.content += (currentMinuteEntry.content ? '\n' : '') + line;
-            }
-        } else {
-            // Keep track of lines that might be titles for the NEXT item
-            // Only keep if it looks like a title (short-ish)
-            if (line.length < 150 && !isDate && !isPageNum) {
-                recentLines.push(line);
-                if (recentLines.length > 3) recentLines.shift(); // Keep last 3
-            }
-        }
+        recentLines.push(line);
+        if (recentLines.length > 3) recentLines.shift();
     }
 
-    // Push last item
-    if (currentItem && currentItem.title) {
-        if (currentMinuteEntry) {
-            if (!currentItem.minuteEntries) currentItem.minuteEntries = [];
-            currentItem.minuteEntries.push(currentMinuteEntry);
-        }
-        agendaItems.push(currentItem as AgendaItem);
-    }
+    closeCurrentSection();
+
+    // Conversion
+    const agendaItems: AgendaItem[] = sections.map((section, index) => {
+        const minuteEntries: MinuteEntry[] = section.entries.map(e => ({
+            type: e.type,
+            number: e.number,
+            content: e.content.join('\n').trim(),
+            proposer: e.proposer,
+            seconder: e.seconder
+        }));
+
+        const hasResolution = section.entries.some(e => e.type === 'resolution');
+        const mainDecisionText = hasResolution
+            ? minuteEntries.find(e => e.type === 'resolution')?.content || ''
+            : section.content.join('\n').trim();
+
+        return {
+            id: `pv-import-${Date.now()}-${index}`,
+            order: index + 1,
+            title: section.title,
+            minuteEntries: minuteEntries,
+            decision: mainDecisionText,
+            duration: 10,
+            presenter: 'Coordonnateur',
+            objective: hasResolution ? 'Décision' : 'Information',
+            description: '',
+            minuteType: section.entries[0]?.type,
+            minuteNumber: section.entries[0]?.number,
+            proposer: section.entries[0]?.proposer || '',
+            seconder: section.entries[0]?.seconder || ''
+        } as AgendaItem;
+    });
 
     return { agendaItems };
 };

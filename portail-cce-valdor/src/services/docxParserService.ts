@@ -10,14 +10,7 @@ interface ParsedMeetingData {
     rawText?: string;
 }
 
-interface ParsedPVItem {
-    sectionTitle: string;
-    minuteType: 'resolution' | 'comment';
-    minuteNumber: string;
-    decision: string;
-    proposer?: string;
-    seconder?: string;
-}
+
 
 export const parseAgendaDOCX = async (file: File): Promise<ParsedMeetingData> => {
     const arrayBuffer = await file.arrayBuffer();
