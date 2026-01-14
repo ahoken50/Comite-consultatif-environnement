@@ -89,11 +89,26 @@ ${agendaItems.map((item, i) => `${i + 1}. ${item.title}`).join('\n')}`
 - Identifie leur rôle si mentionné (présidente, vice-président, secrétaire, conseiller, membre)
 - Extrait aussi les absents si mentionnés
 
-### 2. EXTRACTION INTÉGRALE VERBATIM
-- Copie TOUT le texte de chaque section. Ne résume JAMAIS.
-- Chaque phrase, chaque intervenant, chaque détail doit être préservé EXACTEMENT.
+### 2. INTERDICTION ABSOLUE DE TRONQUER OU RÉSUMER
+⛔ TU NE DOIS JAMAIS :
+- Résumer un texte
+- Raccourcir une phrase
+- Omettre des paragraphes
+- Utiliser "..." ou "[...]" pour indiquer du texte omis
+- Dire "Le texte continue..." ou "etc."
 
-### 3. UN POINT ODJ = PLUSIEURS RÉSOLUTIONS/COMMENTAIRES POSSIBLES
+✅ TU DOIS TOUJOURS :
+- Copier MOT POUR MOT chaque phrase du document
+- Inclure TOUS les paragraphes, même s'ils sont longs
+- Préserver chaque intervention de chaque personne
+
+### 3. TITRES DES RÉSOLUTIONS ET COMMENTAIRES
+- CHAQUE résolution et commentaire a un TITRE qui apparaît EN GRAS juste AVANT le numéro (ex: RÉSOLUTION 03-07).
+- Ce titre doit être extrait et placé dans le champ "titre" de la résolution/commentaire.
+- Exemple: "Recommandation visant à interdire l'achat de bouteilles d'eau" est le titre de RÉSOLUTION 03-07.
+- Le titre se trouve dans le texte AVANT "RÉSOLUTION XX-XX" ou "COMMENTAIRE XX-X".
+
+### 4. UN POINT ODJ = PLUSIEURS RÉSOLUTIONS/COMMENTAIRES POSSIBLES
 - IMPORTANT: Un seul point de l'ordre du jour peut contenir PLUSIEURS résolutions ET commentaires.
 - Exemple: Le point "Renouvellement des mandats" peut contenir RÉSOLUTION 03-04, COMMENTAIRE 03-A, ET RÉSOLUTION 03-05.
 - Regroupe-les tous sous le même point ODJ dans le JSON.
@@ -157,28 +172,30 @@ ${rawText}
       "resolutions": [
         {
           "code": "03-04",
+          "titre": "Renouvellement des mandats des membres du CCE",
           "type": "resolution",
-          "considerants": ["CONSIDÉRANT que..."],
-          "dispositif": "IL EST RÉSOLU...",
+          "considerants": ["CONSIDÉRANT que le comité consultatif en environnement n'a eu aucune assemblée en plus d'un an...(TEXTE COMPLET)"],
+          "dispositif": "IL EST RÉSOLU de recommander au Conseil de Ville...(TEXTE COMPLET)",
           "tableaux": "| SIÈGE | NOM | DÉBUT MANDAT | FIN MANDAT |\\n| 1 | BOSSÉ, Luc | 2022-06-09 | 2024-06-09 |",
           "proposer": "",
           "seconder": "",
           "vote": ""
         },
         {
+          "code": "03-A",
+          "titre": "Élection d'une présidente et d'un vice-président",
+          "type": "comment",
+          "contenu": "[TEXTE COMPLET du commentaire - tous les paragraphes de M. Turcotte, Mme Larochelle, etc.]"
+        },
+        {
           "code": "03-05",
+          "titre": "Élection d'une présidente et d'un vice-président",
           "type": "resolution",
-          "considerants": ["CONSIDÉRANT que..."],
-          "dispositif": "IL EST RÉSOLU d'élire...",
+          "considerants": ["CONSIDÉRANT que...(TEXTE COMPLET)"],
+          "dispositif": "IL EST RÉSOLU d'élire madame Patricia Boutin...(TEXTE COMPLET)",
           "proposer": "",
           "seconder": "",
           "vote": ""
-        }
-      ],
-      "commentaires": [
-        {
-          "code": "03-A",
-          "contenu": "[TEXTE COMPLET du commentaire - PLUSIEURS paragraphes]"
         }
       ]
     }
@@ -233,7 +250,7 @@ export const extractPVWithGroq = async (
                 ],
                 temperature: 0.1, // Low temperature for deterministic output
                 max_tokens: 32000, // Large to capture full verbatim content
-                reasoning_effort: 'medium', // GPT-OSS 120B: 'low', 'medium', or 'high' reasoning mode
+                reasoning_effort: 'high', // GPT-OSS 120B: 'low', 'medium', or 'high' reasoning mode
                 response_format: { type: 'json_object' } // Force JSON output
             })
         });
