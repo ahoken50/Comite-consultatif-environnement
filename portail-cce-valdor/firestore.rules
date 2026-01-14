@@ -38,7 +38,9 @@ service cloud.firestore {
 
     // Meetings collection
     match /meetings/{meetingId} {
-      allow read: if isAuthenticated();
+      // Allow public read for approval workflow (magic links)
+      // All authenticated users can read, and public can read for approval pages
+      allow read: if true;
       // Temporarily allow any authenticated user to write to meetings to unblock development
       allow write: if isAuthenticated(); 
       
@@ -55,6 +57,17 @@ service cloud.firestore {
       // PV Versions sub-collection (for version history)
       match /pv_versions/{versionId} {
         allow read, write: if isAuthenticated();
+      }
+      
+      // Approval tokens - PUBLIC READ for magic link validation
+      match /approval_tokens/{tokenId} {
+        allow read: if true;  // Public read for magic link validation
+        allow write: if isAuthenticated();
+      }
+      
+      // Approvals sub-collection - PUBLIC for magic link workflow
+      match /approvals/{approvalId} {
+        allow read, write: if true;  // Public read/write for approval workflow via magic link
       }
     }
 
