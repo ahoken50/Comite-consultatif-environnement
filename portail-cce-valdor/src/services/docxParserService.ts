@@ -215,8 +215,8 @@ export const parseAgendaDOCX = async (file: File): Promise<ParsedMeetingData> =>
     let currentEntry: ParsedSection['entries'][0] | null = null;
 
     // Regex - Relaxed for better matching (handle NBSP, dashes, etc.)
-    const resolutionRegex = /^R[ÉE]SOLUTION[\s\u00A0]*(\d{2})[-–—.](\d+)/i;
-    const commentaireRegex = /^COMMENTAIRE[\s\u00A0]*(\d{2})[-–—.]?([A-Z])/i;
+    const resolutionRegex = /^R[ÉE]SOLUTION[\s\u00A0]*(\d{2})?[-–—.]?(\d+)?/i; // Made numbers optional for detection purposes
+    const commentaireRegex = /^COMMENTAIRE[\s\u00A0]*(\d{2})?[-–—.]?([A-Z])?/i;
     const formalLanguageRegex = /^(CONSID[ÉE]RANT|ATTENDU|RECONNAISSANT|IL EST R[ÉE]SOLU)/i;
     const titleBlacklistRegex = /^(PROCES-VERBAL|PROCÈS-VERBAL|ORDRE DU JOUR|COMITÉ CONSULTATIF)/i;
 
@@ -244,6 +244,9 @@ export const parseAgendaDOCX = async (file: File): Promise<ParsedMeetingData> =>
     };
 
     for (const element of elements) {
+        // Skip content inside tables (they often contain metadata headers like "NOM", "MANDAT")
+        if (element.closest('table')) continue;
+
         const text = element.textContent?.trim() || '';
         if (!text) continue;
 
@@ -276,8 +279,8 @@ export const parseAgendaDOCX = async (file: File): Promise<ParsedMeetingData> =>
         }
 
         // --- 3. DETECT RESOLUTIONS / COMMENTS ---
-        const resMatch = text.match(resolutionRegex);
-        const comMatch = text.match(commentaireRegex);
+        const resMatch = text.match(/^R[ÉE]SOLUTION[\s\u00A0]*(\d{2})[-–—.](\d+)/i); // Strict regex for extraction
+        const comMatch = text.match(/^COMMENTAIRE[\s\u00A0]*(\d{2})[-–—.]?([A-Z])/i); // Strict regex for extraction
 
         // Handling Resolution
         if (resMatch) {
@@ -613,6 +616,9 @@ export const matchPVToAgenda = (
             return true;
         }
 
+        // Safety check: Don't match on short generic strings
+        if (normalPV.length < 5 || normalAgenda.length < 5) return false;
+
         // Check if one contains the other
         if (normalPV.includes(normalAgenda) || normalAgenda.includes(normalPV)) {
             return true;
@@ -629,7 +635,7 @@ export const matchPVToAgenda = (
         const sharedWords = pvWords.filter(w => agendaWords.includes(w));
         const matchRatio = sharedWords.length / Math.min(pvWords.length, agendaWords.length);
 
-        return matchRatio >= 0.5;
+        return matchRatio >= 0.6; // Increased threshold
     };
 
     // Track which agenda items have been matched to avoid duplicates
