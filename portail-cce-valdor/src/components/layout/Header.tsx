@@ -8,6 +8,7 @@ import { logout } from '../../features/auth/authSlice';
 import type { RootState } from '../../store/rootReducer';
 import logo from '../../assets/logo-valdor.png';
 import GlobalSearch from '../common/GlobalSearch';
+import { useNavigate } from 'react-router-dom';
 
 interface HeaderProps {
     onMenuClick: () => void;
@@ -16,6 +17,7 @@ interface HeaderProps {
 const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
     const { user } = useSelector((state: RootState) => state.auth);
     const dispatch = useDispatch();
+    const navigate = useNavigate();
     const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
     const [notificationAnchorEl, setNotificationAnchorEl] = useState<null | HTMLElement>(null);
 
@@ -29,6 +31,11 @@ const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
 
     const handleClose = () => {
         setAnchorEl(null);
+    };
+
+    const handleProfile = () => {
+        handleClose();
+        navigate('/profile');
     };
 
     const handleNotificationClose = () => {
@@ -123,7 +130,7 @@ const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
                         open={Boolean(anchorEl)}
                         onClose={handleClose}
                     >
-                        <MenuItem onClick={handleClose}>Mon profil</MenuItem>
+                        <MenuItem onClick={handleProfile}>Mon profil</MenuItem>
                         <MenuItem onClick={handleLogout}>Se déconnecter</MenuItem>
                     </Menu>
                 </Box>
