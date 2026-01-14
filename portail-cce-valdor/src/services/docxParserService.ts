@@ -354,7 +354,7 @@ export const parseAgendaDOCX = async (file: File): Promise<ParsedMeetingData> =>
 
         // Map entries to MinuteEntry
         const minuteEntries: MinuteEntry[] = section.entries.map(e => ({
-            type: e.type,
+            type: e.type as 'resolution' | 'comment', // Keep lowercase to match interface
             number: e.number,
             content: e.content.join('\n').trim(),
             proposer: '', // TODO: Could extract from content if needed
@@ -367,11 +367,11 @@ export const parseAgendaDOCX = async (file: File): Promise<ParsedMeetingData> =>
         // If no entries, the section content IS the "decision" or description
         // For compatibility with UI that expects 'decision' to show text
         const mainDecisionText = hasResolution
-            ? minuteEntries.find(e => e.type === 'resolution')?.content || ''
+            ? minuteEntries.map(e => e.content).join('\n\n') // Join all entry contents
             : section.content.join('\n').trim();
 
         // Legacy support: Populate top-level fields from first entry if available
-        const primaryEntry = section.entries[0];
+        const primaryEntry = minuteEntries[0];
 
         return {
             id: `imported-pv-${Date.now()}-${index}`,
@@ -640,8 +640,6 @@ export const matchPVToAgenda = (
         return false;
     };
 
-
-
     // Track which agenda items have been matched to avoid duplicates
     const matchedAgendaIds = new Set<string>();
 
@@ -676,9 +674,20 @@ export const matchPVToAgenda = (
         }
 
         if (bestMatch) {
-            matchMap.set(bestMatch.id, pvItem);
+            // MERGE: Create a new object preserving Agenda Item info but injecting PV data
+            const mergedItem: AgendaItem = {
+                ...bestMatch,
+                // Inject PV data
+                minuteEntries: pvItem.minuteEntries, // List of Res/Comments
+                decision: pvItem.decision,           // Aggregated text
+                minuteType: pvItem.minuteType,       // Legacy Type
+                minuteNumber: pvItem.minuteNumber,   // Legacy Num
+                // objective: pvItem.objective,      // Don't overwrite objective usually
+            };
+
+            matchMap.set(bestMatch.id, mergedItem);
             matchedAgendaIds.add(bestMatch.id);
-            console.log('[matchPVToAgenda] Matched:', pvItem.title, '->', bestMatch.title, `(Score: ${bestScore})`);
+            console.log('[matchPVToAgenda] Matched & Merged:', pvItem.title, '->', bestMatch.title, `(Score: ${bestScore})`);
         }
     }
 
