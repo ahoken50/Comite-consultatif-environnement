@@ -2570,9 +2570,9 @@ def send_approval_link(req: https_fn.CallableRequest) -> Any:
             "used": False
         })
 
-        # Construct Link - using correct deployed URL
+        # Construct Link - format must match route: /approve/:meetingId/:token
         base_url = "https://comite-cce.web.app"
-        approval_link = f"{base_url}/approval/{token}"
+        approval_link = f"{base_url}/approve/{meeting_id}/{token}"
 
         # Send Email via Resend
         html_content = f"""
