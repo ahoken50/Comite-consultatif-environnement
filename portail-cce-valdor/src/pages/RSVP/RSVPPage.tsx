@@ -124,16 +124,24 @@ const RSVPPage: React.FC = () => {
     // Safe date formatting helper
     const formatDateSafe = (dateStr: string | undefined, formatStr: string) => {
         if (!dateStr) return '';
+
+        // Debug: Log the actual date string received
+        console.log('📅 RSVP Date received:', dateStr, typeof dateStr);
+
         try {
             // Try parsing as ISO
             let date = parseISO(dateStr);
 
             // If invalid, try standard Date constructor (fallback for legacy/other formats)
             if (!isValid(date)) {
+                console.log('📅 parseISO failed, trying new Date()');
                 date = new Date(dateStr);
             }
 
-            if (!isValid(date)) return 'Date invalide';
+            if (!isValid(date)) {
+                console.log('📅 Both parsing methods failed');
+                return 'Date invalide';
+            }
 
             return format(date, formatStr, { locale: fr });
         } catch (e) {
