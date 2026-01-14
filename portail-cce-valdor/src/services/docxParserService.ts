@@ -210,9 +210,7 @@ export const parseAgendaDOCX = async (file: File): Promise<ParsedMeetingData> =>
         }[];
     }
 
-    const sections: ParsedSection[] = [];
-    let currentSection: ParsedSection | null = null;
-    let currentEntry: ParsedSection['entries'][0] | null = null;
+
 
     // Regex - Relaxed for better matching (handle NBSP, dashes, etc.)
     const resolutionRegex = /^R[ÉE]SOLUTION[\s\u00A0]*(\d{2})?[-–—.]?(\d+)?/i; // Made numbers optional for detection purposes
@@ -221,132 +219,144 @@ export const parseAgendaDOCX = async (file: File): Promise<ParsedMeetingData> =>
     // Updated Blacklist: Now includes resolution keywords and table headers found in logs
     const titleBlacklistRegex = /^(PROCES-VERBAL|PROCÈS-VERBAL|ORDRE DU JOUR|COMITÉ CONSULTATIF|R[ÉE]SOLUTION|COMMENTAIRE|NOM|MANDAT|SIÈGE|DÉBUT DU|FIN DU)/i;
 
-    // Get all block elements
-    const elements = doc.body.querySelectorAll('p, h1, h2, h3, h4, h5, h6, li');
+    // 1. Get all elements (including potentially inside tables if flattened)
+    const elements = doc.body.querySelectorAll('p, h1, h2, h3, h4, h5, h6, li, tr');
 
-    // Helper to close current section
-    const closeCurrentSection = () => {
-        if (currentSection) {
-            sections.push(currentSection);
-            currentSection = null;
-            currentEntry = null;
-        }
-    };
+    // ============================================================
+    // 2. BLOCK EXTRACTION & CLASSIFICATION (The "Engine Overhaul")
+    // ============================================================
 
-    // Helper to start a new section
-    const startNewSection = (title: string) => {
-        closeCurrentSection();
-        currentSection = {
-            title: title || 'Sans titre',
-            content: [],
-            entries: []
-        };
-        console.log('[docxParser] Started new section:', title);
-    };
+    interface Block {
+        type: 'TITLE' | 'RESOLUTION' | 'COMMENT' | 'CONTENT' | 'LEVEE';
+        text: string;
+        metadata?: { number?: string; type?: string };
+    }
+
+    const blocks: Block[] = [];
+
+    // Keyword Regex for "Implicit Titles" (e.g. "Recommandation...")
+    const titleKeywordsRegex = /^(RECOMMANDATION|ADOPTION|D[ÉE]MISSION|NOMINATION|RAPPORT|PR[ÉE]SENTATION|DEMANDE|LISTE|CORRESPONDANCE|DIVERS|VARIA|SUIVI|LETTRE|AVIS)/i;
 
     for (const element of elements) {
-        // ALLOW content inside tables (so we capture lists of names, etc.)
-        // formatting might be raw, but better than missing data.
-        // The blacklist prevents headers like "NOM" from becoming Sections.
-
-        const text = element.textContent?.trim() || '';
+        let text = element.textContent?.trim() || '';
         if (!text) continue;
+
+        // Normalize: Fix NBSP
+        text = text.replace(/\u00A0/g, ' ');
+
+        // A. Detect Resolution/Comment (Highest Priority Anchor)
+        const resMatch = text.match(resolutionRegex);
+        const comMatch = text.match(commentaireRegex);
+
+        if (resMatch) {
+            blocks.push({
+                type: 'RESOLUTION',
+                text: text,
+                metadata: { number: resMatch[1] || resMatch[2] || resMatch[0], type: 'resolution' }
+            });
+            continue;
+        }
+
+        if (comMatch) {
+            blocks.push({
+                type: 'COMMENT',
+                text: text,
+                metadata: { number: comMatch[1] || comMatch[2] || comMatch[0], type: 'comment' }
+            });
+            continue;
+        }
 
         const tagName = element.tagName;
 
-        // --- 1. DETECT SECTION TITLES (H1) ---
-        if (tagName === 'H1') {
-            // Extra safety: Check against resolution regex too, in case formatting is weird
-            if (!titleBlacklistRegex.test(text) && !resolutionRegex.test(text) && !commentaireRegex.test(text)) {
-                startNewSection(text);
-                continue;
-            }
-        }
+        // B. Detect Titles
 
-        // --- 2. DETECT VISUAL TITLES (Bold P) ---
-        // If not H1, check if it's a bold paragraph that looks like a title
-        const strongElement = element.querySelector('strong');
-        const isBoldParagraph = strongElement && strongElement.textContent?.trim() === text;
-        const isSuspiciouslyShort = text.length < 100;
-        const isNotMetadata = !titleBlacklistRegex.test(text) && !/^\d{4}/.test(text); // Don't match years alone
+        // B1. Keyword Start
+        const isKeywordTitle = titleKeywordsRegex.test(text) && text.length < 200;
 
-        if (tagName === 'P' && isBoldParagraph && isSuspiciouslyShort && isNotMetadata) {
-            // Heuristics: Not a resolution, not formal language, not a list item
-            if (!resolutionRegex.test(text) && !commentaireRegex.test(text) &&
-                !formalLanguageRegex.test(text) && !/^\d+[\.\)]/.test(text)) {
+        // B2. Explicit H1
+        const isH1 = tagName === 'H1';
 
-                // Treat as section title
-                startNewSection(text);
-                continue;
-            }
-        }
+        // B3. Visual Bold Title
+        const isBoldParagraph = tagName === 'P' && (
+            element.querySelector('strong') !== null ||
+            element.querySelector('b') !== null
+        ) && text.length < 150;
 
-        // --- 3. DETECT RESOLUTIONS / COMMENTS ---
-        const resMatch = text.match(/^R[ÉE]SOLUTION[\s\u00A0]*(\d{2})[-–—.](\d+)/i); // Strict regex for extraction
-        const comMatch = text.match(/^COMMENTAIRE[\s\u00A0]*(\d{2})[-–—.]?([A-Z])/i); // Strict regex for extraction
+        // B4. All Caps Title
+        const isAllCaps = text.length > 5 && text === text.toUpperCase() && text.length < 100;
 
-        // Handling Resolution
-        if (resMatch) {
-            if (!currentSection) {
-                startNewSection('Point sans titre'); // Fallback if resolution appears before any title
-            }
+        const isPotentialTitle = isH1 || isKeywordTitle || isBoldParagraph || isAllCaps;
+        const isBlacklisted = titleBlacklistRegex.test(text) || /^\d+$/.test(text);
 
-            // Create new entry
-            currentEntry = {
-                type: 'resolution',
-                number: `${resMatch[1]}-${resMatch[2]}`,
-                content: []
-            };
-            currentSection!.entries.push(currentEntry);
-            console.log('[docxParser] Found resolution:', currentEntry.number);
+        if (isPotentialTitle && !isBlacklisted && !resolutionRegex.test(text) && !commentaireRegex.test(text) && !formalLanguageRegex.test(text)) {
+            blocks.push({ type: 'TITLE', text: text });
             continue;
         }
 
-        // Handling Comment
-        if (comMatch) {
-            if (!currentSection) {
-                startNewSection('Point sans titre');
-            }
-
-            currentEntry = {
-                type: 'comment',
-                number: `${comMatch[1]}-${comMatch[2].toUpperCase()}`,
-                content: []
-            };
-            currentSection!.entries.push(currentEntry);
-            console.log('[docxParser] Found comment:', currentEntry.number);
-            continue;
-        }
-
-        // --- 4. DETECT LEVÉE (Special Case) ---
-        if (/lev[ée]e\s+de\s+l['’]?\s*assembl[ée]e/i.test(text)) {
-            closeCurrentSection();
-            currentSection = {
-                title: text,
-                content: ['Levée de l\'assemblée'], // Dummy content
-                entries: []
-            };
-            continue;
-        }
-
-        // --- 5. CAPTURE CONTENT ---
-        // If we are here, it's regular content
-        if (currentSection) {
-            // Skip metadata/signatures
-            if (/^(M\.|Mme|Président|Secrétaire|_)/.test(text) && text.length < 50) continue;
-
-            // If we have an active entry (Resolution/Comment), add to it
-            if (currentEntry) {
-                currentEntry.content.push(text);
-            } else {
-                // Otherwise add to generic section content
-                currentSection.content.push(text);
-            }
-        }
+        // C. Default: Content
+        blocks.push({ type: 'CONTENT', text: text });
     }
 
-    // Close last section
-    closeCurrentSection();
+    // ============================================================
+    // 3. GROUPING BLOCKS INTO SECTIONS (The "Cluster" Logic)
+    // ============================================================
+
+    console.log(`[docxParser] Extracted ${blocks.length} blocks. Grouping...`);
+
+    const sections: ParsedSection[] = [];
+    let currentSection: ParsedSection | null = null;
+    let currentEntry: { type: 'resolution' | 'comment', number: string, content: string[] } | null = null;
+
+    const startSection = (title: string) => {
+        const cleanTitle = title.replace(/^[\d.\s-]+/g, '').trim();
+
+        currentSection = {
+            title: cleanTitle,
+            content: [],
+            entries: []
+        };
+        sections.push(currentSection);
+        currentEntry = null;
+        console.log(`[docxParser] Started Section: ${cleanTitle}`);
+    };
+
+    if (blocks.length > 0 && blocks[0].type !== 'TITLE') {
+        startSection("Ouverture / Préambule");
+    }
+
+    blocks.forEach(block => {
+        if (block.type === 'TITLE') {
+            startSection(block.text);
+        } else if (block.type === 'LEVEE') {
+            startSection(block.text);
+        }
+        else if (block.type === 'RESOLUTION' || block.type === 'COMMENT') {
+            if (!currentSection) startSection("Section Inconnue");
+
+            let num = block.metadata!.number!;
+
+            currentEntry = {
+                type: block.metadata!.type! as 'resolution' | 'comment',
+                number: num,
+                content: []
+            };
+            currentSection!.entries.push(currentEntry);
+
+            if (block.text.length > 50) {
+                currentEntry.content.push(block.text);
+            }
+        }
+        else if (block.type === 'CONTENT') {
+            if (currentEntry) {
+                currentEntry.content.push(block.text);
+            } else if (currentSection) {
+                currentSection.content.push(block.text);
+            }
+        }
+    });
+
+
+
 
     // ============================================================
     // 4. Convert Parsed Sections to AgendaItems
