@@ -60,8 +60,9 @@ function TabPanel(props: TabPanelProps) {
 }
 
 import MeetingApprovalCard from '../../components/meetings/MeetingApprovalCard';
+import ApprovalRequestsPanel from '../../components/meetings/ApprovalRequestsPanel';
 import { fetchMembers } from '../../features/members/membersSlice';
-import Breadcrumbs from '../../components/common/Breadcrumbs'; // [NEW]
+import Breadcrumbs from '../../components/common/Breadcrumbs';
 
 const MeetingDetailPage: React.FC = () => {
     const { id } = useParams<{ id: string }>();
@@ -304,6 +305,8 @@ const MeetingDetailPage: React.FC = () => {
                         currentUser={currentMember || null}
                         onApprove={handleApproval}
                     />
+                    {/* Panel showing approval requests and their comments */}
+                    <ApprovalRequestsPanel meetingId={meeting.id} />
                     <Divider sx={{ my: 3 }} />
                     <MinutesEditor
                         meeting={meeting}
