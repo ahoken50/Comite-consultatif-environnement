@@ -405,10 +405,14 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
                         // Use the OCR/Text parser for PDF
                         const { parseMinutesPDF } = await import('../../services/pvParserService');
                         // PDF parsing with progress callback for OCR
-                        parsedData = await parseMinutesPDF(file, (message: string) => {
-                            console.log(`[OCR Progress] ${message}`);
-                            showSuccess(message); // Show progress to user
-                        });
+                        parsedData = await parseMinutesPDF(
+                            file,
+                            (message: string) => {
+                                console.log(`[OCR Progress] ${message}`);
+                                showSuccess(message); // Show progress to user
+                            },
+                            localAgendaItems // Pass agenda items for AI matching
+                        );
 
                         // Notify user if OCR was used (scanned PDF)
                         if (parsedData?.wasScanned) {

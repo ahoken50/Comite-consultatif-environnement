@@ -143,6 +143,13 @@ Point ODJ #3 : "Renouvellement des mandats" (titre ODJ)
 - Exemple: Le point "Renouvellement des mandats" peut contenir RÉSOLUTION 03-04, COMMENTAIRE 03-A, ET RÉSOLUTION 03-05.
 - Regroupe-les tous sous le même point ODJ dans le JSON.
 
+#### DÉTECTION DES SOUS-SECTIONS (CRITIQUE pour "Retour sur..." ou "Suivi")
+- SOUVENT, un point comme "Retour sur la rencontre" contient plusieurs sujets distincts séparés par des titres en gras.
+- MÊME SANS NUMÉRO "RÉSOLUTION/COMMENTAIRE", tu DOIS les séparer !
+- Si tu vois un titre en gras suivi de texte, CRÉE une nouvelle entrée "comment" (ou "resolution" si c'est une décision).
+- Utilise le titre en gras comme "resolutions[].titre".
+- NE FUSIONNE PAS tout le texte en un seul bloc. Sépare chaque sujet distinct.
+
 ### 4. TABLEAUX
 - Si une résolution contient un tableau (ex: liste de mandats), convertis-le en texte formaté.
 - Utilise le format: "| Colonne1 | Colonne2 |" ou une liste à puces.
@@ -289,6 +296,11 @@ ${JSON.stringify(initialData, null, 2)}
    - Vide le Varia de tout ce qui correspond à un point ODJ spécifique.
 
 3. **TITRES** : Vérifie que "resolutions[].titre" contient bien le SOUS-TITRE spécifique (ex: "Élection président") et non le titre global du point ODJ.
+
+4. **FUSION ABUSIVE (Validation Granularité)** :
+   - Vérifie si un commentaire contient en réalité PLUSIEURS sujets séparés par des titres.
+   - SI OUI : DÉCOUPE-LE en plusieurs objets "comment" distincts.
+   - Exemple: Un long commentaire qui parle de "Sujet A" puis "Sujet B" avec des titres internes doit devenir 2 commentaires.
 
 ## INSTRUCTIONS :
 - Analyse le CONTENU sémantique de chaque résolution/commentaire.

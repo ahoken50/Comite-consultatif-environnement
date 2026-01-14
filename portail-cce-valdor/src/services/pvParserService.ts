@@ -2,6 +2,7 @@ import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import mammoth from 'mammoth';
 import { type AgendaItem, type MinuteEntry } from '../types/meeting.types';
 import { extractTextFromPDF } from './ocrService';
+import { extractPVWithGroq, mapAIExtractedToAgendaItems } from './groqService';
 
 // @ts-ignore
 import pdfWorker from 'pdfjs-dist/build/pdf.worker?url';
@@ -23,7 +24,8 @@ interface ParsedPVData {
 // ============================================================================
 export const parseMinutesPDF = async (
     file: File,
-    onProgress?: (message: string) => void
+    onProgress?: (message: string) => void,
+    existingAgendaItems: AgendaItem[] = []
 ): Promise<ParsedPVData> => {
     // Use the OCR service which handles both native and scanned PDFs
     const result = await extractTextFromPDF(file, onProgress);
@@ -32,6 +34,33 @@ export const parseMinutesPDF = async (
         throw new Error(result.error || 'Impossible d\'extraire le texte du PDF');
     }
 
+    // AI PATH: If we have agenda items, use the AI (much more robust)
+    if (existingAgendaItems.length > 0) {
+        try {
+            if (onProgress) onProgress('Analyse par l\'IA en cours (double validation)...');
+
+            const aiResult = await extractPVWithGroq(result.text, existingAgendaItems);
+
+            if (aiResult.success && aiResult.data) {
+                // Map AI result to agenda items (this handles the fuzzy matching/ID matching)
+                const mappedItems = mapAIExtractedToAgendaItems(aiResult.data, existingAgendaItems);
+
+                return {
+                    agendaItems: mappedItems,
+                    wasScanned: result.isScanned,
+                    // Parse attendees from text manually or via regex if needed, 
+                    // or maybe the AI extracted it? (Current prompt focuses on points)
+                    // We can fallback to regex for attendees:
+                    attendees: extractAttendeesFromText(result.text)
+                };
+            }
+        } catch (e) {
+            console.warn('AI parsing failed, falling back to Regex:', e);
+            if (onProgress) onProgress('Échec IA, passage au mode Regex...');
+        }
+    }
+
+    // REGEX FALLBACK (Historical logic)
     const parsed = parseRawTextToPV(result.text);
 
     return {
@@ -39,6 +68,31 @@ export const parseMinutesPDF = async (
         wasScanned: result.isScanned
     };
 };
+
+// Helper for attendees (since regex parser does it inside)
+const extractAttendeesFromText = (text: string): string[] => {
+    const attendees: string[] = [];
+    const lines = text.split('\n');
+    let capturing = false;
+
+    for (const line of lines) {
+        if (/^(ÉTAIENT|SONT)\s+(PRÉSENTS|PRESENTES)/i.test(line)) {
+            capturing = true;
+            continue;
+        }
+        if (capturing) {
+            if (/^(ÉTAIENT|SONT)\s+(ABSENTS|ABSENTES)/i.test(line) || /^[A-Z0-9]/.test(line)) {
+                capturing = false;
+            } else {
+                const names = line.split(',').map(n => n.trim()).filter(n => n.length > 3);
+                attendees.push(...names);
+            }
+        }
+    }
+    return attendees;
+};
+
+// ... keep regex logic below ...
 
 // ============================================================================
 // DOCX PARSING LOGIC FOR PV
