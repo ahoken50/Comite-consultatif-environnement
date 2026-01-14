@@ -13,8 +13,8 @@ import type { AgendaItem, MinuteEntry } from '../types/meeting.types';
 const GROQ_API_KEY = import.meta.env.VITE_GROQ_API_KEY;
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
 
-// Best model for structured extraction with reasoning capabilities
-const GROQ_MODEL = 'openai/gpt-oss-120b'; // GPT-OSS 120B - OpenAI's flagship open model with reasoning
+// Best model for structured extraction
+const GROQ_MODEL = 'llama-3.3-70b-versatile'; // Llama 3.3 70B - excellent for structured JSON extraction
 
 /**
  * Response structure from AI extraction
@@ -273,7 +273,6 @@ export const extractPVWithGroq = async (
                 ],
                 temperature: 0.1, // Low temperature for deterministic output
                 max_tokens: 32000, // Large to capture full verbatim content
-                reasoning_effort: 'high', // GPT-OSS 120B: 'low', 'medium', or 'high' reasoning mode
                 response_format: { type: 'json_object' } // Force JSON output
             })
         });
