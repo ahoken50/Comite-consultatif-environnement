@@ -24,19 +24,33 @@ export interface AIExtractedPV {
         ville?: string;
         date?: string;
         type?: string;
+        titre_reunion?: string;
+    };
+    presences: {
+        presents: Array<{
+            nom: string;
+            role?: string; // président, vice-président, secrétaire, membre, conseiller, etc.
+        }>;
+        absents?: Array<{
+            nom: string;
+            role?: string;
+        }>;
     };
     points_traites: Array<{
         ordre_du_jour_id: string;
         titre: string;
         discussion_verbatim: string;
+        // Un seul point ODJ peut contenir PLUSIEURS résolutions et commentaires
         resolutions: Array<{
             code: string;
             type: 'resolution' | 'comment';
             considerants?: string[];
             dispositif?: string;
-            contenu?: string;
+            contenu?: string; // For comments or raw text
+            tableaux?: string; // Tables as formatted text (markdown-style)
             proposer?: string;
             seconder?: string;
+            vote?: string;
         }>;
         commentaires?: Array<{
             code: string;
@@ -70,12 +84,28 @@ ${agendaItems.map((item, i) => `${i + 1}. ${item.title}`).join('\n')}`
 
 ## RÈGLES ABSOLUES (NE JAMAIS DÉROGER)
 
-1. **EXTRACTION INTÉGRALE** : Copie TOUT le texte de chaque section. Ne résume JAMAIS.
-2. **VERBATIM** : Chaque phrase, chaque intervenant, chaque détail doit être préservé EXACTEMENT.
-3. **STRUCTURE** : Chaque RÉSOLUTION (ex: "RÉSOLUTION 03-07") et COMMENTAIRE (ex: "COMMENTAIRE 03-C") doit être extrait avec son contenu COMPLET.
-4. **DISCUSSIONS** : Le champ "discussion_verbatim" contient TOUT le texte AVANT la résolution/commentaire.
-5. **CONSIDÉRANTS** : Liste COMPLÈTE de tous les CONSIDÉRANT/ATTENDU.
-6. **IL EST RÉSOLU** : Le dispositif complet après "IL EST RÉSOLU".
+### 1. EXTRACTION DES PRÉSENCES
+- Extrait TOUS les noms mentionnés dans "ÉTAIENT PRÉSENTES/PRÉSENTS" ou "ÉTAIENT AUSSI PRÉSENT"
+- Identifie leur rôle si mentionné (présidente, vice-président, secrétaire, conseiller, membre)
+- Extrait aussi les absents si mentionnés
+
+### 2. EXTRACTION INTÉGRALE VERBATIM
+- Copie TOUT le texte de chaque section. Ne résume JAMAIS.
+- Chaque phrase, chaque intervenant, chaque détail doit être préservé EXACTEMENT.
+
+### 3. UN POINT ODJ = PLUSIEURS RÉSOLUTIONS/COMMENTAIRES POSSIBLES
+- IMPORTANT: Un seul point de l'ordre du jour peut contenir PLUSIEURS résolutions ET commentaires.
+- Exemple: Le point "Renouvellement des mandats" peut contenir RÉSOLUTION 03-04, COMMENTAIRE 03-A, ET RÉSOLUTION 03-05.
+- Regroupe-les tous sous le même point ODJ dans le JSON.
+
+### 4. TABLEAUX
+- Si une résolution contient un tableau (ex: liste de mandats), convertis-le en texte formaté.
+- Utilise le format: "| Colonne1 | Colonne2 |" ou une liste à puces.
+- Place le tableau dans le champ "tableaux" de la résolution.
+
+### 5. CONSIDÉRANTS ET DISPOSITIF
+- Liste COMPLÈTE de tous les CONSIDÉRANT/ATTENDU.
+- Le dispositif complet après "IL EST RÉSOLU".
 
 ${odjSection}
 
@@ -89,26 +119,46 @@ ${rawText}
     "date": "YYYY-MM-DD",
     "titre_reunion": "Titre extrait du document"
   },
+  "presences": {
+    "presents": [
+      {"nom": "Patricia Boutin", "role": "présidente"},
+      {"nom": "Donald Ratté", "role": "vice-président"},
+      {"nom": "Michaël Ross", "role": "secrétaire"},
+      {"nom": "Benjamin Turcotte", "role": "conseiller responsable"},
+      {"nom": "Luc Bossé", "role": "membre"}
+    ],
+    "absents": []
+  },
   "points_traites": [
     {
-      "ordre_du_jour_id": "1",
-      "titre": "Titre exact du point",
-      "discussion_verbatim": "[TEXTE COMPLET de toute la discussion sur ce sujet - plusieurs paragraphes si nécessaire]",
+      "ordre_du_jour_id": "3",
+      "titre": "Renouvellement des mandats des membres du CCE",
+      "discussion_verbatim": "[Texte de discussion AVANT les résolutions]",
       "resolutions": [
         {
-          "code": "03-07",
+          "code": "03-04",
           "type": "resolution",
-          "considerants": ["CONSIDÉRANT que...(texte complet)...", "CONSIDÉRANT que...(texte complet)..."],
-          "dispositif": "IL EST RÉSOLU [texte complet du dispositif]",
-          "proposer": "Nom du proposeur si mentionné",
-          "seconder": "Nom du secondeur si mentionné",
-          "vote": "Adopté à l'unanimité / Abstention: Nom"
+          "considerants": ["CONSIDÉRANT que..."],
+          "dispositif": "IL EST RÉSOLU...",
+          "tableaux": "| SIÈGE | NOM | DÉBUT MANDAT | FIN MANDAT |\\n| 1 | BOSSÉ, Luc | 2022-06-09 | 2024-06-09 |",
+          "proposer": "",
+          "seconder": "",
+          "vote": ""
+        },
+        {
+          "code": "03-05",
+          "type": "resolution",
+          "considerants": ["CONSIDÉRANT que..."],
+          "dispositif": "IL EST RÉSOLU d'élire...",
+          "proposer": "",
+          "seconder": "",
+          "vote": ""
         }
       ],
       "commentaires": [
         {
-          "code": "03-C",
-          "contenu": "[TEXTE COMPLET du commentaire - plusieurs paragraphes]"
+          "code": "03-A",
+          "contenu": "[TEXTE COMPLET du commentaire - PLUSIEURS paragraphes]"
         }
       ]
     }
@@ -118,6 +168,7 @@ ${rawText}
 ## RAPPEL FINAL
 - Le JSON doit contenir L'INTÉGRALITÉ du texte du PV.
 - Ne tronque AUCUN contenu.
+- Un point ODJ peut avoir 0, 1, 2 ou PLUSIEURS résolutions et commentaires.
 - Retourne UNIQUEMENT le JSON valide, sans markdown.`;
 };
 
@@ -232,6 +283,11 @@ export const mapAIExtractedToAgendaItems = (
                     content += res.dispositif;
                 }
 
+                // Add table content if present
+                if (res.tableaux) {
+                    content += '\n\n' + res.tableaux;
+                }
+
                 if (res.contenu) {
                     content = res.contenu; // For comments stored as resolutions
                 }
@@ -280,7 +336,12 @@ export const mapAIExtractedToAgendaItems = (
 export const parsePVWithGroq = async (
     rawText: string,
     existingAgendaItems: AgendaItem[]
-): Promise<{ success: boolean; agendaItems?: AgendaItem[]; error?: string }> => {
+): Promise<{
+    success: boolean;
+    agendaItems?: AgendaItem[];
+    attendees?: Array<{ name: string; role?: string; isPresent: boolean }>;
+    error?: string
+}> => {
     // Step 1: Extract with AI
     const extraction = await extractPVWithGroq(rawText, existingAgendaItems);
 
@@ -291,5 +352,18 @@ export const parsePVWithGroq = async (
     // Step 2: Map to AgendaItems
     const agendaItems = mapAIExtractedToAgendaItems(extraction.data, existingAgendaItems);
 
-    return { success: true, agendaItems };
+    // Step 3: Map presences to attendees format
+    const attendees: Array<{ name: string; role?: string; isPresent: boolean }> = [];
+    if (extraction.data.presences) {
+        for (const p of extraction.data.presences.presents || []) {
+            attendees.push({ name: p.nom, role: p.role, isPresent: true });
+        }
+        for (const a of extraction.data.presences.absents || []) {
+            attendees.push({ name: a.nom, role: a.role, isPresent: false });
+        }
+    }
+
+    console.log(`[groqService] Extracted ${attendees.length} attendees`);
+
+    return { success: true, agendaItems, attendees };
 };
