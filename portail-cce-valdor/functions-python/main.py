@@ -2594,7 +2594,7 @@ def send_approval_link(req: https_fn.CallableRequest) -> Any:
         """
 
         r = resend.Emails.send({
-            "from": "Comité CCE <onboarding@resend.dev>",
+            "from": "CCE Val-d'Or <coordination_cce@ccevvd.com>",
             "to": [email],
             "subject": "Action requise : Approbation de procès-verbal",
             "html": html_content
