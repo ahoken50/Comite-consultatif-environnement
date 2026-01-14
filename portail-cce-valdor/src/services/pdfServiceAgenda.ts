@@ -237,6 +237,13 @@ const getAgendaHTML = (meeting: Meeting): string => {
             width: 100%;
         }
 
+        .signature-img {
+            max-width: 150px;
+            max-height: 80px;
+            display: block;
+            margin: 0 auto -10px auto;
+        }
+
         .signature-name {
             font-weight: 700;
             font-size: 11pt;
@@ -299,7 +306,7 @@ const getAgendaHTML = (meeting: Meeting): string => {
 
         <div class="signature-section">
             <div class="signature-block">
-                <!-- Espace pour signature numérique -->
+                <img src="/assets/signature.png" alt="Signature" class="signature-img" onerror="this.style.display='none';" />
                 <div class="signature-line"></div> 
                 <div class="signature-name">Michaël Ross</div>
                 <div class="signature-title">Coordonnateur en environnement<br>Secrétaire</div>
