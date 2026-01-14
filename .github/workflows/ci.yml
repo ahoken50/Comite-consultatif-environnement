@@ -61,6 +61,7 @@ jobs:
         VITE_TYPESENSE_API_KEY: ${{ secrets.VITE_TYPESENSE_API_KEY }}
         VITE_TYPESENSE_ADMIN_KEY: ${{ secrets.VITE_TYPESENSE_ADMIN_KEY }}
         VITE_SENTRY_DSN: ${{ secrets.VITE_SENTRY_DSN }}
+        VITE_GROQ_API_KEY: ${{ secrets.VITE_GROQ_API_KEY }}
 
     - name: Install Functions dependencies
       working-directory: portail-cce-valdor/functions

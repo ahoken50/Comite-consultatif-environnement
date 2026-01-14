@@ -45,8 +45,9 @@ service cloud.firestore {
       allow write: if isAuthenticated(); 
       
       // Convocations sub-collection (Phase 2 - with RSVP)
+      // PUBLIC read/write allowed for magic link RSVP confirmations (no auth required)
       match /convocations/{convocationId} {
-        allow read, write: if isAuthenticated();
+        allow read, write: if true;  // Magic link RSVP workflow requires public access
       }
       
       // Avis de convocation sub-collection (Phase 1)

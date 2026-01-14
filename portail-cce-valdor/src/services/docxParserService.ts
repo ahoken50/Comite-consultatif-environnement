@@ -1,5 +1,6 @@
 import mammoth from 'mammoth';
 import { type AgendaItem, type MinuteEntry, type Attendee } from '../types/meeting.types';
+import { isGroqConfigured, parsePVWithGroq } from './groqService';
 
 interface ParsedMeetingData {
     title?: string;
@@ -244,11 +245,15 @@ export const parseAgendaDOCX = async (file: File): Promise<ParsedMeetingData> =>
         // Normalize: Fix NBSP
         text = text.replace(/\u00A0/g, ' ');
 
-        // A. Detect Resolution/Comment (Highest Priority Anchor)
+        // Check if element is inside a table (table content should NOT become titles)
+        const isInsideTable = element.closest('table') !== null || element.tagName === 'TR';
+
+        // A. Detect Resolution/Comment (Highest Priority Anchor) - Works even in tables
         const resMatch = text.match(resolutionRegex);
         const comMatch = text.match(commentaireRegex);
 
         if (resMatch) {
+            console.log(`[docxParser] RESOLUTION detected: "${text.substring(0, 40)}..." -> Number: ${resMatch[1] || resMatch[2]}`);
             blocks.push({
                 type: 'RESOLUTION',
                 text: text,
@@ -258,11 +263,21 @@ export const parseAgendaDOCX = async (file: File): Promise<ParsedMeetingData> =>
         }
 
         if (comMatch) {
+            console.log(`[docxParser] COMMENT detected: "${text.substring(0, 40)}..." -> Number: ${comMatch[1] || comMatch[2]}`);
             blocks.push({
                 type: 'COMMENT',
                 text: text,
                 metadata: { number: comMatch[1] || comMatch[2] || comMatch[0], type: 'comment' }
             });
+            continue;
+        }
+
+        // If inside a table, skip title detection - just add as content
+        if (isInsideTable) {
+            // Skip very short table cells (headers like "NOM", "MANDAT")
+            if (text.length > 20) {
+                blocks.push({ type: 'CONTENT', text: text });
+            }
             continue;
         }
 
@@ -289,6 +304,7 @@ export const parseAgendaDOCX = async (file: File): Promise<ParsedMeetingData> =>
         const isBlacklisted = titleBlacklistRegex.test(text) || /^\d+$/.test(text);
 
         if (isPotentialTitle && !isBlacklisted && !resolutionRegex.test(text) && !commentaireRegex.test(text) && !formalLanguageRegex.test(text)) {
+            console.log(`[docxParser] TITLE detected: "${text.substring(0, 50)}..." (H1:${isH1}, Keyword:${isKeywordTitle}, Bold:${isBoldParagraph}, Caps:${isAllCaps})`);
             blocks.push({ type: 'TITLE', text: text });
             continue;
         }
@@ -301,7 +317,11 @@ export const parseAgendaDOCX = async (file: File): Promise<ParsedMeetingData> =>
     // 3. GROUPING BLOCKS INTO SECTIONS (The "Cluster" Logic)
     // ============================================================
 
-    console.log(`[docxParser] Extracted ${blocks.length} blocks. Grouping...`);
+    // Debug: Show block count by type
+    const blockSummary = blocks.reduce((acc, b) => { acc[b.type] = (acc[b.type] || 0) + 1; return acc; }, {} as Record<string, number>);
+    console.log(`[docxParser] Extracted ${blocks.length} blocks:`, blockSummary);
+    console.log(`[docxParser] First 5 TITLE blocks:`, blocks.filter(b => b.type === 'TITLE').slice(0, 5).map(b => b.text.substring(0, 50)));
+
 
     const sections: ParsedSection[] = [];
     let currentSection: ParsedSection | null = null;
@@ -703,4 +723,92 @@ export const matchPVToAgenda = (
     }
 
     return matchMap;
+};
+
+// ============================================================
+// AI-POWERED PARSING (Using Groq)
+// ============================================================
+
+/**
+ * Parse DOCX using AI (Groq) for more robust extraction
+ * Falls back to regex parser if Groq is not configured
+ * 
+ * @param file - The DOCX file to parse
+ * @param existingAgendaItems - Optional existing agenda items to use as reference
+ * @returns Parsed meeting data with agenda items
+ */
+export const parseAgendaDOCXWithAI = async (
+    file: File,
+    existingAgendaItems?: AgendaItem[]
+): Promise<ParsedMeetingData> => {
+    // First, extract raw text using Mammoth
+    const arrayBuffer = await file.arrayBuffer();
+    const result = await mammoth.extractRawText({ arrayBuffer });
+    const rawText = result.value;
+
+    console.log(`[docxParser] AI Mode - Extracted ${rawText.length} chars of raw text`);
+
+    // Check if Groq is configured
+    if (!isGroqConfigured()) {
+        console.warn('[docxParser] Groq not configured, falling back to regex parser');
+        return parseAgendaDOCX(file);
+    }
+
+    // If no existing agenda items, first use regex parser to get structure
+    let referenceItems = existingAgendaItems || [];
+    if (referenceItems.length === 0) {
+        console.log('[docxParser] No reference items, extracting structure first...');
+        const regexResult = await parseAgendaDOCX(file);
+        referenceItems = regexResult.agendaItems || [];
+    }
+
+    // Use Groq to parse the PV
+    const aiResult = await parsePVWithGroq(rawText, referenceItems);
+
+    if (!aiResult.success || !aiResult.agendaItems) {
+        console.error('[docxParser] AI parsing failed:', aiResult.error);
+        console.log('[docxParser] Falling back to regex parser...');
+        return parseAgendaDOCX(file);
+    }
+
+    console.log(`[docxParser] AI parsed ${aiResult.agendaItems.length} agenda items successfully`);
+
+    // Build the result using AI-parsed agenda items
+    const parsedResult: ParsedMeetingData = {
+        agendaItems: aiResult.agendaItems,
+        rawText: rawText
+    };
+
+    // Also extract date and meeting number from raw text
+    const dateRegex = /(?:Lundi|Mardi|Mercredi|Jeudi|Vendredi|Samedi|Dimanche)?\s*(\d{1,2})\s+(janvier|février|mars|avril|mai|juin|juillet|août|septembre|octobre|novembre|décembre)\s+(\d{4})/i;
+    const dateMatch = rawText.match(dateRegex);
+
+    if (dateMatch) {
+        const months: { [key: string]: string } = {
+            'janvier': '01', 'février': '02', 'mars': '03', 'avril': '04', 'mai': '05', 'juin': '06',
+            'juillet': '07', 'août': '08', 'septembre': '09', 'octobre': '10', 'novembre': '11', 'décembre': '12'
+        };
+        const day = dateMatch[1].padStart(2, '0');
+        const monthStr = dateMatch[2].toLowerCase();
+        const year = dateMatch[3];
+        const month = months[monthStr];
+        if (month) {
+            parsedResult.date = `${year}-${month}-${day}`;
+        }
+    }
+
+    // Extract meeting number
+    const meetingMatch = rawText.match(/(?:séance(?:\s+n[°o])?\s*(\d+)|réunion(?:\s+n[°o])?\s*(\d+)|Assemblée\s+n[°o]?\s*(\d+))/i);
+    if (meetingMatch) {
+        parsedResult.meetingNumber = meetingMatch[1] || meetingMatch[2] || meetingMatch[3];
+    }
+
+    return parsedResult;
+};
+
+/**
+ * Check if AI parsing is available
+ */
+export const isAIParsingAvailable = (): boolean => {
+    return isGroqConfigured();
 };
