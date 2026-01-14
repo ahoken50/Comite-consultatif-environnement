@@ -16,7 +16,8 @@ import {
 } from '@mui/material';
 import { CheckCircle, Edit } from '@mui/icons-material';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
-import { db } from '../../services/firebase'; // Ensure this path is correct based on your structure
+import { db, functions } from '../../services/firebase';
+import { httpsCallable } from 'firebase/functions';
 import type { Meeting } from '../../types/meeting.types';
 
 // We'll reuse a simplified version of minutes viewer if available,
@@ -103,11 +104,23 @@ const ApprovalPage: React.FC = () => {
             await updateDoc(approvalRef, {
                 status: 'approved',
                 approvedAt: new Date().toISOString(),
-                comments: comment // Optional final comment
+                comments: comment
             });
 
-            // Log signature in meeting object (optional, for redundancy)
-            // But main logic is in approval doc.
+            // Send notification to coordinator
+            try {
+                const sendNotification = httpsCallable(functions, 'send_approval_notification');
+                await sendNotification({
+                    meetingId,
+                    meetingTitle: meeting?.title || 'Réunion',
+                    reviewerName: approvalData?.name || 'Réviseur',
+                    comments: comment || 'Aucun commentaire',
+                    type: 'approved'
+                });
+            } catch (notifErr) {
+                console.error('Failed to send notification:', notifErr);
+                // Don't fail the whole operation if notification fails
+            }
 
             setSuccessMessage("Merci ! Votre approbation a été enregistrée avec succès.");
         } catch (err) {
@@ -131,6 +144,21 @@ const ApprovalPage: React.FC = () => {
                 updatedAt: new Date().toISOString(),
                 comments: comment
             });
+
+            // Send notification to coordinator
+            try {
+                const sendNotification = httpsCallable(functions, 'send_approval_notification');
+                await sendNotification({
+                    meetingId,
+                    meetingTitle: meeting?.title || 'Réunion',
+                    reviewerName: approvalData?.name || 'Réviseur',
+                    comments: comment,
+                    type: 'changes_requested'
+                });
+            } catch (notifErr) {
+                console.error('Failed to send notification:', notifErr);
+            }
+
             setSuccessMessage("Vos commentaires ont été envoyés au coordonnateur.");
             setShowRejectDialog(false);
         } catch (err) {

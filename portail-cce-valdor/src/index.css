@@ -70,3 +70,94 @@ button:focus-visible {
     background-color: #f9f9f9;
   }
 }
+
+/* Minutes Content Styling for Approval Page */
+.minutes-content {
+  font-family: 'Times New Roman', Georgia, serif;
+  font-size: 12pt;
+  line-height: 1.8;
+  color: #1a1a1a;
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+.minutes-content h1 {
+  font-size: 18pt;
+  font-weight: bold;
+  text-align: center;
+  margin-bottom: 24px;
+  color: #003366;
+  border-bottom: 2px solid #003366;
+  padding-bottom: 12px;
+}
+
+.minutes-content h2 {
+  font-size: 14pt;
+  font-weight: bold;
+  margin-top: 24px;
+  margin-bottom: 12px;
+  color: #003366;
+  border-left: 4px solid #003366;
+  padding-left: 12px;
+}
+
+.minutes-content h3 {
+  font-size: 12pt;
+  font-weight: bold;
+  margin-top: 18px;
+  margin-bottom: 8px;
+  color: #333;
+}
+
+.minutes-content p {
+  margin-bottom: 12px;
+  text-align: justify;
+}
+
+.minutes-content ul, .minutes-content ol {
+  margin-left: 24px;
+  margin-bottom: 12px;
+}
+
+.minutes-content li {
+  margin-bottom: 6px;
+}
+
+.minutes-content table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 16px 0;
+}
+
+.minutes-content table th,
+.minutes-content table td {
+  border: 1px solid #ccc;
+  padding: 8px 12px;
+  text-align: left;
+}
+
+.minutes-content table th {
+  background-color: #f0f0f0;
+  font-weight: bold;
+}
+
+.minutes-content .resolution {
+  background-color: #e8f4f8;
+  border-left: 4px solid #0288d1;
+  padding: 12px 16px;
+  margin: 16px 0;
+  font-style: italic;
+}
+
+.minutes-content .comment {
+  background-color: #fff3e0;
+  border-left: 4px solid #ff9800;
+  padding: 12px 16px;
+  margin: 16px 0;
+}
+
+.minutes-content strong {
+  color: #003366;
+}
+

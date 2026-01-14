@@ -2609,6 +2609,96 @@ def send_approval_link(req: https_fn.CallableRequest) -> Any:
 
 
 # =============================================================================
+# APPROVAL NOTIFICATION (When changes are requested)
+# =============================================================================
+
+@https_fn.on_call()
+def send_approval_notification(req: https_fn.CallableRequest) -> Any:
+    """
+    Sends email notification to coordinator when changes are requested in approval workflow.
+    """
+    try:
+        import resend
+        resend.api_key = os.environ.get("RESEND_API_KEY", "")
+        
+        data = req.data
+        meeting_id = data.get("meetingId")
+        meeting_title = data.get("meetingTitle")
+        reviewer_name = data.get("reviewerName")
+        comments = data.get("comments")
+        notification_type = data.get("type", "changes_requested")  # 'approved' or 'changes_requested'
+        
+        if not meeting_id or not comments:
+            return {"success": False, "error": "Missing parameters"}
+        
+        # Get coordinator email from Firestore
+        db = firestore.client()
+        members_ref = db.collection("members")
+        coordinators = members_ref.where("role", "==", "coordinator").where("isActive", "==", True).limit(1).stream()
+        
+        coordinator_email = None
+        coordinator_name = None
+        for member in coordinators:
+            member_data = member.to_dict()
+            coordinator_email = member_data.get("email")
+            coordinator_name = member_data.get("displayName", "Coordonnateur")
+            break
+        
+        if not coordinator_email:
+            print("No active coordinator found, cannot send notification")
+            return {"success": False, "error": "Aucun coordonnateur actif trouvé"}
+        
+        # Build email content based on notification type
+        if notification_type == "approved":
+            subject = f"✅ PV Approuvé - {meeting_title}"
+            html_content = f"""
+            <!DOCTYPE html>
+            <html>
+            <body style="font-family: Arial, sans-serif; padding: 20px;">
+                <h2 style="color: #2e7d32;">Procès-verbal Approuvé</h2>
+                <p>Bonjour {coordinator_name},</p>
+                <p><strong>{reviewer_name}</strong> a approuvé le procès-verbal de la réunion :</p>
+                <p style="font-size: 16px; color: #333;"><strong>{meeting_title}</strong></p>
+                {f'<p><strong>Commentaires :</strong></p><blockquote style="border-left: 3px solid #2e7d32; padding-left: 12px; color: #555;">{comments}</blockquote>' if comments else ''}
+                <p>Vous pouvez maintenant finaliser le document.</p>
+            </body>
+            </html>
+            """
+        else:
+            subject = f"📝 Modifications demandées - {meeting_title}"
+            html_content = f"""
+            <!DOCTYPE html>
+            <html>
+            <body style="font-family: Arial, sans-serif; padding: 20px;">
+                <h2 style="color: #f57c00;">Modifications Demandées</h2>
+                <p>Bonjour {coordinator_name},</p>
+                <p><strong>{reviewer_name}</strong> a demandé des modifications au procès-verbal de la réunion :</p>
+                <p style="font-size: 16px; color: #333;"><strong>{meeting_title}</strong></p>
+                <p><strong>Commentaires :</strong></p>
+                <blockquote style="border-left: 3px solid #f57c00; padding-left: 12px; color: #555; background: #fff3e0; padding: 12px;">
+                    {comments}
+                </blockquote>
+                <p>Veuillez effectuer les corrections et renvoyer le lien d'approbation.</p>
+            </body>
+            </html>
+            """
+        
+        r = resend.Emails.send({
+            "from": "CCE Val-d'Or <coordination_cce@ccevvd.com>",
+            "to": [coordinator_email],
+            "subject": subject,
+            "html": html_content
+        })
+        
+        print(f"Notification sent to coordinator: {coordinator_email}")
+        return {"success": True, "emailId": r.get("id")}
+        
+    except Exception as e:
+        print(f"Error sending approval notification: {e}")
+        return {"success": False, "error": str(e)}
+
+
+# =============================================================================
 # SPEECHMATICS COST PROTECTION & JOB MANAGEMENT
 # =============================================================================
 
