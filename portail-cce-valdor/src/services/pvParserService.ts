@@ -57,10 +57,10 @@ export const parseMinutesDOCX = async (file: File): Promise<ParsedPVData> => {
 const parseRawTextToPV = (text: string): ParsedPVData => {
     // 1. Text Cleanup / Normalization
     // Fix weird PDF spacing in numbers (e.g. "0 7 - 3 1" -> "07-31")
-    let cleanText = text.replace(/R[ÉE]SOLUTION\s+((?:\d\s*)+)-((?:\s*\d)+)/gi, (match, p1, p2) => {
+    let cleanText = text.replace(/R[ÉE]SOLUTION\s+((?:\d\s*)+)-((?:\s*\d)+)/gi, (_, p1, p2) => {
         return `RÉSOLUTION ${p1.replace(/\s/g, '')}-${p2.replace(/\s/g, '')}`;
     });
-    cleanText = cleanText.replace(/COMMENTAIRE\s+((?:\d\s*)+)-((?:\s*[A-Z])+)/gi, (match, p1, p2) => {
+    cleanText = cleanText.replace(/COMMENTAIRE\s+((?:\d\s*)+)-((?:\s*[A-Z])+)/gi, (_, p1, p2) => {
         return `COMMENTAIRE ${p1.replace(/\s/g, '')}-${p2.replace(/\s/g, '')}`;
     });
 
@@ -205,13 +205,14 @@ const parseRawTextToPV = (text: string): ParsedPVData => {
 
         // --- 5. CONTENT ---
         if (currentSection) {
+            const activeSection = currentSection;
             // Filter noise (page numbers)
             if (/^page \d+/i.test(line)) continue;
 
             if (currentEntry) {
                 currentEntry.content.push(line);
             } else {
-                currentSection.content.push(line);
+                activeSection.content.push(line);
             }
         }
 
@@ -232,8 +233,12 @@ const parseRawTextToPV = (text: string): ParsedPVData => {
         }));
 
         const hasResolution = section.entries.some(e => e.type === 'resolution');
-        const mainDecisionText = hasResolution
-            ? minuteEntries.find(e => e.type === 'resolution')?.content || ''
+
+        // Safe finding logic
+        const resolutionEntry = minuteEntries.find(e => e.type === 'resolution');
+
+        const mainDecisionText = hasResolution && resolutionEntry
+            ? resolutionEntry.content
             : section.content.join('\n').trim();
 
         return {
