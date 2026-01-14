@@ -2425,7 +2425,7 @@ def send_avis_convocation(req: https_fn.CallableRequest):
         <!-- Header -->
         <div style="background-color: #1e4e3d; padding: 30px; text-align: center;">
             <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-family: Arial, sans-serif;">
-                COMITÃ‰ CONSULTATIF EN ENVIRONNEMENT
+                COMITÉ CONSULTATIF EN ENVIRONNEMENT
             </h1>
             <p style="color: #c5a065; margin: 10px 0 0 0; font-size: 14px; text-transform: uppercase; letter-spacing: 2px;">
                 Ville de Val-d'Or
@@ -2439,8 +2439,8 @@ def send_avis_convocation(req: https_fn.CallableRequest):
             </p>
             
             <p style="font-size: 16px; color: #333; line-height: 1.6;">
-                Vous trouverez, <strong>en fichier joint</strong>, l'avis de convocation pour la prochaine assemblÃ©e du 
-                <strong>ComitÃ© consultatif en environnement</strong>, prÃ©vue le <strong>{formatted_meeting_date}</strong>.
+                Vous trouverez, <strong>en fichier joint</strong>, l'avis de convocation pour la prochaine assemblee du 
+                <strong>Comite consultatif en environnement</strong>, prevue le <strong>{formatted_meeting_date}</strong>.
             </p>
             
             <!-- Deadline box -->
@@ -2453,7 +2453,7 @@ def send_avis_convocation(req: https_fn.CallableRequest):
             </div>
             
             <p style="font-size: 16px; color: #333; line-height: 1.6;">
-                Merci et bonne journÃ©e !
+                Merci et bonne journee !
             </p>
         </div>
         
