@@ -67,7 +67,8 @@ const ResolutionsPage: React.FC = () => {
 
         meetings.forEach(meeting => {
             meeting.agendaItems.forEach(item => {
-                if (item.minuteEntries) {
+                // Check minuteEntries array first (new format)
+                if (item.minuteEntries && item.minuteEntries.length > 0) {
                     item.minuteEntries.forEach((entry, index) => {
                         if (entry.type === 'resolution') {
                             // Find linked project - optimized with O(1) lookup
@@ -86,6 +87,23 @@ const ResolutionsPage: React.FC = () => {
                                 status: project?.status || 'Non lié' // [NEW] Default to 'Non lié' if no project
                             });
                         }
+                    });
+                }
+                // Fallback: Check legacy format (minuteType, minuteNumber directly on item)
+                else if ((item as any).minuteType === 'resolution' && (item as any).minuteNumber) {
+                    const project = item.linkedProjectId ? projectsMap.get(item.linkedProjectId) : undefined;
+
+                    rows.push({
+                        id: `${meeting.id}-${item.id}-legacy`,
+                        number: (item as any).minuteNumber || 'N/A',
+                        content: (item as any).decision || item.description || '',
+                        date: meeting.date,
+                        meetingId: meeting.id,
+                        meetingTitle: meeting.title,
+                        topicTitle: item.title,
+                        projectId: item.linkedProjectId,
+                        projectCode: project?.code,
+                        status: project?.status || 'Non lié'
                     });
                 }
             });
