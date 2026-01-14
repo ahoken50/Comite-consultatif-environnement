@@ -1,4 +1,5 @@
 import mammoth from 'mammoth';
+import TurndownService from 'turndown';
 import { type AgendaItem, type MinuteEntry, type Attendee } from '../types/meeting.types';
 import { isGroqConfigured, parsePVWithGroq } from './groqService';
 
@@ -741,12 +742,38 @@ export const parseAgendaDOCXWithAI = async (
     file: File,
     existingAgendaItems?: AgendaItem[]
 ): Promise<ParsedMeetingData> => {
-    // First, extract raw text using Mammoth
+    // Convert DOCX to Markdown to preserve bold text (**) for better AI title detection
     const arrayBuffer = await file.arrayBuffer();
-    const result = await mammoth.extractRawText({ arrayBuffer });
-    const rawText = result.value;
 
-    console.log(`[docxParser] AI Mode - Extracted ${rawText.length} chars of raw text`);
+    // 1. Convert DOCX -> HTML (preserves formatting like bold, tables)
+    const htmlResult = await mammoth.convertToHtml({ arrayBuffer });
+    const html = htmlResult.value;
+
+    if (htmlResult.messages.length > 0) {
+        console.warn('[docxParser] Mammoth warnings:', htmlResult.messages);
+    }
+
+    // 2. Convert HTML -> Markdown (AI understands **bold** syntax)
+    const turndownService = new TurndownService({
+        headingStyle: 'atx',      // ## headings
+        bulletListMarker: '-',
+        codeBlockStyle: 'fenced'
+    });
+
+    // Configure turndown for better table handling
+    turndownService.addRule('tableCell', {
+        filter: ['th', 'td'],
+        replacement: (content) => ` ${content.trim()} |`
+    });
+    turndownService.addRule('tableRow', {
+        filter: 'tr',
+        replacement: (content) => `|${content}\n`
+    });
+
+    const rawText = turndownService.turndown(html);
+
+    console.log(`[docxParser] AI Mode - Converted DOCX to Markdown: ${rawText.length} chars`);
+    console.log('[docxParser] Bold text preserved with ** syntax for AI title detection');
 
     // Check if Groq is configured
     if (!isGroqConfigured()) {
