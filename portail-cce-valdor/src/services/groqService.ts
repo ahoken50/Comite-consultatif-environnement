@@ -8,6 +8,7 @@
  */
 
 import type { AgendaItem, MinuteEntry } from '../types/meeting.types';
+import JSON5 from 'json5';
 
 // Groq API configuration
 const GROQ_API_KEY = import.meta.env.VITE_GROQ_API_KEY;
@@ -255,6 +256,107 @@ ${rawText}
 };
 
 /**
+ * 2nd Pass: Validate and Refine Extraction
+ * Helps correct misclassified items (e.g. comments in Varia instead of correct point)
+ */
+const refinePVWithGroq = async (
+    initialData: AIExtractedPV,
+    agendaItems: AgendaItem[]
+): Promise<AIExtractedPV> => {
+    console.log('[groqService] Starting 2nd pass validation...');
+
+    // Create a simplified view for the AI to validate
+    const odjList = agendaItems.map((item, i) => `${i + 1}. ${item.title}`).join('\n');
+
+    const prompt = `
+Tu es un EXPERT en validation de données de procès-verbaux (PV).
+Voici une extraction JSON faite par une IA junior. Elle contient souvent des ERREURS DE GROUPEMENT.
+Ta mission : CORRIGER les erreurs d'association entre résolutions/commentaires et les points de l'ordre du jour.
+
+Voici l'ORDRE DU JOUR OFFICIEL :
+${odjList}
+
+Voici l'EXTRACTION À CORRIGER :
+${JSON.stringify(initialData, null, 2)}
+
+## ⚠️ ERREURS FRÉQUENTES À CORRIGER :
+1. **COMMENTAIRES ORPHELINS** : Souvent placés dans "Varia" ou le mauvais point.
+   - Si un commentaire parle de "ruches", il DOIT aller dans le point "Projet ruches".
+   - Si un commentaire parle de "politique environnementale", il DOIT aller dans le point "Politique environnementale".
+   - DÉPLACE-LES dans le bon "point_traite" et SUPPRIME-LES de l'ancien.
+
+2. **VARIA** : Varia ne doit contenir QUE les sujets divers (non listés à l'ODJ).
+   - Vide le Varia de tout ce qui correspond à un point ODJ spécifique.
+
+3. **TITRES** : Vérifie que "resolutions[].titre" contient bien le SOUS-TITRE spécifique (ex: "Élection président") et non le titre global du point ODJ.
+
+## INSTRUCTIONS :
+- Analyse le CONTENU sémantique de chaque résolution/commentaire.
+- DÉPLACE les objets dans le tableau "points_traites" correspondant au bon ID.
+- NE MODIFIE PAS le texte verbatim (contenu, considérants, dispositif).
+- RETOURNE le JSON corrigé complet respectant la même structure.
+`;
+
+    try {
+        const response = await fetch(GROQ_API_URL, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${GROQ_API_KEY}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                model: GROQ_MODEL,
+                messages: [
+                    {
+                        role: 'system',
+                        content: 'Tu es un validateur expert. Tu corriges les erreurs de groupement dans le JSON. Tu déplaces les items mal classés.'
+                    },
+                    {
+                        role: 'user',
+                        content: prompt
+                    }
+                ],
+                temperature: 0.1, // Very strict for validation
+                max_tokens: 32000,
+                top_p: 0.95,
+                reasoning_effort: 'default',
+                response_format: { type: 'json_object' }
+            })
+        });
+
+        if (!response.ok) {
+            console.warn('[groqService] 2nd pass failed API call, using initial data');
+            return initialData;
+        }
+
+        const jsonResponse = await response.json();
+        const content = jsonResponse.choices[0]?.message?.content;
+
+        if (!content) return initialData;
+
+        // Parse with fail-safe
+        try {
+            const correctedData = JSON.parse(content) as AIExtractedPV;
+            console.log('[groqService] 2nd pass successful - Data refined');
+            return correctedData;
+        } catch (e) {
+            try {
+                // Secondary try with JSON5
+                const correctedData = JSON5.parse(content) as AIExtractedPV;
+                return correctedData;
+            } catch (e2) {
+                console.warn('[groqService] 2nd pass returned invalid JSON, using initial data');
+                return initialData;
+            }
+        }
+
+    } catch (error) {
+        console.warn('[groqService] Error during 2nd pass:', error);
+        return initialData;
+    }
+};
+
+/**
  * Extract structured PV data using Groq AI
  */
 export const extractPVWithGroq = async (
@@ -315,10 +417,30 @@ export const extractPVWithGroq = async (
 
         console.log('[groqService] Received response, parsing JSON...');
 
-        // Parse the JSON response
-        const data = JSON.parse(content) as AIExtractedPV;
+        // Parse the JSON response with fault-tolerant parsing
+        let data: AIExtractedPV;
+        try {
+            // Try standard JSON.parse first (fastest)
+            data = JSON.parse(content) as AIExtractedPV;
+        } catch (parseError) {
+            // Fallback to json5 for malformed JSON (trailing commas, unquoted keys, etc.)
+            console.warn('[groqService] Standard JSON.parse failed, trying json5...');
+            try {
+                data = JSON5.parse(content) as AIExtractedPV;
+                console.log('[groqService] json5 parsed successfully');
+            } catch (json5Error) {
+                console.error('[groqService] Both JSON parsers failed');
+                throw new Error(`Erreur de parsing JSON: ${(parseError as Error).message}`);
+            }
+        }
 
         console.log(`[groqService] Successfully extracted ${data.points_traites?.length || 0} points`);
+
+        // 2nd PASS: Validate and Refine
+        // This drastically improves grouping accuracy (comments in Varia etc.)
+        if (data.points_traites && data.points_traites.length > 0) {
+            data = await refinePVWithGroq(data, agendaItems);
+        }
 
         return { success: true, data };
 
@@ -332,43 +454,100 @@ export const extractPVWithGroq = async (
 /**
  * Simple string similarity score (0-1) based on common words
  */
+/**
+ * Enhanced similarity score (0-1) prioritizing meaningful words matches
+ */
 const calculateSimilarity = (str1: string, str2: string): number => {
-    const normalize = (s: string) => s.toLowerCase().replace(/[^a-zàâäéèêëïîôùûüç0-9\s]/g, '').split(/\s+/);
-    const words1 = new Set(normalize(str1));
-    const words2 = new Set(normalize(str2));
-    const intersection = [...words1].filter(w => words2.has(w) && w.length > 2);
-    const union = new Set([...words1, ...words2]);
-    return intersection.length / union.size;
+    if (!str1 || !str2) return 0;
+
+    // Normalize: lowercase, remove accents, keep only alphanum
+    const normalize = (s: string) => s.toLowerCase()
+        .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+        .replace(/[^a-z0-9\s]/g, ' ')
+        .trim();
+
+    const s1 = normalize(str1);
+    const s2 = normalize(str2);
+
+    if (s1.includes(s2) || s2.includes(s1)) return 1.0; // Direct inclusion
+
+    const tokens1 = s1.split(/\s+/).filter(w => w.length > 3); // Ignore short words
+    const tokens2 = s2.split(/\s+/).filter(w => w.length > 3);
+
+    if (tokens1.length === 0 || tokens2.length === 0) return 0;
+
+    let matchCount = 0;
+    for (const t1 of tokens1) {
+        if (tokens2.some(t2 => t2.includes(t1) || t1.includes(t2))) {
+            matchCount++;
+        }
+    }
+
+    // Weight by the ratio of matched meaningful words
+    return matchCount / Math.max(tokens1.length, tokens2.length);
 };
 
 /**
  * Find the best matching agenda item for a point
  */
 const findBestMatch = (
-    point: { ordre_du_jour_id: string; titre: string },
+    point: { ordre_du_jour_id: string; titre: string; resolutions?: any[] },
     items: AgendaItem[]
 ): { item: AgendaItem | null; index: number; matchType: string } => {
-    // Priority 1: Match by ID
-    const idIndex = parseInt(point.ordre_du_jour_id) - 1;
-    if (idIndex >= 0 && idIndex < items.length) {
-        return { item: items[idIndex], index: idIndex, matchType: 'id' };
+
+    // 1. Try STRICT ID Match (only if ID is numeric and plausible)
+    const idStr = point.ordre_du_jour_id.replace(/[^0-9]/g, '');
+    if (idStr) {
+        const idIndex = parseInt(idStr) - 1;
+        if (idIndex >= 0 && idIndex < items.length) {
+            // Confirm with title check - if completely different, suspicious
+            const titleScore = calculateSimilarity(point.titre, items[idIndex].title);
+            if (titleScore > 0.2) { // Low threshold just to prevent total mismatches
+                return { item: items[idIndex], index: idIndex, matchType: 'id-verified' };
+            }
+        }
     }
 
-    // Priority 2: Fuzzy match by title
+    // 2. Fuzzy match by Title AND Resolution Content
     let bestScore = 0;
     let bestIndex = -1;
+
+    // Build rich text for the point (title + sub-titles)
+    const pointText = `${point.titre} ${point.resolutions?.map((r: any) => r.titre).join(' ') || ''}`;
+
     for (let i = 0; i < items.length; i++) {
-        const score = calculateSimilarity(point.titre, items[i].title);
-        if (score > bestScore && score > 0.3) { // Minimum 30% similarity
+        const itemTitle = items[i].title;
+        // Check title similarity
+        const titleScore = calculateSimilarity(point.titre, itemTitle);
+
+        // Check content similarity (sub-titles vs item title)
+        const contentScore = calculateSimilarity(pointText, itemTitle);
+
+        const score = Math.max(titleScore, contentScore);
+
+        if (score > bestScore) {
             bestScore = score;
             bestIndex = i;
         }
     }
-    if (bestIndex >= 0) {
-        return { item: items[bestIndex], index: bestIndex, matchType: `fuzzy(${(bestScore * 100).toFixed(0)}%)` };
+
+    if (bestIndex >= 0 && bestScore > 0.3) {
+        return {
+            item: items[bestIndex],
+            index: bestIndex,
+            matchType: `content-match(${(bestScore * 100).toFixed(0)}%)`
+        };
     }
 
-    // Priority 3: Fallback to "Varia" or last item
+    // 3. Absolute Fallback: Use ID even if title didn't match (better than Varia)
+    if (idStr) {
+        const idIndex = parseInt(idStr) - 1;
+        if (idIndex >= 0 && idIndex < items.length) {
+            return { item: items[idIndex], index: idIndex, matchType: 'id-fallback' };
+        }
+    }
+
+    // 4. Last resort: Varia or last item
     const variaIndex = items.findIndex(item =>
         item.title.toLowerCase().includes('varia') ||
         item.title.toLowerCase().includes('divers')
@@ -377,7 +556,6 @@ const findBestMatch = (
         return { item: items[variaIndex], index: variaIndex, matchType: 'varia-fallback' };
     }
 
-    // Ultimate fallback: last item
     const lastIndex = items.length - 1;
     return { item: items[lastIndex], index: lastIndex, matchType: 'last-fallback' };
 };
@@ -400,7 +578,11 @@ export const mapAIExtractedToAgendaItems = (
     for (const point of aiData.points_traites) {
         // Find matching agenda item using intelligent matching
         const { item: matchedItem, index: matchedIndex, matchType } = findBestMatch(
-            { ordre_du_jour_id: point.ordre_du_jour_id, titre: point.titre },
+            {
+                ordre_du_jour_id: point.ordre_du_jour_id,
+                titre: point.titre,
+                resolutions: point.resolutions
+            },
             updatedItems
         );
 
