@@ -2446,9 +2446,9 @@ def send_avis_convocation(req: https_fn.CallableRequest):
             <!-- Deadline box -->
             <div style="background-color: #fff3cd; border: 1px solid #ffc107; border-radius: 8px; padding: 20px; margin: 25px 0;">
                 <p style="margin: 0; font-size: 16px; color: #856404;">
-                    ðŸ“… <strong>Date limite pour suggestions :</strong><br>
+                    <strong>Date limite pour suggestions :</strong><br>
                     Vous avez jusqu'au <strong>{formatted_deadline}</strong> pour faire vos suggestions de sujets 
-                    Ã  l'ordre du jour, par courriel Ã  <a href="mailto:{sender_email}" style="color: #1e4e3d;">{sender_email}</a>
+                    à l'ordre du jour, par courriel à <a href="mailto:{sender_email}" style="color: #1e4e3d;">{sender_email}</a>
                 </p>
             </div>
             
@@ -2481,7 +2481,7 @@ def send_avis_convocation(req: https_fn.CallableRequest):
                 resend.Emails.send({
                     "from": "CCE Val-d'Or <coordination_cce@ccevvd.com>",
                     "to": [recipient.get("email")],
-                    "subject": f"Avis de convocation â€“ AssemblÃ©e CCE du {formatted_meeting_date}",
+                    "subject": f"Avis de convocation à Assemblée CCE du {formatted_meeting_date}",
                     "html": email_html,
                     "attachments": [
                         {
