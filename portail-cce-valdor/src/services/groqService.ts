@@ -13,8 +13,8 @@ import type { AgendaItem, MinuteEntry } from '../types/meeting.types';
 const GROQ_API_KEY = import.meta.env.VITE_GROQ_API_KEY;
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
 
-// Recommended model for structured output (fast and accurate)
-const GROQ_MODEL = 'llama-3.3-70b-versatile'; // Best for JSON extraction
+// Best model for structured extraction with reasoning capabilities
+const GROQ_MODEL = 'openai/gpt-oss-120b'; // GPT-OSS 120B - OpenAI's flagship open model with reasoning
 
 /**
  * Response structure from AI extraction
@@ -106,6 +106,14 @@ ${agendaItems.map((item, i) => `${i + 1}. ${item.title}`).join('\n')}`
 ### 5. CONSIDÉRANTS ET DISPOSITIF
 - Liste COMPLÈTE de tous les CONSIDÉRANT/ATTENDU.
 - Le dispositif complet après "IL EST RÉSOLU".
+
+### 6. RAISONNEMENT POUR ASSOCIER RÉSOLUTIONS À L'ODJ (IMPORTANT)
+Utilise ton raisonnement pour associer chaque RÉSOLUTION et COMMENTAIRE au bon point de l'ODJ :
+- Si le titre ODJ correspond directement au sujet → association évidente.
+- Si le titre ne correspond pas exactement → raisonne sur le CONTENU de la résolution/commentaire.
+- Exemple: "COMMENTAIRE 03-A" parle d'élection de président → associe-le au point "Élection d'une présidente" même s'il apparaît juste après "Renouvellement des mandats".
+- RÈGLE: Analyse le texte du dispositif (IL EST RÉSOLU) pour comprendre le sujet réel.
+- Regroupe les résolutions/commentaires sous le point ODJ le plus pertinent sémantiquement.
 
 ${odjSection}
 
@@ -213,6 +221,7 @@ export const extractPVWithGroq = async (
                 ],
                 temperature: 0.1, // Low temperature for deterministic output
                 max_tokens: 32000, // Large to capture full verbatim content
+                reasoning_effort: 'medium', // GPT-OSS 120B: 'low', 'medium', or 'high' reasoning mode
                 response_format: { type: 'json_object' } // Force JSON output
             })
         });
