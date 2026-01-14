@@ -245,8 +245,9 @@ export const parseAgendaDOCX = async (file: File): Promise<ParsedMeetingData> =>
     };
 
     for (const element of elements) {
-        // Skip content inside tables (they often contain metadata headers like "NOM", "MANDAT")
-        if (element.closest('table')) continue;
+        // ALLOW content inside tables (so we capture lists of names, etc.)
+        // formatting might be raw, but better than missing data.
+        // The blacklist prevents headers like "NOM" from becoming Sections.
 
         const text = element.textContent?.trim() || '';
         if (!text) continue;
