@@ -47,8 +47,8 @@ const ApprovalPage: React.FC = () => {
             try {
                 const { collection, query, where, getDocs } = await import('firebase/firestore');
 
-                // 1. Validate Token
-                const approvalsRef = collection(db, 'meetings', meetingId, 'approvals');
+                // 1. Validate Token - must match collection name used in Cloud Function
+                const approvalsRef = collection(db, 'meetings', meetingId, 'approval_tokens');
                 const q = query(approvalsRef, where('token', '==', token));
                 const snapshot = await getDocs(q);
 
@@ -98,8 +98,8 @@ const ApprovalPage: React.FC = () => {
     const handleApprove = async () => {
         setActionLoading(true);
         try {
-            // Update approval status
-            const approvalRef = doc(db, 'meetings', meetingId!, 'approvals', approvalData.id);
+            // Update approval status in approval_tokens collection
+            const approvalRef = doc(db, 'meetings', meetingId!, 'approval_tokens', approvalData.id);
             await updateDoc(approvalRef, {
                 status: 'approved',
                 approvedAt: new Date().toISOString(),
@@ -125,7 +125,7 @@ const ApprovalPage: React.FC = () => {
         }
         setActionLoading(true);
         try {
-            const approvalRef = doc(db, 'meetings', meetingId!, 'approvals', approvalData.id);
+            const approvalRef = doc(db, 'meetings', meetingId!, 'approval_tokens', approvalData.id);
             await updateDoc(approvalRef, {
                 status: 'changes_requested',
                 updatedAt: new Date().toISOString(),
