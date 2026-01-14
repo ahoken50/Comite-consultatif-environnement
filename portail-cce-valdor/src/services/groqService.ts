@@ -59,58 +59,66 @@ const buildPVExtractionPrompt = (
     rawText: string,
     agendaItems: AgendaItem[]
 ): string => {
-    // Format agenda items as reference
-    const odjList = agendaItems
-        .map((item, i) => `${i + 1}. ${item.title}`)
-        .join('\n');
+    // Format agenda items as reference (or note if none)
+    const hasODJ = agendaItems.length > 0;
+    const odjSection = hasODJ
+        ? `## ORDRE DU JOUR (Structure de référence)
+${agendaItems.map((item, i) => `${i + 1}. ${item.title}`).join('\n')}`
+        : '## NOTE: Aucun ordre du jour fourni. Identifie CHAQUE point discuté dans le PV comme un point séparé.';
 
-    return `Tu es un extracteur de données rigoureux. Ton objectif est de structurer ce Procès-Verbal en JSON en utilisant l'Ordre du Jour comme structure de référence.
+    return `Tu es un extracteur de données VERBATIM pour procès-verbaux municipaux. Ton travail est CRUCIAL.
 
-INSTRUCTIONS :
-- Structure Maîtresse : Chaque entrée dans le JSON doit correspondre à un point de l'Ordre du Jour.
-- Lien Hiérarchique : Pour chaque point, regroupe le contenu de la discussion et la résolution/commentaire associé.
-- Fidélité Absolue : Ne reformule rien. Copie le texte intégral (Verbatim).
-- Cas Spéciaux : Si un sujet de l'ordre du jour n'a pas été discuté, indique-le. Si un sujet est ajouté (ex: Varia), ajoute-le à la fin.
-- Format : Produis uniquement du JSON pur, sans markdown.
+## RÈGLES ABSOLUES (NE JAMAIS DÉROGER)
 
-## ORDRE DU JOUR (Structure de référence)
-${odjList}
+1. **EXTRACTION INTÉGRALE** : Copie TOUT le texte de chaque section. Ne résume JAMAIS.
+2. **VERBATIM** : Chaque phrase, chaque intervenant, chaque détail doit être préservé EXACTEMENT.
+3. **STRUCTURE** : Chaque RÉSOLUTION (ex: "RÉSOLUTION 03-07") et COMMENTAIRE (ex: "COMMENTAIRE 03-C") doit être extrait avec son contenu COMPLET.
+4. **DISCUSSIONS** : Le champ "discussion_verbatim" contient TOUT le texte AVANT la résolution/commentaire.
+5. **CONSIDÉRANTS** : Liste COMPLÈTE de tous les CONSIDÉRANT/ATTENDU.
+6. **IL EST RÉSOLU** : Le dispositif complet après "IL EST RÉSOLU".
 
-## TEXTE DU PROCÈS-VERBAL À ANALYSER
+${odjSection}
+
+## TEXTE DU PROCÈS-VERBAL (EXTRAIT INTÉGRAL REQUIS)
 ${rawText}
 
-## FORMAT JSON ATTENDU (STRICT)
+## FORMAT JSON ATTENDU
 {
   "metadonnees": {
     "ville": "Val-d'Or",
-    "date": "YYYY-MM-DD"
+    "date": "YYYY-MM-DD",
+    "titre_reunion": "Titre extrait du document"
   },
   "points_traites": [
     {
       "ordre_du_jour_id": "1",
-      "titre": "Titre du point",
-      "discussion_verbatim": "Tout le texte de discussion verbatim...",
+      "titre": "Titre exact du point",
+      "discussion_verbatim": "[TEXTE COMPLET de toute la discussion sur ce sujet - plusieurs paragraphes si nécessaire]",
       "resolutions": [
         {
           "code": "03-07",
           "type": "resolution",
-          "considerants": ["CONSIDÉRANT que...", "CONSIDÉRANT que..."],
-          "dispositif": "IL EST RÉSOLU QUE...",
-          "proposer": "Nom",
-          "seconder": "Nom"
+          "considerants": ["CONSIDÉRANT que...(texte complet)...", "CONSIDÉRANT que...(texte complet)..."],
+          "dispositif": "IL EST RÉSOLU [texte complet du dispositif]",
+          "proposer": "Nom du proposeur si mentionné",
+          "seconder": "Nom du secondeur si mentionné",
+          "vote": "Adopté à l'unanimité / Abstention: Nom"
         }
       ],
       "commentaires": [
         {
           "code": "03-C",
-          "contenu": "Texte verbatim du commentaire..."
+          "contenu": "[TEXTE COMPLET du commentaire - plusieurs paragraphes]"
         }
       ]
     }
   ]
 }
 
-IMPORTANT: Retourne UNIQUEMENT le JSON, sans texte avant ni après.`;
+## RAPPEL FINAL
+- Le JSON doit contenir L'INTÉGRALITÉ du texte du PV.
+- Ne tronque AUCUN contenu.
+- Retourne UNIQUEMENT le JSON valide, sans markdown.`;
 };
 
 /**
@@ -153,7 +161,7 @@ export const extractPVWithGroq = async (
                     }
                 ],
                 temperature: 0.1, // Low temperature for deterministic output
-                max_tokens: 8000,
+                max_tokens: 32000, // Large to capture full verbatim content
                 response_format: { type: 'json_object' } // Force JSON output
             })
         });

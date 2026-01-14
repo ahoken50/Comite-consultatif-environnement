@@ -380,6 +380,21 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
                 try {
                     console.log(`[DEBUG] Parsing ${isDocx ? 'DOCX' : 'PDF'} file as Minutes (PV)...`);
 
+                    // Warning if no ODJ defined for AI parsing
+                    if (isDocx && localAgendaItems.length === 0) {
+                        const proceed = window.confirm(
+                            '⚠️ Aucun Ordre du Jour (ODJ) n\'est défini pour cette réunion.\n\n' +
+                            'Pour de meilleurs résultats avec le parser IA, il est recommandé de :\n' +
+                            '1. Définir d\'abord l\'ODJ dans la section "Ordre du jour"\n' +
+                            '2. Puis importer le PV\n\n' +
+                            'Voulez-vous continuer quand même ?\n' +
+                            '(L\'IA tentera de détecter automatiquement les points)'
+                        );
+                        if (!proceed) {
+                            return;
+                        }
+                    }
+
                     let parsedData;
 
                     if (isDocx) {
