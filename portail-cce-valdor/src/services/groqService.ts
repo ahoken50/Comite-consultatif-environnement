@@ -115,6 +115,18 @@ Utilise ton raisonnement pour associer chaque RÉSOLUTION et COMMENTAIRE au bon 
 - RÈGLE: Analyse le texte du dispositif (IL EST RÉSOLU) pour comprendre le sujet réel.
 - Regroupe les résolutions/commentaires sous le point ODJ le plus pertinent sémantiquement.
 
+### 7. ORDRE DES RÉSOLUTIONS ET COMMENTAIRES (CRITIQUE)
+- Les résolutions et commentaires doivent apparaître dans leur ORDRE CHRONOLOGIQUE (par numéro de code).
+- 03-03 avant 03-04 avant 03-05, etc.
+- 03-A avant 03-B avant 03-C, etc.
+- Si un commentaire (03-A) apparaît entre deux résolutions (03-04 et 03-05), place-le dans l'ordre correct.
+
+### 8. TOUS LES POINTS ODJ DOIVENT AVOIR DU CONTENU
+- NE JAMAIS laisser un point ODJ vide (discussion_verbatim: "").
+- Si un point n'a pas de résolution formelle, copie quand même TOUT le texte de discussion.
+- Même "Mots de bienvenue" ou "Levée de l'assemblée" ont du contenu à extraire.
+- Points comme "Varia" peuvent avoir plusieurs sujets → extrait TOUT.
+
 ${odjSection}
 
 ## TEXTE DU PROCÈS-VERBAL (EXTRAIT INTÉGRAL REQUIS)
