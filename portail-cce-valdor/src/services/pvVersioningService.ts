@@ -64,6 +64,28 @@ export interface VersionComparisonResult {
 // ============================================
 
 /**
+ * Recursively remove undefined values from an object (Firestore doesn't accept undefined)
+ */
+const removeUndefined = <T>(obj: T): T => {
+    if (obj === null || obj === undefined) {
+        return obj;
+    }
+    if (Array.isArray(obj)) {
+        return obj.map(item => removeUndefined(item)) as T;
+    }
+    if (typeof obj === 'object') {
+        const cleaned: Record<string, unknown> = {};
+        for (const [key, value] of Object.entries(obj as Record<string, unknown>)) {
+            if (value !== undefined) {
+                cleaned[key] = removeUndefined(value);
+            }
+        }
+        return cleaned as T;
+    }
+    return obj;
+};
+
+/**
  * Get the versions subcollection reference for a meeting
  */
 const getVersionsRef = (meetingId: string) =>
@@ -97,6 +119,8 @@ export const createPVVersion = async (
         }
 
         // Create the version document - filter out undefined values for Firestore
+        const cleanedAgendaItems = removeUndefined(meeting.agendaItems || []);
+
         const versionData: Record<string, unknown> = {
             versionNumber: newVersionNumber,
             createdAt: serverTimestamp(),
@@ -104,7 +128,7 @@ export const createPVVersion = async (
             status: 'draft' as const,
             changeDescription: changeDescription || `Version ${newVersionNumber}`,
             minutes: meeting.minutes || '',
-            agendaItems: meeting.agendaItems || [],
+            agendaItems: cleanedAgendaItems,
         };
 
         // Only add changesFromPrevious if it's defined (not for first version)

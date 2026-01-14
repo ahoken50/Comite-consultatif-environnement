@@ -151,13 +151,29 @@ Point ODJ #3 : "Renouvellement des mandats" (titre ODJ)
 - Liste COMPLÈTE de tous les CONSIDÉRANT/ATTENDU.
 - Le dispositif complet après "IL EST RÉSOLU".
 
-### 6. RAISONNEMENT POUR ASSOCIER RÉSOLUTIONS À L'ODJ (IMPORTANT)
-Utilise ton raisonnement pour associer chaque RÉSOLUTION et COMMENTAIRE au bon point de l'ODJ :
-- Si le titre ODJ correspond directement au sujet → association évidente.
-- Si le titre ne correspond pas exactement → raisonne sur le CONTENU de la résolution/commentaire.
-- Exemple: "COMMENTAIRE 03-A" parle d'élection de président → associe-le au point "Élection d'une présidente" même s'il apparaît juste après "Renouvellement des mandats".
-- RÈGLE: Analyse le texte du dispositif (IL EST RÉSOLU) pour comprendre le sujet réel.
-- Regroupe les résolutions/commentaires sous le point ODJ le plus pertinent sémantiquement.
+### 6. ASSOCIATION COMMENTAIRE → POINT ODJ (TRÈS IMPORTANT)
+
+⚠️ Les COMMENTAIRES (ex: COMMENTAIRE 03-B) ne vont PAS dans Varia !
+Chaque commentaire appartient au point ODJ dont il DISCUTE le sujet.
+
+🔍 COMMENT DÉTERMINER LE BON POINT ODJ :
+1. Lis le CONTENU du commentaire (les discussions)
+2. Identifie LE SUJET discuté (ex: politique environnementale, ruches, bouteilles d'eau)
+3. Associe au point ODJ qui traite CE SUJET
+
+📋 EXEMPLES CONCRETS :
+- COMMENTAIRE qui parle de "politique environnementale" → Point "Renouvellement de la politique environnementale"  
+- COMMENTAIRE qui parle de "bouteilles d'eau" ou "plastique" → Point "Adoption recommandation bouteilles d'eau"
+- COMMENTAIRE qui parle de "ruches" ou "abeilles" ou "apiculture" → Point "Projet ruches Goldex"
+- COMMENTAIRE qui parle de "stations de lavage" ou "embarcations" → Point "Stations de lavage embarcations"
+
+🚫 NE METS PAS dans Varia :
+- Les discussions qui précèdent une résolution
+- Les commentaires clairement liés à un sujet ODJ spécifique
+
+✅ METS dans Varia SEULEMENT :
+- Les sujets vraiment divers sans lien avec les autres points
+- Les annonces générales
 
 ### 7. ORDRE DES RÉSOLUTIONS ET COMMENTAIRES (CRITIQUE)
 - Les résolutions et commentaires doivent apparaître dans leur ORDRE CHRONOLOGIQUE (par numéro de code).
