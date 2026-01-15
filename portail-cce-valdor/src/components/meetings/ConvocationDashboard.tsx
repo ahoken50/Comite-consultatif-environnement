@@ -23,9 +23,11 @@ import {
     Refresh
 } from '@mui/icons-material';
 import type { Meeting } from '../../types/meeting.types';
-import { getLatestConvocation, type Convocation, type ConvocationRecipient } from '../../services/convocationService';
+import { getLatestConvocation, type Convocation, type ConvocationRecipient, resendConvocationEmails } from '../../services/convocationService';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '../../services/firebase';
+import { useSelector } from 'react-redux';
+import type { RootState } from '../../store/rootReducer';
 
 interface ConvocationDashboardProps {
     meeting: Meeting;
@@ -36,7 +38,12 @@ const ConvocationDashboard: React.FC<ConvocationDashboardProps> = ({ meeting, on
     const [convocation, setConvocation] = useState<Convocation | null>(null);
     const [loading, setLoading] = useState(false);
     const [syncing, setSyncing] = useState(false);
+    const [resending, setResending] = useState(false);
     const [error, setError] = useState<string | null>(null);
+
+    const { user } = useSelector((state: RootState) => state.auth);
+    const { items: members } = useSelector((state: RootState) => state.members);
+    const currentMember = members.find(m => m.id === user?.uid);
 
     const loadData = async () => {
         setLoading(true);
@@ -109,6 +116,41 @@ const ConvocationDashboard: React.FC<ConvocationDashboardProps> = ({ meeting, on
         }
     };
 
+    const handleResendPending = async () => {
+        if (!convocation || !meeting || !currentMember) return;
+
+        const pendingRecipients = convocation.recipients.filter(r => r.status === 'pending');
+        if (pendingRecipients.length === 0) {
+            alert('Aucun membre en attente.');
+            return;
+        }
+
+        if (!window.confirm(`Voulez-vous renvoyer l'invitation à ${pendingRecipients.length} membre(s) en attente ?`)) {
+            return;
+        }
+
+        setResending(true);
+        try {
+            const result = await resendConvocationEmails(
+                meeting,
+                convocation.id!,
+                pendingRecipients,
+                currentMember
+            );
+
+            if (result.success) {
+                alert('Rappels envoyés avec succès !');
+            } else {
+                alert(`Erreur : ${result.error}`);
+            }
+        } catch (err) {
+            console.error('Error resending:', err);
+            alert('Erreur lors de l\'envoi des rappels');
+        } finally {
+            setResending(false);
+        }
+    };
+
     if (loading && !convocation) {
         return <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}><CircularProgress /></Box>;
     }
@@ -135,14 +177,25 @@ const ConvocationDashboard: React.FC<ConvocationDashboardProps> = ({ meeting, on
                     <Email color="primary" />
                     <Typography variant="h6">Suivi des convocations</Typography>
                 </Box>
-                <Button
-                    startIcon={<Refresh />}
-                    size="small"
-                    onClick={loadData}
-                    disabled={loading}
-                >
-                    Actualiser
-                </Button>
+                <Box sx={{ display: 'flex', gap: 1 }}>
+                    <Button
+                        startIcon={resending ? <CircularProgress size={16} /> : <Email />}
+                        size="small"
+                        color="secondary"
+                        onClick={handleResendPending}
+                        disabled={loading || resending || !currentMember || stats.pending === 0}
+                    >
+                        Relancer ({stats.pending})
+                    </Button>
+                    <Button
+                        startIcon={<Refresh />}
+                        size="small"
+                        onClick={loadData}
+                        disabled={loading}
+                    >
+                        Actualiser
+                    </Button>
+                </Box>
             </Box>
 
             {/* Stats Cards */}

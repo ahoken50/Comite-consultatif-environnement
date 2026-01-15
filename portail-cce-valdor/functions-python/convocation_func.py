@@ -1,8 +1,15 @@
 
+import time
+import random
+import resend
+from firebase_functions import https_fn
+from typing import Any
+
 @https_fn.on_call()
 def send_convocation(req: https_fn.CallableRequest) -> Any:
     """
     Sends convocation emails with RSVP tokens.
+    Includes rate limiting and exponential backoff.
     """
     try:
         data = req.data
@@ -17,22 +24,26 @@ def send_convocation(req: https_fn.CallableRequest) -> Any:
         print(f"Sending convocation for meeting {meeting_id} to {len(recipients)} recipients")
 
         # Base URL for the application
-        # In production use the real URL, in dev could use localhost but token links need to work for user
         base_url = "https://portail-cce-valdor.web.app"
         
         email_results = []
         
-        for recipient in recipients:
+        # Configure Resend only if not already configured by environment
+        # (Assuming main.py might handle global config, but safe to redo if needed or just rely on env)
+        # resend.api_key = os.environ.get("RESEND_API_KEY") 
+        
+        for i, recipient in enumerate(recipients):
+            # Rate limiting: wait 0.6 seconds between emails (approx 1.6 req/s) to stay under 2 req/s safe limit
+            if i > 0:
+                time.sleep(0.6)
+
             token = recipient.get("token")
             if not token:
                 print(f"Skipping recipient {recipient.get('email')} - No token")
                 continue
                 
             # Generate RSVP links
-            # Link to the RSVP page with the token
             rsvp_link = f"{base_url}/rsvp/{meeting_id}/{token}"
-            
-            # Direct action links (optional, can pre-fill the state)
             confirm_link = f"{rsvp_link}?response=confirmed"
             decline_link = f"{rsvp_link}?response=declined"
             
@@ -85,18 +96,41 @@ def send_convocation(req: https_fn.CallableRequest) -> Any:
             </html>
             """
             
-            try:
-                r = resend.Emails.send({
-                    "from": "Comité CCE <onboarding@resend.dev>",
-                    "to": [recipient.get("email")],
-                    "subject": f"Convocation CCE - {meeting_data.get('formattedDate', meeting_data.get('date'))}",
-                    "html": html_content,
-                    "reply_to": sender.get("email")
-                })
-                email_results.append({"email": recipient.get("email"), "id": r.get("id"), "status": "sent"})
-            except Exception as e:
-                print(f"Error sending to {recipient.get('email')}: {str(e)}")
-                email_results.append({"email": recipient.get("email"), "error": str(e), "status": "error"})
+            # Retry logic with exponential backoff
+            max_retries = 3
+            sent = False
+            last_error = None
+            
+            for attempt in range(max_retries):
+                try:
+                    r = resend.Emails.send({
+                        "from": "Comité CCE <onboarding@resend.dev>",
+                        "to": [recipient.get("email")],
+                        "subject": f"Convocation CCE - {meeting_data.get('formattedDate', meeting_data.get('date'))}",
+                        "html": html_content,
+                        "reply_to": sender.get("email"),
+                        "attachments": [{"content": data.get("agendaPdf"), "filename": "Ordre_du_jour.pdf"}] if data.get("agendaPdf") else []
+                    })
+                    email_results.append({"email": recipient.get("email"), "id": r.get("id"), "status": "sent"})
+                    sent = True
+                    break
+                except Exception as e:
+                    last_error = str(e)
+                    # Check for rate limit error (429)
+                    if "429" in str(e) or "Too Many Requests" in str(e):
+                        if attempt < max_retries - 1:
+                            # Exponential backoff: 2s, 4s... + jitter
+                            sleep_time = (2 ** (attempt + 1)) + random.uniform(0, 1)
+                            print(f"Rate limited for {recipient.get('email')}. Retrying in {sleep_time:.2f}s... (Attempt {attempt+1}/{max_retries})")
+                            time.sleep(sleep_time)
+                            continue
+                    
+                    print(f"Error sending to {recipient.get('email')}: {str(e)}")
+                    # If other error or retries exhausted
+                    break
+            
+            if not sent:
+                email_results.append({"email": recipient.get("email"), "error": last_error, "status": "error"})
 
         return {"success": True, "results": email_results}
 

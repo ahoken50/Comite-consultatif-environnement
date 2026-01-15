@@ -486,3 +486,73 @@ export const getRSVPDetails = async (
         };
     }
 };
+
+/**
+ * Resend convocation emails to specific recipients (reminders)
+ * This calls the cloud function directly without creating a new convocation record
+ */
+export const resendConvocationEmails = async (
+    meeting: Meeting,
+    convocationId: string,
+    recipients: ConvocationRecipient[],
+    senderMember: Member
+): Promise<{ success: boolean; error?: string }> => {
+    try {
+        console.log('📨 Resending convocation emails (reminder)...', {
+            meetingId: meeting.id,
+            recipientsCount: recipients.length
+        });
+
+        const functions = getFunctions();
+        const sendConvocationEmails = httpsCallable(functions, 'send_convocation');
+
+        // Regenerate PDF if needed
+        let pdfBase64 = null;
+        try {
+            pdfBase64 = await generateAgendaPDFBase64(meeting);
+        } catch (e) {
+            console.warn("Could not regenerate PDF for reminder", e);
+        }
+
+        const dateOptions: Intl.DateTimeFormatOptions = {
+            weekday: 'long',
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric'
+        };
+        const formattedDate = new Date(meeting.date).toLocaleDateString('fr-CA', dateOptions);
+
+        await sendConvocationEmails({
+            meetingId: meeting.id,
+            convocationId: convocationId,
+            meeting: {
+                title: meeting.title,
+                date: meeting.date,
+                formattedDate: formattedDate,
+                location: meeting.location,
+                agendaItems: meeting.agendaItems
+            },
+            recipients: recipients.map(r => ({
+                email: r.email,
+                name: r.name,
+                token: r.token, // Reuse existing token
+                memberId: r.memberId
+            })),
+            sender: {
+                name: senderMember.displayName,
+                email: senderMember.email
+            },
+            agendaPdf: pdfBase64
+        });
+
+        console.log('✅ Resend success');
+        return { success: true };
+
+    } catch (error) {
+        console.error('Error resending convocations:', error);
+        return {
+            success: false,
+            error: error instanceof Error ? error.message : 'Erreur lors du renvoi'
+        };
+    }
+};
