@@ -12,6 +12,8 @@ import {
 import { Close, Download, OpenInNew } from '@mui/icons-material';
 import type { Document } from '../../types/document.types';
 
+import mammoth from 'mammoth';
+
 interface DocumentPreviewModalProps {
     open: boolean;
     onClose: () => void;
@@ -19,22 +21,57 @@ interface DocumentPreviewModalProps {
 }
 
 const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({ open, onClose, document }) => {
+    const [docxHtml, setDocxHtml] = React.useState<string | null>(null);
+    const [loading, setLoading] = React.useState(false);
+    const [error, setError] = React.useState<string | null>(null);
+
+    React.useEffect(() => {
+        if (open && document) {
+            const isDocx = document.name.toLowerCase().endsWith('.docx');
+            if (isDocx) {
+                setLoading(true);
+                setError(null);
+                setDocxHtml(null);
+
+                fetch(document.url)
+                    .then(response => response.arrayBuffer())
+                    .then(arrayBuffer => mammoth.convertToHtml({ arrayBuffer }))
+                    .then(result => {
+                        setDocxHtml(result.value);
+                        setLoading(false);
+                    })
+                    .catch(err => {
+                        console.error('Error rendering DOCX:', err);
+                        setError('Impossible de générer l\'aperçu du document.');
+                        setLoading(false);
+                    });
+            } else {
+                // Reset state for non-DOCX files
+                setDocxHtml(null);
+                setLoading(false);
+                setError(null);
+            }
+        }
+    }, [open, document]);
+
     if (!document) return null;
 
     const isImage = document.type.includes('image');
     const isPdf = document.type.includes('pdf');
-    // Check for common Office formats
-    const isOffice =
+    const isDocx = document.name.toLowerCase().endsWith('.docx');
+
+    // Check for other Office formats that Mammoth cannot handle (doc, xls, ppt)
+    const isOtherOffice = !isDocx && (
         document.type.includes('word') ||
         document.type.includes('excel') ||
         document.type.includes('spreadsheet') ||
         document.type.includes('presentation') ||
         document.name.endsWith('.doc') ||
-        document.name.endsWith('.docx') ||
         document.name.endsWith('.xls') ||
         document.name.endsWith('.xlsx') ||
         document.name.endsWith('.ppt') ||
-        document.name.endsWith('.pptx');
+        document.name.endsWith('.pptx')
+    );
 
     const renderContent = () => {
         if (isImage) {
@@ -45,6 +82,50 @@ const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({ open, onClo
                         alt={document.name}
                         style={{ maxWidth: '100%', maxHeight: '70vh', objectFit: 'contain' }}
                     />
+                </Box>
+            );
+        }
+
+        if (isDocx) {
+            return (
+                <Box sx={{ height: '70vh', width: '100%', display: 'flex', flexDirection: 'column' }}>
+                    <Box sx={{ flexGrow: 1, overflow: 'auto', p: 4, bgcolor: '#fff' }}>
+                        {loading ? (
+                            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
+                                <CircularProgress size={40} sx={{ mb: 2 }} />
+                                <Typography variant="body2" color="text.secondary">Génération de l'aperçu...</Typography>
+                            </Box>
+                        ) : error ? (
+                            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
+                                <Typography color="error" gutterBottom>{error}</Typography>
+                            </Box>
+                        ) : (
+                            <div
+                                className="docx-preview-content"
+                                dangerouslySetInnerHTML={{ __html: docxHtml || '' }}
+                                style={{
+                                    fontFamily: 'Calibri, sans-serif',
+                                    lineHeight: '1.5',
+                                    color: '#333'
+                                }}
+                            />
+                        )}
+                    </Box>
+                    <Box sx={{ p: 1, textAlign: 'center', borderTop: 1, borderColor: 'divider', bgcolor: 'background.default' }}>
+                        <Typography variant="caption" sx={{ display: 'block', mb: 1, color: 'text.secondary' }}>
+                            Aperçu simplifié. Pour la mise en page exacte :
+                        </Typography>
+                        <Button
+                            size="small"
+                            variant="outlined"
+                            startIcon={<Download />}
+                            href={document.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                        >
+                            Télécharger le fichier original
+                        </Button>
+                    </Box>
                 </Box>
             );
         }
@@ -64,23 +145,25 @@ const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({ open, onClo
             );
         }
 
-        if (isOffice) {
+        if (isOtherOffice) {
             // Check if URL is local or valid for Office Viewer
             // Office Viewer requires a public URL
             const isLocal = document.url.includes('localhost') ||
                 document.url.includes('127.0.0.1') ||
                 document.url.startsWith('blob:') ||
                 document.url.startsWith('file:') ||
-                !document.url.startsWith('http');
+                !document.url.startsWith('http') ||
+                // Check for private IP ranges (192.168.x.x, 10.x.x.x, 172.16-31.x.x)
+                /^(https?:\/\/)?(192\.168\.|10\.|172\.(1[6-9]|2[0-9]|3[0-1])\.)/.test(document.url);
 
             if (isLocal) {
                 return (
                     <Box sx={{ p: 4, textAlign: 'center' }}>
                         <Typography variant="body1" gutterBottom sx={{ color: 'warning.main', fontWeight: 500 }}>
-                            La prévisualisation n'est pas disponible en environnement local.
+                            La prévisualisation n'est pas disponible pour ce format en local.
                         </Typography>
                         <Typography variant="body2" color="text.secondary" paragraph>
-                            Microsoft Office Online nécessite une URL publique pour afficher le document.
+                            Seuls les fichiers .docx et .pdf peuvent être prévisualisés localement.
                         </Typography>
                         <Button
                             variant="outlined"
@@ -95,23 +178,34 @@ const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({ open, onClo
                 );
             }
 
-            // Use Microsoft Office Online Viewer
+            // Use Microsoft Office Online Viewer for legacy formats
             const encodedUrl = encodeURIComponent(document.url);
             const viewerUrl = `https://view.officeapps.live.com/op/embed.aspx?src=${encodedUrl}`;
 
             return (
-                <Box sx={{ height: '70vh', width: '100%' }}>
-                    <iframe
-                        src={viewerUrl}
-                        title={document.name}
-                        width="100%"
-                        height="100%"
-                        style={{ border: 'none' }}
-                        allow="fullscreen"
-                    />
-                    <Typography variant="caption" sx={{ display: 'block', textAlign: 'center', mt: 1, color: 'text.secondary' }}>
-                        Visualisation via Microsoft Office Online. Si le document ne s'affiche pas, veuillez le télécharger.
-                    </Typography>
+                <Box sx={{ height: '70vh', width: '100%', display: 'flex', flexDirection: 'column' }}>
+                    <Box sx={{ flexGrow: 1, minHeight: 0 }}>
+                        <iframe
+                            src={viewerUrl}
+                            title={document.name}
+                            width="100%"
+                            height="100%"
+                            style={{ border: 'none' }}
+                            allow="fullscreen"
+                        />
+                    </Box>
+                    <Box sx={{ p: 1, textAlign: 'center', borderTop: 1, borderColor: 'divider', bgcolor: 'background.default' }}>
+                        <Button
+                            size="small"
+                            variant="outlined"
+                            startIcon={<Download />}
+                            href={document.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                        >
+                            Télécharger le fichier
+                        </Button>
+                    </Box>
                 </Box>
             );
         }
