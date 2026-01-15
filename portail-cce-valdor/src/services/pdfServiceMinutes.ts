@@ -262,7 +262,14 @@ const generateHTMLDocument = (meeting: Meeting, _globalNotes?: string): string =
 
         // Render minute entries
         if (item.minuteEntries && item.minuteEntries.length > 0) {
-            for (const entry of item.minuteEntries) {
+            // Sort entries so comments always appear before resolutions
+            const sortedEntries = [...item.minuteEntries].sort((a, b) => {
+                if (a.type === 'comment' && b.type === 'resolution') return -1;
+                if (a.type === 'resolution' && b.type === 'comment') return 1;
+                return 0;
+            });
+
+            for (const entry of sortedEntries) {
                 if (entry.type === 'comment') {
                     sectionsHTML += formatContentHTML(entry.content || '');
                 } else if (entry.type === 'resolution') {
