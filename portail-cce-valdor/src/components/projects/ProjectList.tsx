@@ -12,7 +12,7 @@ import {
     Typography,
     Box
 } from '@mui/material';
-import { Edit, Delete, Visibility } from '@mui/icons-material';
+import { Edit, Delete, Visibility, MergeType } from '@mui/icons-material';
 import type { Project } from '../../types/project.types';
 import { ProjectStatus, Priority } from '../../types/project.types';
 import { format } from 'date-fns';
@@ -23,9 +23,10 @@ interface ProjectListProps {
     onView: (id: string) => void;
     onEdit: (id: string) => void;
     onDelete: (id: string) => void;
+    onMerge: (project: Project) => void;
 }
 
-const ProjectList: React.FC<ProjectListProps> = ({ projects, onView, onEdit, onDelete }) => {
+const ProjectList: React.FC<ProjectListProps> = ({ projects, onView, onEdit, onDelete, onMerge }) => {
     const getStatusColor = (status: ProjectStatus) => {
         switch (status) {
             case ProjectStatus.COMPLETED: return 'success';
@@ -109,6 +110,15 @@ const ProjectList: React.FC<ProjectListProps> = ({ projects, onView, onEdit, onD
                                         aria-label={`Modifier le projet ${project.name}`}
                                     >
                                         <Edit fontSize="small" />
+                                    </IconButton>
+                                    <IconButton
+                                        size="small"
+                                        onClick={() => onMerge(project)}
+                                        color="warning"
+                                        aria-label={`Fusionner le projet ${project.name}`}
+                                        title="Fusionner ce projet"
+                                    >
+                                        <MergeType fontSize="small" />
                                     </IconButton>
                                     <IconButton
                                         size="small"

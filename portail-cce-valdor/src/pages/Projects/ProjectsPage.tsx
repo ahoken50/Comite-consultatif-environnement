@@ -34,6 +34,7 @@ import ProjectForm from '../../components/projects/ProjectForm';
 import PaginationControls, { usePagination } from '../../components/common/PaginationControls';
 import { ProjectStatus } from '../../types/project.types';
 import type { Project } from '../../types/project.types';
+import ProjectMergeDialog from '../../components/projects/ProjectMergeDialog';
 
 const ProjectsPage: React.FC = () => {
     const dispatch = useDispatch<AppDispatch>();
@@ -44,6 +45,11 @@ const ProjectsPage: React.FC = () => {
     const [view, setView] = useState<'grid' | 'list' | 'kanban' | 'calendar'>('kanban');
     const [searchTerm, setSearchTerm] = useState('');
     const [isFormOpen, setIsFormOpen] = useState(false);
+
+    // Merge State
+    const [isMergeOpen, setIsMergeOpen] = useState(false);
+    const [mergeSourceProject, setMergeSourceProject] = useState<Project | null>(null);
+
     const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' }>({
         open: false,
         message: '',
@@ -175,6 +181,11 @@ const ProjectsPage: React.FC = () => {
         }
     }, [dispatch, user, projects]);
 
+    const handleMergeClick = useCallback((project: Project) => {
+        setMergeSourceProject(project);
+        setIsMergeOpen(true);
+    }, []);
+
     return (
         <Box>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
@@ -250,6 +261,7 @@ const ProjectsPage: React.FC = () => {
                     onView={handleProjectClick}
                     onEdit={handleProjectClick}
                     onDelete={handleDeleteProject}
+                    onMerge={handleMergeClick}
                 />
             )}
 
@@ -286,6 +298,13 @@ const ProjectsPage: React.FC = () => {
                 open={isFormOpen}
                 onClose={() => setIsFormOpen(false)}
                 onSubmit={handleCreateProject}
+            />
+
+            <ProjectMergeDialog
+                open={isMergeOpen}
+                onClose={() => setIsMergeOpen(false)}
+                sourceProject={mergeSourceProject}
+                allProjects={projects}
             />
 
             <Snackbar

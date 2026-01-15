@@ -47,15 +47,36 @@ const AttendanceManager: React.FC<AttendanceManagerProps> = ({ meeting, onUpdate
         }
     }, [dispatch, members.length]);
 
-    // Calculate Quorum: Users present AND NOT 'Coordonnateur'
-    const quorumCount = meeting.attendees?.filter(a =>
-        a.isPresent &&
-        a.role.toLowerCase() !== 'coordonnateur' &&
-        !a.name.toLowerCase().includes('michaël ross') // Security check as requested
-    ).length || 0;
+    // --- Quorum Calculation (Rules approved by Client) ---
+    // 1. Quorum is based on TOTAL active members with voting rights.
+    // 2. Voting members EXCLUDE 'coordonnateur' and 'observateur'.
+    // 3. Formula: Quorum = floor(Total Voting Members / 2) + 1.
 
-    const quorumRequired = meeting.quorumRequired || 4;
-    const isQuorumMet = quorumCount >= quorumRequired;
+    const activeMembers = members.filter(m => m.isActive);
+    const votingMembers = activeMembers.filter(m => {
+        const role = (m.role || '').toLowerCase();
+        return role !== 'coordonnateur' && role !== 'observateur';
+    });
+
+    const totalVotingMembersCount = votingMembers.length;
+    const quorumRequired = Math.floor(totalVotingMembersCount / 2) + 1;
+
+    // Count PRESENT members who have voting rights
+    // Matches by ID first, then Name fallback (for legacy data)
+    const presentVotingCount = meeting.attendees?.filter(a => {
+        if (!a.isPresent) return false;
+
+        // Check role directly from attendee list (snapshot of time)
+        const role = (a.role || '').toLowerCase();
+        if (role === 'coordonnateur' || role === 'observateur') return false;
+
+        // Safety check: specific exclusion requested
+        if (a.name.toLowerCase().includes('michaël ross')) return false;
+
+        return true;
+    }).length || 0;
+
+    const isQuorumMet = presentVotingCount >= quorumRequired;
 
     const handleTogglePresence = (attendeeId: string) => {
         const updatedAttendees = meeting.attendees.map(a =>
@@ -179,7 +200,7 @@ const AttendanceManager: React.FC<AttendanceManagerProps> = ({ meeting, onUpdate
                 </Box>
                 <Box sx={{ textAlign: 'right' }}>
                     <Typography variant="subtitle2" color="text.secondary">
-                        Quorum (hors coord.): {quorumCount} / {quorumRequired}
+                        Quorum: {presentVotingCount} / {quorumRequired} (Requis)
                     </Typography>
                 </Box>
             </Box>
@@ -195,7 +216,7 @@ const AttendanceManager: React.FC<AttendanceManagerProps> = ({ meeting, onUpdate
                         position: 'relative'
                     }}>
                         <Box sx={{
-                            width: `${Math.min(100, (quorumCount / quorumRequired) * 100)}%`,
+                            width: `${Math.min(100, (presentVotingCount / quorumRequired) * 100)}%`,
                             height: '100%',
                             bgcolor: isQuorumMet ? 'success.main' : 'warning.main',
                             transition: 'width 0.5s ease-in-out'

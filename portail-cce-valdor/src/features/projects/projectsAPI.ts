@@ -195,5 +195,100 @@ export const projectsAPI = {
                 }
             }
         }
+    },
+
+    // MERGE PROJECTS FEATURE
+    // Merges sourceProject into targetProject and deletes sourceProject
+    mergeProjects: async (sourceProjectId: string, targetProjectId: string, user: any): Promise<void> => {
+        console.log(`Starting merge: Source=${sourceProjectId} -> Target=${targetProjectId}`);
+
+        // 1. Fetch Source Project Data
+        const sourceRef = doc(db, COLLECTION_NAME, sourceProjectId);
+        const sourceSnap = await getDoc(sourceRef);
+
+        if (!sourceSnap.exists()) throw new Error("Source project not found");
+        const sourceData = sourceSnap.data() as Project;
+
+        // 2. Fetch Source Tasks
+        const tasksQ = query(collection(db, COLLECTION_NAME, sourceProjectId, 'tasks'));
+        const tasksSnap = await getDocs(tasksQ);
+        const sourceTasks = tasksSnap.docs.map(t => t.data() as ProjectTask);
+
+        // 3. Update Target Project (Merge Arrays)
+        const targetRef = doc(db, COLLECTION_NAME, targetProjectId);
+
+        await updateDoc(targetRef, {
+            linkedResolutions: arrayUnion(...(sourceData.linkedResolutions || [])),
+
+            caucusDecisions: arrayUnion(...(sourceData.caucusDecisions || [])),
+            linkedMeetingIds: arrayUnion(...(sourceData.linkedMeetingIds || [])),
+            linkedDocumentIds: arrayUnion(...(sourceData.linkedDocumentIds || [])),
+            tags: arrayUnion(...(sourceData.tags || [])),
+            // Append description if useful? Let's just update timestamp for now.
+            dateUpdated: Timestamp.now(),
+            // Merge comments AND Add a system comment about the merge
+            comments: arrayUnion(
+                ...(sourceData.comments || []),
+                {
+                    id: `merge-${Date.now()}`,
+                    userId: user.uid,
+                    userName: 'Système',
+                    content: `Fusion du projet "${sourceData.name}" (${sourceData.code}) dans ce projet.`,
+                    createdAt: new Date().toISOString()
+                }
+            )
+        });
+
+        // 4. Move Tasks to Target
+        const targetTasksRef = collection(db, COLLECTION_NAME, targetProjectId, 'tasks');
+        const batchPromises = sourceTasks.map(task => {
+            return addDoc(targetTasksRef, {
+                ...task,
+                projectId: targetProjectId, // Update parent ID
+                description: `[Fusion du ${sourceData.code}] ${task.description}`, // Tag origin
+                dateCreated: Timestamp.now()
+            });
+        });
+        await Promise.all(batchPromises);
+
+        // 5. Update External Meeting References
+        // For every resolution linked to Source, we must update the Meeting Agenda Item to point to Target
+        if (sourceData.linkedResolutions) {
+            for (const res of sourceData.linkedResolutions) {
+                try {
+                    const meetingRef = doc(db, 'meetings', res.meetingId);
+                    const meetingSnap = await getDoc(meetingRef);
+                    if (meetingSnap.exists()) {
+                        const mData = meetingSnap.data();
+                        const agendaItems = mData.agendaItems || [];
+                        let changed = false;
+
+                        const updatedItems = agendaItems.map((item: any) => {
+                            if (item.id === res.agendaItemId && item.linkedProjectId === sourceProjectId) {
+                                changed = true;
+                                return { ...item, linkedProjectId: targetProjectId }; // UPDATE POINTER
+                            }
+                            return item;
+                        });
+
+                        if (changed) {
+                            await updateDoc(meetingRef, { agendaItems: updatedItems });
+                            console.log(`Updated meeting ${res.meetingId} agenda item ${res.agendaItemId} to new project.`);
+                        }
+                    }
+                } catch (err) {
+                    console.error(`Failed to update meeting ref during merge for ${res.meetingId}`, err);
+                }
+            }
+        }
+
+        // 6. Delete Source Project
+        // Delete tasks subcollection first (manually, as Firestore doesn't cascade delete subcollections)
+        const deleteTasksPromises = tasksSnap.docs.map(d => deleteDoc(d.ref));
+        await Promise.all(deleteTasksPromises);
+
+        // Delete document
+        await deleteDoc(sourceRef);
+        console.log("Merge completed successfully.");
     }
 };
