@@ -28,7 +28,11 @@ import * as XLSX from 'xlsx';
 
 const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({ open, onClose, document }) => {
     const containerRef = React.useRef<HTMLDivElement>(null);
+    const [excelWorkbook, setExcelWorkbook] = React.useState<XLSX.WorkBook | null>(null);
+    const [sheetNames, setSheetNames] = React.useState<string[]>([]);
+    const [activeSheet, setActiveSheet] = React.useState<string>('');
     const [excelHtml, setExcelHtml] = React.useState<string | null>(null);
+
     const [loading, setLoading] = React.useState(false);
     const [error, setError] = React.useState<string | null>(null);
 
@@ -40,6 +44,10 @@ const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({ open, onClo
 
             // Reset states
             setExcelHtml(null);
+            setExcelWorkbook(null);
+            setSheetNames([]);
+            setActiveSheet('');
+
             setLoading(true);
             setError(null);
 
@@ -80,12 +88,22 @@ const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({ open, onClo
                     .then(response => response.arrayBuffer())
                     .then(arrayBuffer => {
                         const workbook = XLSX.read(arrayBuffer, { type: 'array' });
-                        // Get first sheet
-                        const firstSheetName = workbook.SheetNames[0];
-                        const worksheet = workbook.Sheets[firstSheetName];
-                        // Convert to HTML
-                        const html = XLSX.utils.sheet_to_html(worksheet, { id: 'excel-table' });
-                        setExcelHtml(html);
+                        const sheets = workbook.SheetNames;
+
+                        setExcelWorkbook(workbook);
+                        setSheetNames(sheets);
+
+                        if (sheets.length > 0) {
+                            const firstSheet = sheets[0];
+                            setActiveSheet(firstSheet);
+                            // Initial render of first sheet
+                            const worksheet = workbook.Sheets[firstSheet];
+                            const html = XLSX.utils.sheet_to_html(worksheet, { id: 'excel-table' });
+                            setExcelHtml(html);
+                        } else {
+                            setError("Le fichier Excel ne contient aucune feuille.");
+                        }
+
                         setLoading(false);
                     })
                     .catch(err => {
@@ -98,6 +116,16 @@ const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({ open, onClo
             }
         }
     }, [open, document]);
+
+    // Handle Excel Sheet change
+    const handleSheetChange = (_event: React.SyntheticEvent, newValue: string) => {
+        if (excelWorkbook && newValue) {
+            setActiveSheet(newValue);
+            const worksheet = excelWorkbook.Sheets[newValue];
+            const html = XLSX.utils.sheet_to_html(worksheet, { id: 'excel-table' });
+            setExcelHtml(html);
+        }
+    };
 
     if (!document) return null;
 
@@ -190,7 +218,25 @@ const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({ open, onClo
         if (isExcel) {
             return (
                 <Box sx={{ height: '70vh', width: '100%', display: 'flex', flexDirection: 'column' }}>
-                    <Box sx={{ flexGrow: 1, overflow: 'auto', p: 2, bgcolor: '#fff' }}>
+                    {/* Sheet Tabs */}
+                    {sheetNames.length > 1 && (
+                        <Box sx={{ borderBottom: 1, borderColor: 'divider', bgcolor: '#f5f5f5' }}>
+                            <Tabs
+                                value={activeSheet}
+                                onChange={handleSheetChange}
+                                variant="scrollable"
+                                scrollButtons="auto"
+                                aria-label="Onglets du fichier Excel"
+                                sx={{ minHeight: '36px', '& .MuiTab-root': { minHeight: '36px', py: 1, textTransform: 'none', fontSize: '13px' } }}
+                            >
+                                {sheetNames.map((sheet) => (
+                                    <Tab key={sheet} label={sheet} value={sheet} />
+                                ))}
+                            </Tabs>
+                        </Box>
+                    )}
+
+                    <Box sx={{ flexGrow: 1, overflow: 'auto', p: 0, bgcolor: '#fff' }}>
                         {loading ? (
                             <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
                                 <CircularProgress size={40} sx={{ mb: 2 }} />
@@ -202,10 +248,27 @@ const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({ open, onClo
                             </Box>
                         ) : (
                             <Box sx={{
-                                '& table': { borderCollapse: 'collapse', width: '100%', border: '1px solid #ddd' },
-                                '& td, & th': { border: '1px solid #ddd', padding: '8px', fontSize: '13px' },
-                                '& tr:nth-of-type(even)': { backgroundColor: '#f9f9f9' },
-                                '& tr:hover': { backgroundColor: '#f1f1f1' }
+                                p: 2,
+                                '& table': {
+                                    borderCollapse: 'collapse',
+                                    minWidth: '50%',
+                                    border: '1px solid #e0e0e0',
+                                    fontFamily: 'Calibri, Arial, sans-serif',
+                                    fontSize: '11pt',
+                                    backgroundColor: '#fff'
+                                },
+                                '& td, & th': {
+                                    border: '1px solid #e0e0e0',
+                                    padding: '4px 8px',
+                                    whiteSpace: 'nowrap',
+                                    height: '24px'
+                                },
+                                '& tr:first-of-type td': {
+                                    fontWeight: 'bold',
+                                    backgroundColor: '#f3f3f3',
+                                    textAlign: 'center',
+                                    borderBottom: '2px solid #d0d0d0'
+                                },
                             }}>
                                 <div dangerouslySetInnerHTML={{ __html: excelHtml || '' }} />
                             </Box>
