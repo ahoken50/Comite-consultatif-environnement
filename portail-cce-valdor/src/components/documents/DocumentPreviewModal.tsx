@@ -13,7 +13,7 @@ import {
 import { Close, Download, OpenInNew } from '@mui/icons-material';
 import type { Document } from '../../types/document.types';
 
-import mammoth from 'mammoth';
+import { renderAsync } from 'docx-preview';
 
 interface DocumentPreviewModalProps {
     open: boolean;
@@ -21,57 +21,97 @@ interface DocumentPreviewModalProps {
     document: Document | null;
 }
 
+// Import XLSX for Excel handling
+import * as XLSX from 'xlsx';
+
 const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({ open, onClose, document }) => {
-    const [docxHtml, setDocxHtml] = React.useState<string | null>(null);
+    const containerRef = React.useRef<HTMLDivElement>(null);
+    const [excelHtml, setExcelHtml] = React.useState<string | null>(null);
     const [loading, setLoading] = React.useState(false);
     const [error, setError] = React.useState<string | null>(null);
 
     React.useEffect(() => {
         if (open && document) {
-            const isDocx = document.name.toLowerCase().endsWith('.docx');
-            if (isDocx) {
-                setLoading(true);
-                setError(null);
-                setDocxHtml(null);
+            const lowerName = document.name.toLowerCase();
+            const isDocx = lowerName.endsWith('.docx');
+            const isExcel = lowerName.endsWith('.xls') || lowerName.endsWith('.xlsx');
 
+            // Reset states
+            setExcelHtml(null);
+            setLoading(true);
+            setError(null);
+
+            // Clear previous DOCX content if any
+            if (containerRef.current) {
+                containerRef.current.innerHTML = '';
+            }
+
+            if (isDocx) {
                 fetch(document.url)
-                    .then(response => response.arrayBuffer())
-                    .then(arrayBuffer => mammoth.convertToHtml({ arrayBuffer }))
-                    .then(result => {
-                        setDocxHtml(result.value);
+                    .then(response => response.blob())
+                    .then(blob => {
+                        if (containerRef.current) {
+                            return renderAsync(blob, containerRef.current, containerRef.current, {
+                                className: 'docx-preview-wrapper',
+                                inWrapper: true,
+                                ignoreWidth: false,
+                                ignoreHeight: false,
+                                ignoreFonts: false,
+                                breakPages: true,
+                                debug: false,
+                                experimental: false,
+                                useBase64URL: true,
+                                renderChanges: false
+                            });
+                        }
+                    })
+                    .then(() => {
                         setLoading(false);
                     })
                     .catch(err => {
                         console.error('Error rendering DOCX:', err);
-                        setError('Impossible de générer l\'aperçu du document.');
+                        setError('Impossible de générer l\'aperçu du document DOCX.');
+                        setLoading(false);
+                    });
+            } else if (isExcel) {
+                fetch(document.url)
+                    .then(response => response.arrayBuffer())
+                    .then(arrayBuffer => {
+                        const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+                        // Get first sheet
+                        const firstSheetName = workbook.SheetNames[0];
+                        const worksheet = workbook.Sheets[firstSheetName];
+                        // Convert to HTML
+                        const html = XLSX.utils.sheet_to_html(worksheet, { id: 'excel-table' });
+                        setExcelHtml(html);
+                        setLoading(false);
+                    })
+                    .catch(err => {
+                        console.error('Error rendering Excel:', err);
+                        setError('Impossible de générer l\'aperçu du fichier Excel.');
                         setLoading(false);
                     });
             } else {
-                // Reset state for non-DOCX files
-                setDocxHtml(null);
                 setLoading(false);
-                setError(null);
             }
         }
     }, [open, document]);
 
     if (!document) return null;
 
+    const lowerName = document.name.toLowerCase();
     const isImage = document.type.includes('image');
     const isPdf = document.type.includes('pdf');
-    const isDocx = document.name.toLowerCase().endsWith('.docx');
+    const isDocx = lowerName.endsWith('.docx');
+    const isExcel = lowerName.endsWith('.xls') || lowerName.endsWith('.xlsx');
 
-    // Check for other Office formats that Mammoth cannot handle (doc, xls, ppt)
-    const isOtherOffice = !isDocx && (
+    // Check for other Office formats that we don't handle locally yet (ppt, doc legacy)
+    const isOtherOffice = !isDocx && !isExcel && (
         document.type.includes('word') ||
-        document.type.includes('excel') ||
-        document.type.includes('spreadsheet') ||
         document.type.includes('presentation') ||
-        document.name.endsWith('.doc') ||
-        document.name.endsWith('.xls') ||
-        document.name.endsWith('.xlsx') ||
-        document.name.endsWith('.ppt') ||
-        document.name.endsWith('.pptx')
+        lowerName.endsWith('.doc') ||
+        lowerName.endsWith('.ppt') ||
+        lowerName.endsWith('.pptx')
     );
 
     const renderContent = () => {
@@ -90,31 +130,88 @@ const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({ open, onClo
         if (isDocx) {
             return (
                 <Box sx={{ height: '70vh', width: '100%', display: 'flex', flexDirection: 'column' }}>
-                    <Box sx={{ flexGrow: 1, overflow: 'auto', p: 4, bgcolor: '#fff' }}>
+                    <Box sx={{ flexGrow: 1, overflow: 'auto', p: 0, bgcolor: '#f5f5f5', display: 'flex', justifyContent: 'center', alignItems: 'flex-start' }}>
+                        {loading && (
+                            <Box sx={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', zIndex: 10, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                                <CircularProgress size={40} sx={{ mb: 2 }} />
+                                <Typography variant="body2" color="text.secondary">Génération de la mise en page...</Typography>
+                            </Box>
+                        )}
+                        {error && (
+                            <Box sx={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', zIndex: 10 }}>
+                                <Typography color="error" gutterBottom>{error}</Typography>
+                            </Box>
+                        )}
+
+                        {/* Container for docx-preview */}
+                        <div
+                            ref={containerRef}
+                            style={{
+                                width: '100%',
+                                padding: '20px',
+                                boxSizing: 'border-box',
+                                opacity: loading ? 0.3 : 1,
+                                transition: 'opacity 0.3s'
+                            }}
+                        />
+                        {/* Global styles for the previewed content to make it look like paper */}
+                        <style>{`
+                            .docx-preview-wrapper .docx-content {
+                                background: white !important;
+                                box-shadow: 0 0 10px rgba(0,0,0,0.1);
+                                padding: 40px !important;
+                                margin: 0 auto;
+                                min-height: 800px;
+                                max-width: 850px; /* A4 width approx */
+                            }
+                        `}</style>
+                    </Box>
+                    <Box sx={{ p: 1, textAlign: 'center', borderTop: 1, borderColor: 'divider', bgcolor: 'background.default' }}>
+                        <Typography variant="caption" sx={{ display: 'block', mb: 1, color: 'text.secondary' }}>
+                            Aperçu haute fidélité.
+                        </Typography>
+                        <Button
+                            size="small"
+                            variant="outlined"
+                            startIcon={<Download />}
+                            href={document.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                        >
+                            Télécharger le fichier original
+                        </Button>
+                    </Box>
+                </Box>
+            );
+        }
+
+        if (isExcel) {
+            return (
+                <Box sx={{ height: '70vh', width: '100%', display: 'flex', flexDirection: 'column' }}>
+                    <Box sx={{ flexGrow: 1, overflow: 'auto', p: 2, bgcolor: '#fff' }}>
                         {loading ? (
                             <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
                                 <CircularProgress size={40} sx={{ mb: 2 }} />
-                                <Typography variant="body2" color="text.secondary">Génération de l'aperçu...</Typography>
+                                <Typography variant="body2" color="text.secondary">Chargement du classeur...</Typography>
                             </Box>
                         ) : error ? (
                             <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
                                 <Typography color="error" gutterBottom>{error}</Typography>
                             </Box>
                         ) : (
-                            <div
-                                className="docx-preview-content"
-                                dangerouslySetInnerHTML={{ __html: docxHtml || '' }}
-                                style={{
-                                    fontFamily: 'Calibri, sans-serif',
-                                    lineHeight: '1.5',
-                                    color: '#333'
-                                }}
-                            />
+                            <Box sx={{
+                                '& table': { borderCollapse: 'collapse', width: '100%', border: '1px solid #ddd' },
+                                '& td, & th': { border: '1px solid #ddd', padding: '8px', fontSize: '13px' },
+                                '& tr:nth-of-type(even)': { backgroundColor: '#f9f9f9' },
+                                '& tr:hover': { backgroundColor: '#f1f1f1' }
+                            }}>
+                                <div dangerouslySetInnerHTML={{ __html: excelHtml || '' }} />
+                            </Box>
                         )}
                     </Box>
                     <Box sx={{ p: 1, textAlign: 'center', borderTop: 1, borderColor: 'divider', bgcolor: 'background.default' }}>
                         <Typography variant="caption" sx={{ display: 'block', mb: 1, color: 'text.secondary' }}>
-                            Aperçu simplifié. Pour la mise en page exacte :
+                            Aperçu simplifié (Excel).
                         </Typography>
                         <Button
                             size="small"
@@ -164,7 +261,7 @@ const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({ open, onClo
                             La prévisualisation n'est pas disponible pour ce format en local.
                         </Typography>
                         <Typography variant="body2" color="text.secondary" paragraph>
-                            Seuls les fichiers .docx et .pdf peuvent être prévisualisés localement.
+                            Seuls les fichiers .docx, .xls, .xlsx et .pdf peuvent être prévisualisés localement.
                         </Typography>
                         <Button
                             variant="outlined"
