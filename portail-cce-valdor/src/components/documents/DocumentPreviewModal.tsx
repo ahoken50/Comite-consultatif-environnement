@@ -8,7 +8,9 @@ import {
     Box,
     Typography,
     IconButton,
-    CircularProgress
+    CircularProgress,
+    Tabs,
+    Tab
 } from '@mui/material';
 import { Close, Download, OpenInNew } from '@mui/icons-material';
 import type { Document } from '../../types/document.types';
