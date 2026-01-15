@@ -17,7 +17,8 @@ import {
 import type { Project } from '../../types/project.types';
 import { useDispatch, useSelector } from 'react-redux';
 import { mergeProjects } from '../../features/projects/projectsSlice';
-import type { AppDispatch, RootState } from '../../store/store';
+import type { AppDispatch } from '../../store/store';
+import type { RootState } from '../../store/rootReducer';
 
 interface ProjectMergeDialogProps {
     open: boolean;

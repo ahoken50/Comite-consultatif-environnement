@@ -207,7 +207,7 @@ export const mergeProjects = createAsyncThunk(
         user: any;
         sourceProjectName: string;
         targetProjectName: string;
-    }, { dispatch }) => { // Access dispatch to reload data
+    }) => { // Removed unused dispatch
         await projectsAPI.mergeProjects(sourceProjectId, targetProjectId, user);
 
         // Log activity
