@@ -1874,7 +1874,7 @@ def chat_claude(req: https_fn.CallableRequest) -> dict:
 
 @https_fn.on_call(
     memory=options.MemoryOption.MB_256,
-    timeout_sec=120,
+    timeout_sec=300,  # Increased timeout for rate limiting (e.g. 50 emails * 1.5s = 75s)
     region="us-central1"
 )
 def send_convocation(req: https_fn.CallableRequest):
@@ -1891,6 +1891,7 @@ def send_convocation(req: https_fn.CallableRequest):
 
     try:
         import resend
+        import random
         
         # Get Resend API key
         resend_api_key = os.environ.get("RESEND_API_KEY")
@@ -2038,7 +2039,12 @@ def send_convocation(req: https_fn.CallableRequest):
         sent_count = 0
         errors = []
         
-        for recipient in recipients:
+        for i, recipient in enumerate(recipients):
+            # Rate limiting: wait 1.1 seconds between emails
+            # This ensures we stay well below the 2 req/s limit (approx 0.9 req/s)
+            if i > 0:
+                time.sleep(1.1)
+
             try:
                 email_html = generate_email_html(
                     recipient.get("name", ""),
@@ -2053,10 +2059,33 @@ def send_convocation(req: https_fn.CallableRequest):
                     "attachments": attachments 
                 }
 
-                resend.Emails.send(email_params)
-                
-                sent_count += 1
-                print(f"[Convocation] Email sent to {recipient.get('email')}")
+                # Retry logic with exponential backoff for 429 errors
+                max_retries = 3
+                sent_successfully = False
+                last_error_msg = ""
+
+                for attempt in range(max_retries):
+                    try:
+                        resend.Emails.send(email_params)
+                        sent_successfully = True
+                        break # Success, exit retry loop
+                    except Exception as e:
+                        last_error_msg = str(e)
+                        # Check if it's a rate limit error
+                        if "429" in str(e) or "Too Many Requests" in str(e):
+                             # Exponential backoff: 2s, 4s, 8s + random jitter
+                            sleep_time = (2 ** (attempt + 1)) + random.uniform(0, 1)
+                            print(f"[Convocation] Rate limited for {recipient.get('email')}. Retrying in {sleep_time:.2f}s... (Attempt {attempt+1}/{max_retries})")
+                            time.sleep(sleep_time)
+                        else:
+                            # Not a rate limit error, raise immediately to outer except block
+                            raise e
+
+                if sent_successfully:
+                    sent_count += 1
+                    print(f"[Convocation] Email sent to {recipient.get('email')}")
+                else:
+                     raise Exception(f"Max retries exceeded. Last error: {last_error_msg}")
                 
             except Exception as email_error:
                 error_msg = f"Failed to send to {recipient.get('email')}: {str(email_error)}"
