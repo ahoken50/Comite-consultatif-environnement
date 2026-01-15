@@ -337,20 +337,41 @@ export const sendAvisConvocation = async (
 };
 
 /**
- * Get the latest convocation for a meeting
+ * Get the latest convocation state (merging all previous convocations)
+ * This ensures we don't lose members if they were invited in separate batches.
  */
 export const getLatestConvocation = async (meetingId: string): Promise<Convocation | null> => {
     const convocationsRef = collection(db, 'meetings', meetingId, 'convocations');
-    const q = query(convocationsRef, orderBy('sentAt', 'desc'));
+    // Get all convocations ordered by date
+    const q = query(convocationsRef, orderBy('createdAt', 'asc'));
     const snapshot = await getDocs(q);
 
     if (snapshot.empty) return null;
 
-    const doc = snapshot.docs[0];
+    // Map to store unique recipients by email (or memberId)
+    // We use email as key to handle potential duplicate invites by overwriting with latest status
+    const recipientsMap = new Map<string, ConvocationRecipient>();
+    let latestDoc: any = null;
+
+    // Iterate through all convocations (oldest to newest)
+    snapshot.docs.forEach(doc => {
+        const data = doc.data() as Convocation;
+        latestDoc = { id: doc.id, ...data }; // Keep track of the latest document details
+
+        if (data.recipients) {
+            data.recipients.forEach(recipient => {
+                recipientsMap.set(recipient.email, recipient);
+            });
+        }
+    });
+
+    if (!latestDoc) return null;
+
+    // Return a synthetic convocation object with merged recipients
     return {
-        id: doc.id,
-        ...doc.data()
-    } as Convocation;
+        ...latestDoc,
+        recipients: Array.from(recipientsMap.values())
+    };
 };
 
 /**
