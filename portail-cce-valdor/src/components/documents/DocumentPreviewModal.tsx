@@ -65,6 +65,36 @@ const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({ open, onClo
         }
 
         if (isOffice) {
+            // Check if URL is local or valid for Office Viewer
+            // Office Viewer requires a public URL
+            const isLocal = document.url.includes('localhost') ||
+                document.url.includes('127.0.0.1') ||
+                document.url.startsWith('blob:') ||
+                document.url.startsWith('file:') ||
+                !document.url.startsWith('http');
+
+            if (isLocal) {
+                return (
+                    <Box sx={{ p: 4, textAlign: 'center' }}>
+                        <Typography variant="body1" gutterBottom sx={{ color: 'warning.main', fontWeight: 500 }}>
+                            La prévisualisation n'est pas disponible en environnement local.
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary" paragraph>
+                            Microsoft Office Online nécessite une URL publique pour afficher le document.
+                        </Typography>
+                        <Button
+                            variant="outlined"
+                            startIcon={<Download />}
+                            href={document.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                        >
+                            Télécharger le fichier
+                        </Button>
+                    </Box>
+                );
+            }
+
             // Use Microsoft Office Online Viewer
             const encodedUrl = encodeURIComponent(document.url);
             const viewerUrl = `https://view.officeapps.live.com/op/embed.aspx?src=${encodedUrl}`;
