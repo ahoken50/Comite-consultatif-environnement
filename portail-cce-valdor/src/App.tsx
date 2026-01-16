@@ -1,7 +1,7 @@
 import React, { useEffect, Suspense, lazy } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { onAuthStateChanged } from 'firebase/auth';
-import { doc, getDoc, setDoc, collection, getDocs } from 'firebase/firestore';
+import { doc, getDoc, setDoc, collection, getDocs, query, where, deleteDoc } from 'firebase/firestore';
 import { useDispatch, useSelector } from 'react-redux';
 import { CircularProgress, Box } from '@mui/material';
 import { auth, db } from './services/firebase';
@@ -67,29 +67,63 @@ function App() {
         try {
           // Fetch additional user data from Firestore
           const userDoc = await getDoc(doc(db, 'users', user.uid));
+          let userData = userDoc.exists() ? userDoc.data() : null;
 
-          if (userDoc.exists()) {
-            const userData = userDoc.data();
+          // Migration Check: Look for an existing profile with this email but different ID
+          if (user.email) {
+            const usersRef = collection(db, 'users');
+            const q = query(usersRef, where('email', '==', user.email));
+            const querySnapshot = await getDocs(q);
+
+            if (!querySnapshot.empty) {
+              const oldProfileDoc = querySnapshot.docs.find(d => d.id !== user.uid);
+              if (oldProfileDoc) {
+                console.log("Found existing profile with email, migrating data...", oldProfileDoc.id);
+                const oldData = oldProfileDoc.data();
+
+                // Merge old data into new/current ID, prioritizing old data (roles, etc.)
+                // but keeping critical auth fields if needed.
+                const mergedData = {
+                  ...oldData,
+                  uid: user.uid, // Ensure ID matches Auth
+                  lastLoginAt: new Date().toISOString()
+                };
+
+                // Save merged data to current UID
+                await setDoc(doc(db, 'users', user.uid), mergedData);
+
+                // Delete old "orphaned" profile to avoid duplicates
+                await deleteDoc(doc(db, 'users', oldProfileDoc.id));
+
+                // Use this data for the session
+                userData = mergedData;
+              }
+            }
+          }
+
+          if (userData) {
             dispatch(setUser({
               id: user.uid,
               email: user.email || '',
               displayName: userData.displayName || user.displayName || '',
-              role: userData.role as any, // Typed in auth.types.ts
+              role: userData.role as any,
               memberId: userData.memberId,
               isActive: userData.isActive ?? true,
               createdAt: userData.createdAt,
               lastLoginAt: new Date().toISOString()
             }));
 
-            // Update last login
-            setDoc(doc(db, 'users', user.uid), {
-              lastLoginAt: new Date().toISOString()
-            }, { merge: true });
+            // Update last login if we didn't just migrate (i.e., if userDoc originally existed)
+            if (userDoc.exists()) {
+              setDoc(doc(db, 'users', user.uid), {
+                lastLoginAt: new Date().toISOString()
+              }, { merge: true });
+            }
 
           } else {
             console.warn("User document not found in Firestore. Creating default profile for:", user.uid);
 
-            // Self-healing: Create missing user profile
+            // Self-healing: Create user profile if absolutely nothing found
             const usersRef = collection(db, 'users');
             const snapshot = await getDocs(usersRef);
             const isFirstUser = snapshot.empty;

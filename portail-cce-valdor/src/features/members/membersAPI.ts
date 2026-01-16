@@ -45,9 +45,28 @@ export const deleteMember = async (id: string): Promise<string> => {
 
 // Helper to check if a user profile exists in Firestore upon login
 export const ensureMemberProfile = async (user: any): Promise<Member> => {
-    const existingMember = await fetchMemberById(user.uid);
+    // 1. Try to find by Auth UID (standard case)
+    let existingMember = await fetchMemberById(user.uid);
     if (existingMember) {
         return existingMember;
+    }
+
+    // 2. If not found by UID, try to find by Email (migration/admin-created case)
+    if (user.email) {
+        const { query, where } = await import('firebase/firestore');
+        const q = query(collection(db, COLLECTION_NAME), where('email', '==', user.email));
+        const querySnapshot = await getDocs(q);
+
+        if (!querySnapshot.empty) {
+            const doc = querySnapshot.docs[0];
+            const foundMember = { id: doc.id, ...doc.data() } as Member;
+
+            // Optional: Link this member to the Auth UID to speed up future lookups?
+            // For now, we return the found member so the UI populates correctly.
+            // Consider updating the member document to add the 'authId' or duplicate it?
+            // Keeping it simple: returning it is enough for the UI.
+            return foundMember;
+        }
     }
 
     const newMember: Member = {
