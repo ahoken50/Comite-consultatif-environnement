@@ -73,7 +73,12 @@ const SearchIndexManager: React.FC = () => {
                     status: data.status,
                     minutes: data.minutes || '',
                     agendaItemTitles: data.agendaItems?.map(i => i.title) || [],
-                    resolutions: [], // Extract resolutions if possible
+                    resolutions: data.agendaItems?.flatMap(item =>
+                        // New structure: minuteEntries
+                        item.minuteEntries?.map(entry => entry.content) ||
+                        // Legacy: minuteContent if strictly resolution? Or just include it.
+                        (item.minuteContent ? [item.minuteContent] : [])
+                    ) || [],
                     attendeeNames: data.attendees?.map(a => a.name) || []
                 };
 

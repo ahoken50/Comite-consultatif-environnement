@@ -203,12 +203,64 @@ const GlobalSearch: React.FC = () => {
         // Meetings
         if (categoryFilter === 'all' || categoryFilter === 'meeting') {
             meetings.forEach(m => {
+                let matchType = '';
+                let matchSnippet = '';
+
+                // 1. Check title/location (Standard)
                 if (m.title.toLowerCase().includes(lowerQuery) || (m.location && m.location.toLowerCase().includes(lowerQuery))) {
+                    matchType = 'title';
+                }
+                // 2. Deep Search: Agenda Items & Minutes
+                else {
+                    // Check Agenda Items
+                    if (m.agendaItems) {
+                        for (const item of m.agendaItems) {
+                            // Title & Description
+                            if (item.title.toLowerCase().includes(lowerQuery)) {
+                                matchType = 'Agenda: ' + item.title;
+                                break;
+                            }
+                            if (item.description && item.description.toLowerCase().includes(lowerQuery)) {
+                                matchType = 'Agenda: ' + item.title;
+                                matchSnippet = '... ' + item.description.substring(Math.max(0, item.description.toLowerCase().indexOf(lowerQuery) - 20), item.description.toLowerCase().indexOf(lowerQuery) + 40) + ' ...';
+                                break;
+                            }
+                            // Minute Entries (Resolutions/Comments)
+                            if (item.minuteEntries) {
+                                const entry = item.minuteEntries.find(e => e.content.toLowerCase().includes(lowerQuery));
+                                if (entry) {
+                                    matchType = `Résolution ${entry.number}`;
+                                    matchSnippet = '... ' + entry.content.substring(Math.max(0, entry.content.toLowerCase().indexOf(lowerQuery) - 20), entry.content.toLowerCase().indexOf(lowerQuery) + 40) + ' ...';
+                                    break;
+                                }
+                            }
+                            // Legacy minute content
+                            if (item.minuteContent && item.minuteContent.toLowerCase().includes(lowerQuery)) {
+                                matchType = 'Contenu PV';
+                                matchSnippet = '... ' + item.minuteContent.substring(Math.max(0, item.minuteContent.toLowerCase().indexOf(lowerQuery) - 20), item.minuteContent.toLowerCase().indexOf(lowerQuery) + 40) + ' ...';
+                                break;
+                            }
+                        }
+                    }
+
+                    // Check raw HTML minutes (if no other match found yet)
+                    if (!matchType && m.minutes && m.minutes.toLowerCase().includes(lowerQuery)) {
+                        // Strip HTML tags for cleaner snippet
+                        const plainText = m.minutes.replace(/<[^>]+>/g, ' ');
+                        if (plainText.toLowerCase().includes(lowerQuery)) {
+                            matchType = 'Contenu PV';
+                            const index = plainText.toLowerCase().indexOf(lowerQuery);
+                            matchSnippet = '... ' + plainText.substring(Math.max(0, index - 20), index + 40) + ' ...';
+                        }
+                    }
+                }
+
+                if (matchType) {
                     searchResults.push({
                         id: m.id,
                         type: 'meeting',
                         title: m.title,
-                        subtitle: m.type === 'regular' ? 'Régulière' : 'Spéciale',
+                        subtitle: matchSnippet || (matchType === 'title' ? (m.type === 'regular' ? 'Régulière' : 'Spéciale') : matchType),
                         link: `/meetings/${m.id}`,
                         date: m.date
                     });
