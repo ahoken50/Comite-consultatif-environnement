@@ -72,11 +72,25 @@ const MigrateAgendaIdsPage: React.FC = () => {
             // Step 3: Fetch all documents
             addLog('info', '📄 Récupération des documents...');
             const documentsSnapshot = await getDocs(collection(db, 'documents'));
-            const documents = documentsSnapshot.docs.map(doc => ({
+            const allDocuments = documentsSnapshot.docs.map(doc => ({
                 id: doc.id,
                 ...doc.data()
-            })) as Array<{ id: string; agendaItemId?: string; name?: string }>;
-            addLog('success', `✅ ${documents.length} documents trouvés`);
+            })) as Array<{ id: string; agendaItemId?: string; name?: string; linkedEntityType?: string }>;
+
+            // Filter only meeting documents
+            const documents = allDocuments.filter(d => d.linkedEntityType === 'meeting');
+            addLog('success', `✅ ${documents.length} documents d'assemblées trouvés (${allDocuments.length} total)`);
+
+            // Log all agendaItemIds for debugging
+            const docsWithAgendaId = documents.filter(d => d.agendaItemId);
+            if (docsWithAgendaId.length > 0) {
+                addLog('info', `📎 ${docsWithAgendaId.length} documents ont un agendaItemId:`);
+                docsWithAgendaId.forEach(d => {
+                    addLog('info', `   - "${d.name}": ${d.agendaItemId}`);
+                });
+            } else {
+                addLog('warning', '⚠️ Aucun document ne possède d\'agendaItemId');
+            }
 
             // Step 4: Find documents to update
             addLog('info', '🔍 Identification des documents à mettre à jour...');
