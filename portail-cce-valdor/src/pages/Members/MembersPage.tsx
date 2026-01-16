@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Box, Typography, Button, Grid, CircularProgress, Alert, Snackbar, Tabs, Tab } from '@mui/material';
 import { Add } from '@mui/icons-material';
 import { useDispatch, useSelector } from 'react-redux';
@@ -11,21 +12,45 @@ import MemberDialog from '../../components/members/MemberDialog';
 import type { Member } from '../../types/member.types';
 
 import MandateList from '../../components/members/MandateList';
+import { AccessControl } from '../../components/auth/AccessControl';
 
 const MembersPage: React.FC = () => {
     const dispatch = useDispatch<AppDispatch>();
     const { items: members, loading, error } = useSelector((state: RootState) => state.members);
     const { items: projects } = useSelector((state: RootState) => state.projects);
+    const { user } = useSelector((state: RootState) => state.auth);
     const [dialogOpen, setDialogOpen] = useState(false);
     const [selectedMember, setSelectedMember] = useState<Member | null>(null);
     const [notification, setNotification] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
     const [tabValue, setTabValue] = useState(0);
 
+    const [searchParams, setSearchParams] = useSearchParams();
+    const openId = searchParams.get('open');
+
     useEffect(() => {
         dispatch(fetchMembers());
         dispatch(fetchProjects());
     }, [dispatch]);
+
+    useEffect(() => {
+        if (openId && members.length > 0) {
+            const memberToOpen = members.find(m => m.id === openId);
+            if (memberToOpen) {
+                setSelectedMember(memberToOpen);
+                setDialogOpen(true);
+                // Switch tab if member is inactive
+                if (!memberToOpen.isActive) {
+                    setTabValue(1);
+                }
+            }
+        }
+    }, [openId, members]);
+
+    const handleCloseDialog = () => {
+        setDialogOpen(false);
+        setSearchParams({}); // Clear params
+    };
 
     const projectCounts = React.useMemo(() => {
         const counts: Record<string, number> = {};
@@ -109,9 +134,11 @@ const MembersPage: React.FC = () => {
                 <Typography variant="h4" fontWeight={700}>
                     Membres du comité
                 </Typography>
-                <Button variant="contained" startIcon={<Add />} onClick={handleAdd}>
-                    Ajouter un membre
-                </Button>
+                <AccessControl allowedRoles={['coordinator']}>
+                    <Button variant="contained" startIcon={<Add />} onClick={handleAdd}>
+                        Ajouter un membre
+                    </Button>
+                </AccessControl>
             </Box>
 
             {error && <Alert severity="error" sx={{ mb: 3 }}>{error}</Alert>}
@@ -136,8 +163,8 @@ const MembersPage: React.FC = () => {
                         <MemberCard
                             member={member}
                             projectCount={projectCounts[member.id] || 0}
-                            onEdit={handleEdit}
-                            onDelete={handleDelete}
+                            onEdit={(user?.role === 'coordinator' || member.id === (user?.id || user?.uid)) ? handleEdit : undefined}
+                            onDelete={user?.role === 'coordinator' ? handleDelete : undefined}
                         />
                     </Grid>
                 ))}
@@ -153,8 +180,9 @@ const MembersPage: React.FC = () => {
             <MemberDialog
                 open={dialogOpen}
                 member={selectedMember}
-                onClose={() => setDialogOpen(false)}
+                onClose={handleCloseDialog}
                 onSave={handleSave}
+                readOnlyAdminFields={user?.role !== 'coordinator'}
             />
 
             <Snackbar

@@ -34,9 +34,10 @@ import { fr } from 'date-fns/locale'; // [NEW] locale
 interface MinutesEditorProps {
     meeting: Meeting;
     onUpdate: (updates: Partial<Meeting>) => void;
+    readOnly?: boolean;
 }
 
-const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
+const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate, readOnly = false }) => {
     const { showSuccess, showError } = useToast();
     const { user } = useSelector((state: RootState) => state.auth); // [NEW] Get user for versioning
     const [globalNotes, setGlobalNotes] = useState(meeting.minutes || '');
@@ -590,34 +591,38 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
                 <Typography variant="h6">Rédaction du Procès-Verbal</Typography>
                 <Box sx={{ display: 'flex', gap: 2 }}>
-                    <Button
-                        variant="outlined"
-                        component="label"
-                        startIcon={<UploadFile />}
-                    >
-                        Importer PV (PDF/DOCX)
-                        <input
-                            type="file"
-                            hidden
-                            accept=".pdf,.docx,.doc"
-                            onChange={handleFileUploadWrapper}
-                        />
-                    </Button>
-                    <Button
-                        variant="outlined"
-                        startIcon={<UploadFile />}
-                        onClick={() => setIsImportOpen(true)}
-                    >
-                        Importer Texte
-                    </Button>
-                    <Button
-                        variant="outlined"
-                        color="error"
-                        startIcon={<DeleteSweep />}
-                        onClick={handleClearAll}
-                    >
-                        Réinitialiser
-                    </Button>
+                    {!readOnly && (
+                        <>
+                            <Button
+                                variant="outlined"
+                                component="label"
+                                startIcon={<UploadFile />}
+                            >
+                                Importer PV (PDF/DOCX)
+                                <input
+                                    type="file"
+                                    hidden
+                                    accept=".pdf,.docx,.doc"
+                                    onChange={handleFileUploadWrapper}
+                                />
+                            </Button>
+                            <Button
+                                variant="outlined"
+                                startIcon={<UploadFile />}
+                                onClick={() => setIsImportOpen(true)}
+                            >
+                                Importer Texte
+                            </Button>
+                            <Button
+                                variant="outlined"
+                                color="error"
+                                startIcon={<DeleteSweep />}
+                                onClick={handleClearAll}
+                            >
+                                Réinitialiser
+                            </Button>
+                        </>
+                    )}
                     <Button
                         variant="outlined"
                         startIcon={<PictureAsPdf />}
@@ -625,34 +630,38 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
                     >
                         Générer PDF
                     </Button>
-                    <Button
-                        variant="outlined"
-                        color="secondary"
-                        startIcon={<Shield />}
-                        onClick={handleSanitize}
-                        disabled={!globalNotes && (!localAgendaItems || localAgendaItems.length === 0)}
-                        title="Générer un PDF anonymisé via IA (ne modifie pas le brouillon)"
-                    >
-                        PDF Anonymisé (IA)
-                    </Button>
-                    <Button
-                        variant="outlined"
-                        color="info"
-                        startIcon={<Send />}
-                        onClick={() => setIsApprovalDialogOpen(true)}
-                        title="Envoyer le lien d'approbation au président"
-                    >
-                        Approbation
-                    </Button>
-                    <Button
-                        variant="contained"
-                        startIcon={<Save />}
-                        onClick={() => handleSave(true)} // True = Create Version
-                        disabled={isSaving} // Only disable while saving
-                        color={hasUnsavedChanges ? "primary" : "inherit"} // Highlight if changes
-                    >
-                        {isSaving ? 'Sauvegarde...' : 'Enregistrer (Version)'}
-                    </Button>
+                    {!readOnly && (
+                        <>
+                            <Button
+                                variant="outlined"
+                                color="secondary"
+                                startIcon={<Shield />}
+                                onClick={handleSanitize}
+                                disabled={!globalNotes && (!localAgendaItems || localAgendaItems.length === 0)}
+                                title="Générer un PDF anonymisé via IA (ne modifie pas le brouillon)"
+                            >
+                                PDF Anonymisé (IA)
+                            </Button>
+                            <Button
+                                variant="outlined"
+                                color="info"
+                                startIcon={<Send />}
+                                onClick={() => setIsApprovalDialogOpen(true)}
+                                title="Envoyer le lien d'approbation au président"
+                            >
+                                Approbation
+                            </Button>
+                            <Button
+                                variant="contained"
+                                startIcon={<Save />}
+                                onClick={() => handleSave(true)} // True = Create Version
+                                disabled={isSaving} // Only disable while saving
+                                color={hasUnsavedChanges ? "primary" : "inherit"} // Highlight if changes
+                            >
+                                {isSaving ? 'Sauvegarde...' : 'Enregistrer (Version)'}
+                            </Button>
+                        </>
+                    )}
                 </Box>
             </Box>
 
@@ -669,50 +678,52 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
             )}
 
             {/* Section Transcription IA */}
-            <Paper sx={{ p: 2, mb: 3, bgcolor: 'background.default' }}>
-                <Typography variant="subtitle1" fontWeight={600} gutterBottom>
-                    🎤 Transcription IA (Beta)
-                </Typography>
-                <Typography variant="body2" color="text.secondary" paragraph>
-                    Importez un enregistrement audio/vidéo de l'assemblée pour générer automatiquement un brouillon de procès-verbal.
-                </Typography>
-                <AudioUpload
-                    meetingId={meeting.id}
-                    audioRecording={meeting.audioRecording}
-                    onUploadComplete={(recording: AudioRecording) => {
-                        onUpdate({ audioRecording: recording });
-                    }}
-                    onDelete={() => {
-                        onUpdate({ audioRecording: undefined as any });
-                    }}
-                    onTranscriptionComplete={() => {
-                        // Force refresh by toggling a state or calling parent
-                        console.log('Transcription complete, refresh meeting data!');
-                    }}
-                />
-
-
-                {/* Transcription Viewer and Draft Generator */}
-                {meeting.audioRecording?.transcription && (
-                    <TranscriptionViewer
-                        meeting={meeting}
-                        onDraftGenerated={(draft: MinutesDraft) => {
-                            onUpdate({ minutesDraft: draft });
+            {!readOnly && (
+                <Paper sx={{ p: 2, mb: 3, bgcolor: 'background.default' }}>
+                    <Typography variant="subtitle1" fontWeight={600} gutterBottom>
+                        🎤 Transcription IA (Beta)
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary" paragraph>
+                        Importez un enregistrement audio/vidéo de l'assemblée pour générer automatiquement un brouillon de procès-verbal.
+                    </Typography>
+                    <AudioUpload
+                        meetingId={meeting.id}
+                        audioRecording={meeting.audioRecording}
+                        onUploadComplete={(recording: AudioRecording) => {
+                            onUpdate({ audioRecording: recording });
                         }}
-                        onApplyToMinutes={handleApplyTranscription}
-                        onTranscriptionUpdate={(newTranscription: string) => {
-                            if (meeting.audioRecording) {
-                                onUpdate({
-                                    audioRecording: {
-                                        ...meeting.audioRecording,
-                                        transcription: newTranscription
-                                    }
-                                });
-                            }
+                        onDelete={() => {
+                            onUpdate({ audioRecording: undefined as any });
+                        }}
+                        onTranscriptionComplete={() => {
+                            // Force refresh by toggling a state or calling parent
+                            console.log('Transcription complete, refresh meeting data!');
                         }}
                     />
-                )}
-            </Paper>
+
+
+                    {/* Transcription Viewer and Draft Generator */}
+                    {meeting.audioRecording?.transcription && (
+                        <TranscriptionViewer
+                            meeting={meeting}
+                            onDraftGenerated={(draft: MinutesDraft) => {
+                                onUpdate({ minutesDraft: draft });
+                            }}
+                            onApplyToMinutes={handleApplyTranscription}
+                            onTranscriptionUpdate={(newTranscription: string) => {
+                                if (meeting.audioRecording) {
+                                    onUpdate({
+                                        audioRecording: {
+                                            ...meeting.audioRecording,
+                                            transcription: newTranscription
+                                        }
+                                    });
+                                }
+                            }}
+                        />
+                    )}
+                </Paper>
+            )}
 
             {(localFile.url || meeting.minutesFileUrl) && (
                 <Alert severity={localFile.url ? "success" : "warning"} sx={{ mb: 3 }} action={
@@ -722,12 +733,14 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
                                 Voir le fichier
                             </Button>
                         )}
-                        <Button color="error" size="small" onClick={() => {
-                            console.log('[DEBUG] Supprimer button clicked!');
-                            handleDeleteFile();
-                        }}>
-                            Supprimer
-                        </Button>
+                        {!readOnly && (
+                            <Button color="error" size="small" onClick={() => {
+                                console.log('[DEBUG] Supprimer button clicked!');
+                                handleDeleteFile();
+                            }}>
+                                Supprimer
+                            </Button>
+                        )}
                     </Box>
                 }>
                     {localFile.url
@@ -751,7 +764,7 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
             />
 
             {/* Cross Validation Panel - Compare ODJ with PV */}
-            {meeting.agendaItems && meeting.agendaItems.length > 0 && localAgendaItems.length > 0 && (
+            {!readOnly && meeting.agendaItems && meeting.agendaItems.length > 0 && localAgendaItems.length > 0 && (
                 <CrossValidationPanel
                     odjItems={meeting.agendaItems}
                     pvItems={localAgendaItems}
@@ -767,15 +780,17 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
             <Paper sx={{ p: 3, mb: 3 }}>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
                     <Typography variant="subtitle1" fontWeight="bold">Notes Générales / Introduction</Typography>
-                    <Button
-                        startIcon={<AutoAwesome />}
-                        size="small"
-                        onClick={handleGenerateSummary}
-                        disabled={!meeting.audioRecording?.transcription}
-                        title="Génère un résumé exécutif basé sur la transcription audio"
-                    >
-                        Générer avec IA
-                    </Button>
+                    {!readOnly && (
+                        <Button
+                            startIcon={<AutoAwesome />}
+                            size="small"
+                            onClick={handleGenerateSummary}
+                            disabled={!meeting.audioRecording?.transcription}
+                            title="Génère un résumé exécutif basé sur la transcription audio"
+                        >
+                            Générer avec IA
+                        </Button>
+                    )}
                 </Box>
                 <TextField
                     fullWidth
@@ -785,6 +800,7 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
                     value={globalNotes}
                     onChange={(e) => handleGlobalNotesChange(e.target.value)}
                     sx={{ mb: 3 }}
+                    disabled={readOnly}
                 />
 
                 <Divider sx={{ my: 3 }} />
@@ -798,6 +814,7 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate }) => {
                                 item={item}
                                 index={index}
                                 itemDecision={itemDecisions[item.id] || ''}
+                                readOnly={readOnly}
                                 onAgendaItemChange={handleAgendaItemChange}
                                 onMinuteEntryChange={handleMinuteEntryChange}
                                 onAddMinuteEntry={handleAddMinuteEntry}

@@ -44,9 +44,11 @@ interface AgendaBuilderProps {
     initialAgendaItemId?: string;
     onDocumentUnlink?: (docId: string) => void;
     onDocumentDelete?: (docId: string, storagePath: string) => void;
+    readOnly?: boolean;
+    canPropose?: boolean;
 }
 
-const SortableItem = ({ item, onDelete, onEdit, linkedDocuments }: { item: AgendaItem; onDelete: (id: string) => void; onEdit: (item: AgendaItem) => void; linkedDocuments?: Document[] }) => {
+const SortableItem = ({ item, onDelete, onEdit, linkedDocuments, readOnly }: { item: AgendaItem; onDelete: (id: string) => void; onEdit: (item: AgendaItem) => void; linkedDocuments?: Document[]; readOnly?: boolean }) => {
     const {
         attributes,
         listeners,
@@ -66,20 +68,24 @@ const SortableItem = ({ item, onDelete, onEdit, linkedDocuments }: { item: Agend
             ref={setNodeRef}
             style={style}
             secondaryAction={
-                <Box>
-                    <IconButton edge="end" aria-label="edit" onClick={() => onEdit(item)} sx={{ mr: 1 }}>
-                        <Edit />
-                    </IconButton>
-                    <IconButton edge="end" aria-label="delete" onClick={() => onDelete(item.id)}>
-                        <Delete />
-                    </IconButton>
-                </Box>
+                !readOnly && (
+                    <Box>
+                        <IconButton edge="end" aria-label="edit" onClick={() => onEdit(item)} sx={{ mr: 1 }}>
+                            <Edit />
+                        </IconButton>
+                        <IconButton edge="end" aria-label="delete" onClick={() => onDelete(item.id)}>
+                            <Delete />
+                        </IconButton>
+                    </Box>
+                )
             }
             sx={{ bgcolor: 'background.paper', mb: 1, borderRadius: 1, boxShadow: 1 }}
         >
-            <ListItemIcon {...attributes} {...listeners} sx={{ cursor: 'grab' }}>
-                <DragIndicator />
-            </ListItemIcon>
+            {!readOnly && (
+                <ListItemIcon {...attributes} {...listeners} sx={{ cursor: 'grab' }}>
+                    <DragIndicator />
+                </ListItemIcon>
+            )}
             <ListItemText
                 primary={
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -100,7 +106,7 @@ const SortableItem = ({ item, onDelete, onEdit, linkedDocuments }: { item: Agend
     );
 };
 
-const AgendaBuilder: React.FC<AgendaBuilderProps> = ({ items, onItemsChange, meetingId, meeting, documents = [], onDocumentUpload, initialAgendaItemId, onDocumentUnlink, onDocumentDelete }) => {
+const AgendaBuilder: React.FC<AgendaBuilderProps> = ({ items, onItemsChange, meetingId, meeting, documents = [], onDocumentUpload, initialAgendaItemId, onDocumentUnlink, onDocumentDelete, readOnly = false, canPropose = false }) => {
     const [editingItem, setEditingItem] = useState<AgendaItem | null>(null);
     const [isEditOpen, setIsEditOpen] = useState(false);
     const [previewDoc, setPreviewDoc] = useState<Document | null>(null);
@@ -204,9 +210,16 @@ const AgendaBuilder: React.FC<AgendaBuilderProps> = ({ items, onItemsChange, mee
                             Imprimer l'ODJ
                         </Button>
                     )}
-                    <Button startIcon={<Add />} onClick={handleAddItem} variant="outlined" size="small">
-                        Ajouter un point
-                    </Button>
+                    {!readOnly && (
+                        <Button startIcon={<Add />} onClick={handleAddItem} variant="outlined" size="small">
+                            Ajouter un point
+                        </Button>
+                    )}
+                    {readOnly && canPropose && (
+                        <Button startIcon={<Add />} onClick={handleAddItem} variant="outlined" size="small" color="secondary">
+                            Proposer un point
+                        </Button>
+                    )}
                 </Box>
             </Box>
 
@@ -227,6 +240,7 @@ const AgendaBuilder: React.FC<AgendaBuilderProps> = ({ items, onItemsChange, mee
                                 onDelete={handleDeleteItem}
                                 onEdit={handleEditItem}
                                 linkedDocuments={getLinkedDocuments(item.id)}
+                                readOnly={readOnly}
                             />
                         ))}
                     </List>

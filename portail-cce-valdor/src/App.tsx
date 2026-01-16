@@ -1,9 +1,10 @@
 import React, { useEffect, Suspense, lazy } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { onAuthStateChanged } from 'firebase/auth';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { useDispatch, useSelector } from 'react-redux';
 import { CircularProgress, Box } from '@mui/material';
-import { auth } from './services/firebase';
+import { auth, db } from './services/firebase';
 import { setUser, setLoading } from './features/auth/authSlice';
 import type { RootState } from './store/rootReducer';
 import MainLayout from './components/layout/MainLayout';
@@ -27,7 +28,9 @@ const CouncilTrackingPage = lazy(() => import('./pages/Governance/CouncilTrackin
 const AnnualReportPage = lazy(() => import('./pages/Reports/AnnualReportPage'));
 const RSVPPage = lazy(() => import('./pages/RSVP/RSVPPage'));
 const ApprovalPage = lazy(() => import('./pages/Approval/ApprovalPage'));
-const ProfilePage = lazy(() => import('./pages/Auth/ProfilePage')); // [NEW]
+const ProfilePage = lazy(() => import('./pages/Auth/ProfilePage'));
+const CoordinatorDashboard = lazy(() => import('./pages/Admin/CoordinatorDashboard'));
+import { RoleGuard } from './components/auth/RoleGuard';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -59,14 +62,42 @@ function App() {
   const dispatch = useDispatch();
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
-        dispatch(setUser({
-          uid: user.uid,
-          email: user.email,
-          displayName: user.displayName,
-          photoURL: user.photoURL,
-        }));
+        try {
+          // Fetch additional user data from Firestore
+          const userDoc = await getDoc(doc(db, 'users', user.uid));
+
+          if (userDoc.exists()) {
+            const userData = userDoc.data();
+            dispatch(setUser({
+              id: user.uid,
+              email: user.email || '',
+              displayName: userData.displayName || user.displayName || '',
+              role: userData.role as any, // Typed in auth.types.ts
+              memberId: userData.memberId,
+              isActive: userData.isActive ?? true,
+              createdAt: userData.createdAt,
+              lastLoginAt: new Date().toISOString()
+            }));
+
+            // Update last login
+            setDoc(doc(db, 'users', user.uid), {
+              lastLoginAt: new Date().toISOString()
+            }, { merge: true });
+
+          } else {
+            // Check if it's the very first user (fallback for dev/init)
+            // Ideally should be handled by Cloud Function or SignUp, but fail-safe here
+            console.warn("User document not found in Firestore for:", user.uid);
+            dispatch(setUser(null));
+            // Optional: Force logout if no profile exists? 
+            // auth.signOut();
+          }
+        } catch (error) {
+          console.error("Error fetching user profile:", error);
+          dispatch(setUser(null));
+        }
       } else {
         dispatch(setUser(null));
       }
@@ -97,6 +128,14 @@ function App() {
                 <Route index element={<Navigate to="/dashboard" replace />} />
                 <Route path="dashboard" element={<Dashboard />} />
                 <Route path="profile" element={<ProfilePage />} />
+
+                {/* Coordinator Only Routes */}
+                <Route element={<RoleGuard allowedRoles={['coordinator']} />}>
+                  <Route path="admin" element={<CoordinatorDashboard />} />
+                  <Route path="reports" element={<AnnualReportPage />} />
+                  <Route path="settings" element={<SettingsPage />} />
+                </Route>
+
                 <Route path="projects" element={<ProjectsPage />} />
                 <Route path="projects/:id" element={<ProjectDetailPage />} />
                 <Route path="meetings" element={<MeetingsPage />} />
@@ -105,8 +144,7 @@ function App() {
                 <Route path="members" element={<MembersPage />} />
                 <Route path="resolutions" element={<ResolutionsPage />} />
                 <Route path="recommendations" element={<CouncilTrackingPage />} />
-                <Route path="reports" element={<AnnualReportPage />} />
-                <Route path="settings" element={<SettingsPage />} />
+                {/* Reports and Settings moved to Protected Route above */}
                 <Route path="minutes" element={<MinutesPage />} />
               </Route>
 

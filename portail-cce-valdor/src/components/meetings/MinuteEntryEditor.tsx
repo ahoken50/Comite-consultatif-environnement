@@ -7,6 +7,7 @@ interface MinuteEntryEditorProps {
     entryIndex: number;
     itemId: string;
     onChange: (itemId: string, entryIndex: number, field: string, value: any) => void;
+    readOnly?: boolean;
 }
 
 /**
@@ -17,7 +18,8 @@ const MinuteEntryEditor: React.FC<MinuteEntryEditorProps> = ({
     entry,
     entryIndex,
     itemId,
-    onChange
+    onChange,
+    readOnly = false
 }) => {
     const [isExpanded, setIsExpanded] = useState(false);
 
@@ -54,6 +56,7 @@ const MinuteEntryEditor: React.FC<MinuteEntryEditorProps> = ({
                         size="small"
                         value={entry.type}
                         onChange={(e) => handleFieldChange('type', e.target.value)}
+                        disabled={readOnly}
                     >
                         <MenuItem value="resolution">📋 Résolution</MenuItem>
                         <MenuItem value="comment">💬 Commentaire</MenuItem>
@@ -66,6 +69,7 @@ const MinuteEntryEditor: React.FC<MinuteEntryEditorProps> = ({
                         size="small"
                         value={entry.number || ''}
                         onChange={(e) => handleFieldChange('number', e.target.value)}
+                        disabled={readOnly}
                     />
                 </Grid>
             </Grid>
@@ -81,6 +85,7 @@ const MinuteEntryEditor: React.FC<MinuteEntryEditorProps> = ({
                 onBlur={() => setIsExpanded(false)}
                 variant="outlined"
                 size="small"
+                disabled={readOnly}
                 sx={{
                     transition: 'all 0.3s ease-in-out',
                     '& .MuiInputBase-root': {

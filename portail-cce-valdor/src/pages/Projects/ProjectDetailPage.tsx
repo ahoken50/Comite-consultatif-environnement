@@ -29,6 +29,7 @@ import ProjectComments from '../../components/projects/ProjectComments';
 import ProjectDecisions from '../../components/projects/ProjectDecisions';
 import LinkedResolutions from '../../components/projects/LinkedResolutions';
 import Breadcrumbs from '../../components/common/Breadcrumbs'; // [NEW]
+import { AccessControl } from '../../components/auth/AccessControl';
 
 interface TabPanelProps {
     children?: React.ReactNode;
@@ -94,7 +95,7 @@ const ProjectDetailPage: React.FC = () => {
             await dispatch(updateProject({
                 id,
                 updates: { ...data, dateUpdated: new Date().toISOString() },
-                userId: user.uid,
+                userId: user.id || user.uid || '',
                 userName: user.displayName || 'Utilisateur',
                 projectName: project.name
             }));
@@ -106,7 +107,7 @@ const ProjectDetailPage: React.FC = () => {
         if (window.confirm('Êtes-vous sûr de vouloir supprimer ce projet ?') && user) {
             await dispatch(deleteProject({
                 id: project.id,
-                userId: user.uid,
+                userId: user.id || user.uid || '',
                 userName: user.displayName || 'Utilisateur',
                 projectName: project.name
             }));
@@ -146,17 +147,19 @@ const ProjectDetailPage: React.FC = () => {
                         </Typography>
                     </Box>
                     <Box>
-                        <Button
-                            startIcon={<Edit />}
-                            variant="outlined"
-                            sx={{ mr: 1 }}
-                            onClick={() => setEditDialogOpen(true)}
-                        >
-                            Modifier
-                        </Button>
-                        <IconButton color="error" onClick={handleDeleteProject}>
-                            <Delete />
-                        </IconButton>
+                        <AccessControl allowedRoles={['coordinator']}>
+                            <Button
+                                startIcon={<Edit />}
+                                variant="outlined"
+                                sx={{ mr: 1 }}
+                                onClick={() => setEditDialogOpen(true)}
+                            >
+                                Modifier
+                            </Button>
+                            <IconButton color="error" onClick={handleDeleteProject}>
+                                <Delete />
+                            </IconButton>
+                        </AccessControl>
                     </Box>
                 </Box>
 

@@ -1,9 +1,27 @@
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
+    
+    // Core Helper Functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Check if user is coordinator via Firestore (Optional, but Storage rules can't easily access Firestore in all tiers/versions efficiently. 
+    // Usually we rely on simple auth checks or Custom Claims. 
+    // For this implementation, we will stick to basic Auth + Path Ownership patterns).
+
     match /{allPaths=**} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null;
+      allow read: if isAuthenticated();
+      // Allow write if authenticated. ideally restricted further, 
+      // but without Custom Claims, checking role is hard in Storage rules alone.
+      allow write: if isAuthenticated(); 
+    }
+    
+    // Specific Rules for Signatures
+    match /signatures/{userId}/{fileName} {
+        allow read: if isAuthenticated();
+        allow write: if isAuthenticated() && request.auth.uid == userId;
     }
   }
 }

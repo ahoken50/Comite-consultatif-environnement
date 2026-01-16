@@ -35,6 +35,7 @@ import PaginationControls, { usePagination } from '../../components/common/Pagin
 import { ProjectStatus } from '../../types/project.types';
 import type { Project } from '../../types/project.types';
 import ProjectMergeDialog from '../../components/projects/ProjectMergeDialog';
+import { AccessControl } from '../../components/auth/AccessControl';
 
 const ProjectsPage: React.FC = () => {
     const dispatch = useDispatch<AppDispatch>();
@@ -94,7 +95,7 @@ const ProjectsPage: React.FC = () => {
                 dateCreated: now,
                 dateUpdated: now,
                 dateCompleted: null,
-                coordinatorId: user.uid,
+                coordinatorId: user.id || user.uid || '',
                 description: data.description || '',
                 currentDetails: '',
                 nextSteps: '',
@@ -105,13 +106,13 @@ const ProjectsPage: React.FC = () => {
                 isUrgent: data.isUrgent || false,
                 estimatedCompletionDate: null,
                 completionPercentage: 0,
-                createdBy: user.uid,
-                updatedBy: user.uid
+                createdBy: user.id || user.uid || '',
+                updatedBy: user.id || user.uid || ''
             };
 
             await dispatch(createProject({
                 project: newProject,
-                userId: user.uid,
+                userId: user.id || user.uid || '',
                 userName: user.displayName || user.email || 'Utilisateur'
             })).unwrap();
 
@@ -144,7 +145,7 @@ const ProjectsPage: React.FC = () => {
             await dispatch(updateProject({
                 id: projectId,
                 updates,
-                userId: user.uid,
+                userId: user.id || user.uid || 'unknown',
                 userName: user.displayName || user.email || 'Utilisateur',
                 projectName: project.name
             })).unwrap();
@@ -169,7 +170,7 @@ const ProjectsPage: React.FC = () => {
         try {
             await dispatch(deleteProject({
                 id,
-                userId: user.uid,
+                userId: user.id || user.uid || 'unknown',
                 userName: user.displayName || user.email || 'Utilisateur',
                 projectName: project.name
             })).unwrap();
@@ -192,13 +193,15 @@ const ProjectsPage: React.FC = () => {
                 <Typography variant="h4" sx={{ fontWeight: 700 }}>
                     Projets
                 </Typography>
-                <Button
-                    variant="contained"
-                    startIcon={<Add />}
-                    onClick={() => setIsFormOpen(true)}
-                >
-                    Nouveau Projet
-                </Button>
+                <AccessControl allowedRoles={['coordinator']}>
+                    <Button
+                        variant="contained"
+                        startIcon={<Add />}
+                        onClick={() => setIsFormOpen(true)}
+                    >
+                        Nouveau Projet
+                    </Button>
+                </AccessControl>
             </Box>
 
             {error && (

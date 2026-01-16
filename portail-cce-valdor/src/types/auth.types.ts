@@ -2,6 +2,7 @@ export type UserRole = 'coordinator' | 'president' | 'elected_official' | 'membe
 
 export interface UserProfile {
     id: string;             // Firebase Auth UID
+    uid?: string;           // Alias for id (compatibility)
     email: string;
     displayName?: string;
     role: UserRole;

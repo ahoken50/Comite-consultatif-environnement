@@ -22,7 +22,9 @@ import type { AppDispatch } from '../../store/store';
 import { fetchRecommendations, selectRecommendations } from '../../features/governance/governanceSlice';
 import type { CouncilRecommendation } from '../../types/recommendation.types';
 import RecommendationBuilder from '../../components/governance/RecommendationBuilder';
+
 import RecommendationDetailsDialog from '../../components/governance/RecommendationDetailsDialog';
+import { AccessControl } from '../../components/auth/AccessControl';
 
 const CouncilTrackingPage: React.FC = () => {
     const dispatch = useDispatch<AppDispatch>();
@@ -63,14 +65,16 @@ const CouncilTrackingPage: React.FC = () => {
                 <Typography variant="h4" component="h1" gutterBottom>
                     Suivi des Recommandations au Conseil
                 </Typography>
-                <Button
-                    variant="contained"
-                    startIcon={<AddIcon />}
-                    color="primary"
-                    onClick={() => setIsBuilderOpen(true)}
-                >
-                    Nouvelle Recommandation
-                </Button>
+                <AccessControl allowedRoles={['coordinator']}>
+                    <Button
+                        variant="contained"
+                        startIcon={<AddIcon />}
+                        color="primary"
+                        onClick={() => setIsBuilderOpen(true)}
+                    >
+                        Nouvelle Recommandation
+                    </Button>
+                </AccessControl>
             </Box>
 
             <Grid container spacing={3} mb={3}>
@@ -146,7 +150,9 @@ const CouncilTrackingPage: React.FC = () => {
                                         />
                                     </TableCell>
                                     <TableCell align="right">
-                                        <Button size="small" onClick={() => handleOpenDetails(rec)}>Détails</Button>
+                                        <AccessControl allowedRoles={['coordinator', 'president', 'elected_official']}>
+                                            <Button size="small" onClick={() => handleOpenDetails(rec)}>Détails</Button>
+                                        </AccessControl>
                                     </TableCell>
                                 </TableRow>
                             ))

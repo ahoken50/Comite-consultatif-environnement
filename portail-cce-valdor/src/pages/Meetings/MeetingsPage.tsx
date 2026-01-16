@@ -13,6 +13,7 @@ import SmartPlanningDialog from '../../components/meetings/SmartPlanningDialog';
 import { MeetingStatus } from '../../types/meeting.types';
 import { useToast } from '../../hooks/useToast';
 import { parseAnyDate } from '../../utils/dateUtils';
+import { AccessControl } from '../../components/auth/AccessControl';
 
 const MeetingsPage: React.FC = () => {
     const dispatch = useDispatch<AppDispatch>();
@@ -109,20 +110,22 @@ const MeetingsPage: React.FC = () => {
                     Réunions
                 </Typography>
                 <Box sx={{ display: 'flex', gap: 2 }}>
-                    <Button
-                        variant="outlined"
-                        startIcon={<AutoAwesome />}
-                        onClick={handleOpenSmartPlanning}
-                    >
-                        Assistant Planification
-                    </Button>
-                    <Button
-                        variant="contained"
-                        startIcon={<Add />}
-                        onClick={() => setIsFormOpen(true)}
-                    >
-                        Nouvelle Réunion
-                    </Button>
+                    <AccessControl allowedRoles={['coordinator']}>
+                        <Button
+                            variant="outlined"
+                            startIcon={<AutoAwesome />}
+                            onClick={handleOpenSmartPlanning}
+                        >
+                            Assistant Planification
+                        </Button>
+                        <Button
+                            variant="contained"
+                            startIcon={<Add />}
+                            onClick={() => setIsFormOpen(true)}
+                        >
+                            Nouvelle Réunion
+                        </Button>
+                    </AccessControl>
                 </Box>
             </Box>
 

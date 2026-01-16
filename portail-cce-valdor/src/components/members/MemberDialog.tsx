@@ -23,6 +23,7 @@ interface MemberDialogProps {
     member?: Member | null;
     onClose: () => void;
     onSave: (memberData: Partial<Member>) => void;
+    readOnlyAdminFields?: boolean;
 }
 
 const initialMember: Partial<Member> = {
@@ -34,7 +35,7 @@ const initialMember: Partial<Member> = {
     isActive: true
 };
 
-const MemberDialog: React.FC<MemberDialogProps> = ({ open, member, onClose, onSave }) => {
+const MemberDialog: React.FC<MemberDialogProps> = ({ open, member, onClose, onSave, readOnlyAdminFields = false }) => {
     const [formData, setFormData] = useState<Partial<Member>>(initialMember);
     const [errors, setErrors] = useState<Record<string, string>>({});
     const [uploading, setUploading] = useState(false);
@@ -47,7 +48,12 @@ const MemberDialog: React.FC<MemberDialogProps> = ({ open, member, onClose, onSa
                 role: member.role || 'member',
                 phone: member.phone || '',
                 bio: member.bio || '',
-                isActive: member.isActive ?? true
+                isActive: member.isActive ?? true,
+                mandateStart: member.mandateStart || '',
+                mandateEnd: member.mandateEnd || '',
+                appointedByResolution: member.appointedByResolution || '',
+                isSubstitute: member.isSubstitute || false,
+                signatureUrl: member.signatureUrl
             });
         } else {
             setFormData(initialMember);
@@ -93,10 +99,6 @@ const MemberDialog: React.FC<MemberDialogProps> = ({ open, member, onClose, onSa
         if (e.target.files && e.target.files[0]) {
             setUploading(true);
             try {
-                // Use member ID if exists, otherwise generate a temp one or use 'new'
-                // Ideally we should have an ID. If new member, we might need to wait for save?
-                // For now, let's use 'temp' prefix if no ID, but better to enforce ID generation or just use filename.
-                // Actually uploadMemberSignature just needs a prefix.
                 const memberId = member?.id || 'new_member';
                 const url = await uploadMemberSignature(e.target.files[0], memberId);
                 setFormData(prev => ({ ...prev, signatureUrl: url }));
@@ -159,6 +161,7 @@ const MemberDialog: React.FC<MemberDialogProps> = ({ open, member, onClose, onSa
                             value={formData.role}
                             onChange={handleRoleChange}
                             fullWidth
+                            disabled={readOnlyAdminFields}
                         >
                             <MenuItem value="president">Président(e)</MenuItem>
                             <MenuItem value="vice_president">Vice-Président(e)</MenuItem>
@@ -198,6 +201,7 @@ const MemberDialog: React.FC<MemberDialogProps> = ({ open, member, onClose, onSa
                                     checked={formData.isActive}
                                     onChange={handleSwitchChange}
                                     color="primary"
+                                    disabled={readOnlyAdminFields}
                                 />
                             }
                             label="Membre actif"
@@ -220,6 +224,7 @@ const MemberDialog: React.FC<MemberDialogProps> = ({ open, member, onClose, onSa
                             onChange={handleChange}
                             fullWidth
                             InputLabelProps={{ shrink: true }}
+                            disabled={readOnlyAdminFields}
                         />
                     </Grid>
                     <Grid size={{ xs: 12, sm: 6 }}>
@@ -232,6 +237,7 @@ const MemberDialog: React.FC<MemberDialogProps> = ({ open, member, onClose, onSa
                             onChange={handleChange}
                             fullWidth
                             InputLabelProps={{ shrink: true }}
+                            disabled={readOnlyAdminFields}
                         />
                     </Grid>
                     <Grid size={{ xs: 12, sm: 12 }}>
@@ -242,6 +248,7 @@ const MemberDialog: React.FC<MemberDialogProps> = ({ open, member, onClose, onSa
                             value={formData.appointedByResolution || ''}
                             onChange={handleChange}
                             fullWidth
+                            disabled={readOnlyAdminFields}
                         />
                     </Grid>
 
@@ -253,6 +260,7 @@ const MemberDialog: React.FC<MemberDialogProps> = ({ open, member, onClose, onSa
                                     checked={!!formData.isSubstitute}
                                     onChange={(e) => setFormData(prev => ({ ...prev, isSubstitute: e.target.checked }))}
                                     color="default"
+                                    disabled={readOnlyAdminFields}
                                 />
                             }
                             label="Ce membre est un suppléant"

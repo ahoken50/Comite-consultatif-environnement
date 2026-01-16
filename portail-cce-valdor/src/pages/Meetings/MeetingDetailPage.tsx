@@ -10,7 +10,8 @@ import {
     Tab,
     Divider,
     Chip,
-    Grid
+    Grid,
+    Alert
 } from '@mui/material';
 import { CalendarToday, LocationOn } from '@mui/icons-material';
 import { useDispatch, useSelector } from 'react-redux';
@@ -63,6 +64,7 @@ import MeetingApprovalCard from '../../components/meetings/MeetingApprovalCard';
 import ApprovalRequestsPanel from '../../components/meetings/ApprovalRequestsPanel';
 import { fetchMembers } from '../../features/members/membersSlice';
 import Breadcrumbs from '../../components/common/Breadcrumbs';
+import { AccessControl } from '../../components/auth/AccessControl';
 
 const MeetingDetailPage: React.FC = () => {
     const { id } = useParams<{ id: string }>();
@@ -76,7 +78,8 @@ const MeetingDetailPage: React.FC = () => {
     const { items: documents } = useSelector((state: RootState) => state.documents);
     const { user } = useSelector((state: RootState) => state.auth);
     const { items: members } = useSelector((state: RootState) => state.members);
-    const currentMember = members.find(m => m.id === user?.uid);
+    const currentMember = members.find(m => m.id === (user?.id || user?.uid));
+    const isCoordinator = user?.role === 'coordinator';
 
     const [tabValue, setTabValue] = useState(0);
 
@@ -246,21 +249,25 @@ const MeetingDetailPage: React.FC = () => {
             />
             <Box sx={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', mb: 2 }}>
                 <Box sx={{ display: 'flex', gap: 2 }}>
-                    <Button
-                        variant="outlined"
-                        color="primary"
-                        startIcon={<Send />}
-                        onClick={() => setIsConvocationDialogOpen(true)}
-                    >
-                        Convoquer
-                    </Button>
+                    <AccessControl allowedRoles={['coordinator']}>
+                        <Button
+                            variant="outlined"
+                            color="primary"
+                            startIcon={<Send />}
+                            onClick={() => setIsConvocationDialogOpen(true)}
+                        >
+                            Convoquer
+                        </Button>
+                    </AccessControl>
                     <ProjectExtractor meeting={meeting} />
-                    <Button
-                        variant="contained"
-                        onClick={() => setIsEditModalOpen(true)}
-                    >
-                        Modifier la réunion
-                    </Button>
+                    <AccessControl allowedRoles={['coordinator']}>
+                        <Button
+                            variant="contained"
+                            onClick={() => setIsEditModalOpen(true)}
+                        >
+                            Modifier la réunion
+                        </Button>
+                    </AccessControl>
                 </Box>
             </Box>
 
@@ -311,6 +318,8 @@ const MeetingDetailPage: React.FC = () => {
                         initialAgendaItemId={(location.state as any)?.agendaItemId}
                         onDocumentUnlink={handleDocumentUnlink}
                         onDocumentDelete={handleDocumentDelete}
+                        readOnly={!isCoordinator}
+                        canPropose={true}
                     />
                 </TabPanel>
 
@@ -323,24 +332,49 @@ const MeetingDetailPage: React.FC = () => {
                     {/* Panel showing approval requests and their comments */}
                     <ApprovalRequestsPanel meetingId={meeting.id} />
                     <Divider sx={{ my: 3 }} />
-                    <MinutesEditor
-                        meeting={meeting}
-                        onUpdate={handleMeetingUpdate}
-                    />
+
+                    {/* Minutes Visibility Logic */}
+                    {(isCoordinator ||
+                        ['president', 'elected_official'].includes(user?.role || '') ||
+                        meeting.approvalStatus === 'final' ||
+                        meeting.approvalStatus === 'approved' ||
+                        meeting.status === 'completed') ? (
+                        <MinutesEditor
+                            meeting={meeting}
+                            onUpdate={handleMeetingUpdate}
+                            readOnly={!isCoordinator}
+                        />
+                    ) : (
+                        <Alert severity="info" sx={{ mt: 2 }}>
+                            Le procès-verbal n'est pas encore disponible pour consultation.
+                        </Alert>
+                    )}
                 </TabPanel>
 
 
 
                 <TabPanel value={tabValue} index={2}>
-                    <ConvocationDashboard
-                        meeting={meeting}
-                        onUpdate={() => dispatch(updateMeeting({ id: meeting.id, updates: { ...meeting } }))}
-                    />
-                    <Divider sx={{ my: 4 }} />
-                    <AttendanceManager
-                        meeting={meeting}
-                        onUpdate={handleMeetingUpdate}
-                    />
+                    <AccessControl allowedRoles={['coordinator']} fallback={<Typography sx={{ py: 4, textAlign: 'center', color: 'text.secondary' }}>Accès réservé au coordonnateur</Typography>}>
+                        <ConvocationDashboard
+                            meeting={meeting}
+                            onUpdate={() => dispatch(updateMeeting({ id: meeting.id, updates: { ...meeting } }))}
+                        />
+                        <Divider sx={{ my: 4 }} />
+                        <AttendanceManager
+                            meeting={meeting}
+                            onUpdate={handleMeetingUpdate}
+                        />
+                    </AccessControl>
+                    {/* View Only for others */}
+                    <AccessControl allowedRoles={['member', 'president', 'elected_official']}>
+                        <Typography variant="h6" gutterBottom>Présences</Typography>
+                        {/* We might want a read-only view here later, for now just hiding the management tools */}
+                        <AttendanceManager
+                            meeting={meeting}
+                            onUpdate={() => { }} // No-op for read-only
+                            readOnly={true} // Assuming AttendanceManager supports readOnly (if not we'll need to update it)
+                        />
+                    </AccessControl>
                 </TabPanel>
 
                 <TabPanel value={tabValue} index={3}>

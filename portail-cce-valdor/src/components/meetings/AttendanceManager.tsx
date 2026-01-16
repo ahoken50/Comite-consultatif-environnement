@@ -30,9 +30,10 @@ import { getRoleLabel } from '../../constants';
 interface AttendanceManagerProps {
     meeting: Meeting;
     onUpdate: (updates: Partial<Meeting>) => void;
+    readOnly?: boolean;
 }
 
-const AttendanceManager: React.FC<AttendanceManagerProps> = ({ meeting, onUpdate }) => {
+const AttendanceManager: React.FC<AttendanceManagerProps> = ({ meeting, onUpdate, readOnly = false }) => {
     const dispatch = useDispatch<AppDispatch>();
     const { items: members } = useSelector((state: RootState) => state.members);
 
@@ -192,7 +193,7 @@ const AttendanceManager: React.FC<AttendanceManagerProps> = ({ meeting, onUpdate
                         variant="outlined"
                         color="secondary"
                         onClick={handleSyncFromDraft}
-                        disabled={!meeting.minutesDraft?.content}
+                        disabled={!meeting.minutesDraft?.content || readOnly}
                         title="Synchroniser les présences depuis le brouillon IA"
                     >
                         Importer du PV (IA)
@@ -248,6 +249,7 @@ const AttendanceManager: React.FC<AttendanceManagerProps> = ({ meeting, onUpdate
                                         checked={attendee.isPresent}
                                         onChange={() => handleTogglePresence(attendee.id)}
                                         color="primary"
+                                        disabled={readOnly}
                                     />
                                 </TableCell>
                                 <TableCell>{attendee.name}</TableCell>
@@ -260,13 +262,15 @@ const AttendanceManager: React.FC<AttendanceManagerProps> = ({ meeting, onUpdate
                                     />
                                 </TableCell>
                                 <TableCell align="right">
-                                    <IconButton
-                                        size="small"
-                                        color="error"
-                                        onClick={() => handleDeleteAttendee(attendee.id)}
-                                    >
-                                        <Delete />
-                                    </IconButton>
+                                    {!readOnly && (
+                                        <IconButton
+                                            size="small"
+                                            color="error"
+                                            onClick={() => handleDeleteAttendee(attendee.id)}
+                                        >
+                                            <Delete />
+                                        </IconButton>
+                                    )}
                                 </TableCell>
                             </TableRow>
                         ))}
@@ -281,66 +285,68 @@ const AttendanceManager: React.FC<AttendanceManagerProps> = ({ meeting, onUpdate
                 </Table>
             </TableContainer>
 
-            <Paper sx={{ p: 2, bgcolor: 'background.default' }}>
-                <Typography variant="subtitle2" gutterBottom>Ajouter un participant</Typography>
+            {!readOnly && (
+                <Paper sx={{ p: 2, bgcolor: 'background.default' }}>
+                    <Typography variant="subtitle2" gutterBottom>Ajouter un participant</Typography>
 
-                <Box sx={{ mb: 2 }}>
-                    <Checkbox
-                        checked={isGuest}
-                        onChange={(e) => setIsGuest(e.target.checked)}
-                        size="small"
-                    />
-                    <Typography variant="caption" component="span">Ajouter un invité (hors liste des membres)</Typography>
-                </Box>
+                    <Box sx={{ mb: 2 }}>
+                        <Checkbox
+                            checked={isGuest}
+                            onChange={(e) => setIsGuest(e.target.checked)}
+                            size="small"
+                        />
+                        <Typography variant="caption" component="span">Ajouter un invité (hors liste des membres)</Typography>
+                    </Box>
 
-                <Box sx={{ display: 'flex', gap: 2, alignItems: 'flex-start' }}>
-                    {isGuest ? (
-                        <>
-                            <TextField
-                                label="Nom complet"
-                                size="small"
-                                value={customName}
-                                onChange={(e) => setCustomName(e.target.value)}
-                                fullWidth
-                            />
-                            <TextField
-                                label="Rôle (ex: Invité)"
-                                size="small"
-                                value={newAttendeeRole}
-                                onChange={(e) => setNewAttendeeRole(e.target.value)}
-                                sx={{ width: '200px' }}
-                            />
-                        </>
-                    ) : (
-                        <FormControl fullWidth size="small">
-                            <InputLabel>Sélectionner un membre</InputLabel>
-                            <Select
-                                value={selectedMemberId}
-                                label="Sélectionner un membre"
-                                onChange={(e) => setSelectedMemberId(e.target.value)}
-                            >
-                                {members
-                                    .filter(m => !meeting.attendees?.some(a => a.id === m.id)) // Filter out already added
-                                    .map((member) => (
-                                        <MenuItem key={member.id} value={member.id}>
-                                            {member.displayName} ({member.role})
-                                        </MenuItem>
-                                    ))}
-                            </Select>
-                        </FormControl>
-                    )}
+                    <Box sx={{ display: 'flex', gap: 2, alignItems: 'flex-start' }}>
+                        {isGuest ? (
+                            <>
+                                <TextField
+                                    label="Nom complet"
+                                    size="small"
+                                    value={customName}
+                                    onChange={(e) => setCustomName(e.target.value)}
+                                    fullWidth
+                                />
+                                <TextField
+                                    label="Rôle (ex: Invité)"
+                                    size="small"
+                                    value={newAttendeeRole}
+                                    onChange={(e) => setNewAttendeeRole(e.target.value)}
+                                    sx={{ width: '200px' }}
+                                />
+                            </>
+                        ) : (
+                            <FormControl fullWidth size="small">
+                                <InputLabel>Sélectionner un membre</InputLabel>
+                                <Select
+                                    value={selectedMemberId}
+                                    label="Sélectionner un membre"
+                                    onChange={(e) => setSelectedMemberId(e.target.value)}
+                                >
+                                    {members
+                                        .filter(m => !meeting.attendees?.some(a => a.id === m.id)) // Filter out already added
+                                        .map((member) => (
+                                            <MenuItem key={member.id} value={member.id}>
+                                                {member.displayName} ({member.role})
+                                            </MenuItem>
+                                        ))}
+                                </Select>
+                            </FormControl>
+                        )}
 
-                    <Button
-                        variant="contained"
-                        startIcon={<Add />}
-                        onClick={handleAddMember}
-                        disabled={isGuest ? !customName.trim() : !selectedMemberId}
-                        sx={{ mt: 0.5 }}
-                    >
-                        Ajouter
-                    </Button>
-                </Box>
-            </Paper>
+                        <Button
+                            variant="contained"
+                            startIcon={<Add />}
+                            onClick={handleAddMember}
+                            disabled={isGuest ? !customName.trim() : !selectedMemberId}
+                            sx={{ mt: 0.5 }}
+                        >
+                            Ajouter
+                        </Button>
+                    </Box>
+                </Paper>
+            )}
         </Box>
     );
 };

@@ -12,9 +12,11 @@ import DocumentUpload from '../../components/documents/DocumentUpload';
 import type { Document } from '../../types/document.types';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
+import { AccessControl } from '../../components/auth/AccessControl';
 
 const DocumentsPage: React.FC = () => {
     const dispatch = useDispatch<AppDispatch>();
+    const { user } = useSelector((state: RootState) => state.auth);
     const { items: documents } = useSelector((state: RootState) => state.documents);
     const { items: meetings } = useSelector((state: RootState) => state.meetings);
     const { items: projects } = useSelector((state: RootState) => state.projects);
@@ -163,7 +165,7 @@ const DocumentsPage: React.FC = () => {
                                 <AccordionDetails sx={{ p: 0 }}>
                                     <DocumentList
                                         documents={group.documents}
-                                        onDelete={handleDelete}
+                                        onDelete={user?.role === 'coordinator' ? handleDelete : undefined}
                                         agendaItems={group.type === 'meeting' && group.entityId ? meetingsMap.get(group.entityId)?.agendaItems : undefined}
                                     />
                                 </AccordionDetails>
@@ -172,12 +174,14 @@ const DocumentsPage: React.FC = () => {
                     </Paper>
                 </Grid>
                 <Grid size={{ xs: 12, md: 4 }}>
-                    <Paper sx={{ p: 3 }}>
-                        <Typography variant="h6" gutterBottom>
-                            Ajouter un document
-                        </Typography>
-                        <DocumentUpload onUploadComplete={() => dispatch(fetchDocuments())} />
-                    </Paper>
+                    <AccessControl allowedRoles={['coordinator']}>
+                        <Paper sx={{ p: 3 }}>
+                            <Typography variant="h6" gutterBottom>
+                                Ajouter un document
+                            </Typography>
+                            <DocumentUpload onUploadComplete={() => dispatch(fetchDocuments())} />
+                        </Paper>
+                    </AccessControl>
                 </Grid>
             </Grid>
         </Box>

@@ -12,6 +12,7 @@ interface AgendaItemEditorProps {
     onMinuteEntryChange: (itemId: string, entryIndex: number, field: string, value: any) => void;
     onAddMinuteEntry: (itemId: string) => void;
     onDecisionChange: (itemId: string, value: string) => void;
+    readOnly?: boolean;
 }
 
 /**
@@ -25,7 +26,8 @@ const AgendaItemEditor: React.FC<AgendaItemEditorProps> = ({
     onAgendaItemChange,
     onMinuteEntryChange,
     onAddMinuteEntry,
-    onDecisionChange
+    onDecisionChange,
+    readOnly = false
 }) => {
     return (
         <Box sx={{ bgcolor: 'background.default', p: 2, borderRadius: 1 }}>
@@ -55,21 +57,24 @@ const AgendaItemEditor: React.FC<AgendaItemEditorProps> = ({
                             entryIndex={entryIndex}
                             itemId={item.id}
                             onChange={onMinuteEntryChange}
+                            readOnly={readOnly}
                         />
                     ))}
                 </Box>
             )}
 
             {/* Button to add new entry */}
-            <Button
-                variant="outlined"
-                size="small"
-                startIcon={<Add />}
-                onClick={() => onAddMinuteEntry(item.id)}
-                sx={{ mb: 2 }}
-            >
-                Ajouter résolution/commentaire
-            </Button>
+            {!readOnly && (
+                <Button
+                    variant="outlined"
+                    size="small"
+                    startIcon={<Add />}
+                    onClick={() => onAddMinuteEntry(item.id)}
+                    sx={{ mb: 2 }}
+                >
+                    Ajouter résolution/commentaire
+                </Button>
+            )}
 
             {/* Legacy form fields - only show if no minuteEntries */}
             {(!item.minuteEntries || item.minuteEntries.length === 0) && (
@@ -83,6 +88,7 @@ const AgendaItemEditor: React.FC<AgendaItemEditorProps> = ({
                                 size="small"
                                 value={item.minuteType || 'other'}
                                 onChange={(e) => onAgendaItemChange(item.id, 'minuteType', e.target.value)}
+                                disabled={readOnly}
                             >
                                 <MenuItem value="other">Note simple</MenuItem>
                                 <MenuItem value="resolution">Résolution</MenuItem>
@@ -96,6 +102,7 @@ const AgendaItemEditor: React.FC<AgendaItemEditorProps> = ({
                                 size="small"
                                 value={item.minuteNumber || ''}
                                 onChange={(e) => onAgendaItemChange(item.id, 'minuteNumber', e.target.value)}
+                                disabled={readOnly}
                             />
                         </Grid>
                     </Grid>
@@ -109,6 +116,7 @@ const AgendaItemEditor: React.FC<AgendaItemEditorProps> = ({
                                     size="small"
                                     value={item.proposer || ''}
                                     onChange={(e) => onAgendaItemChange(item.id, 'proposer', e.target.value)}
+                                    disabled={readOnly}
                                 />
                             </Grid>
                             <Grid size={{ xs: 12, sm: 6 }}>
@@ -118,6 +126,7 @@ const AgendaItemEditor: React.FC<AgendaItemEditorProps> = ({
                                     size="small"
                                     value={item.seconder || ''}
                                     onChange={(e) => onAgendaItemChange(item.id, 'seconder', e.target.value)}
+                                    disabled={readOnly}
                                 />
                             </Grid>
                         </Grid>
@@ -136,11 +145,11 @@ const AgendaItemEditor: React.FC<AgendaItemEditorProps> = ({
                         value={itemDecision || ''}
                         onChange={(e) => onDecisionChange(item.id, e.target.value)}
                         variant="outlined"
+                        disabled={readOnly}
                     />
                 </>
             )}
         </Box>
     );
 };
-
 export default AgendaItemEditor;
