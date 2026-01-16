@@ -184,7 +184,14 @@ const AgendaBuilder: React.FC<AgendaBuilderProps> = ({ items, onItemsChange, mee
     };
 
     const getLinkedDocuments = (itemId: string) => {
-        return documents.filter(doc => doc.agendaItemId === itemId);
+        const linked = documents.filter(doc => doc.agendaItemId === itemId);
+        console.log(`🔗 getLinkedDocuments for item ${itemId}:`, {
+            itemId,
+            linkedCount: linked.length,
+            allDocAgendaIds: documents.map(d => d.agendaItemId),
+            allItemIds: items.map(i => i.id)
+        });
+        return linked;
     };
 
     return (
