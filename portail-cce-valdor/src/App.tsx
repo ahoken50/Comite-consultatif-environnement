@@ -30,6 +30,7 @@ const RSVPPage = lazy(() => import('./pages/RSVP/RSVPPage'));
 const ApprovalPage = lazy(() => import('./pages/Approval/ApprovalPage'));
 const ProfilePage = lazy(() => import('./pages/Auth/ProfilePage'));
 const CoordinatorDashboard = lazy(() => import('./pages/Admin/CoordinatorDashboard'));
+const MigrateAgendaIdsPage = lazy(() => import('./pages/Admin/MigrateAgendaIdsPage'));
 import { RoleGuard } from './components/auth/RoleGuard';
 
 interface ProtectedRouteProps {
@@ -201,6 +202,7 @@ function App() {
                 {/* Coordinator Only Routes */}
                 <Route element={<RoleGuard allowedRoles={['coordinator']} />}>
                   <Route path="admin" element={<CoordinatorDashboard />} />
+                  <Route path="admin/migrate-agenda-ids" element={<MigrateAgendaIdsPage />} />
                   <Route path="reports" element={<AnnualReportPage />} />
                   <Route path="settings" element={<SettingsPage />} />
                 </Route>
