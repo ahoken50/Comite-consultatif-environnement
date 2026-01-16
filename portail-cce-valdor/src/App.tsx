@@ -1,7 +1,7 @@
 import React, { useEffect, Suspense, lazy } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { onAuthStateChanged } from 'firebase/auth';
-import { doc, getDoc, setDoc, collection, getDocs, query, where, deleteDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, collection, getDocs } from 'firebase/firestore';
 import { useDispatch, useSelector } from 'react-redux';
 import { CircularProgress, Box } from '@mui/material';
 import { auth, db } from './services/firebase';
@@ -66,39 +66,44 @@ function App() {
       if (user) {
         try {
           // Fetch additional user data from Firestore
-          const userDoc = await getDoc(doc(db, 'users', user.uid));
+          // Fetch user data from 'users' collection (Auth profile)
+          const userDocRef = doc(db, 'users', user.uid);
+          const userDoc = await getDoc(userDocRef);
           let userData = userDoc.exists() ? userDoc.data() : null;
 
-          // Migration Check: Look for an existing profile with this email but different ID
-          if (user.email) {
-            const usersRef = collection(db, 'users');
-            const q = query(usersRef, where('email', '==', user.email));
-            const querySnapshot = await getDocs(q);
+          // Fetch member data from 'members' collection (Business logic profile)
+          // This is the source of truth for bio, phone, real name, etc.
+          const memberDocRef = doc(db, 'members', user.uid);
+          const memberDoc = await getDoc(memberDocRef);
+          const memberData = memberDoc.exists() ? memberDoc.data() : null;
 
-            if (!querySnapshot.empty) {
-              const oldProfileDoc = querySnapshot.docs.find(d => d.id !== user.uid);
-              if (oldProfileDoc) {
-                console.log("Found existing profile with email, migrating data...", oldProfileDoc.id);
-                const oldData = oldProfileDoc.data();
+          // Sync Logic: If member profile exists, it overrides the basic auth profile
+          if (memberData) {
+            console.log("Syncing member data to user profile...", memberData);
+            const syncedData = {
+              uid: user.uid,
+              email: user.email || memberData.email,
+              displayName: memberData.displayName || user.displayName || 'Utilisateur',
+              photoURL: memberData.photoURL || user.photoURL,
+              role: memberData.role, // Member role takes precedence
+              isActive: memberData.isActive,
+              memberId: memberData.id,
+              // Preserve critical auth fields
+              createdAt: userData?.createdAt || new Date().toISOString(),
+              lastLoginAt: new Date().toISOString()
+            };
 
-                // Merge old data into new/current ID, prioritizing old data (roles, etc.)
-                // but keeping critical auth fields if needed.
-                const mergedData = {
-                  ...oldData,
-                  uid: user.uid, // Ensure ID matches Auth
-                  lastLoginAt: new Date().toISOString()
-                };
+            // Update 'users' collection to match 'members'
+            await setDoc(userDocRef, syncedData, { merge: true });
+            userData = syncedData;
+          }
 
-                // Save merged data to current UID
-                await setDoc(doc(db, 'users', user.uid), mergedData);
-
-                // Delete old "orphaned" profile to avoid duplicates
-                await deleteDoc(doc(db, 'users', oldProfileDoc.id));
-
-                // Use this data for the session
-                userData = mergedData;
-              }
-            }
+          // Fallback Migration (simplified): If we have a user but no member data found by ID,
+          // try to find a member by email to link them in future steps.
+          if (!memberData && user.email) {
+            // This block previously handled "orphaned" users. 
+            // With the sync logic above, we focus on the primary ID match first.
+            // If needed we can re-add deep migration here.
           }
 
           if (userData) {
