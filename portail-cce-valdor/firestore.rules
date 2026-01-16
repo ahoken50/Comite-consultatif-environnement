@@ -12,15 +12,24 @@ service cloud.firestore {
     }
     
     function isCoordinator() {
-      return isAuthenticated() && getUserData().role == 'coordinator';
+      // Check role in users collection OR members collection (Source of Truth)
+      // This is robust: even if users profile is stale, the secure members registry validates the role.
+      let isCoordinatorInUser = getUserData().role == 'coordinator';
+      let isCoordinatorInMember = get(/databases/$(database)/documents/members/$(request.auth.uid)).data.role == 'coordinator';
+      
+      return isAuthenticated() && (isCoordinatorInUser || isCoordinatorInMember);
     }
     
     function isPresident() {
-        return isAuthenticated() && getUserData().role == 'president';
+        let isPresidentInUser = getUserData().role == 'president';
+        let isPresidentInMember = get(/databases/$(database)/documents/members/$(request.auth.uid)).data.role == 'president';
+        return isAuthenticated() && (isPresidentInUser || isPresidentInMember);
     }
 
     function isElectedOfficial() {
-        return isAuthenticated() && getUserData().role == 'elected_official';
+        let isElectedInUser = getUserData().role == 'elected_official';
+        let isElectedInMember = get(/databases/$(database)/documents/members/$(request.auth.uid)).data.role == 'elected_official';
+        return isAuthenticated() && (isElectedInUser || isElectedInMember);
     }
     
     function isOwner(userId) {

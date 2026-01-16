@@ -93,8 +93,15 @@ function App() {
               lastLoginAt: new Date().toISOString()
             };
 
-            // Update 'users' collection to match 'members'
-            await setDoc(userDocRef, syncedData, { merge: true });
+            // Optimistic update: Try to save to Firestore, but proceed even if it fails (permissions)
+            try {
+              await setDoc(userDocRef, syncedData, { merge: true });
+              console.log("Sync write successful.");
+            } catch (syncError) {
+              console.error("SYNC WRITE FAILED (Permissions?):", syncError);
+              // We continue anyway so the user sees their correct data in the session
+              // This fixes the "blocked login" issue caused by strict security rules
+            }
             userData = syncedData;
           }
 
