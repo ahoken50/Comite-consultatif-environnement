@@ -1,7 +1,7 @@
 import React, { useEffect, Suspense, lazy } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { onAuthStateChanged } from 'firebase/auth';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, collection, getDocs } from 'firebase/firestore';
 import { useDispatch, useSelector } from 'react-redux';
 import { CircularProgress, Box } from '@mui/material';
 import { auth, db } from './services/firebase';
@@ -87,12 +87,35 @@ function App() {
             }, { merge: true });
 
           } else {
-            // Check if it's the very first user (fallback for dev/init)
-            // Ideally should be handled by Cloud Function or SignUp, but fail-safe here
-            console.warn("User document not found in Firestore for:", user.uid);
-            dispatch(setUser(null));
-            // Optional: Force logout if no profile exists? 
-            // auth.signOut();
+            console.warn("User document not found in Firestore. Creating default profile for:", user.uid);
+
+            // Self-healing: Create missing user profile
+            const usersRef = collection(db, 'users');
+            const snapshot = await getDocs(usersRef);
+            const isFirstUser = snapshot.empty;
+            const role = isFirstUser ? 'coordinator' : 'member';
+
+            const newUserData = {
+              uid: user.uid,
+              email: user.email || '',
+              displayName: user.displayName || 'Utilisateur',
+              role: role,
+              isActive: true,
+              createdAt: new Date().toISOString(),
+              lastLoginAt: new Date().toISOString()
+            };
+
+            await setDoc(doc(db, 'users', user.uid), newUserData);
+
+            dispatch(setUser({
+              id: user.uid,
+              email: newUserData.email,
+              displayName: newUserData.displayName,
+              role: newUserData.role as any,
+              isActive: true,
+              createdAt: newUserData.createdAt,
+              lastLoginAt: newUserData.lastLoginAt
+            }));
           }
         } catch (error) {
           console.error("Error fetching user profile:", error);
