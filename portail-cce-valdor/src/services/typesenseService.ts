@@ -327,7 +327,7 @@ export const searchAll = async (
 export const indexMeeting = async (meeting: SearchableMeeting): Promise<void> => {
     try {
         await fetchTypesense(
-            `/collections/meetings/documents`,
+            `/collections/meetings/documents?action=upsert`,
             {
                 method: 'POST',
                 body: JSON.stringify(meeting)
@@ -349,7 +349,7 @@ export const indexMeeting = async (meeting: SearchableMeeting): Promise<void> =>
 export const indexProject = async (project: SearchableProject): Promise<void> => {
     try {
         await fetchTypesense(
-            `/collections/projects/documents`,
+            `/collections/projects/documents?action=upsert`,
             {
                 method: 'POST',
                 body: JSON.stringify(project)

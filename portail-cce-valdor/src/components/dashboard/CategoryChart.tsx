@@ -18,9 +18,9 @@ const CategoryChart: React.FC<CategoryChartProps> = ({ data }) => {
         <Card sx={{ height: '100%' }}>
             <CardHeader title="Répartition par catégorie" sx={{ borderBottom: 1, borderColor: 'divider' }} />
             <CardContent>
-                <div style={{ height: 300, width: '100%', minHeight: 300, minWidth: 0 }}>
+                <div style={{ width: '100%', height: 300 }}>
                     {data.length > 0 ? (
-                        <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} debounce={200}>
+                        <ResponsiveContainer width="99%" height="100%">
                             <PieChart>
                                 <Pie
                                     data={data}

@@ -62,6 +62,7 @@ const SortableItem = ({ item, onDelete, onEdit, linkedDocuments }: { item: Agend
 
     return (
         <ListItem
+            id={`item-${item.id}`} // Add ID for deep linking
             ref={setNodeRef}
             style={style}
             secondaryAction={

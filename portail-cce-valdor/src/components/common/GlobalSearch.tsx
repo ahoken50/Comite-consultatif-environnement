@@ -256,12 +256,25 @@ const GlobalSearch: React.FC = () => {
                 }
 
                 if (matchType) {
+                    let link = `/meetings/${m.id}`;
+                    if (matchType.startsWith('Agenda') || matchType.startsWith('Résolution')) {
+                        // Find the item ID for deep linking
+                        const itemId = m.agendaItems?.find(i =>
+                            i.title.toLowerCase().includes(lowerQuery) ||
+                            (i.description && i.description.toLowerCase().includes(lowerQuery)) ||
+                            (i.minuteEntries && i.minuteEntries.some(e => e.content.toLowerCase().includes(lowerQuery)))
+                        )?.id;
+                        if (itemId) link += `#item-${itemId}`;
+                    } else if (matchType === 'Contenu PV') {
+                        link += '#minutes-content';
+                    }
+
                     searchResults.push({
                         id: m.id,
                         type: 'meeting',
                         title: m.title,
                         subtitle: matchSnippet || (matchType === 'title' ? (m.type === 'regular' ? 'Régulière' : 'Spéciale') : matchType),
-                        link: `/meetings/${m.id}`,
+                        link: link,
                         date: m.date
                     });
                 }

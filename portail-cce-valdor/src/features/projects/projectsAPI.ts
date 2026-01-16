@@ -200,6 +200,8 @@ export const projectsAPI = {
     // MERGE PROJECTS FEATURE
     // Merges sourceProject into targetProject and deletes sourceProject
     mergeProjects: async (sourceProjectId: string, targetProjectId: string, user: any): Promise<void> => {
+        // Yield to UI thread to prevent blocking
+        await new Promise(resolve => setTimeout(resolve, 0));
         console.log(`Starting merge: Source=${sourceProjectId} -> Target=${targetProjectId}`);
 
         // 1. Fetch Source Project Data

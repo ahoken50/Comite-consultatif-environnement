@@ -96,22 +96,37 @@ const MeetingDetailPage: React.FC = () => {
 
         // Handle hash scrolling
         if (location.hash) {
-            // Slight delay to ensure content is rendered
+            const hash = location.hash.substring(1);
+
+            // Switch tabs based on hash target
+            if (hash === 'minutes-content' || hash.startsWith('resolution-')) {
+                setTabValue(1); // PV Tab
+            } else if (hash.startsWith('item-')) {
+                setTabValue(0); // Agenda Tab
+            }
+
+            // Valid IDs might contain special chars from legacy data, escape if needed or just use as is if simple
+            const elementId = hash;
+
+            // Slight delay to ensure content is rendered/tab switched
             setTimeout(() => {
-                const id = location.hash.substring(1);
-                const element = document.getElementById(id);
+                const element = document.getElementById(elementId);
                 if (element) {
                     element.scrollIntoView({ behavior: 'smooth', block: 'center' });
                     // Highlight effect
-                    element.style.transition = 'background-color 1s';
-                    element.style.backgroundColor = '#e3f2fd'; // Light blue highlight
+                    element.style.transition = 'background-color 0.5s ease';
+                    const originalBg = element.style.backgroundColor;
+                    element.style.backgroundColor = '#fff9c4'; // Yellow highlight
+                    element.style.boxShadow = '0 0 10px rgba(255, 193, 7, 0.5)';
+
                     setTimeout(() => {
-                        element.style.backgroundColor = '';
-                    }, 2000);
+                        element.style.backgroundColor = originalBg;
+                        element.style.boxShadow = '';
+                    }, 3000);
                 }
-            }, 500);
+            }, 600);
         }
-    }, [location.state, location.hash, tabValue, meeting?.minutes]); // Depend on content loaded
+    }, [location.state, location.hash, meeting]); // Remove tabValue from dep array to avoid loops, add meeting to ensure data loaded
 
 
 
