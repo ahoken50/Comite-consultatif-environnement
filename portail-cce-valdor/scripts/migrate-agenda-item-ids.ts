@@ -1,3 +1,5 @@
+/// <reference types="node" />
+
 /**
  * Migration Script: Update Document agendaItemId to use stable IDs
  * 
