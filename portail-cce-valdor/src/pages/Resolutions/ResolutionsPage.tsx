@@ -26,6 +26,7 @@ import type { AppDispatch } from '../../store/store';
 import type { RootState } from '../../store/rootReducer';
 import { fetchMeetings } from '../../features/meetings/meetingsSlice';
 import { fetchProjects } from '../../features/projects/projectsSlice';
+import { ProjectStatusLabels } from '../../constants';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import Breadcrumbs from '../../components/common/Breadcrumbs'; // [NEW]
@@ -278,7 +279,7 @@ const ResolutionsPage: React.FC = () => {
                                     </TableCell>
                                     <TableCell>
                                         <Chip
-                                            label={row.status || 'N/A'}
+                                            label={ProjectStatusLabels[row.status as keyof typeof ProjectStatusLabels] || row.status || 'N/A'}
                                             color={getStatusColor(row.status) as any}
                                             size="small"
                                             variant="outlined"

@@ -48,7 +48,8 @@ export const ProjectStatusLabels: Record<string, string> = {
     in_progress: 'En cours',
     completed: 'Terminé',
     blocked: 'Bloqué',
-    cancelled: 'Annulé'
+    cancelled: 'Annulé',
+    to_clarify: 'À clarifier'
 };
 
 /** Minutes draft status */

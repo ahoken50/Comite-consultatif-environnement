@@ -3,6 +3,7 @@ import { Card, CardContent, Typography, Box, Chip, Avatar, AvatarGroup, LinearPr
 import { AccessTime, Category } from '@mui/icons-material';
 import type { Project } from '../../types/project.types';
 import { ProjectStatus, Priority } from '../../types/project.types';
+import { CategoryLabels } from '../../constants';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import QuickViewPopover from '../common/QuickViewPopover';
@@ -58,7 +59,7 @@ const ProjectCard: React.FC<ProjectCardProps> = ({ project, onClick }) => {
         {
             icon: <Category fontSize="small" />,
             label: 'Catégorie',
-            value: project.category || 'Non définie'
+            value: CategoryLabels[project.category] || project.category || 'Non définie'
         },
         {
             icon: <AccessTime fontSize="small" />,

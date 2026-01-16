@@ -13,6 +13,7 @@ import {
 } from '@mui/material';
 import { MoreVert, Email, Phone, Event, Assignment } from '@mui/icons-material';
 import type { Member } from '../../types/member.types';
+import { RoleLabels } from '../../constants';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
@@ -57,15 +58,7 @@ const MemberCard: React.FC<MemberCardProps> = memo(({ member, projectCount = 0, 
     };
 
     const getRoleLabel = (role: string) => {
-        switch (role) {
-            case 'coordinator': return 'Coordonnateur';
-            case 'president': return 'Président(e)';
-            case 'vice_president': return 'Vice-Président(e)';
-            case 'member': return 'Membre';
-            case 'elected_official': return 'Élu(e) municipal';
-            case 'observer': return 'Observateur';
-            default: return role;
-        }
+        return RoleLabels[role] || role;
     };
 
     return (
