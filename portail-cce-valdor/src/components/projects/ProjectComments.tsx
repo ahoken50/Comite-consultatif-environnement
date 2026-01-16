@@ -35,7 +35,7 @@ const ProjectComments: React.FC<ProjectCommentsProps> = ({ project }) => {
 
         const comment: Comment = {
             id: crypto.randomUUID(),
-            userId: user.uid,
+            userId: user.id,
             userName: user.displayName || 'Utilisateur',
             content: newComment,
             createdAt: new Date().toISOString()
@@ -46,7 +46,7 @@ const ProjectComments: React.FC<ProjectCommentsProps> = ({ project }) => {
                 projectId: project.id,
                 comment,
                 projectName: project.name,
-                userId: user.uid,
+                userId: user.id,
                 userName: user.displayName || 'Utilisateur'
             })).unwrap();
             setNewComment('');

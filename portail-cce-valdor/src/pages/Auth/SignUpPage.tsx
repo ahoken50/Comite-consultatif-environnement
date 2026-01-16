@@ -37,7 +37,7 @@ const SignUpPage: React.FC = () => {
             const snapshot = await getDocs(usersRef);
             const isFirstUser = snapshot.empty;
 
-            const role = isFirstUser ? 'admin' : 'user';
+            const role = isFirstUser ? 'coordinator' : 'member';
 
             // 3. Create User Document in Firestore
             await setDoc(doc(db, 'users', user.uid), {

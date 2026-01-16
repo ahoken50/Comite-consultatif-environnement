@@ -198,14 +198,14 @@ const LinkedResolutions: React.FC<LinkedResolutionsProps> = ({ project }) => {
                 entryNumber: selectedEntry.number || '',
                 entryContent: selectedEntry.content?.substring(0, 200) || '',
                 linkedAt: new Date().toISOString(),
-                linkedBy: user.uid
+                linkedBy: user.id
             };
 
             await dispatch(linkResolutionToProject({
                 projectId: project.id,
                 resolution,
                 projectName: project.name,
-                userId: user.uid,
+                userId: user.id,
                 userName: user.displayName || user.email || 'Utilisateur'
             })).unwrap();
 
@@ -232,7 +232,7 @@ const LinkedResolutions: React.FC<LinkedResolutionsProps> = ({ project }) => {
                 projectId: project.id,
                 resolutionId,
                 projectName: project.name,
-                userId: user.uid,
+                userId: user.id,
                 userName: user.displayName || user.email || 'Utilisateur'
             })).unwrap();
 

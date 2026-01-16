@@ -115,7 +115,7 @@ const ProjectExtractor: React.FC<ProjectExtractorProps> = ({ meeting, onComplete
                     dateCreated: now,
                     dateUpdated: now,
                     dateCompleted: null,
-                    coordinatorId: user.uid,
+                    coordinatorId: user.id,
                     description: suggested.description,
                     currentDetails: '',
                     nextSteps: suggested.nextSteps,
@@ -126,13 +126,13 @@ const ProjectExtractor: React.FC<ProjectExtractorProps> = ({ meeting, onComplete
                     isUrgent: suggested.isUrgent,
                     estimatedCompletionDate: null,
                     completionPercentage: 0,
-                    createdBy: user.uid,
-                    updatedBy: user.uid
+                    createdBy: user.id,
+                    updatedBy: user.id
                 };
 
                 await dispatch(createProject({
                     project: newProject,
-                    userId: user.uid,
+                    userId: user.id,
                     userName: user.displayName || user.email || 'Utilisateur'
                 })).unwrap();
 

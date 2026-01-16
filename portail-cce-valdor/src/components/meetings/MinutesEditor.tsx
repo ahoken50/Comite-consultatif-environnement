@@ -191,7 +191,7 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate, readOn
                 await pvVersioningService.createPVVersion(
                     meeting.id,
                     fullMeetingState,
-                    user.uid,
+                    user.id,
                     "Sauvegarde manuelle"
                 );
                 showSuccess("Version sauvegardée dans l'historique");

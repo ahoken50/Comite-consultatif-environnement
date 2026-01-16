@@ -7,6 +7,7 @@ export interface UserProfile {
     displayName?: string;
     role: UserRole;
     memberId?: string;      // ID du membre lié dans la collection 'members'
+    photoURL?: string;
     isActive: boolean;
     createdAt: string;
     lastLoginAt?: string;

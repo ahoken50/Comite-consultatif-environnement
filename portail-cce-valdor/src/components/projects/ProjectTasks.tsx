@@ -62,11 +62,11 @@ const ProjectTasks: React.FC<ProjectTasksProps> = ({ project }) => {
                 task: {
                     description: newTaskDescription,
                     status: 'pending',
-                    createdBy: user.uid,
-                    assigneeId: assigneeId || user.uid,
+                    createdBy: user.id,
+                    assigneeId: assigneeId || user.id,
                     dueDate: dueDate || undefined
                 },
-                userId: user.uid,
+                userId: user.id,
                 userName: user.displayName || user.email || 'Utilisateur',
                 projectName: project.name
             })).unwrap();
@@ -101,7 +101,7 @@ const ProjectTasks: React.FC<ProjectTasksProps> = ({ project }) => {
                 projectId: project.id,
                 taskId: editingTask.id,
                 updates,
-                userId: user.uid,
+                userId: user.id,
                 userName: user.displayName || user.email || 'Utilisateur',
                 projectName: project.name
             })).unwrap();
@@ -125,7 +125,7 @@ const ProjectTasks: React.FC<ProjectTasksProps> = ({ project }) => {
             projectId: project.id,
             taskId: task.id,
             updates,
-            userId: user.uid,
+            userId: user.id,
             userName: user.displayName || user.email || 'Utilisateur',
             projectName: project.name
         }));
@@ -138,7 +138,7 @@ const ProjectTasks: React.FC<ProjectTasksProps> = ({ project }) => {
         dispatch(deleteTask({
             projectId: project.id,
             taskId,
-            userId: user.uid,
+            userId: user.id,
             userName: user.displayName || user.email || 'Utilisateur',
             projectName: project.name
         }));

@@ -62,7 +62,7 @@ const ProjectDecisions: React.FC<ProjectDecisionsProps> = ({ project }) => {
                 id: Date.now().toString(),
                 date: new Date(date).toISOString(),
                 description: description,
-                createdBy: user.uid,
+                createdBy: user.id,
                 fileUrl,
                 fileName
             };
@@ -71,7 +71,7 @@ const ProjectDecisions: React.FC<ProjectDecisionsProps> = ({ project }) => {
                 projectId: project.id,
                 decision,
                 projectName: project.name,
-                userId: user.uid,
+                userId: user.id,
                 userName: user.displayName || user.email || 'Utilisateur'
             })).unwrap();
 
