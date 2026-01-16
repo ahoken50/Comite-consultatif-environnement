@@ -160,9 +160,11 @@ const MeetingDetailPage: React.FC = () => {
         if (meeting && meeting.agendaItems) {
             const itemsWithoutIds = meeting.agendaItems.filter(item => !item.id);
             if (itemsWithoutIds.length > 0) {
+                console.log('⚠️ Patching agenda items without IDs...');
                 const patchedItems = meeting.agendaItems.map((item, index) => ({
                     ...item,
-                    id: item.id || `patched-${Date.now()}-${index}`
+                    // Use stable ID based on meeting ID + index (not Date.now()!)
+                    id: item.id || `${meeting.id}-item-${index}`
                 }));
                 dispatch(updateMeeting({ id: meeting.id, updates: { agendaItems: patchedItems } }));
             }
