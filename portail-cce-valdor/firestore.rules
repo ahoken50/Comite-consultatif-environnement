@@ -98,11 +98,17 @@ service cloud.firestore {
                      (isPresident() && request.resource.data.presidentSignature != null) ||
                      (isElectedOfficial() && request.resource.data.electedOfficialSignature != null);
       
-      // Subcollections (Agenda, RSVP...)
+      // Subcollections (Agenda, RSVP, Convocations...)
       match /agendaItems/{itemId} {
          allow read: if isAuthenticated();
          allow create: if isAuthenticated(); // Members can propose
          allow update, delete: if isCoordinator() || (isAuthenticated() && resource.data.proposedBy == request.auth.uid);
+      }
+      
+      // Convocations subcollection
+      match /convocations/{convocationId} {
+         allow read: if isCoordinator(); // Only coordinators can view convocation tracking
+         allow write: if isCoordinator();
       }
     }
 

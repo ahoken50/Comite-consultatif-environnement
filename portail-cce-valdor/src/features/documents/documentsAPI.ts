@@ -33,20 +33,30 @@ export const documentsAPI = {
     },
 
     fetchByEntity: async (entityId: string, entityType: 'project' | 'meeting'): Promise<Document[]> => {
-        const q = query(
-            collection(db, COLLECTION_NAME),
-            where('linkedEntityId', '==', entityId),
-            where('linkedEntityType', '==', entityType)
-        );
-        const snapshot = await getDocs(q);
-        const docs = snapshot.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data(),
-            dateUploaded: doc.data().dateUploaded?.toDate ? doc.data().dateUploaded.toDate().toISOString() : doc.data().dateUploaded,
-        } as Document));
+        console.log('🔍 Fetching documents for:', { entityId, entityType });
+        try {
+            const q = query(
+                collection(db, COLLECTION_NAME),
+                where('linkedEntityId', '==', entityId),
+                where('linkedEntityType', '==', entityType)
+            );
+            const snapshot = await getDocs(q);
+            console.log(`✅ Found ${snapshot.docs.length} documents for ${entityType} ${entityId}`);
 
-        // Sort in memory to avoid needing a composite index
-        return docs.sort((a, b) => new Date(b.dateUploaded).getTime() - new Date(a.dateUploaded).getTime());
+            const docs = snapshot.docs.map(doc => ({
+                id: doc.id,
+                ...doc.data(),
+                dateUploaded: doc.data().dateUploaded?.toDate ? doc.data().dateUploaded.toDate().toISOString() : doc.data().dateUploaded,
+            } as Document));
+
+            console.log('📄 Documents with agendaItemId:', docs.filter(d => d.agendaItemId).map(d => ({ name: d.name, agendaItemId: d.agendaItemId })));
+
+            // Sort in memory to avoid needing a composite index
+            return docs.sort((a, b) => new Date(b.dateUploaded).getTime() - new Date(a.dateUploaded).getTime());
+        } catch (error) {
+            console.error('❌ Error fetching documents:', error);
+            throw error;
+        }
     },
 
     upload: async (file: File, linkedEntityId?: string, linkedEntityType?: 'project' | 'meeting', uploadedBy?: string, agendaItemId?: string): Promise<Document> => {
