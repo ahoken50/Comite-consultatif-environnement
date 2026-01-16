@@ -13,22 +13,30 @@ service cloud.firestore {
     
     function isCoordinator() {
       // Check role in users collection OR members collection (Source of Truth)
-      // This is robust: even if users profile is stale, the secure members registry validates the role.
       let isCoordinatorInUser = getUserData().role == 'coordinator';
-      let isCoordinatorInMember = get(/databases/$(database)/documents/members/$(request.auth.uid)).data.role == 'coordinator';
+      
+      // Safe check: only read from members if the document exists
+      let memberPath = /databases/$(database)/documents/members/$(request.auth.uid);
+      let isCoordinatorInMember = exists(memberPath) && get(memberPath).data.role == 'coordinator';
       
       return isAuthenticated() && (isCoordinatorInUser || isCoordinatorInMember);
     }
     
     function isPresident() {
         let isPresidentInUser = getUserData().role == 'president';
-        let isPresidentInMember = get(/databases/$(database)/documents/members/$(request.auth.uid)).data.role == 'president';
+        
+        let memberPath = /databases/$(database)/documents/members/$(request.auth.uid);
+        let isPresidentInMember = exists(memberPath) && get(memberPath).data.role == 'president';
+        
         return isAuthenticated() && (isPresidentInUser || isPresidentInMember);
     }
 
     function isElectedOfficial() {
         let isElectedInUser = getUserData().role == 'elected_official';
-        let isElectedInMember = get(/databases/$(database)/documents/members/$(request.auth.uid)).data.role == 'elected_official';
+        
+        let memberPath = /databases/$(database)/documents/members/$(request.auth.uid);
+        let isElectedInMember = exists(memberPath) && get(memberPath).data.role == 'elected_official';
+        
         return isAuthenticated() && (isElectedInUser || isElectedInMember);
     }
     
