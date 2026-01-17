@@ -28,6 +28,8 @@ const CouncilTrackingPage = lazy(() => import('./pages/Governance/CouncilTrackin
 const AnnualReportPage = lazy(() => import('./pages/Reports/AnnualReportPage'));
 const RSVPPage = lazy(() => import('./pages/RSVP/RSVPPage'));
 const ApprovalPage = lazy(() => import('./pages/Approval/ApprovalPage'));
+const PresentationControlPage = lazy(() => import('./pages/Presentation/PresentationControlPage'));
+const ProjectionPage = lazy(() => import('./pages/Presentation/ProjectionPage'));
 const ProfilePage = lazy(() => import('./pages/Auth/ProfilePage'));
 const CoordinatorDashboard = lazy(() => import('./pages/Admin/CoordinatorDashboard'));
 

@@ -31,7 +31,7 @@ import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { useToast } from '../../hooks/useToast';
 import ConvocationDialog from '../../components/meetings/ConvocationDialog';
-import { Send } from '@mui/icons-material';
+import { Send, PlayArrow } from '@mui/icons-material';
 import ConvocationDashboard from '../../components/meetings/ConvocationDashboard';
 
 interface TabPanelProps {
@@ -256,6 +256,17 @@ const MeetingDetailPage: React.FC = () => {
             <Box sx={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', mb: 2 }}>
                 <Box sx={{ display: 'flex', gap: 2 }}>
                     <AccessControl allowedRoles={['coordinator']}>
+                        {meeting.status !== 'completed' && (
+                            <Button
+                                variant="outlined"
+                                color="secondary"
+                                startIcon={<PlayArrow />}
+                                onClick={() => window.open(`/meetings/${id}/presentation`, '_blank')}
+                                sx={{ mr: 2 }}
+                            >
+                                Mode Présentation
+                            </Button>
+                        )}
                         <Button
                             variant="outlined"
                             color="primary"
