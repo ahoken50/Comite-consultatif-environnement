@@ -1,7 +1,9 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { Box, Typography, IconButton, Button } from '@mui/material';
-import { FolderOpen, ChevronLeft, ChevronRight, Close, Image as ImageIcon, PictureAsPdf, Circle } from '@mui/icons-material';
+import { FolderOpen, ChevronLeft, ChevronRight, Close, Image as ImageIcon, PictureAsPdf, Circle, TableView, Web } from '@mui/icons-material';
 import type { Attachment } from '../types';
+// @ts-ignore
+import * as XLSX from 'xlsx';
 
 interface DocumentViewerProps {
     activeAttachment: Attachment | null;
@@ -46,6 +48,36 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
     const [laserPos, setLaserPos] = useState({ x: 0, y: 0 });
     const [showLaser, setShowLaser] = useState(false);
     const [isDrawing, setIsDrawing] = useState(false);
+
+    // Excel Native Mode State
+    const [useNativeExcel, setUseNativeExcel] = useState(false);
+    const [excelHtml, setExcelHtml] = useState<string | null>(null);
+
+    // Reset native mode on attachment change
+    useEffect(() => {
+        setUseNativeExcel(false);
+        setExcelHtml(null);
+    }, [activeAttachment]);
+
+    // Parse Excel when in native mode
+    useEffect(() => {
+        const loadExcel = async () => {
+            if (useNativeExcel && activeAttachment && activeAttachment.name.match(/\.(xlsx|xls)$/i)) {
+                try {
+                    const response = await fetch(activeAttachment.url);
+                    const arrayBuffer = await response.arrayBuffer();
+                    const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+                    const firstSheetName = workbook.SheetNames[0];
+                    const worksheet = workbook.Sheets[firstSheetName];
+                    const html = XLSX.utils.sheet_to_html(worksheet, { id: 'excel-table', editable: false });
+                    setExcelHtml(html);
+                } catch (err) {
+                    console.error("Failed to parse Excel native", err);
+                }
+            }
+        };
+        loadExcel();
+    }, [useNativeExcel, activeAttachment]);
 
     useEffect(() => {
         setCurrentPage(1);
@@ -252,14 +284,35 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
                             style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)' }}
                         />
                     ) : (
-                        <Box sx={{ width: '100%', height: '100%', bgcolor: 'white', boxShadow: 10, overflow: 'hidden' }}>
-                            {activeAttachment.name.match(/\.(xlsx|xls)$/i) ? (
-                                <iframe
-                                    src={`https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(activeAttachment.url)}`}
-                                    style={{ width: '100%', height: '100%', border: 'none' }}
-                                    title={activeAttachment.name}
-                                />
-                            ) : activeAttachment.name.match(/\.(docx|doc|pptx|ppt)$/i) ? (
+                        <Box sx={{ width: '100%', height: '100%', bgcolor: 'white', boxShadow: 10, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+
+                            {/* Excel Toggle (only for Excel/XLSX files) */}
+                            {activeAttachment.name.match(/\.(xlsx|xls)$/i) && !isProjection && (
+                                <Box sx={{ p: 1, borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end', bgcolor: '#f8fafc' }}>
+                                    <Button
+                                        size="small"
+                                        onClick={() => setUseNativeExcel(!useNativeExcel)}
+                                        startIcon={useNativeExcel ? <Web /> : <TableView />}
+                                        variant="outlined"
+                                        color="secondary"
+                                    >
+                                        {useNativeExcel ? "Vue Web (Google)" : "Vue Cellules (Bêta)"}
+                                    </Button>
+                                </Box>
+                            )}
+
+                            {(activeAttachment.name.match(/\.(xlsx|xls)$/i) && useNativeExcel && excelHtml) ? (
+                                <Box sx={{ flex: 1, overflow: 'auto', p: 4, bgcolor: 'white' }}>
+                                    <style>
+                                        {`
+                                      #excel-table table { border-collapse: collapse; width: 100%; font-family: sans-serif; }
+                                      #excel-table td, #excel-table th { border: 1px solid #cbd5e1; padding: 4px 8px; font-size: 14px; }
+                                      #excel-table tr:nth-of-type(even) { background-color: #f8fafc; }
+                                    `}
+                                    </style>
+                                    <div dangerouslySetInnerHTML={{ __html: excelHtml }} />
+                                </Box>
+                            ) : activeAttachment.name.match(/\.(xlsx|xls|docx|doc|pptx|ppt)$/i) ? (
                                 <iframe
                                     src={`https://docs.google.com/viewer?url=${encodeURIComponent(activeAttachment.url)}&embedded=true`}
                                     style={{ width: '100%', height: '100%', border: 'none' }}
@@ -271,6 +324,20 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
                                     style={{ width: '100%', height: '100%', border: 'none' }}
                                     title={activeAttachment.name}
                                 />
+                            )}
+
+                            {/* Fallback/External Open Button for Office Docs */}
+                            {(activeAttachment.name.match(/\.(xlsx|xls|docx|doc|pptx|ppt)$/i) && !isProjection) && (
+                                <Box sx={{ position: 'absolute', bottom: 16, right: 16, zIndex: 15 }}>
+                                    <Button
+                                        variant="contained"
+                                        size="small"
+                                        onClick={() => window.open(activeAttachment.url, '_blank')}
+                                        sx={{ bgcolor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', '&:hover': { bgcolor: 'rgba(0,0,0,0.8)' } }}
+                                    >
+                                        Ouvrir l'original
+                                    </Button>
+                                </Box>
                             )}
                         </Box>
                     )}
