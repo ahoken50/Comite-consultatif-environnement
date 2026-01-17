@@ -127,6 +127,15 @@ service cloud.firestore {
         allow update: if isCoordinator() || isElectedOfficial();
     }
 
+    // Meeting Approvals (PV validation)
+    // - Read: All authenticated
+    // - Create/Update: Coordinator, President, or Elected Official
+    match /approvals/{approvalId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isCoordinator() || isPresident() || isElectedOfficial();
+      allow delete: if isCoordinator();
+    }
+
     // Documents
     // - Read: All authenticated.
     // - Create: All authenticated (Upload).
