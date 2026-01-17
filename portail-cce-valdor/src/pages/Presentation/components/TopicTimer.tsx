@@ -5,6 +5,7 @@ import { keyframes } from '@emotion/react';
 
 interface TopicTimerProps {
     initialMinutes: number;
+    actualDuration?: number;
     onTimeEnd?: () => void;
 }
 

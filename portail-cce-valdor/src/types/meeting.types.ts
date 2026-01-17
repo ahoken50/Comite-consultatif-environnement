@@ -21,6 +21,7 @@ export interface AgendaItem {
     title: string;
     description: string;
     duration: number; // in minutes
+    actualDuration?: number; // in seconds, tracked during presentation
     presenter: string;
     objective: string; // e.g., 'Information', 'Décision', 'Consultation'
     agendaNote?: string; // Note for ODJ (what will be discussed/decided) - NEW, separate from PV

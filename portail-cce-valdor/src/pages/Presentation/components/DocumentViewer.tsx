@@ -166,13 +166,17 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
                 ref={containerRef}
                 sx={{
                     flex: 1, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    position: 'relative', cursor: enableDrawing ? 'crosshair' : 'default'
+                    position: 'relative', cursor: (enableDrawing || enableLaser) ? 'crosshair' : 'default'
                 }}
                 onMouseMove={handleMouseMove}
                 onMouseDown={handleMouseDown}
                 onMouseUp={handleMouseUp}
                 onMouseLeave={() => { setShowLaser(false); setIsDrawing(false); }}
             >
+                {/* Overlay to capture mouse events over iframe when tools are active */}
+                {(enableLaser || enableDrawing) && (
+                    <Box sx={{ position: 'absolute', inset: 0, zIndex: 20, cursor: 'none' }} />
+                )}
                 <Box sx={{ position: 'relative', zIndex: 10, width: '100%', height: '100%', p: 2, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     {activeAttachment.type === 'image' ? (
                         <img
@@ -182,11 +186,19 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
                         />
                     ) : (
                         <Box sx={{ width: '100%', height: '100%', bgcolor: 'white', boxShadow: 10, overflow: 'hidden' }}>
-                            <iframe
-                                src={activeAttachment.url}
-                                style={{ width: '100%', height: '100%', border: 'none', pointerEvents: 'none' }}
-                                title={activeAttachment.name}
-                            />
+                            {activeAttachment.name.match(/\.(docx|doc|xlsx|xls|pptx|ppt)$/i) ? (
+                                <iframe
+                                    src={`https://docs.google.com/viewer?url=${encodeURIComponent(activeAttachment.url)}&embedded=true`}
+                                    style={{ width: '100%', height: '100%', border: 'none' }}
+                                    title={activeAttachment.name}
+                                />
+                            ) : (
+                                <iframe
+                                    src={activeAttachment.url}
+                                    style={{ width: '100%', height: '100%', border: 'none', pointerEvents: 'none' }}
+                                    title={activeAttachment.name}
+                                />
+                            )}
                         </Box>
                     )}
                 </Box>

@@ -5,6 +5,7 @@ import { usePresentationData } from './hooks/usePresentationData';
 import type { Attachment } from './types';
 import DocumentViewer from './components/DocumentViewer';
 import logoCce from '../../assets/logo-cce.png';
+import bgLandscape from '../../assets/boreal-landscape.png';
 
 const getBroadcastChannel = (id: string) => new BroadcastChannel(`cce_presentation_${id}`);
 
@@ -76,30 +77,33 @@ const ProjectionPage: React.FC = () => {
                 /* Standby Screen */
                 <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', position: 'relative', overflow: 'hidden' }}>
                     {/* Background Effects */}
-                    <Box sx={{ position: 'absolute', inset: 0, background: 'linear-gradient(to bottom right, #022c22, #000000)' }} />
-                    <Box sx={{
-                        position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
-                        width: 800, height: 800, bgcolor: 'rgba(16, 185, 129, 0.05)', borderRadius: '50%',
-                        filter: 'blur(100px)', animation: 'pulse 4s infinite'
-                    }} />
+                    <Box sx={{ position: 'absolute', inset: 0 }}>
+                        <img src={bgLandscape} alt="Background" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        <Box sx={{ position: 'absolute', inset: 0, background: 'linear-gradient(to bottom, rgba(0,0,0,0.3), rgba(0,0,0,0.7))' }} />
+                    </Box>
 
                     <Box sx={{ position: 'relative', zIndex: 10, textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
                         <Box sx={{
-                            width: 160, height: 160, borderRadius: '50%', border: '4px solid rgba(16, 185, 129, 0.3)',
+                            width: 180, height: 180, borderRadius: '50%', border: '4px solid rgba(255, 255, 255, 0.2)',
                             display: 'flex', alignItems: 'center', justifyContent: 'center', mb: 4,
-                            bgcolor: 'rgba(255, 255, 255, 0.1)', backdropFilter: 'blur(10px)', boxShadow: '0 0 50px rgba(16,185,129,0.2)',
+                            bgcolor: 'rgba(255, 255, 255, 0.9)', backdropFilter: 'blur(20px)', boxShadow: '0 0 60px rgba(0,0,0,0.5)',
                             overflow: 'hidden', p: 3
                         }}>
                             <img src={logoCce} alt="CCE" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
                         </Box>
-                        <Typography variant="overline" sx={{ color: '#10b981', fontWeight: 900, letterSpacing: '0.4em', mb: 2 }}>Séance Publique</Typography>
-                        <Typography variant="h1" sx={{ color: 'white', fontWeight: 900, mb: 4, maxWidth: 'md', lineHeight: 1.1 }}>
+                        <Typography variant="overline" sx={{ color: '#fff', fontWeight: 900, letterSpacing: '0.5em', mb: 2, textShadow: '0 2px 4px rgba(0,0,0,0.5)' }}>Séance Publique</Typography>
+                        <Typography variant="h1" sx={{ color: 'white', fontWeight: 900, mb: 4, maxWidth: 'md', lineHeight: 1.1, textShadow: '0 4px 10px rgba(0,0,0,0.5)' }}>
                             {meeting.title}
                         </Typography>
-                        <Box sx={{ height: 4, width: 96, bgcolor: '#059669', borderRadius: 2 }} />
-                        <Typography variant="body1" sx={{ mt: 4, color: '#94a3b8', fontWeight: 500, letterSpacing: '0.1em', textTransform: 'uppercase' }}>
-                            Point en cours : {currentItem.title}
+                        <Typography variant="h4" sx={{ color: 'rgba(255,255,255,0.9)', fontWeight: 300, mb: 6, fontStyle: 'italic', textShadow: '0 2px 4px rgba(0,0,0,0.5)' }}>
+                            Bienvenue à tous
                         </Typography>
+
+                        <Box sx={{ px: 4, py: 2, bgcolor: 'rgba(0,0,0,0.6)', borderRadius: 4, backdropFilter: 'blur(10px)', border: '1px solid rgba(255,255,255,0.1)' }}>
+                            <Typography variant="body1" sx={{ color: '#e2e8f0', fontWeight: 500, letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+                                Point en cours : <span style={{ color: '#fff', fontWeight: 800 }}>{currentItem.title}</span>
+                            </Typography>
+                        </Box>
                     </Box>
                 </Box>
             )}

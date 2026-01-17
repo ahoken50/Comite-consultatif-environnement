@@ -21,9 +21,11 @@ const getBroadcastChannel = (id: string) => new BroadcastChannel(`cce_presentati
 
 const PresentationControlPage: React.FC = () => {
     const { id: meetingId } = useParams<{ id: string }>();
-    const { meeting, loading, error } = usePresentationData(meetingId);
+    const { meeting, loading, error, saveItemDuration } = usePresentationData(meetingId);
 
     const [currentIndex, setCurrentIndex] = useState(0);
+    const lastTimeRef = useRef<number>(Date.now());
+    const currentIndexRef = useRef(currentIndex); // To track prev index in effects
     const [activeAttachment, setActiveAttachment] = useState<Attachment | null>(null);
     const [notes, setNotes] = useState<Record<string, string>>({});
     const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -72,6 +74,35 @@ const PresentationControlPage: React.FC = () => {
         if (currentItem && currentItem.attachments.length > 0) setActiveAttachment(currentItem.attachments[0]);
         else setActiveAttachment(null);
     }, [currentIndex, currentItem]);
+
+    // Time Tracking Logic
+    useEffect(() => {
+        // When currentIndex changes:
+        // 1. Calculate time spent on PREVIOUS item
+        // 2. Save it
+        // 3. Reset timer for NEW item
+
+        const now = Date.now();
+        const elapsedSeconds = Math.round((now - lastTimeRef.current) / 1000);
+
+        if (elapsedSeconds > 1 && meeting) { // Only save if meaningful time passed
+            const prevIndex = currentIndexRef.current;
+            // Prevent saving on initial mount if 0 time passed, but here we check elapsed > 1
+            const prevItem = meeting.agenda[prevIndex];
+            if (prevItem) {
+                saveItemDuration(prevItem.id, elapsedSeconds);
+            }
+        }
+
+        lastTimeRef.current = now;
+        currentIndexRef.current = currentIndex;
+
+        // Cleanup on unmount (save final item)
+        return () => {
+            // We can't easily save on unmount due to closure staleness, 
+            // but 'currentIndex' change handles most cases.
+        };
+    }, [currentIndex, meeting, saveItemDuration]);
 
     // Audio Logic
     const startRecording = async () => {
@@ -169,7 +200,7 @@ const PresentationControlPage: React.FC = () => {
 
             {/* HEADER */}
             <Box sx={{
-                height: 80, px: 3, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0, zIndex: 30,
+                height: 90, px: 3, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0, zIndex: 30,
                 borderBottom: isFullscreen ? 'none' : '1px solid #e2e8f0',
                 bgcolor: isFullscreen ? 'black' : 'white',
                 color: isFullscreen ? 'white' : 'text.primary',
@@ -178,13 +209,15 @@ const PresentationControlPage: React.FC = () => {
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                     <Box onClick={openProjectorWindow} sx={{ display: 'flex', alignItems: 'center', gap: 1.5, cursor: 'pointer' }}>
                         <Box sx={{
-                            width: 40, height: 40, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            bgcolor: 'white', overflow: 'hidden', p: 0.5
+                            width: 56, height: 56, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            bgcolor: 'white', overflow: 'hidden', p: 0.5, boxShadow: 1
                         }}>
                             <img src={logoCce} alt="CCE" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
                         </Box>
                         <Box>
-                            <Typography variant="caption" sx={{ fontWeight: 'bold', lineHeight: 1.1, display: 'block' }}>Comité Consultatif<br />en Environnement</Typography>
+                            <Typography variant="body1" sx={{ fontWeight: 800, lineHeight: 1.2, display: 'block', color: isFullscreen ? 'white' : '#1e293b' }}>
+                                Comité Consultatif<br />en Environnement
+                            </Typography>
                         </Box>
                     </Box>
                     <Box sx={{ height: 32, width: '1px', bgcolor: '#e2e8f0', mx: 1 }} />
@@ -209,7 +242,10 @@ const PresentationControlPage: React.FC = () => {
                         <Typography variant="caption" fontWeight="bold" sx={{ fontFamily: 'monospace' }}>{formatDuration(recordingSeconds)}</Typography>
                     </Box>
 
-                    <TopicTimer initialMinutes={currentItem.durationInMinutes} />
+                    <TopicTimer
+                        initialMinutes={currentItem.durationInMinutes}
+                        actualDuration={currentItem.actualDuration || 0}
+                    />
 
                     <Box sx={{ height: 24, width: '1px', bgcolor: '#e2e8f0', mx: 0.5 }} />
 

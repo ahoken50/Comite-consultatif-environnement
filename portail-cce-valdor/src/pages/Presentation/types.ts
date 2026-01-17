@@ -12,6 +12,7 @@ export interface AgendaItem {
     description: string;
     presenter: string;
     durationInMinutes: number;
+    actualDuration?: number;
     attachments: Attachment[];
 }
 
