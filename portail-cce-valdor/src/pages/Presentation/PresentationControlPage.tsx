@@ -68,6 +68,21 @@ const PresentationControlPage: React.FC = () => {
         }
     }, [currentIndex, activeAttachment, isLaserEnabled, isDrawingEnabled]);
 
+    // Real-time Event Handlers for Dual Screen
+    const handleLaserMove = useCallback((pos: { x: number, y: number }) => {
+        channelRef.current?.postMessage({ type: 'SYNC_LASER', payload: pos });
+    }, []);
+
+    const handleDrawLine = useCallback((line: { x: number, y: number }) => {
+        channelRef.current?.postMessage({ type: 'SYNC_DRAW', payload: line });
+    }, []);
+
+    // Note: Scroll sync is tricky with iframes/different viewports. 
+    // We'll sync explicit page changes for PDFs/Images if applicable, or scroll percentage.
+    const handleScrollSync = useCallback((scrollTop: number, scrollLeft: number) => {
+        channelRef.current?.postMessage({ type: 'SYNC_SCROLL', payload: { scrollTop, scrollLeft } });
+    }, []);
+
     const currentItem = meeting?.agenda[currentIndex];
 
     useEffect(() => {
@@ -364,6 +379,10 @@ const PresentationControlPage: React.FC = () => {
                                 onClose={() => setActiveAttachment(null)}
                                 enableLaser={isLaserEnabled}
                                 enableDrawing={isDrawingEnabled}
+                                // Sync Callbacks
+                                onLaserMove={handleLaserMove}
+                                onDrawLine={handleDrawLine}
+                                onScroll={handleScrollSync}
                             />
                         </Box>
                     </Box>

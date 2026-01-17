@@ -20,13 +20,34 @@ const ProjectionPage: React.FC = () => {
         isDrawingEnabled: false
     });
 
+    // Real-time Sync State
+    const [syncLaserPos, setSyncLaserPos] = useState({ x: 0, y: 0 });
+    const [syncDrawPoints, setSyncDrawPoints] = useState<{ x: number, y: number }[]>([]);
+    const [syncScroll, setSyncScroll] = useState({ top: 0, left: 0 });
+    // We trigger a re-render or ref update for scroll
+
     useEffect(() => {
         if (!meetingId) return;
         const channel = getBroadcastChannel(meetingId);
 
         channel.onmessage = (event: MessageEvent) => {
-            if (event.data && event.data.type === 'SYNC_STATE') {
-                setState(event.data.payload);
+            if (event.data) {
+                switch (event.data.type) {
+                    case 'SYNC_STATE':
+                        setState(event.data.payload);
+                        // Reset drawing on attachment change/fresh sync if needed
+                        setSyncDrawPoints([]);
+                        break;
+                    case 'SYNC_LASER':
+                        setSyncLaserPos(event.data.payload);
+                        break;
+                    case 'SYNC_DRAW':
+                        setSyncDrawPoints(prev => [...prev, event.data.payload]);
+                        break;
+                    case 'SYNC_SCROLL':
+                        setSyncScroll({ top: event.data.payload.scrollTop, left: event.data.payload.scrollLeft });
+                        break;
+                }
             }
         };
 
@@ -70,6 +91,10 @@ const ProjectionPage: React.FC = () => {
                             enableLaser={state.isLaserEnabled}
                             enableDrawing={state.isDrawingEnabled}
                             isProjection={true} // Hides all UI controls
+                            // Slave Props
+                            externalLaserPos={syncLaserPos}
+                            externalDrawPoints={syncDrawPoints}
+                            externalScroll={syncScroll}
                         />
                     </Box>
                 </>
@@ -91,7 +116,7 @@ const ProjectionPage: React.FC = () => {
                         }}>
                             <img src={logoCce} alt="CCE" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
                         </Box>
-                        <Typography variant="overline" sx={{ color: '#fff', fontWeight: 900, letterSpacing: '0.5em', mb: 2, textShadow: '0 2px 4px rgba(0,0,0,0.5)' }}>Séance Publique</Typography>
+                        <Typography variant="overline" sx={{ color: '#fff', fontWeight: 900, letterSpacing: '0.5em', mb: 2, textShadow: '0 2px 4px rgba(0,0,0,0.5)' }}>Assemblée Régulière</Typography>
                         <Typography variant="h1" sx={{ color: 'white', fontWeight: 900, mb: 4, maxWidth: 'md', lineHeight: 1.1, textShadow: '0 4px 10px rgba(0,0,0,0.5)' }}>
                             {meeting.title}
                         </Typography>

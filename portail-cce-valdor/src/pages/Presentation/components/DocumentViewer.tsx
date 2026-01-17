@@ -12,6 +12,14 @@ interface DocumentViewerProps {
     enableDrawing?: boolean;
     onPageChange?: (page: number) => void;
     isProjection?: boolean;
+    // New Sync Props
+    onLaserMove?: (pos: { x: number, y: number }) => void;
+    onDrawLine?: (line: { x: number, y: number }) => void;
+    onScroll?: (scrollTop: number, scrollLeft: number) => void;
+    // Slave Props (for Projection)
+    externalLaserPos?: { x: number, y: number };
+    externalDrawPoints?: { x: number, y: number }[];
+    externalScroll?: { top: number, left: number };
 }
 
 const DocumentViewer: React.FC<DocumentViewerProps> = ({
@@ -21,7 +29,13 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
     onClose,
     enableLaser = false,
     enableDrawing = false,
-    isProjection = false
+    isProjection = false,
+    onLaserMove,
+    onDrawLine,
+    onScroll,
+    externalLaserPos,
+    externalDrawPoints,
+    externalScroll
 }) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -42,11 +56,51 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
         }
     }, [activeAttachment]);
 
+    // Slave Mode Effect: Sync Laser
+    useEffect(() => {
+        if (isProjection && externalLaserPos) {
+            setLaserPos(externalLaserPos);
+            setShowLaser(true);
+        }
+    }, [isProjection, externalLaserPos]);
+
+    // Slave Mode Effect: Sync Scroll
+    useEffect(() => {
+        if (isProjection && externalScroll && containerRef.current) {
+            containerRef.current.scrollTo({
+                top: externalScroll.top,
+                left: externalScroll.left,
+                behavior: 'auto' // Instant sync
+            });
+        }
+    }, [isProjection, externalScroll]);
+
+    // Slave Mode Effect: Sync Drawing
+    useEffect(() => {
+        if (isProjection && externalDrawPoints && externalDrawPoints.length > 0 && canvasRef.current) {
+            const ctx = canvasRef.current.getContext('2d');
+            if (ctx) {
+                ctx.strokeStyle = 'red';
+                ctx.lineWidth = 3;
+                ctx.lineCap = 'round';
+
+                const lastPoint = externalDrawPoints[externalDrawPoints.length - 1];
+
+                ctx.lineTo(lastPoint.x, lastPoint.y);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(lastPoint.x, lastPoint.y);
+            }
+        }
+    }, [isProjection, externalDrawPoints]);
+
+
     const handleMouseMove = (e: React.MouseEvent) => {
         if (enableLaser && containerRef.current) {
             const rect = containerRef.current.getBoundingClientRect();
             setLaserPos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
             setShowLaser(true);
+            if (onLaserMove) onLaserMove({ x: e.clientX - rect.left, y: e.clientY - rect.top });
         } else {
             setShowLaser(false);
         }
@@ -57,8 +111,8 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
             const y = e.clientY - rect.top;
             const ctx = canvasRef.current.getContext('2d');
             if (ctx) {
-                ctx.lineTo(x, y);
                 ctx.stroke();
+                if (onDrawLine) onDrawLine({ x, y });
             }
         }
     };
@@ -90,7 +144,20 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
             canvasRef.current.width = containerRef.current.offsetWidth;
             canvasRef.current.height = containerRef.current.offsetHeight;
         }
-    }, [activeAttachment, enableDrawing]);
+
+        const handleScroll = () => {
+            if (containerRef.current && onScroll) {
+                onScroll(containerRef.current.scrollTop, containerRef.current.scrollLeft);
+            }
+        };
+
+        const container = containerRef.current;
+        if (container) container.addEventListener('scroll', handleScroll);
+
+        return () => {
+            if (container) container.removeEventListener('scroll', handleScroll);
+        };
+    }, [activeAttachment, enableDrawing, onScroll]);
 
 
     if (!activeAttachment) {
@@ -168,10 +235,10 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
                     flex: 1, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center',
                     position: 'relative', cursor: (enableDrawing || enableLaser) ? 'crosshair' : 'default'
                 }}
-                onMouseMove={handleMouseMove}
-                onMouseDown={handleMouseDown}
-                onMouseUp={handleMouseUp}
-                onMouseLeave={() => { setShowLaser(false); setIsDrawing(false); }}
+                onMouseMove={!isProjection ? handleMouseMove : undefined}
+                onMouseDown={!isProjection ? handleMouseDown : undefined}
+                onMouseUp={!isProjection ? handleMouseUp : undefined}
+                onMouseLeave={() => { if (!isProjection) { setShowLaser(false); setIsDrawing(false); } }}
             >
                 {/* Overlay to capture mouse events over iframe when tools are active */}
                 {(enableLaser || enableDrawing) && (
