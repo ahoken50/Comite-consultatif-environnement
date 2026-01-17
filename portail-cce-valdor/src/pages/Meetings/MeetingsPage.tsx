@@ -11,6 +11,7 @@ import MeetingCard from '../../components/meetings/MeetingCard';
 import MeetingForm from '../../components/meetings/MeetingForm';
 import SmartPlanningDialog from '../../components/meetings/SmartPlanningDialog';
 import { MeetingStatus } from '../../types/meeting.types';
+import type { Meeting, AgendaItem } from '../../types/meeting.types';
 import { useToast } from '../../hooks/useToast';
 import { parseAnyDate } from '../../utils/dateUtils';
 import { AccessControl } from '../../components/auth/AccessControl';
@@ -28,7 +29,8 @@ const MeetingsPage: React.FC = () => {
         dispatch(fetchMeetings());
     }, [dispatch]);
 
-    const handleCreateMeeting = async (data: any) => {
+    // Form data might not have IDs for new items yet
+    const handleCreateMeeting = async (data: Omit<Partial<Meeting>, 'agendaItems'> & { agendaItems?: Partial<AgendaItem>[] }) => {
         try {
             const resultAction = await dispatch(createMeeting({
                 ...data,
@@ -36,7 +38,7 @@ const MeetingsPage: React.FC = () => {
                 attendees: data.attendees || [],
                 // agendaItems is part of data from SmartPlanning
                 minutes: '',
-            }));
+            } as Meeting));
 
             if (createMeeting.fulfilled.match(resultAction)) {
                 setIsFormOpen(false);
@@ -50,15 +52,15 @@ const MeetingsPage: React.FC = () => {
                     import('../../services/typesenseService').then(({ indexMeeting }) => {
                         indexMeeting({
                             id: newMeetingId,
-                            title: data.title,
+                            title: data.title || '',
                             date: (parseAnyDate(data.date) || new Date()).toISOString(),
                             dateTimestamp: Math.floor((parseAnyDate(data.date) || new Date()).getTime() / 1000),
-                            type: data.type,
-                            status: data.status,
+                            type: data.type || 'regular',
+                            status: data.status || 'scheduled',
                             minutes: '',
-                            agendaItemTitles: data.agendaItems?.map((i: any) => i.title) || [],
+                            agendaItemTitles: data.agendaItems?.map((i) => i.title || '') || [],
                             resolutions: [],
-                            attendeeNames: data.attendees?.map((a: any) => a.name) || []
+                            attendeeNames: data.attendees?.map((a) => a.name || '') || []
                         }).catch(err => console.error('Failed to index new meeting:', err));
                     });
                 }

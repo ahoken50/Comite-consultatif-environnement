@@ -1,4 +1,14 @@
 declare module 'mammoth';
+declare module 'docx-preview';
+declare module 'xlsx' {
+    const value: any;
+    export = value;
+}
+declare module 'turndown';
+declare module 'html2pdf.js';
+declare module 'react-firebase-hooks/auth';
+declare module 'react-firebase-hooks/firestore';
+declare module '@sentry/react';
 declare module 'jspdf';
 declare module 'jspdf-autotable';
 declare module 'pdfjs-dist';

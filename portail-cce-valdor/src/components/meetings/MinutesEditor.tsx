@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
     Box,
     Typography,
@@ -22,13 +22,10 @@ import AgendaItemEditor from './AgendaItemEditor';
 import CrossValidationPanel from './CrossValidationPanel';
 import { useMinutesFile } from '../../hooks/useMinutesFile';
 import { useToast } from '../../hooks/useToast';
-import { generateNextResolutionNumber } from '../../utils/resolutionUtils';
 import { useTranscriptionProcessor } from '../../hooks/useTranscriptionProcessor';
-import { useSelector } from 'react-redux'; // [NEW] For getting user info
-import type { RootState } from '../../store/rootReducer'; // [NEW] For Redux state type
-import pvVersioningService from '../../services/pvVersioningService'; // [NEW] For versioning
-import { format } from 'date-fns'; // [NEW] For displaying last saved time
-import { fr } from 'date-fns/locale'; // [NEW] locale
+import { useMinutesState } from '../../hooks/useMinutesState';
+import { format } from 'date-fns';
+import { fr } from 'date-fns/locale';
 // Note: parseAgendaDOCX is imported dynamically when needed
 
 interface MinutesEditorProps {
@@ -37,191 +34,65 @@ interface MinutesEditorProps {
     readOnly?: boolean;
 }
 
+/**
+ * MinutesEditor Component
+ * 
+ * A comprehensive editor for meeting minutes (Procès-Verbaux).
+ * 
+ * Features:
+ * - Real-time editing of global notes and agenda items.
+ * - Supports "Legacy" simple mode (decision text only) and "Structured" mode (resolutions/comments).
+ * - Auto-save functionality via useMinutesState hook.
+ * - Integration with audio transcription (Smart Planning).
+ * - File attachment management (upload/delete/preview).
+ * - Versioning support (manual save creates historical versions).
+ * 
+ * @param meeting - The meeting object to edit.
+ * @param onUpdate - Callback to update the meeting in Firestore/State.
+ * @param readOnly - If true, disables editing (defaults to false).
+ */
 const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate, readOnly = false }) => {
     const { showSuccess, showError } = useToast();
-    const { user } = useSelector((state: RootState) => state.auth); // [NEW] Get user for versioning
-    const [globalNotes, setGlobalNotes] = useState(meeting.minutes || '');
-    const [itemDecisions, setItemDecisions] = useState<Record<string, string>>({});
-    const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
-    const [lastSaved, setLastSaved] = useState<Date | null>(null); // [NEW] Track last save time
-    const [isSaving, setIsSaving] = useState(false); // [NEW] Track saving state
-    const [showSaveSuccess, setShowSaveSuccess] = useState(false);
+    const {
+        globalNotes,
+        setGlobalNotes,
+        localAgendaItems,
+        setLocalAgendaItems,
+        hasUnsavedChanges,
+        setHasUnsavedChanges,
+        lastSaved,
+        isSaving,
+        handleGlobalNotesChange,
+        handleAgendaItemChange,
+        handleMinuteEntryChange,
+        handleAddMinuteEntry,
+        handleSave,
+        handleClearAll,
+        setItemDecisions,
+        itemDecisions,
+        showSaveSuccess,
+        setShowSaveSuccess,
+        handleDecisionChange
+    } = useMinutesState({ meeting, onUpdate });
+
     const [isImportOpen, setIsImportOpen] = useState(false);
     const [isApprovalDialogOpen, setIsApprovalDialogOpen] = useState(false);
 
-    // Local state for agenda item fields that need to be saved manually
-    const [localAgendaItems, setLocalAgendaItems] = useState<AgendaItem[]>(meeting.agendaItems || []);
     // Use custom hook for file management
     const { localFile, handleFileUpload: uploadFile, handleDeleteFile } = useMinutesFile({
         meeting,
         onUpdate
     });
+
     // Use custom hook for transcription processing
     const { handleApplyTranscription } = useTranscriptionProcessor({
         localAgendaItems,
-        meetingNumber: meeting.meetingNumber, // For auto-numbering resolutions (XX-N) and comments (XX-A)
+        meetingNumber: meeting.meetingNumber,
         setGlobalNotes,
         setLocalAgendaItems,
         setItemDecisions,
         setHasUnsavedChanges
     });
-    // Sync state when meeting changes
-    useEffect(() => {
-        setGlobalNotes(meeting.minutes || '');
-        setLocalAgendaItems(meeting.agendaItems || []);
-
-        // Populate decision map from existing items
-        const decisions: Record<string, string> = {};
-        meeting.agendaItems?.forEach(item => {
-            if (item.decision) {
-                decisions[item.id] = item.decision;
-            }
-        });
-        setItemDecisions(decisions);
-
-        setHasUnsavedChanges(false);
-    }, [meeting.id, meeting.minutes, meeting.agendaItems]);
-
-    const handleGlobalNotesChange = (value: string) => {
-        setGlobalNotes(value);
-        setHasUnsavedChanges(true);
-    };
-
-    const handleDecisionChange = (itemId: string, value: string) => {
-        setItemDecisions(prev => ({
-            ...prev,
-            [itemId]: value
-        }));
-        setHasUnsavedChanges(true);
-    };
-
-    // Handler for agenda item field changes (now stored locally until save)
-    const handleAgendaItemChange = (itemId: string, field: keyof AgendaItem, value: any) => {
-        setLocalAgendaItems(prev => prev.map(item =>
-            item.id === itemId ? { ...item, [field]: value } : item
-        ));
-        setHasUnsavedChanges(true);
-    };
-
-    // Handler for editing a specific minuteEntry
-    const handleMinuteEntryChange = (itemId: string, entryIndex: number, field: string, value: any) => {
-        setLocalAgendaItems(prev => prev.map(item => {
-            if (item.id === itemId && item.minuteEntries) {
-                const updatedEntries = [...item.minuteEntries];
-                updatedEntries[entryIndex] = { ...updatedEntries[entryIndex], [field]: value };
-                return { ...item, minuteEntries: updatedEntries };
-            }
-            return item;
-        }));
-        setHasUnsavedChanges(true);
-    };
-
-    // Handler for adding a new minuteEntry
-    const handleAddMinuteEntry = (itemId: string) => {
-        setLocalAgendaItems(prev => {
-            // Calculate next resolution number based on all existing entries in the meeting
-            const existingNumbers = prev
-                .flatMap(i => i.minuteEntries || [])
-                .map(e => e.number || '')
-                .filter(n => n !== '');
-
-            const nextNumber = generateNextResolutionNumber(meeting.date, existingNumbers);
-
-            return prev.map(item => {
-                if (item.id === itemId) {
-                    const entries = item.minuteEntries || [];
-                    const newEntry = {
-                        type: 'resolution' as const, // Default to resolution for convenience
-                        number: nextNumber,
-                        content: ''
-                    };
-                    return { ...item, minuteEntries: [...entries, newEntry] };
-                }
-                return item;
-            });
-        });
-        setHasUnsavedChanges(true);
-    };
-
-    // [NEW] Unified Save Handler (Handles both Auto-save and Manual Versioning)
-    const handleSave = async (createVersion: boolean = false) => {
-        setIsSaving(true);
-        try {
-            // Save agenda items
-            const updatedAgendaItems = localAgendaItems.map(item => {
-                // Check if we are in 'Legacy/Simple' mode for this item (no structured entries)
-                const isLegacyMode = !item.minuteEntries || item.minuteEntries.length === 0;
-
-                if (isLegacyMode) {
-                    // In legacy mode, we SAVE the decision field from the tracked state
-                    // This ensures manual edits to the "Contenu du PV" box are saved
-                    return {
-                        ...item,
-                        decision: itemDecisions[item.id] || item.decision || '',
-                        minuteEntries: []
-                    };
-                } else {
-                    // In structured mode (Parsed PV), we PRESERVE the ODJ decision field (don't overwrite with empty)
-                    // and save the structured minuteEntries (Resolutions/Comments)
-                    return {
-                        ...item,
-                        minuteEntries: item.minuteEntries
-                        // decision is kept as-is (from ODJ)
-                    };
-                }
-            });
-
-            console.log('[DEBUG] handleSave called', { createVersion });
-
-            // 1. Update Firestore Main Document (Always)
-            onUpdate({
-                minutes: globalNotes,
-                agendaItems: updatedAgendaItems
-            });
-
-            // 2. Create Historical Version (Only if Manual Save)
-            if (createVersion && user) {
-                // We need to pass the FULL meeting object combined with current changes
-                const fullMeetingState: Meeting = {
-                    ...meeting,
-                    minutes: globalNotes,
-                    agendaItems: updatedAgendaItems
-                };
-
-                await pvVersioningService.createPVVersion(
-                    meeting.id,
-                    fullMeetingState,
-                    user.id,
-                    "Sauvegarde manuelle"
-                );
-                showSuccess("Version sauvegardée dans l'historique");
-            }
-
-            setHasUnsavedChanges(false);
-            setLastSaved(new Date());
-
-            if (createVersion) {
-                setShowSaveSuccess(true);
-            }
-        } catch (error) {
-            console.error('Save failed:', error);
-            showError('Erreur lors de la sauvegarde');
-        } finally {
-            setIsSaving(false);
-        }
-    };
-
-    // [NEW] Auto-Save Effect
-    useEffect(() => {
-        if (!hasUnsavedChanges) return;
-
-        const timer = setTimeout(() => {
-            console.log('[Auto-Save] Triggering auto-save...');
-            handleSave(false); // False = No new version history, just update draft
-        }, 30000); // 30 seconds debounce
-
-        return () => clearTimeout(timer);
-    }, [hasUnsavedChanges, globalNotes, itemDecisions, localAgendaItems]); // Dependencies triggering auto-save
 
     const handleGeneratePDF = () => {
         // Create a temporary meeting object with current state
@@ -506,7 +377,6 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate, readOn
                             setHasUnsavedChanges(true);
 
                             // AUTO-SAVE: Save immediately to prevent race condition with Firestore listener
-                            // The file upload triggers a document update, which might cause the listener to
                             // overwrite local state with old data if we don't save these changes now.
                             onUpdate({ agendaItems: updatedItems });
 
@@ -553,38 +423,7 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate, readOn
     };
 
 
-    const handleClearAll = () => {
-        if (!window.confirm('Êtes-vous sûr de vouloir effacer tout le contenu du procès-verbal ? Cette action ne peut pas être annulée.')) {
-            return;
-        }
 
-        console.log('[DEBUG] handleClearAll called - clearing all PV content');
-
-        // Clear global notes
-        setGlobalNotes('');
-
-        // Clear all decisions
-        setItemDecisions({});
-
-        // Reset agenda items minute fields
-        // IMPORTANT: Firestore does NOT accept undefined values
-        // We must exclude minuteType entirely (destructure it out) rather than setting it to undefined
-        setLocalAgendaItems(prev => prev.map(item => {
-            // Destructure to remove minuteType from the item
-            const { minuteType, ...itemWithoutMinuteType } = item;
-            return {
-                ...itemWithoutMinuteType,
-                minuteNumber: '',
-                decision: '',
-                proposer: '',
-                seconder: '',
-                minuteEntries: [] // Also clear imported entries
-            };
-        }));
-
-        console.log('[DEBUG] Local state cleared, hasUnsavedChanges set to true');
-        setHasUnsavedChanges(true);
-    };
 
     return (
         <Box>

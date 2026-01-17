@@ -763,11 +763,11 @@ export const parseAgendaDOCXWithAI = async (
     // Configure turndown for better table handling
     turndownService.addRule('tableCell', {
         filter: ['th', 'td'],
-        replacement: (content) => ` ${content.trim()} |`
+        replacement: (content: string) => ` ${content.trim()} |`
     });
     turndownService.addRule('tableRow', {
         filter: 'tr',
-        replacement: (content) => `|${content}\n`
+        replacement: (content: string) => `|${content}\n`
     });
 
     const rawText = turndownService.turndown(html);

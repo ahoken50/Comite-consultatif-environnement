@@ -11,6 +11,14 @@ vi.mock('mammoth', () => ({
     }
 }));
 
+// Helper to create mock file with arrayBuffer
+const createMockFile = (content: string, name: string = 'test.docx', type: string = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') => {
+    const file = new File([content], name, { type });
+    // Mock arrayBuffer since jsdom/vitest might not implement it fully on the File prototype for created instances
+    file.arrayBuffer = vi.fn().mockResolvedValue(new ArrayBuffer(8));
+    return file;
+};
+
 // We need to test the parseRawTextToPV logic indirectly or export it
 // For now, let's test the exported functions with mocked dependencies
 
@@ -37,7 +45,7 @@ describe('pvParserService', () => {
                 Appuyé par Mme Martin`
             });
 
-            const mockFile = new File([''], 'test.docx', { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+            const mockFile = createMockFile('', 'test.docx');
             const result = await parseMinutesDOCX(mockFile);
 
             expect(result.agendaItems).toHaveLength(2);
@@ -56,7 +64,7 @@ describe('pvParserService', () => {
                 IL EST RÉSOLU de procéder.`
             });
 
-            const mockFile = new File([''], 'test.docx');
+            const mockFile = createMockFile('', 'test.docx');
             const result = await parseMinutesDOCX(mockFile);
 
             expect(result.agendaItems).toHaveLength(1);
@@ -77,7 +85,7 @@ describe('pvParserService', () => {
                 Appuyé par Marie Martin`
             });
 
-            const mockFile = new File([''], 'test.docx');
+            const mockFile = createMockFile('', 'test.docx');
             const result = await parseMinutesDOCX(mockFile);
 
             expect(result.agendaItems[0].proposer).toBe('Jean Dupont');
@@ -98,7 +106,7 @@ describe('pvParserService', () => {
                 La séance est levée à 19h.`
             });
 
-            const mockFile = new File([''], 'test.docx');
+            const mockFile = createMockFile('', 'test.docx');
             const result = await parseMinutesDOCX(mockFile);
 
             expect(result.agendaItems).toHaveLength(2);
@@ -117,7 +125,7 @@ describe('pvParserService', () => {
                 Deuxième décision.`
             });
 
-            const mockFile = new File([''], 'test.docx');
+            const mockFile = createMockFile('', 'test.docx');
             const result = await parseMinutesDOCX(mockFile);
 
             expect(result.agendaItems).toHaveLength(1);
@@ -138,7 +146,7 @@ describe('pvParserService', () => {
                 Discussion générale.`
             });
 
-            const mockFile = new File([''], 'test.docx');
+            const mockFile = createMockFile('', 'test.docx');
             const result = await parseMinutesDOCX(mockFile);
 
             expect(result.agendaItems).toHaveLength(1);
@@ -157,7 +165,7 @@ describe('pvParserService', () => {
                 Contenu du deuxième sous-point.`
             });
 
-            const mockFile = new File([''], 'test.docx');
+            const mockFile = createMockFile('', 'test.docx');
             const result = await parseMinutesDOCX(mockFile);
 
             expect(result.agendaItems).toHaveLength(2);

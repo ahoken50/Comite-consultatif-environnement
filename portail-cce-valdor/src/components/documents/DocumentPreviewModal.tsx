@@ -28,7 +28,7 @@ import * as XLSX from 'xlsx';
 
 const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({ open, onClose, document }) => {
     const containerRef = React.useRef<HTMLDivElement>(null);
-    const [excelWorkbook, setExcelWorkbook] = React.useState<XLSX.WorkBook | null>(null);
+    const [excelWorkbook, setExcelWorkbook] = React.useState<any | null>(null);
     const [sheetNames, setSheetNames] = React.useState<string[]>([]);
     const [activeSheet, setActiveSheet] = React.useState<string>('');
     const [excelHtml, setExcelHtml] = React.useState<string | null>(null);

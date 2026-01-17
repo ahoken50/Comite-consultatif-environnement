@@ -22,6 +22,26 @@ import type { AppDispatch } from '../../store/store';
 
 // ... (existing helper functions)
 
+/**
+ * MeetingApprovalCard Component
+ * 
+ * Manages the approval workflow for "Procès-Verbaux" (Meeting Minutes).
+ * 
+ * Flow:
+ * 1. Draft (Brouillon) - Initial state.
+ * 2. Verification - Signatures required from President and Elected Official.
+ * 3. Approved (Approuvé) - Final state after all signatures.
+ * 
+ * Features:
+ * - Role-based button visibility (Coordinator, President, Elected Official).
+ * - "Switch" for Coordinator to open/close approval availability for non-coordinators.
+ * - Coordinator "Bypass" functionality to sign on behalf of missing officials (with warning dialog).
+ * - Progress stepper visualization.
+ * 
+ * @param meeting - The meeting object containing approval status and signatures.
+ * @param currentUser - The currently logged-in user (Member).
+ * @param onApprove - Callback triggered when a signature action is confirmed.
+ */
 const MeetingApprovalCard: React.FC<MeetingApprovalCardProps> = ({ meeting, currentUser, onApprove }) => {
     const dispatch = useDispatch<AppDispatch>();
     const steps = ['Brouillon', 'Vérification', 'Approuvé'];
