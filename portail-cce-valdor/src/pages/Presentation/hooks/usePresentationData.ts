@@ -54,6 +54,7 @@ export const usePresentationData = (meetingId?: string) => {
                         description: item.description || '',
                         presenter: item.presenter || '',
                         durationInMinutes: item.duration || 10, // Default duration if missing
+                        actualDuration: item.actualDuration || 0,
                         attachments: attachments
                     };
                 });
@@ -120,7 +121,7 @@ export const usePresentationData = (meetingId?: string) => {
                     id: item.id,
                     title: item.title,
                     description: item.description,
-                    duration: item.duration,
+                    duration: item.durationInMinutes,
                     presenter: item.presenter,
                     actualDuration: item.actualDuration || 0,
                     // Preserve other fields that might be lost if we don't include them?
