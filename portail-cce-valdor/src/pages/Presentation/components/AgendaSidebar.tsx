@@ -1,7 +1,7 @@
 import React from 'react';
 import { Box, Typography, IconButton } from '@mui/material';
 import { Check, AccessTime, AttachFile, KeyboardArrowUp, KeyboardArrowDown } from '@mui/icons-material';
-import { AgendaItem } from '../types';
+import type { AgendaItem } from '../types';
 
 interface AgendaSidebarProps {
     items: AgendaItem[];

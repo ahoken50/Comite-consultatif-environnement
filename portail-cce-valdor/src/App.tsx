@@ -221,6 +221,18 @@ function App() {
                 <Route path="minutes" element={<MinutesPage />} />
               </Route>
 
+              {/* Presentation Mode - Full Screen, Protected but no MainLayout */}
+              <Route path="/meetings/:id/presentation" element={
+                <ProtectedRoute>
+                  <PresentationControlPage />
+                </ProtectedRoute>
+              } />
+              <Route path="/meetings/:id/projection" element={
+                <ProtectedRoute>
+                  <ProjectionPage />
+                </ProtectedRoute>
+              } />
+
               <Route path="*" element={<Navigate to="/dashboard" replace />} />
             </Routes>
           </Suspense>

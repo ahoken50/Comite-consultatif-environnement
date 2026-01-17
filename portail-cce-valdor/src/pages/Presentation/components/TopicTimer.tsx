@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Box, Typography, IconButton, IconButtonProps } from '@mui/material';
-import { PlayArrow, Pause, Refresh, HourglassEmpty, Warning } from '@mui/icons-material';
+import { Box, Typography, IconButton } from '@mui/material';
+import { PlayArrow, Pause, Refresh, HourglassEmpty } from '@mui/icons-material';
 import { keyframes } from '@emotion/react';
 
 interface TopicTimerProps {

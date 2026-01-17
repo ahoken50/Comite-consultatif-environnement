@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { doc, getDoc, collection, getDocs, query, where } from 'firebase/firestore';
 import { db } from '../../../services/firebase';
-import { PresentationMeeting, AgendaItem, Attachment } from '../types';
-import { Meeting } from '../../../types/meeting.types';
+import type { PresentationMeeting, AgendaItem, Attachment } from '../types';
+import type { Meeting } from '../../../types/meeting.types';
 
 export const usePresentationData = (meetingId?: string) => {
     const [meeting, setMeeting] = useState<PresentationMeeting | null>(null);

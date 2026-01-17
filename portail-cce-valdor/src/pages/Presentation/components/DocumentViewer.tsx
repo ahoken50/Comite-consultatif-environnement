@@ -1,7 +1,7 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { Box, Typography, IconButton, Button } from '@mui/material';
 import { FolderOpen, ChevronLeft, ChevronRight, Close, Image as ImageIcon, PictureAsPdf, Circle } from '@mui/icons-material';
-import { Attachment } from '../types';
+import type { Attachment } from '../types';
 
 interface DocumentViewerProps {
     activeAttachment: Attachment | null;
