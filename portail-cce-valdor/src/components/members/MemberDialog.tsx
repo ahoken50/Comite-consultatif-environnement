@@ -112,7 +112,7 @@ const MemberDialog: React.FC<MemberDialogProps> = ({ open, member, onClose, onSa
     };
 
     const handleRemoveSignature = () => {
-        setFormData(prev => ({ ...prev, signatureUrl: undefined }));
+        setFormData(prev => ({ ...prev, signatureUrl: null as any })); // Using null to indicate removal, though type is usually string | undefined
     };
 
     const formId = React.useId();

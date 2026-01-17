@@ -32,9 +32,21 @@ export const createMember = async (member: Member): Promise<Member> => {
     return member;
 };
 
+// Helper to remove undefined values which cause Firestore crashes
+const cleanUpdates = (updates: any) => {
+    const cleaned: any = {};
+    Object.keys(updates).forEach(key => {
+        if (updates[key] !== undefined) {
+            cleaned[key] = updates[key];
+        }
+    });
+    return cleaned;
+};
+
 export const updateMember = async (id: string, updates: MemberUpdateData): Promise<MemberUpdateData> => {
     const docRef = doc(db, COLLECTION_NAME, id);
-    await updateDoc(docRef, updates as any);
+    const cleanedUpdates = cleanUpdates(updates);
+    await updateDoc(docRef, cleanedUpdates);
     return updates;
 };
 

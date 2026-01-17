@@ -66,10 +66,14 @@ const Dashboard: React.FC = () => {
 
                 {/* Charts */}
                 <Grid size={{ xs: 12, md: 4 }}>
-                    <CategoryChart data={categoryData} />
+                    <Box sx={{ minHeight: 400, height: '100%' }}>
+                        <CategoryChart data={categoryData} />
+                    </Box>
                 </Grid>
                 <Grid size={{ xs: 12, md: 8 }}>
-                    <ProgressChart data={progressData} />
+                    <Box sx={{ minHeight: 400, height: '100%' }}>
+                        <ProgressChart data={progressData} />
+                    </Box>
                 </Grid>
 
                 {/* Activity Feed */}
