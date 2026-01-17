@@ -88,13 +88,18 @@ function App() {
               email: user.email || memberData.email,
               displayName: memberData.displayName || user.displayName || 'Utilisateur',
               photoURL: memberData.photoURL || user.photoURL,
-              role: memberData.role, // Member role takes precedence
+              role: memberData.role, // FORCE SYNC: Member role always takes precedence over Auth role
               isActive: memberData.isActive,
               memberId: memberData.id,
               // Preserve critical auth fields
               createdAt: userData?.createdAt || new Date().toISOString(),
               lastLoginAt: new Date().toISOString()
             };
+
+            // Force update user role if it differs
+            if (userData?.role !== memberData.role) {
+              console.log(`Role mismatch detected. Updating user role from ${userData?.role} to ${memberData.role}`);
+            }
 
             // Optimistic update: Try to save to Firestore, but proceed even if it fails (permissions)
             try {
