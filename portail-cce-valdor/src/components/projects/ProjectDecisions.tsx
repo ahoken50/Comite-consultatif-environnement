@@ -137,15 +137,17 @@ const ProjectDecisions: React.FC<ProjectDecisionsProps> = ({ project }) => {
                             style={{ display: 'none' }}
                             onChange={handleFileSelect}
                         />
-                        <Button
-                            variant="outlined"
-                            startIcon={<AttachFile />}
-                            size="small"
-                            onClick={() => fileInputRef.current?.click()}
-                            disabled={isAdding}
-                        >
-                            Joindre fichier
-                        </Button>
+                        {user?.role === 'coordinator' && (
+                            <Button
+                                variant="outlined"
+                                startIcon={<AttachFile />}
+                                size="small"
+                                onClick={() => fileInputRef.current?.click()}
+                                disabled={isAdding}
+                            >
+                                Joindre fichier
+                            </Button>
+                        )}
                         <Button
                             type="submit"
                             variant="contained"

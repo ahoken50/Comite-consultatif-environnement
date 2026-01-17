@@ -114,6 +114,7 @@ export interface Meeting {
     // PV Approval Flow
     approvalStatus?: 'draft' | 'waiting_approval' | 'approved' | 'final';
     approvalSignatures?: ApprovalSignature[];
+    isApprovalAvailable?: boolean; // Controls if non-coordinators can see/use sign buttons
 
     dateCreated: string;
     dateUpdated: string;

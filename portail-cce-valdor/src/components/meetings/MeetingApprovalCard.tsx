@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
     Box, Paper, Typography, Button, Stepper, Step, StepLabel, Chip,
-    Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions
+    Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions, FormControlLabel, Switch, Alert
 } from '@mui/material';
 import { Gavel, VerifiedUser, HowToReg, AdminPanelSettings, Warning } from '@mui/icons-material';
 import type { Member, MemberRole } from '../../types/member.types';
@@ -16,7 +16,14 @@ interface MeetingApprovalCardProps {
 // Roles authorized to approve PVs
 const APPROVAL_ROLES: MemberRole[] = ['coordinator', 'president', 'vice_president', 'elected_official'];
 
+import { updateMeeting } from '../../features/meetings/meetingsSlice';
+import { useDispatch } from 'react-redux';
+import type { AppDispatch } from '../../store/store';
+
+// ... (existing helper functions)
+
 const MeetingApprovalCard: React.FC<MeetingApprovalCardProps> = ({ meeting, currentUser, onApprove }) => {
+    const dispatch = useDispatch<AppDispatch>();
     const steps = ['Brouillon', 'Vérification', 'Approuvé'];
 
     // Warning dialog state
@@ -27,6 +34,9 @@ const MeetingApprovalCard: React.FC<MeetingApprovalCardProps> = ({ meeting, curr
     const hasPresidentSigned = signatures.some(s => s.role === 'president');
     const hasElectedSigned = signatures.some(s => s.role === 'elected_official');
     const hasCoordinatorSigned = signatures.some(s => s.role === 'coordinator');
+
+    // Default to false if undefined
+    const isApprovalAvailable = meeting.isApprovalAvailable || false;
 
     let activeStep = 0;
     if (signatures.length > 0) activeStep = 1;
@@ -44,6 +54,10 @@ const MeetingApprovalCard: React.FC<MeetingApprovalCardProps> = ({ meeting, curr
     // Check if a signature slot is available
     const isSlotAvailable = (signRole: 'president' | 'elected_official' | 'coordinator') => {
         if (activeStep === 3) return false;
+
+        // If approval is NOT available, only Coordinator sees buttons (as admin)
+        if (!isApprovalAvailable && signRole !== 'coordinator') return false;
+
         switch (signRole) {
             case 'coordinator': return true; // Admin bypass always available
             case 'president': return !hasPresidentSigned;
@@ -87,14 +101,50 @@ const MeetingApprovalCard: React.FC<MeetingApprovalCardProps> = ({ meeting, curr
         setPendingAction(null);
     };
 
+    const handleToggleAvailability = () => {
+        if (isCoordinator) {
+            dispatch(updateMeeting({
+                id: meeting.id,
+                updates: { isApprovalAvailable: !isApprovalAvailable }
+            }));
+        }
+    };
+
     return (
         <Paper sx={{ p: 3, mb: 3 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', mb: 2, gap: 2 }}>
-                <Gavel color="primary" />
-                <Typography variant="h6">Approbation du Procès-Verbal</Typography>
-                {activeStep === 3 && <Chip label="Approuvé & Finalisé" color="success" size="small" />}
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                    <Gavel color="primary" />
+                    <Typography variant="h6">Approbation du Procès-Verbal</Typography>
+                    {activeStep === 3 && <Chip label="Approuvé & Finalisé" color="success" size="small" />}
+                </Box>
+
+                {/* Coordinator Control Switch */}
+                {isCoordinator && activeStep < 3 && (
+                    <FormControlLabel
+                        control={
+                            <Switch
+                                checked={isApprovalAvailable}
+                                onChange={handleToggleAvailability}
+                                color="primary"
+                            />
+                        }
+                        label={
+                            <Typography variant="body2" color={isApprovalAvailable ? "primary" : "text.secondary"}>
+                                {isApprovalAvailable ? "Approbation ouverte aux membres" : "Approbation verrouillée"}
+                            </Typography>
+                        }
+                    />
+                )}
             </Box>
 
+            {!isApprovalAvailable && !isCoordinator && activeStep < 3 && (
+                <Alert severity="info" sx={{ mb: 3 }}>
+                    L'approbation de ce procès-verbal n'est pas encore ouverte par la coordination.
+                </Alert>
+            )}
+
+            {/* ... (Stepper and Signature Status Display code remains similar) */}
             <Stepper activeStep={activeStep} alternativeLabel sx={{ mb: 4 }}>
                 {steps.map((label) => (
                     <Step key={label}>
@@ -130,7 +180,7 @@ const MeetingApprovalCard: React.FC<MeetingApprovalCardProps> = ({ meeting, curr
                 </Paper>
             </Box>
 
-            {/* Coordinator Override Section */}
+            {/* ... (Coordinator Override Section) */}
             {hasCoordinatorSigned && (
                 <Paper variant="outlined" sx={{ mt: 2, p: 2, bgcolor: '#fff3e0', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 2 }}>
                     <AdminPanelSettings color="warning" />
@@ -158,7 +208,8 @@ const MeetingApprovalCard: React.FC<MeetingApprovalCardProps> = ({ meeting, curr
                         </Button>
                     )}
 
-                    {/* President/Vice-President Button (or Coordinator with warning) */}
+                    {/* President/Vice-President Button */}
+                    {/* ONLY VISIBLE IF isApprovalAvailable OR Coordinator Override (but logic says coord needs to open it first usually, but lets stick to isSlotAvailable logic) */}
                     {isSlotAvailable('president') && (hasNaturalRole('president') || isCoordinator) && (
                         <Button
                             variant={isCoordinator && !hasNaturalRole('president') ? "outlined" : "contained"}
@@ -171,7 +222,7 @@ const MeetingApprovalCard: React.FC<MeetingApprovalCardProps> = ({ meeting, curr
                         </Button>
                     )}
 
-                    {/* Elected Official Button (or Coordinator with warning) */}
+                    {/* Elected Official Button */}
                     {isSlotAvailable('elected_official') && (hasNaturalRole('elected_official') || isCoordinator) && (
                         <Button
                             variant={isCoordinator && !hasNaturalRole('elected_official') ? "outlined" : "contained"}
@@ -186,6 +237,7 @@ const MeetingApprovalCard: React.FC<MeetingApprovalCardProps> = ({ meeting, curr
                 </Box>
             )}
 
+            {/* ... (rest of logic) */}
             {/* Message for non-authorized users */}
             {!isAuthorized() && currentUser && (
                 <Box sx={{ mt: 3, textAlign: 'center' }}>
@@ -195,7 +247,7 @@ const MeetingApprovalCard: React.FC<MeetingApprovalCardProps> = ({ meeting, curr
                 </Box>
             )}
 
-            {/* Warning Dialog for Coordinator signing as other role */}
+            {/* Warning Dialog */}
             <Dialog open={warningOpen} onClose={handleCancelWarning}>
                 <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                     <Warning color="warning" />

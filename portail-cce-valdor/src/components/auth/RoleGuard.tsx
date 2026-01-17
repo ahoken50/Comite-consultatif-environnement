@@ -9,7 +9,7 @@ interface RoleGuardProps {
     redirectPath?: string;
 }
 
-export const RoleGuard: React.FC<RoleGuardProps> = ({ allowedRoles, redirectPath = '/dashboard' }) => {
+export const RoleGuard: React.FC<RoleGuardProps> = ({ allowedRoles }) => {
     const { user, loading } = useAuth();
 
     if (loading) {
@@ -21,7 +21,7 @@ export const RoleGuard: React.FC<RoleGuardProps> = ({ allowedRoles, redirectPath
     }
 
     if (!user || !user.role || !allowedRoles.includes(user.role)) {
-        return <Navigate to={redirectPath} replace />;
+        return <Navigate to="/access-denied" replace />;
     }
 
     return <Outlet />;

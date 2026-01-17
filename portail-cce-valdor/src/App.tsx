@@ -32,6 +32,7 @@ const PresentationControlPage = lazy(() => import('./pages/Presentation/Presenta
 const ProjectionPage = lazy(() => import('./pages/Presentation/ProjectionPage'));
 const ProfilePage = lazy(() => import('./pages/Auth/ProfilePage'));
 const CoordinatorDashboard = lazy(() => import('./pages/Admin/CoordinatorDashboard'));
+const AccessDeniedPage = lazy(() => import('./pages/Auth/AccessDeniedPage'));
 
 import { RoleGuard } from './components/auth/RoleGuard';
 
@@ -221,6 +222,7 @@ function App() {
                 <Route index element={<Navigate to="/dashboard" replace />} />
                 <Route path="dashboard" element={<Dashboard />} />
                 <Route path="profile" element={<ProfilePage />} />
+                <Route path="access-denied" element={<AccessDeniedPage />} />
 
                 {/* Coordinator Only Routes */}
                 <Route element={<RoleGuard allowedRoles={['coordinator']} />}>
