@@ -163,7 +163,7 @@ const MeetingDetailPage: React.FC = () => {
                 !item.id || item.id.startsWith('patched-')
             );
 
-            if (needsConversion) {
+            if (needsConversion && isCoordinator) {
                 console.log('⚠️ Converting agenda item IDs to stable format...');
                 const patchedItems = meeting.agendaItems.map((item, index) => ({
                     ...item,

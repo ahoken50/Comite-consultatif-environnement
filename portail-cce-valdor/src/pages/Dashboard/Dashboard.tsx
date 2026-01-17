@@ -66,12 +66,12 @@ const Dashboard: React.FC = () => {
 
                 {/* Charts */}
                 <Grid size={{ xs: 12, md: 4 }}>
-                    <Box sx={{ minHeight: 400, height: '100%' }}>
+                    <Box sx={{ height: 400 }}>
                         <CategoryChart data={categoryData} />
                     </Box>
                 </Grid>
                 <Grid size={{ xs: 12, md: 8 }}>
-                    <Box sx={{ minHeight: 400, height: '100%' }}>
+                    <Box sx={{ height: 400 }}>
                         <ProgressChart data={progressData} />
                     </Box>
                 </Grid>

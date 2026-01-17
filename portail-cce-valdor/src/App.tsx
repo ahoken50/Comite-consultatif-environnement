@@ -1,7 +1,7 @@
 import React, { useEffect, Suspense, lazy } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { onAuthStateChanged } from 'firebase/auth';
-import { doc, getDoc, setDoc, collection, getDocs } from 'firebase/firestore';
+import { doc, getDoc, setDoc, collection, getDocs, query, where } from 'firebase/firestore';
 import { useDispatch, useSelector } from 'react-redux';
 import { CircularProgress, Box } from '@mui/material';
 import { auth, db } from './services/firebase';
@@ -78,7 +78,23 @@ function App() {
           // This is the source of truth for bio, phone, real name, etc.
           const memberDocRef = doc(db, 'members', user.uid);
           const memberDoc = await getDoc(memberDocRef);
-          const memberData = memberDoc.exists() ? memberDoc.data() : null;
+          let memberData: any = memberDoc.exists() ? { id: memberDoc.id, ...memberDoc.data() } : null;
+
+          // Fallback: If not found by ID, search by email (Legacy/Manually created members)
+          if (!memberData && user.email) {
+            try {
+              const membersRef = collection(db, 'members');
+              const q = query(membersRef, where("email", "==", user.email));
+              const querySnapshot = await getDocs(q);
+              if (!querySnapshot.empty) {
+                const foundDoc = querySnapshot.docs[0];
+                console.log("Member found by email lookup:", foundDoc.id);
+                memberData = { id: foundDoc.id, ...foundDoc.data() };
+              }
+            } catch (e) {
+              console.warn("Failed to query member by email:", e);
+            }
+          }
 
           // Sync Logic: If member profile exists, it overrides the basic auth profile
           if (memberData) {

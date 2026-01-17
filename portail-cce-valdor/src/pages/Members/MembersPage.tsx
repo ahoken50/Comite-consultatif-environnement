@@ -163,7 +163,7 @@ const MembersPage: React.FC = () => {
                         <MemberCard
                             member={member}
                             projectCount={projectCounts[member.id] || 0}
-                            onEdit={(user?.role === 'coordinator' || member.id === (user?.id || user?.uid)) ? handleEdit : undefined}
+                            onEdit={(user?.role === 'coordinator' || member.id === user?.memberId) ? handleEdit : undefined}
                             onDelete={user?.role === 'coordinator' ? handleDelete : undefined}
                         />
                     </Grid>

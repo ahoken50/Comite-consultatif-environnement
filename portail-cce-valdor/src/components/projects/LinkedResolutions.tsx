@@ -252,14 +252,16 @@ const LinkedResolutions: React.FC<LinkedResolutionsProps> = ({ project }) => {
                     <LinkIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
                     Résolutions CCE liées
                 </Typography>
-                <Button
-                    variant="contained"
-                    startIcon={<Add />}
-                    size="small"
-                    onClick={handleOpenDialog}
-                >
-                    Lier une résolution
-                </Button>
+                {user?.role === 'coordinator' && (
+                    <Button
+                        variant="contained"
+                        startIcon={<Add />}
+                        size="small"
+                        onClick={handleOpenDialog}
+                    >
+                        Lier une résolution
+                    </Button>
+                )}
             </Box>
 
             {linkedResolutions.length === 0 ? (
@@ -328,16 +330,18 @@ const LinkedResolutions: React.FC<LinkedResolutionsProps> = ({ project }) => {
                                         </Box>
                                     }
                                 />
-                                <ListItemSecondaryAction>
-                                    <IconButton
-                                        edge="end"
-                                        color="error"
-                                        onClick={(e) => handleUnlinkResolution(resolution.id, e)}
-                                        size="small"
-                                    >
-                                        <Delete />
-                                    </IconButton>
-                                </ListItemSecondaryAction>
+                                {user?.role === 'coordinator' && (
+                                    <ListItemSecondaryAction>
+                                        <IconButton
+                                            edge="end"
+                                            color="error"
+                                            onClick={(e) => handleUnlinkResolution(resolution.id, e)}
+                                            size="small"
+                                        >
+                                            <Delete />
+                                        </IconButton>
+                                    </ListItemSecondaryAction>
+                                )}
                             </ListItemButton>
                         </React.Fragment>
                     ))}
