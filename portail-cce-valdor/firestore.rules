@@ -110,6 +110,13 @@ service cloud.firestore {
          allow read: if isCoordinator(); // Only coordinators can view convocation tracking
          allow write: if isCoordinator();
       }
+
+      // Approval Tokens (Subcollection)
+      // - Used for managing PV approvals via magic links and admin panel
+      match /approval_tokens/{tokenId} {
+         allow read: if true; // Public allowed to validate magic links
+         allow write: if true; // Public allowed to update status (approve/reject) via magic link
+      }
     }
 
     // Resolutions & Recommendations
@@ -127,14 +134,7 @@ service cloud.firestore {
         allow update: if isCoordinator() || isElectedOfficial();
     }
 
-    // Meeting Approvals (PV validation)
-    // - Read: All authenticated
-    // - Create/Update: Coordinator, President, or Elected Official
-    match /approvals/{approvalId} {
-      allow read: if isAuthenticated();
-      allow create, update: if isCoordinator() || isPresident() || isElectedOfficial();
-      allow delete: if isCoordinator();
-    }
+
 
     // Documents
     // - Read: All authenticated.

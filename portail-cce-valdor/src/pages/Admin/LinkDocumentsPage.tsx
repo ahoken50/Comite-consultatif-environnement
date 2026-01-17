@@ -135,10 +135,14 @@ const LinkDocumentsPage: React.FC = () => {
     const linkedDocuments = documents.filter(d => d.agendaItemId && !d.agendaItemId.startsWith('patched-') && isNaN(Number(d.agendaItemId)));
 
     const formatMeetingDate = (dateValue: any): string => {
+        if (!dateValue) return 'Date inconnue';
         try {
-            // Handle Firestore Timestamp
-            if (dateValue?.toDate) {
+            // Handle Firestore Timestamp (instance or object)
+            if (dateValue?.toDate && typeof dateValue.toDate === 'function') {
                 return dateValue.toDate().toLocaleDateString('fr-CA');
+            }
+            if (dateValue?.seconds) {
+                return new Date(dateValue.seconds * 1000).toLocaleDateString('fr-CA');
             }
             // Handle string or Date
             const date = new Date(dateValue);
@@ -217,6 +221,10 @@ const LinkDocumentsPage: React.FC = () => {
                                                         value={selections[document.id]?.meetingId || document.linkedEntityId || ''}
                                                         onChange={(e) => handleMeetingChange(document.id, e.target.value)}
                                                         label="Assemblée"
+                                                        renderValue={(selected) => {
+                                                            const m = meetings.find(m => m.id === selected);
+                                                            return m ? `${formatMeetingDate(m.date)} - ${m.title}` : selected;
+                                                        }}
                                                     >
                                                         {meetings.map(meeting => (
                                                             <MenuItem key={meeting.id} value={meeting.id}>

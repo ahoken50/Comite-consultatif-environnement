@@ -99,22 +99,24 @@ export const documentsAPI = {
     },
 
     delete: async (id: string, storagePath: string): Promise<void> => {
-        // 1. Delete from Firestore first
-        await deleteDoc(doc(db, COLLECTION_NAME, id));
-
-        // 2. Try to delete from Storage, but don't fail if it doesn't exist
+        // 1. Delete from Storage first (to avoid orphan files if it fails)
         try {
             const storageRef = ref(storage, storagePath);
             await deleteObject(storageRef);
         } catch (storageError: any) {
-            // If the file doesn't exist in Storage, that's okay - continue
-            if (storageError?.code === 'storage/object-not-found') {
-                console.warn('File not found in storage, continuing with deletion:', storagePath);
-            } else {
-                // Log but don't throw - Firestore record is already deleted
+            // If the file doesn't exist in Storage, that's okay
+            if (storageError?.code !== 'storage/object-not-found') {
                 console.error('Failed to delete file from storage:', storageError);
+                // We choose to continue to delete the Firestore record so the user IS unblocked,
+                // even if it leaves an orphan file (better UX than blocking deletion).
+                // In a perfect world, we'd alert or queue a retry.
+            } else {
+                console.warn('File not found in storage, continuing with record deletion:', storagePath);
             }
         }
+
+        // 2. Delete from Firestore
+        await deleteDoc(doc(db, COLLECTION_NAME, id));
     },
 
     update: async (id: string, updates: Partial<Document>): Promise<void> => {
