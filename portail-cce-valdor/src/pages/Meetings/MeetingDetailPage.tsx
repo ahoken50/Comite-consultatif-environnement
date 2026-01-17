@@ -155,16 +155,20 @@ const MeetingDetailPage: React.FC = () => {
         dispatch(deleteDocument({ id: docId, storagePath }));
     };
 
-    // Patch: Ensure all agenda items have IDs (fixes legacy data issue)
+    // Patch: Convert old unstable "patched-*" IDs to new stable IDs
     useEffect(() => {
-        if (meeting && meeting.agendaItems) {
-            const itemsWithoutIds = meeting.agendaItems.filter(item => !item.id);
-            if (itemsWithoutIds.length > 0) {
-                console.log('⚠️ Patching agenda items without IDs...');
+        if (meeting && meeting.agendaItems && meeting.agendaItems.length > 0) {
+            // Check if any items have old "patched-*" IDs or no IDs
+            const needsConversion = meeting.agendaItems.some(item =>
+                !item.id || item.id.startsWith('patched-')
+            );
+
+            if (needsConversion) {
+                console.log('⚠️ Converting agenda item IDs to stable format...');
                 const patchedItems = meeting.agendaItems.map((item, index) => ({
                     ...item,
                     // Use stable ID based on meeting ID + index (not Date.now()!)
-                    id: item.id || `${meeting.id}-item-${index}`
+                    id: `${meeting.id}-item-${index}`
                 }));
                 dispatch(updateMeeting({ id: meeting.id, updates: { agendaItems: patchedItems } }));
             }

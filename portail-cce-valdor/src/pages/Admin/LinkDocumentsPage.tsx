@@ -134,6 +134,23 @@ const LinkDocumentsPage: React.FC = () => {
     const documentsToLink = documents.filter(d => !d.agendaItemId || d.agendaItemId.startsWith('patched-') || !isNaN(Number(d.agendaItemId)));
     const linkedDocuments = documents.filter(d => d.agendaItemId && !d.agendaItemId.startsWith('patched-') && isNaN(Number(d.agendaItemId)));
 
+    const formatMeetingDate = (dateValue: any): string => {
+        try {
+            // Handle Firestore Timestamp
+            if (dateValue?.toDate) {
+                return dateValue.toDate().toLocaleDateString('fr-CA');
+            }
+            // Handle string or Date
+            const date = new Date(dateValue);
+            if (!isNaN(date.getTime())) {
+                return date.toLocaleDateString('fr-CA');
+            }
+            return 'Date inconnue';
+        } catch {
+            return 'Date inconnue';
+        }
+    };
+
     if (loading) {
         return (
             <Box sx={{ p: 3, display: 'flex', justifyContent: 'center' }}>
@@ -203,7 +220,7 @@ const LinkDocumentsPage: React.FC = () => {
                                                     >
                                                         {meetings.map(meeting => (
                                                             <MenuItem key={meeting.id} value={meeting.id}>
-                                                                {new Date(meeting.date).toLocaleDateString('fr-CA')} - {meeting.title}
+                                                                {formatMeetingDate(meeting.date)} - {meeting.title}
                                                             </MenuItem>
                                                         ))}
                                                     </Select>
