@@ -7,7 +7,11 @@ import { functions } from './firebase';
 import { httpsCallable } from 'firebase/functions';
 import type { Meeting, MinutesDraft } from '../types/meeting.types';
 import { ClaudeSanitizedResponseSchema, type ClaudeSanitizedResponse } from '../schemas/meetingSchemas';
-import { getClaudeMinutesDraftSystemPrompt, getClaudeMinutesDraftUserMessage } from '../prompts/minutesDraftPrompt';
+import { ClaudeProvider } from './ai/providers/ClaudeProvider';
+import { db } from './firebase';
+import { doc, updateDoc } from 'firebase/firestore';
+
+const claudeProvider = new ClaudeProvider();
 
 // Environment variable check for Anthropic API key is removed as it is handled in backend
 
@@ -31,50 +35,18 @@ export const generateMinutesDraftClaude = async (
     transcription: string,
     historicalContext?: string
 ): Promise<{ success: boolean; draft?: MinutesDraft; error?: string }> => {
-    // Note: We don't check for VITE_ANTHROPIC_API_KEY anymore as it's handled in the backend
-
     try {
-        const systemPrompt = getClaudeMinutesDraftSystemPrompt();
-        const userMessage = getClaudeMinutesDraftUserMessage(meeting, transcription, historicalContext);
+        const draft = await claudeProvider.generateDraft(meeting, transcription, historicalContext);
 
-        console.log('[Claude] Calling Cloud Function generate_minutes_claude...');
-
-        // Timeout increased to 9 minutes (540000ms) to support Extended Thinking models
-        const generateFunction = httpsCallable(functions, 'generate_minutes_claude', { timeout: 540000 });
-        const result = await generateFunction({
-            meetingId: meeting.id,
-            systemPrompt,
-            userMessage
+        const meetingRef = doc(db, 'meetings', meeting.id);
+        await updateDoc(meetingRef, {
+            minutesDraft: draft,
+            dateUpdated: new Date().toISOString()
         });
 
-        const data = result.data as { success: boolean; content: string; error?: string };
-
-        if (!data.success) {
-            throw new Error(data.error || 'Erreur inconnue de la fonction Claude');
-        }
-
-        const draftContent = data.content;
-
-        if (!draftContent) {
-            throw new Error('Aucun contenu généré par la fonction');
-        }
-
-        console.log(`[Claude] Draft received: ${draftContent.length} chars`);
-
-        // Note: The function already saves to Firestore, but we return the draft to update local state immediately
-        const draft: MinutesDraft = {
-            content: draftContent,
-            generatedAt: new Date().toISOString(),
-            status: 'draft',
-            version: 1
-        };
-
         return { success: true, draft };
-
     } catch (error) {
-        const err = error as Error;
-        console.error('Claude draft generation error:', err);
-        return { success: false, error: err.message };
+        return { success: false, error: (error as Error).message };
     }
 };
 
@@ -85,60 +57,22 @@ export const finalizeDraftClaude = async (
     meeting: Meeting,
     userFeedback: string
 ): Promise<{ success: boolean; finalContent?: string; error?: string }> => {
-    // Note: API key check handled in backend
-
-    const currentDraft = meeting.minutesDraft?.content;
-    if (!currentDraft) {
-        return { success: false, error: 'Aucun brouillon à finaliser' };
-    }
-
     try {
-        const systemPrompt = `Tu es un rédacteur de procès-verbaux. Tu vas recevoir un brouillon de PV et des corrections à appliquer.
+        const finalContent = await claudeProvider.finalizeDraft(meeting, userFeedback);
 
-INSTRUCTIONS:
-1. Intègre toutes les corrections demandées
-2. Supprime tous les marqueurs [À VÉRIFIER]
-3. Assure-toi que le format est cohérent et professionnel
-4. Ne modifie pas ce qui n'a pas été demandé
-5. Produis la version finale du procès-verbal`;
-
-        const userMessage = `## BROUILLON ACTUEL
-${currentDraft}
-
-## CORRECTIONS ET FEEDBACK
-${userFeedback}
-
-Génère le procès-verbal final, prêt à être imprimé.`;
-
-        console.log('[Claude] Calling Cloud Function finalize_draft_claude...');
-
-        const finalizeFunction = httpsCallable(functions, 'finalize_draft_claude', { timeout: 540000 });
-        const result = await finalizeFunction({
-            meetingId: meeting.id,
-            systemPrompt,
-            userMessage,
-            userFeedback
+        const meetingRef = doc(db, 'meetings', meeting.id);
+        await updateDoc(meetingRef, {
+            'minutesDraft.content': finalContent,
+            'minutesDraft.status': 'final',
+            'minutesDraft.finalizedAt': new Date().toISOString(),
+            'minutesDraft.userFeedback': userFeedback,
+            'minutesDraft.version': (meeting.minutesDraft?.version || 0) + 1,
+            dateUpdated: new Date().toISOString()
         });
 
-        const data = result.data as { success: boolean; content: string; error?: string };
-
-        if (!data.success) {
-            throw new Error(data.error || 'Erreur inconnue lors de la finalisation');
-        }
-
-        const finalContent = data.content;
-
-        if (!finalContent) {
-            throw new Error('Aucune version finale générée');
-        }
-
-        // Note: The function already updates Firestore, we return content for local update
         return { success: true, finalContent };
-
     } catch (error) {
-        const err = error as Error;
-        console.error('Claude finalization error:', err);
-        return { success: false, error: err.message };
+        return { success: false, error: (error as Error).message };
     }
 };
 
@@ -149,54 +83,11 @@ Génère le procès-verbal final, prêt à être imprimé.`;
 export const sanitizeMinutesClaude = async (
     minutesContent: string
 ): Promise<{ success: boolean; sanitizedContent?: string; error?: string }> => {
-    // Note: API key handled in backend
-
     try {
-        const systemPrompt = `Tu es un expert en conformité et protection de la vie privée pour une administration municipale.
-TA MISSIONS : Anonymiser le procès-verbal suivant pour qu'il soit conforme à la Loi sur l'accès à l'information.
-
-RÈGLES D'ANONYMISATION :
-1. CITOYENS : Remplace les noms complets des citoyens privés par "[NOM MASQUÉ]" ou "un citoyen".
-2. ADRESSES : Remplace les adresses civiques privées complètes par le nom de la rue seulement (ex: "123 rue Principale" -> "rue Principale"). 
-3. DONNÉES SENSIBLES : Masque les numéros de téléphone, courriels personnels, ou détails financiers privés.
-4. ÉLUS ET FONCTIONNAIRES : NE MASQUE PAS les noms des élus municipaux, employés de la ville, ou promoteurs d'entreprises (personnes morales). Ils sont publics.
-5. CONTEXTE : Garde le reste du texte intact pour la compréhension.
-6. IDENTITÉ : Si tu ne sais pas si une personne est publique ou privée, dans le doute, masque.`;
-
-        const userMessage = `TEXTE À TRAITER :
-${minutesContent}
-
-FORMAT DE SORTIE :
-Retourne uniquement le texte traité, sans introduction ni conclusion.`;
-
-        console.log('[Claude] Calling Cloud Function chat_claude (for sanitization)...');
-
-        const chatFunction = httpsCallable(functions, 'chat_claude', { timeout: 300000 });
-
-        const result = await chatFunction({
-            systemPrompt,
-            userMessage,
-            temperature: 0.1 // Low temperature for consistent sanitization
-        });
-
-        const data = result.data as { success: boolean; content: string; error?: string };
-
-        if (!data.success) {
-            throw new Error(data.error || 'Erreur inconnue de la fonction Claude');
-        }
-
-        const sanitizedContent = data.content;
-
-        if (!sanitizedContent) {
-            throw new Error('Aucun contenu généré');
-        }
-
+        const sanitizedContent = await claudeProvider.sanitize(minutesContent);
         return { success: true, sanitizedContent };
-
     } catch (error) {
-        const err = error as Error;
-        console.error('Claude sanitization error:', err);
-        return { success: false, error: err.message };
+        return { success: false, error: (error as Error).message };
     }
 };
 
@@ -207,43 +98,10 @@ export const generateExecutiveSummaryClaude = async (
     transcription: string
 ): Promise<{ success: boolean; summary?: string; error?: string }> => {
     try {
-        const systemPrompt = `Tu es une adjointe administrative experte en rédaction de procès-verbaux pour une ville.
-TA MISSION : Rédiger un résumé exécutif (introduction) concis et professionnel basé sur la transcription fournie.
-
-RÈGLES DE RÉDACTION :
-1. TON : Formel, neutre et administratif (pas de "je", pas de familiarités).
-2. CONTENU : Résume l'objectif de la rencontre, les principaux présents (ou mentionner qu'il y avait quorum), et l'ambiance générale ou les thèmes majeurs discutés.
-3. LONGUEUR : Environ 1 paragraphe (3-5 phrases).
-4. STYLE : Doit pouvoir servir de texte d'introduction ("Notes Générales") dans le logiciel de gestion des réunions.
-5. SANS TITRE : Ne mets pas de titre "Résumé" ou "Intro", donne juste le texte.`;
-
-        const userMessage = `TRANSCRIPTION DE LA RÉUNION :
-${transcription.substring(0, 50000)}... (Tronqué si trop long)
-
-Générer le résumé exécutif.`;
-
-        console.log('[Claude] Calling Cloud Function chat_claude (for summary)...');
-
-        const chatFunction = httpsCallable(functions, 'chat_claude', { timeout: 120000 }); // 2 mins
-
-        const result = await chatFunction({
-            systemPrompt,
-            userMessage,
-            temperature: 0.3 // Balanced creativity/consistency
-        });
-
-        const data = result.data as { success: boolean; content: string; error?: string };
-
-        if (!data.success) {
-            throw new Error(data.error || 'Erreur inconnue de la fonction Claude');
-        }
-
-        return { success: true, summary: data.content };
-
+        const summary = await claudeProvider.generateSummary(transcription);
+        return { success: true, summary };
     } catch (error) {
-        const err = error as Error;
-        console.error('Claude summary error:', err);
-        return { success: false, error: err.message };
+        return { success: false, error: (error as Error).message };
     }
 };
 

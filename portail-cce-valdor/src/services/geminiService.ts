@@ -1,7 +1,7 @@
 import { db, functions } from './firebase';
 import { doc, updateDoc } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
-
+import { aiService } from './ai/UnifiedAIService';
 import type { Meeting, MinutesDraft } from '../types/meeting.types';
 
 // Environment variable for Gemini API key (matches GOOGLE_AI_API GitHub secret)
@@ -21,6 +21,7 @@ interface GeminiResponse {
     };
 }
 
+/*
 const UPLOAD_API_URL = 'https://generativelanguage.googleapis.com/upload/v1beta/files';
 
 interface GeminiFileResponse {
@@ -31,12 +32,14 @@ interface GeminiFileResponse {
         state: string;
     };
 }
+*/
 
 /**
  * Upload file to Gemini using Resumable Upload Protocol
  * Necessary for files > 20MB
  */
-const uploadToGemini = async (blob: Blob, mimeType: string, displayName: string): Promise<string> => {
+/*
+const _uploadToGemini = async (blob: Blob, mimeType: string, displayName: string): Promise<string> => {
     if (!GEMINI_API_KEY) throw new Error('API Key missing');
 
     // 1. Initiate Resumable Upload
@@ -79,6 +82,7 @@ const uploadToGemini = async (blob: Blob, mimeType: string, displayName: string)
     const result: GeminiFileResponse = await uploadResponse.json();
     return result.file.uri;
 };
+*/
 
 
 
@@ -159,65 +163,19 @@ export const transcribeLocalFile = async (
     meetingId: string,
     file: File
 ): Promise<{ success: boolean; transcription?: string; error?: string }> => {
-    if (!GEMINI_API_KEY) {
-        return { success: false, error: 'Clé API manquante' };
-    }
-
     try {
+        const result = await aiService.transcribe(file);
+
         const meetingRef = doc(db, 'meetings', meetingId);
         await updateDoc(meetingRef, {
-            'audioRecording.transcriptionStatus': 'processing',
-            dateUpdated: new Date().toISOString()
-        });
-
-        // Upload local file directly to Gemini
-        const fileUri = await uploadToGemini(file, file.type, `meeting-${meetingId}`);
-
-        // Call Gemini API (same logic as transcribeAudio)
-        const prompt = `Tu es un secrétaire de séance expert. Ta tâche est de transcrire cet enregistrement de réunion de manière détaillée et structurée.
-
-RÈGLES DE TRANSCRIPTION :
-1. DÉTAILS : Ne fais PAS de résumé. Transcris les discussions le plus fidèlement possible.
-2. STRUCTURE : Organise la transcription par SUJETS ou POINTS D'ORDRE DU JOUR clairement identifiés.
-3. INTERVENANTS : Identifie qui parle.
-4. FORMAT : Utilise du texte suivi et détaillé pour faciliter la rédaction du procès-verbal.
-`;
-
-        const response = await fetch(`${GEMINI_API_URL}?key=${GEMINI_API_KEY}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                contents: [{
-                    parts: [
-                        { text: prompt },
-                        { file_data: { mime_type: file.type, file_uri: fileUri } }
-                    ]
-                }]
-            })
-        });
-
-        if (!response.ok) throw new Error('Refus API Gemini');
-        const data = await response.json();
-
-        const transcription = data.candidates?.[0]?.content?.parts?.[0]?.text;
-
-        if (!transcription) throw new Error('Aucune transcription générée');
-
-        await updateDoc(meetingRef, {
-            'audioRecording.transcription': transcription,
+            'audioRecording.transcription': result.text,
             'audioRecording.transcriptionStatus': 'completed',
             dateUpdated: new Date().toISOString()
         });
 
-        return { success: true, transcription };
-
+        return { success: true, transcription: result.text };
     } catch (error) {
-        console.error('Local transcription error:', error);
-        await updateDoc(doc(db, 'meetings', meetingId), {
-            'audioRecording.transcriptionStatus': 'error',
-            'audioRecording.transcriptionError': error instanceof Error ? error.message : 'Echec transcription locale'
-        });
-        return { success: false, error: 'Echec transcription locale' };
+        return { success: false, error: (error as Error).message };
     }
 };
 
@@ -232,139 +190,9 @@ export const generateMinutesDraft = async (
     transcription: string,
     historicalContext?: string
 ): Promise<{ success: boolean; draft?: MinutesDraft; error?: string }> => {
-    if (!GEMINI_API_KEY) {
-        return {
-            success: false,
-            error: 'Clé API Gemini non configurée'
-        };
-    }
-
     try {
-        const attendeesList = meeting.attendees
-            ?.map(a => `${a.name} (${a.role})${a.isPresent ? '' : ' - ABSENT'}`)
-            .join('\n') || 'Non spécifié';
+        const draft = await aiService.generateDraft(meeting, transcription, historicalContext);
 
-        const agendaList = meeting.agendaItems
-            ?.map((item, i) => `${i + 1}. ${item.title}`)
-            .join('\n') || 'Non spécifié';
-
-        const prompt = `Tu es un rédacteur expert de procès-verbaux pour le Comité Consultatif en Environnement (CCE) de la Ville de Val-d'Or.
-OBJECTIF : Rédiger un procès-verbal (PV) professionnel, COMPLET et DÉTAILLÉ à partir de la transcription fournie.
-
-## INFORMATIONS DE LA RÉUNION
-Titre: ${meeting.title}
-Date: ${meeting.date}
-Lieu: ${meeting.location || 'Salle de conférence'}
-
-## PARTICIPANTS
-${attendeesList}
-
-## ORDRE DU JOUR (STRUCTURE À SUIVRE EXACTEMENT)
-${agendaList}
-
-## TRANSCRIPTION (Source intégrale)
-${transcription}
-
----
-
-## ⚠️ DIRECTIVES CRUCIALES (IMPÉRATIF)
-
-### 1. STRUCTURE PAR POINT
-Chaque point de l'ordre du jour = Un bloc complet avec cette structure:
-
-\`\`\`
-## [Numéro]. [Titre du point]
-
-### Contexte
-[2-3 phrases de mise en contexte sur le sujet abordé]
-
-### Délibérations
-
-[PARAGRAPHE 1: Premier thème discuté]
-Détail des échanges sur ce thème. Qui a dit quoi, quelles préoccupations ont été soulevées, quelles solutions proposées. MINIMUM 4-5 phrases détaillées par paragraphe.
-
-[PARAGRAPHE 2: Deuxième aspect abordé]  
-Si la discussion change de sujet au sein du même point, faire un nouveau paragraphe. Toujours détailler les interventions.
-
-[PARAGRAPHE 3: Etc si nécessaire]
-
-### Issue du point
-[Utiliser les formats appropriés ci-dessous. Un point peut avoir PLUSIEURS issues (ex: une Résolution ET un Commentaire)]
-\`\`\`
-
-### 2. FORMAT DE L'ISSUE (CHOISIR LE BON)
-
-**OPTION A - RÉSOLUTION** (S'il y a eu un VOTE formel)
-\`\`\`
-**RÉSOLUTION CCE-[ANNÉE]-[NUMÉRO]**
-
-CONSIDÉRANT [contexte factuel];
-CONSIDÉRANT [justification de la décision];
-
-IL EST RÉSOLU QUE [décision claire et actionnable].
-
-_Proposé par: [Nom] | Appuyé par: [Nom] | Adopté à l'unanimité / X voix pour, Y contre_
-\`\`\`
-
-**OPTION B - DÉCISION** (Action décidée SANS vote formel)
-\`\`\`
-**DÉCISION :** Le Comité convient de [action spécifique avec responsable et échéance si mentionnés].
-\`\`\`
-
-**OPTION C - COMMENTAIRE** (Discussion informative, pas d'action)
-\`\`\`
-**COMMENTAIRE :** Le Comité prend acte de [information]. Les membres ont [résumé des points retenus en 3-4 phrases].
-\`\`\`
-
-### 3. RÈGLES DE RÉDACTION
-- **DÉTAIL** : Les délibérations doivent être LONGUES et DÉTAILLÉES, pas des résumés en 2 lignes
-- **PARAGRAPHES** : Séparer par thème au sein des délibérations
-- **TERMINOLOGIE** : "le Comité" (pas CCE/comité), "résolution" (pas motion), "appuyé par" (pas secondé)
-- **VALIDATION** : Si info floue, marquer **[À VALIDER : ...]**
-- **FIDÉLITÉ** : Base-toi UNIQUEMENT sur la transcription
-${historicalContext || ''}
-
-## RÉSULTAT ATTENDU
-Un document prêt pour approbation, avec des délibérations riches et détaillées, et des issues clairement formatées.`;
-
-        const geminiRequest = {
-            contents: [{
-                parts: [{ text: prompt }]
-            }],
-            generationConfig: {
-                temperature: 0.2,
-                maxOutputTokens: 32000 // Increased for longer, more detailed drafts
-            }
-        };
-
-        const response = await fetch(`${GEMINI_API_URL}?key=${GEMINI_API_KEY}`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(geminiRequest)
-        });
-
-        const result: GeminiResponse = await response.json();
-
-        if (result.error) {
-            throw new Error(result.error.message);
-        }
-
-        const draftContent = result.candidates?.[0]?.content?.parts?.[0]?.text;
-
-        if (!draftContent) {
-            throw new Error('Aucun brouillon généré');
-        }
-
-        const draft: MinutesDraft = {
-            content: draftContent,
-            generatedAt: new Date().toISOString(),
-            status: 'draft',
-            version: 1
-        };
-
-        // Update meeting with draft
         const meetingRef = doc(db, 'meetings', meeting.id);
         await updateDoc(meetingRef, {
             minutesDraft: draft,
@@ -372,11 +200,8 @@ Un document prêt pour approbation, avec des délibérations riches et détaill�
         });
 
         return { success: true, draft };
-
     } catch (error) {
-        const err = error as Error;
-        console.error('Draft generation error:', err);
-        return { success: false, error: err.message };
+        return { success: false, error: (error as Error).message };
     }
 };
 
@@ -387,68 +212,9 @@ export const finalizeDraft = async (
     meeting: Meeting,
     userFeedback: string
 ): Promise<{ success: boolean; finalContent?: string; error?: string }> => {
-    if (!GEMINI_API_KEY) {
-        return {
-            success: false,
-            error: 'Clé API Gemini non configurée'
-        };
-    }
-
-    const currentDraft = meeting.minutesDraft?.content;
-    if (!currentDraft) {
-        return { success: false, error: 'Aucun brouillon à finaliser' };
-    }
-
     try {
-        const prompt = `Tu es un rédacteur de procès-verbaux. Voici un brouillon de procès-verbal et les corrections demandées par l'utilisateur.
+        const finalContent = await aiService.finalizeDraft(meeting, userFeedback);
 
-## BROUILLON ACTUEL
-${currentDraft}
-
-## CORRECTIONS ET FEEDBACK
-${userFeedback}
-
-## INSTRUCTIONS
-1. Intègre toutes les corrections demandées
-2. Supprime tous les marqueurs [À VÉRIFIER]
-3. Assure-toi que le format est cohérent et professionnel
-4. Ne modifie pas ce qui n'a pas été demandé
-5. Produis la version finale du procès-verbal
-
-## FORMAT DE SORTIE
-Génère le procès-verbal final, prêt à être imprimé.`;
-
-        const geminiRequest = {
-            contents: [{
-                parts: [{ text: prompt }]
-            }],
-            generationConfig: {
-                temperature: 0.2,
-                maxOutputTokens: 8000
-            }
-        };
-
-        const response = await fetch(`${GEMINI_API_URL}?key=${GEMINI_API_KEY}`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(geminiRequest)
-        });
-
-        const result: GeminiResponse = await response.json();
-
-        if (result.error) {
-            throw new Error(result.error.message);
-        }
-
-        const finalContent = result.candidates?.[0]?.content?.parts?.[0]?.text;
-
-        if (!finalContent) {
-            throw new Error('Aucune version finale générée');
-        }
-
-        // Update meeting
         const meetingRef = doc(db, 'meetings', meeting.id);
         await updateDoc(meetingRef, {
             'minutesDraft.content': finalContent,
@@ -460,11 +226,8 @@ Génère le procès-verbal final, prêt à être imprimé.`;
         });
 
         return { success: true, finalContent };
-
     } catch (error) {
-        const err = error as Error;
-        console.error('Finalization error:', err);
-        return { success: false, error: err.message };
+        return { success: false, error: (error as Error).message };
     }
 };
 
@@ -610,59 +373,11 @@ Si aucun projet actionnable n'est trouvé, retourne: {"projects": []}`;
 export const sanitizeMinutes = async (
     minutesContent: string
 ): Promise<{ success: boolean; sanitizedContent?: string; error?: string }> => {
-    if (!GEMINI_API_KEY) {
-        return { success: false, error: 'Clé API Gemini non configurée' };
-    }
-
     try {
-        const prompt = `Tu es un expert en conformité et protection de la vie privée pour une administration municipale.
-TA MISSIONS : Anonymiser le procès-verbal suivant pour qu'il soit conforme à la Loi sur'accès à l'information.
-
-RÈGLES D'ANONYMISATION :
-1. CITOYENS : Remplace les noms complets des citoyens privés par "[NOM MASQUÉ]" ou "un citoyen".
-2. ADRESSES : Remplace les adresses civiques privées complètes par le nom de la rue seulement (ex: "123 rue Principale" -> "rue Principale"). 
-3. DONNÉES SENSIBLES : Masque les numéros de téléphone, courriels personnels, ou détails financiers privés.
-4. ÉLUS ET FONCTIONNAIRES : NE MASQUE PAS les noms des élus municipaux, employés de la ville, ou promoteurs d'entreprises (personnes morales). Ils sont publics.
-5. CONTEXTE : Garde le reste du texte intact pour la compréhension.
-
-TEXTE À TRAITER :
-${minutesContent}
-
-FORMAT DE SORTIE :
-Retourne uniquement le texte traité.`;
-
-        const geminiRequest = {
-            contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: {
-                temperature: 0.1,
-                maxOutputTokens: 8000
-            }
-        };
-
-        const response = await fetch(`${GEMINI_API_URL}?key=${GEMINI_API_KEY}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(geminiRequest)
-        });
-
-        const result: GeminiResponse = await response.json();
-
-        if (result.error) {
-            throw new Error(result.error.message);
-        }
-
-        const sanitizedContent = result.candidates?.[0]?.content?.parts?.[0]?.text;
-
-        if (!sanitizedContent) {
-            throw new Error('Aucun contenu généré');
-        }
-
+        const sanitizedContent = await aiService.sanitize(minutesContent);
         return { success: true, sanitizedContent };
-
     } catch (error) {
-        const err = error as Error;
-        console.error('Sanitization error:', err);
-        return { success: false, error: err.message };
+        return { success: false, error: (error as Error).message };
     }
 };
 
