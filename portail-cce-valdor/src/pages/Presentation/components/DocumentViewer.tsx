@@ -186,7 +186,13 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
                         />
                     ) : (
                         <Box sx={{ width: '100%', height: '100%', bgcolor: 'white', boxShadow: 10, overflow: 'hidden' }}>
-                            {activeAttachment.name.match(/\.(docx|doc|xlsx|xls|pptx|ppt)$/i) ? (
+                            {activeAttachment.name.match(/\.(xlsx|xls)$/i) ? (
+                                <iframe
+                                    src={`https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(activeAttachment.url)}`}
+                                    style={{ width: '100%', height: '100%', border: 'none' }}
+                                    title={activeAttachment.name}
+                                />
+                            ) : activeAttachment.name.match(/\.(docx|doc|pptx|ppt)$/i) ? (
                                 <iframe
                                     src={`https://docs.google.com/viewer?url=${encodeURIComponent(activeAttachment.url)}&embedded=true`}
                                     style={{ width: '100%', height: '100%', border: 'none' }}
@@ -195,7 +201,7 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
                             ) : (
                                 <iframe
                                     src={activeAttachment.url}
-                                    style={{ width: '100%', height: '100%', border: 'none', pointerEvents: 'none' }}
+                                    style={{ width: '100%', height: '100%', border: 'none' }}
                                     title={activeAttachment.name}
                                 />
                             )}
