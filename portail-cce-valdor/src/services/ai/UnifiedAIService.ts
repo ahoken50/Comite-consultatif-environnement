@@ -1,4 +1,4 @@
-import type { AIService, AIProviderId, TranscriptionResult, TranscriptionOptions, SanitizeOptions, SuggestedProject } from './ai.types';
+import type { AIService, AIProviderId, TranscriptionResult, TranscriptionOptions, SanitizeOptions, SuggestedProject, ResolutionContext } from './ai.types';
 import type { Meeting, MinutesDraft } from '../../types/meeting.types';
 
 // Registry of available providers (will be populated as we refactor)
@@ -77,6 +77,14 @@ export class UnifiedAIService implements AIService {
 
     async suggestFileMatches(fileNames: string[], agendaItems: string[]): Promise<Array<{ fileName: string; agendaItemTitle: string; confidence: number }>> {
         return this.getProvider().suggestFileMatches(fileNames, agendaItems);
+    }
+
+    async generateEmbedding(text: string): Promise<number[]> {
+        return this.getProvider().generateEmbedding(text);
+    }
+
+    async draftResolution(context: ResolutionContext): Promise<string> {
+        return this.getProvider().draftResolution(context);
     }
 
     /**

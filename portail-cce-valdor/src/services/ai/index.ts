@@ -8,12 +8,11 @@
  * - ocrService: PDF OCR with Gemini Vision
  */
 
+// Re-export types
+export type { SuggestedProject } from './ai.types';
+
 // Re-export from geminiService (main file kept for now, will be split later)
 export {
-    // Project extraction
-    extractProjectsFromPV,
-    type SuggestedProject,
-
     // Recommendations
     generateSpeakingPoints,
     draftAIRecommendations,

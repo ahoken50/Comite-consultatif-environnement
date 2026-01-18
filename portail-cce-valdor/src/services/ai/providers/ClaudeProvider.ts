@@ -1,4 +1,4 @@
-import type { AIService, AIProviderId, TranscriptionResult, TranscriptionOptions, SanitizeOptions } from '../ai.types';
+import type { AIService, AIProviderId, TranscriptionResult, TranscriptionOptions, SanitizeOptions, ResolutionContext } from '../ai.types';
 import type { Meeting, MinutesDraft } from '../../../types/meeting.types';
 import { functions } from '../../firebase';
 import { httpsCallable } from 'firebase/functions';
@@ -114,5 +114,13 @@ export class ClaudeProvider implements AIService {
 
     async suggestFileMatches(_fileNames: string[], _agendaItems: string[]): Promise<any[]> {
         return [];
+    }
+
+    async generateEmbedding(_text: string): Promise<number[]> {
+        throw new Error('Embedding generation not supported by Claude provider yet.');
+    }
+
+    async draftResolution(_context: ResolutionContext): Promise<string> {
+        throw new Error('Resolution drafting not supported by Claude provider yet.');
     }
 }

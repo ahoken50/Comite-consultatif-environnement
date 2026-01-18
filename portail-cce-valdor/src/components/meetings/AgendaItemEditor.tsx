@@ -58,6 +58,8 @@ const AgendaItemEditor: React.FC<AgendaItemEditorProps> = ({
                             itemId={item.id}
                             onChange={onMinuteEntryChange}
                             readOnly={readOnly}
+                            itemTitle={item.title}
+                            itemDescription={item.description || ''}
                         />
                     ))}
                 </Box>

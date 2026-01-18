@@ -90,4 +90,26 @@ export interface AIService {
      * Suggest associations between file names and agenda items
      */
     suggestFileMatches(fileNames: string[], agendaItems: string[]): Promise<Array<{ fileName: string; agendaItemTitle: string; confidence: number }>>;
+
+    /**
+     * Generate text embeddings for semantic search
+     * @param text - Text to embed
+     * @returns Array of floating point numbers (vector)
+     */
+    generateEmbedding(text: string): Promise<number[]>;
+
+    /**
+     * Draft a specific resolution based on context and similar precedents
+     */
+    draftResolution(context: ResolutionContext): Promise<string>;
+}
+
+export interface ResolutionContext {
+    title: string;
+    description: string;
+    similarResolutions: Array<{
+        content: string;
+        similarity: number;
+        source?: string;
+    }>;
 }

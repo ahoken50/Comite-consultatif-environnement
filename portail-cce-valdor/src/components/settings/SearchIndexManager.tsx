@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import {
     Box,
@@ -9,9 +8,12 @@ import {
     Card,
     CardContent,
     Stack,
-    Chip
+    Chip,
+    FormControlLabel,
+    Checkbox,
+    Tooltip
 } from '@mui/material';
-import { Sync, Search } from '@mui/icons-material';
+import { Sync, Search, Info } from '@mui/icons-material';
 import { collection, getDocs, query } from 'firebase/firestore';
 import { db } from '../../services/firebase';
 import { parseAnyDate } from '../../utils/dateUtils';
@@ -22,6 +24,7 @@ import type { SearchableMeeting, SearchableProject } from '../../services/typese
 const SearchIndexManager: React.FC = () => {
     const [loading, setLoading] = useState(false);
     const [progress, setProgress] = useState(0);
+    const [generateEmbeddings, setGenerateEmbeddings] = useState(false);
     const [status, setStatus] = useState<{
         type: 'success' | 'error' | 'info' | 'warning';
         message: string;
@@ -82,7 +85,7 @@ const SearchIndexManager: React.FC = () => {
                     attendeeNames: data.attendees?.map(a => a.name) || []
                 };
 
-                await indexMeeting(searchableMeeting);
+                await indexMeeting(searchableMeeting, generateEmbeddings);
 
                 processed++;
                 setProgress((processed / totalDocs) * 100);
@@ -219,6 +222,21 @@ const SearchIndexManager: React.FC = () => {
                         {status.message}
                     </Alert>
                 )}
+
+                <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                    <FormControlLabel
+                        control={
+                            <Checkbox
+                                checked={generateEmbeddings}
+                                onChange={(e) => setGenerateEmbeddings(e.target.checked)}
+                            />
+                        }
+                        label="Générer les embeddings IA"
+                    />
+                    <Tooltip title="Cochez pour activer la recherche sémantique (Jurisprudence). Attention: Cela utilise des crédits IA (Modèle optimisé).">
+                        <Info fontSize="small" color="action" sx={{ ml: 1, cursor: 'pointer' }} />
+                    </Tooltip>
+                </Box>
 
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <Box sx={{ display: 'flex', gap: 2 }}>

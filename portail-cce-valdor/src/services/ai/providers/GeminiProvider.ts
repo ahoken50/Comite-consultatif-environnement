@@ -1,4 +1,4 @@
-import type { AIService, AIProviderId, TranscriptionResult, TranscriptionOptions, SanitizeOptions } from '../ai.types';
+import type { AIService, AIProviderId, TranscriptionResult, TranscriptionOptions, SanitizeOptions, ResolutionContext } from '../ai.types';
 import type { Meeting, MinutesDraft } from '../../../types/meeting.types';
 import { PromptRegistry } from '../PromptRegistry';
 
@@ -339,6 +339,36 @@ Retourne uniquement le JSON.`;
         return jsonMatch ? JSON.parse(jsonMatch[0]) : [];
     }
 
+    async generateEmbedding(text: string): Promise<number[]> {
+        if (!this.isConfigured()) throw new Error('Gemini API key not configured');
+
+        // Use 'text-embedding-004' for lower cost and better performance
+        const MODEL = 'models/text-embedding-004';
+        const EMBED_URL = `https://generativelanguage.googleapis.com/v1beta/${MODEL}:embedContent`;
+
+        const response = await fetch(`${EMBED_URL}?key=${GEMINI_API_KEY}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                model: MODEL,
+                content: {
+                    parts: [{ text }]
+                }
+            })
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Gemini Embedding Error: ${response.status} - ${errorText}`);
+        }
+
+        const data = await response.json();
+        const embedding = data.embedding?.values;
+
+        if (!embedding) throw new Error('No embedding returned from Gemini');
+        return embedding;
+    }
+
     // Helper for file upload (same as before)
     private async uploadToGemini(blob: Blob, mimeType: string, displayName: string): Promise<string> {
         // Simplified upload logic or copy from original if needed.
@@ -376,5 +406,48 @@ Retourne uniquement le JSON.`;
 
         const data = await uploadRes.json();
         return data.file.uri;
+    }
+
+    async draftResolution(context: ResolutionContext): Promise<string> {
+        if (!this.isConfigured()) throw new Error('Gemini API key not configured');
+
+        const examplesText = context.similarResolutions
+            .map((r, i) => `EXEMPLE ${i + 1} (Source: ${r.source || 'Inconnue'}):\n${r.content}`)
+            .join('\n\n');
+
+        const prompt = `Tu es un expert en rédaction de résolutions municipales.
+TÂCHE : Rédiger une résolution formelle pour le point suivant, en t'inspirant STRICTEMENT du style et de la structure des exemples fournis.
+
+CONTEXTE DU NOUVEAU POINT :
+Titre : ${context.title}
+Description : ${context.description}
+
+EXEMPLES DE RÉSOLUTIONS SIMILAIRES (Jurisprudence) :
+${examplesText}
+
+INSTRUCTIONS DE RÉDACTION :
+1. Utilise le format classique : "CONSIDÉRANT QUE... IL EST RÉSOLU DE...".
+2. Si les exemples utilisent des formules spécifiques (ex: "Entériner la demande...", "Recommander au conseil..."), réutilise-les.
+3. Sois précis, formel et juridique.
+4. Ne mets pas de préambule, fournis directement le texte de la résolution.
+
+RÉSOLUTION PROPOSÉE :`;
+
+        const response = await fetch(`${GEMINI_API_URL}?key=${GEMINI_API_KEY}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                contents: [{ parts: [{ text: prompt }] }],
+                generationConfig: {
+                    temperature: 0.2, // Low temp for consistency with examples
+                    maxOutputTokens: 2048
+                }
+            })
+        });
+
+        const result: GeminiResponse = await response.json();
+        if (result.error) throw new Error(result.error.message);
+
+        return result.candidates?.[0]?.content?.parts?.[0]?.text || '';
     }
 }

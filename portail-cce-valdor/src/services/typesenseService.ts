@@ -12,6 +12,7 @@
  */
 
 import { logger } from '../utils/logger';
+import { aiService } from './ai/UnifiedAIService';
 
 // ============================================
 // CONFIGURATION
@@ -50,6 +51,7 @@ export interface SearchableMeeting {
     agendaItemTitles: string[];
     resolutions: string[];
     attendeeNames: string[];
+    embedding?: number[];
 }
 
 export interface SearchableProject {
@@ -68,6 +70,7 @@ export interface SearchResult<T> {
         document: T;
         highlight?: Record<string, { snippet: string }>;
         textMatch: number;
+        vectorDistance?: number;
     }>;
     found: number;
     page: number;
@@ -100,7 +103,8 @@ export const COLLECTIONS = {
             { name: 'minutes', type: 'string' as const },
             { name: 'agendaItemTitles', type: 'string[]' as const },
             { name: 'resolutions', type: 'string[]' as const },
-            { name: 'attendeeNames', type: 'string[]' as const }
+            { name: 'attendeeNames', type: 'string[]' as const },
+            { name: 'embedding', type: 'float[]' as const, num_dim: 768, optional: true }
         ],
         defaultSortingField: 'dateTimestamp'
     },
@@ -182,6 +186,19 @@ export const searchMeetings = async (
             highlightFields = ['title', 'minutes', 'resolutions']
         } = options;
 
+        const useVectorSearch = !!query && query.length > 3; // Only vector search for substantial queries
+
+        let vectorQuery = '';
+        if (useVectorSearch) {
+            try {
+                // Generate embedding for the query itself (very cheap)
+                const queryVector = await aiService.generateEmbedding(query);
+                vectorQuery = `embedding:([${queryVector.join(',')}], k:10)`;
+            } catch (e) {
+                logger.warn('Typesense', 'Failed to generate query embedding', { error: e instanceof Error ? e.message : String(e) });
+            }
+        }
+
         const searchParams = new URLSearchParams({
             q: query,
             query_by: 'title,minutes,agendaItemTitles,resolutions',
@@ -192,6 +209,10 @@ export const searchMeetings = async (
             highlight_full_fields: 'title'
         });
 
+        if (vectorQuery) {
+            searchParams.append('vector_query', vectorQuery);
+        }
+
         if (filterBy) {
             searchParams.append('filter_by', filterBy);
         }
@@ -201,6 +222,7 @@ export const searchMeetings = async (
                 document: SearchableMeeting;
                 highlights?: Array<{ field: string; snippet: string }>;
                 text_match: number;
+                vector_distance?: number;
             }>;
             found: number;
             page: number;
@@ -217,7 +239,8 @@ export const searchMeetings = async (
                     acc[h.field] = { snippet: h.snippet };
                     return acc;
                 }, {} as Record<string, { snippet: string }>),
-                textMatch: hit.text_match
+                textMatch: hit.text_match,
+                vectorDistance: hit.vector_distance
             })),
             found: response.found,
             page: response.page,
@@ -293,7 +316,7 @@ export const searchProjects = async (
         };
 
     } catch (error) {
-        logger.error('Typesense', 'Search projects failed', { error, query });
+        logger.error('Typesense', 'Search projects failed', { error: error instanceof Error ? error.message : String(error), query });
         timer.end({ error: true });
         throw error;
     }
@@ -323,14 +346,37 @@ export const searchAll = async (
 
 /**
  * Index a meeting document (requires admin key)
+ * @param meeting - The meeting data to index
+ * @param generateEmbedding - Whether to generate vector embedding (costs AI tokens)
  */
-export const indexMeeting = async (meeting: SearchableMeeting): Promise<void> => {
+export const indexMeeting = async (meeting: SearchableMeeting, generateEmbedding = false): Promise<void> => {
     try {
+        let meetingToIndex = { ...meeting };
+
+        if (generateEmbedding) {
+            // Generate semantic text from relevant fields
+            const semanticText = `
+                Titre: ${meeting.title}
+                Type: ${meeting.type}
+                Résolutions: ${meeting.resolutions.join(' ')}
+                Points Ordre du jour: ${meeting.agendaItemTitles.join(' ')}
+                Contenu: ${meeting.minutes.substring(0, 1000)}
+            `.trim();
+
+            try {
+                const vector = await aiService.generateEmbedding(semanticText);
+                meetingToIndex.embedding = vector;
+                logger.debug('Typesense', 'Generated embedding for meeting', { id: meeting.id });
+            } catch (e) {
+                logger.warn('Typesense', 'Failed to generate embedding, indexing without vector', { error: e });
+            }
+        }
+
         await fetchTypesense(
             `/collections/meetings/documents?action=upsert`,
             {
                 method: 'POST',
-                body: JSON.stringify(meeting)
+                body: JSON.stringify(meetingToIndex)
             },
             true // Use admin key
         );
