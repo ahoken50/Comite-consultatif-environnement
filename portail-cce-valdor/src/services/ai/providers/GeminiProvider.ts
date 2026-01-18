@@ -1,4 +1,4 @@
-import type { AIService, AIProviderId, TranscriptionResult, TranscriptionOptions, SanitizeOptions, ActionItem } from '../ai.types';
+import type { AIService, AIProviderId, TranscriptionResult, TranscriptionOptions, SanitizeOptions } from '../ai.types';
 import type { Meeting, MinutesDraft } from '../../../types/meeting.types';
 import { PromptRegistry } from '../PromptRegistry';
 
@@ -244,9 +244,99 @@ export class GeminiProvider implements AIService {
         return result.candidates?.[0]?.content?.parts?.[0]?.text || '';
     }
 
-    async extractActionItems(_minutesContent: string): Promise<ActionItem[]> {
-        // Not implemented fully for Gemini in this demo, returning empty or could implement
-        return [];
+    async extractProjects(meeting: Meeting): Promise<any[]> {
+        if (!this.isConfigured()) throw new Error('Gemini API key not configured');
+
+        // Format agenda items with their resolutions
+        const agendaItemsFormatted = (meeting.agendaItems || []).map((item, index) => {
+            let itemText = `### Point ${index + 1}: ${item.title}\n`;
+            itemText += `- Objectif: ${item.objective || 'Non spécifié'}\n`;
+            if (item.decision) itemText += `- Décision: ${item.decision}\n`;
+            if (item.minuteEntries && item.minuteEntries.length > 0) {
+                itemText += `- Résolutions/Commentaires:\n`;
+                item.minuteEntries.forEach(entry => {
+                    const prefix = entry.type === 'resolution' ? '📋 Résolution' : '💬 Commentaire';
+                    itemText += `  - ${prefix} ${entry.number || ''}: ${entry.content}\n`;
+                });
+            }
+            return itemText;
+        }).join('\n');
+
+        const prompt = PromptRegistry.actionItems.get({
+            meetingTitle: meeting.title,
+            meetingDate: meeting.date,
+            meetingType: meeting.type,
+            generalNotes: meeting.minutes || 'Aucune note générale',
+            agendaItems: agendaItemsFormatted || 'Aucun point à l\'ordre du jour'
+        });
+
+        const response = await fetch(`${GEMINI_API_URL}?key=${GEMINI_API_KEY}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                contents: [{ parts: [{ text: prompt }] }],
+                generationConfig: {
+                    temperature: 0.3,
+                    maxOutputTokens: 4096
+                }
+            })
+        });
+
+        const result: GeminiResponse = await response.json();
+        if (result.error) throw new Error(result.error.message);
+
+        const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (!text) return [];
+
+        // Parse JSON from response
+        const jsonMatch = text.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) return [];
+
+        try {
+            const parsed = JSON.parse(jsonMatch[0]);
+            return parsed.projects || [];
+        } catch (e) {
+            console.error('Failed to parse projects JSON', e);
+            return [];
+        }
+    }
+
+    async suggestFileMatches(fileNames: string[], agendaItems: string[]): Promise<Array<{ fileName: string; agendaItemTitle: string; confidence: number }>> {
+        if (!this.isConfigured()) return [];
+
+        const prompt = `Tu es un assistant administratif intelligent.
+Tâche : Associer cette liste de fichiers aux points de l'ordre du jour correspondants.
+
+FICHIERS :
+${fileNames.map(f => `- ${f}`).join('\n')}
+
+ORDRE DU JOUR :
+${agendaItems.map(a => `- ${a}`).join('\n')}
+
+RÈGLES :
+1. Analyse le nom du fichier et trouve le point le plus pertinent.
+2. Si incertain, mets une confiance basse (< 0.5).
+3. Format JSON attendu :
+[
+  { "fileName": "...", "agendaItemTitle": "...", "confidence": 0.9 }
+]
+Retourne uniquement le JSON.`;
+
+        const response = await fetch(`${GEMINI_API_URL}?key=${GEMINI_API_KEY}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                contents: [{ parts: [{ text: prompt }] }],
+                generationConfig: { temperature: 0.1 }
+            })
+        });
+
+        const data: GeminiResponse = await response.json();
+        const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (!text) return [];
+
+        const jsonMatch = text.match(/\[[\s\S]*\]/);
+        return jsonMatch ? JSON.parse(jsonMatch[0]) : [];
     }
 
     // Helper for file upload (same as before)

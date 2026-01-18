@@ -13,12 +13,12 @@ import {
     Grid,
     Alert
 } from '@mui/material';
-import { CalendarToday, LocationOn } from '@mui/icons-material';
+import { CalendarToday, LocationOn, CloudUpload, Send, PlayArrow } from '@mui/icons-material';
 import { useDispatch, useSelector } from 'react-redux';
 import type { AppDispatch } from '../../store/store';
 import type { RootState } from '../../store/rootReducer';
 import { updateMeeting } from '../../features/meetings/meetingsSlice';
-import { fetchDocumentsByEntity, deleteDocument, updateDocument } from '../../features/documents/documentsSlice';
+import { fetchDocumentsByEntity, deleteDocument, updateDocument, uploadDocument } from '../../features/documents/documentsSlice';
 import AgendaBuilder from '../../components/meetings/AgendaBuilder';
 import MinutesEditor from '../../components/meetings/MinutesEditor';
 import AttendanceManager from '../../components/meetings/AttendanceManager';
@@ -26,13 +26,18 @@ import MeetingForm from '../../components/meetings/MeetingForm';
 import DocumentList from '../../components/documents/DocumentList';
 import DocumentUpload from '../../components/documents/DocumentUpload';
 import ProjectExtractor from '../../components/meetings/ProjectExtractor';
+import BulkUploadModal from '../../components/documents/BulkUploadModal';
 import type { AgendaItem } from '../../types/meeting.types';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { useToast } from '../../hooks/useToast';
 import ConvocationDialog from '../../components/meetings/ConvocationDialog';
-import { Send, PlayArrow } from '@mui/icons-material';
 import ConvocationDashboard from '../../components/meetings/ConvocationDashboard';
+import MeetingApprovalCard from '../../components/meetings/MeetingApprovalCard';
+import ApprovalRequestsPanel from '../../components/meetings/ApprovalRequestsPanel';
+import { fetchMembers } from '../../features/members/membersSlice';
+import Breadcrumbs from '../../components/common/Breadcrumbs';
+import { AccessControl } from '../../components/auth/AccessControl';
 
 interface TabPanelProps {
     children?: React.ReactNode;
@@ -60,18 +65,12 @@ function TabPanel(props: TabPanelProps) {
     );
 }
 
-import MeetingApprovalCard from '../../components/meetings/MeetingApprovalCard';
-import ApprovalRequestsPanel from '../../components/meetings/ApprovalRequestsPanel';
-import { fetchMembers } from '../../features/members/membersSlice';
-import Breadcrumbs from '../../components/common/Breadcrumbs';
-import { AccessControl } from '../../components/auth/AccessControl';
-
 const MeetingDetailPage: React.FC = () => {
     const { id } = useParams<{ id: string }>();
     useMeetingSubscription(id);
-    // navigate removed as it was unused after Breadcrumbs update
+
     const dispatch = useDispatch<AppDispatch>();
-    const { showInfo } = useToast();
+    const { showInfo, showSuccess, showError } = useToast();
     const meeting = useSelector((state: RootState) =>
         state.meetings.items.find(m => m.id === id)
     );
@@ -129,9 +128,36 @@ const MeetingDetailPage: React.FC = () => {
                 }
             }, 600);
         }
-    }, [location.state, location.hash, meeting]); // Remove tabValue from dep array to avoid loops, add meeting to ensure data loaded
+    }, [location.state, location.hash, meeting]);
 
+    // Bulk Upload State and Handler
+    const [isBulkUploadOpen, setIsBulkUploadOpen] = useState(false);
 
+    const handleBulkUploadComplete = async (files: File[], assignments: Record<string, string>) => {
+        if (!meeting) return;
+
+        showSuccess(`Téléversement de ${files.length} fichiers en cours...`);
+
+        // Upload each file
+        for (const file of files) {
+            try {
+                await dispatch(uploadDocument({
+                    file,
+                    linkedEntityId: meeting.id,
+                    linkedEntityType: 'meeting',
+                    uploadedBy: user?.id,
+                    agendaItemId: assignments[file.name]
+                        ? meeting.agendaItems?.find(i => i.title === assignments[file.name])?.id
+                        : undefined
+                })).unwrap();
+            } catch (e) {
+                console.error(`Failed to upload ${file.name}`, e);
+                showError(`Erreur: ${file.name}`);
+            }
+        }
+        showSuccess('Importation terminée !');
+        dispatch(fetchDocumentsByEntity({ entityId: meeting.id, entityType: 'meeting' }));
+    };
 
     const handleAgendaUpdate = (newItems: AgendaItem[]) => {
         if (id) {
@@ -140,14 +166,6 @@ const MeetingDetailPage: React.FC = () => {
     };
 
     const handleDocumentUnlink = (docId: string) => {
-        // Unlink by setting agendaItemId to null (or we could use deleteField if preferred, but null is safer for now if type allows)
-        // Since API uses Partial<Document>, and agendaItemId is string | undefined.
-        // We probably want to update it to be 'undefined' or empty.
-        // However, updating to undefined usually means "no change" in many update logics unless explicit.
-        // Let's rely on the fact that Firestore treats null as a value, or we might need a specific sentinel if we really want to remove the field.
-        // For this app, let's try setting it to null (casted as any if needed, or if the type allows null).
-        // The type is `agendaItemId?: string`. So strictly it shouldn't be null.
-        // But Firestore can store null.
         dispatch(updateDocument({ id: docId, updates: { agendaItemId: null as any } }));
     };
 
@@ -173,7 +191,7 @@ const MeetingDetailPage: React.FC = () => {
                 dispatch(updateMeeting({ id: meeting.id, updates: { agendaItems: patchedItems } }));
             }
         }
-    }, [meeting, dispatch]);
+    }, [meeting, dispatch, isCoordinator]);
 
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
     const [isConvocationDialogOpen, setIsConvocationDialogOpen] = useState(false);
@@ -325,6 +343,16 @@ const MeetingDetailPage: React.FC = () => {
                 </Box>
 
                 <TabPanel value={tabValue} index={0}>
+                    <Box sx={{ mb: 2, display: 'flex', justifyContent: 'flex-end' }}>
+                        <Button
+                            startIcon={<CloudUpload />}
+                            variant="outlined"
+                            size="small"
+                            onClick={() => setIsBulkUploadOpen(true)}
+                        >
+                            Ajouter en lot (IA)
+                        </Button>
+                    </Box>
                     <AgendaBuilder
                         items={meeting.agendaItems || []}
                         onItemsChange={handleAgendaUpdate}
@@ -368,8 +396,6 @@ const MeetingDetailPage: React.FC = () => {
                     )}
                 </TabPanel>
 
-
-
                 <TabPanel value={tabValue} index={2}>
                     <AccessControl allowedRoles={['coordinator']} fallback={<Typography sx={{ py: 4, textAlign: 'center', color: 'text.secondary' }}>Accès réservé au coordonnateur</Typography>}>
                         <ConvocationDashboard
@@ -398,6 +424,16 @@ const MeetingDetailPage: React.FC = () => {
                     <Grid container spacing={3}>
                         <Grid size={{ xs: 12, md: 8 }}>
                             <Typography variant="h6" gutterBottom>Documents de la réunion</Typography>
+                            <Box sx={{ mb: 2, display: 'flex', justifyContent: 'flex-end' }}>
+                                <Button
+                                    startIcon={<CloudUpload />}
+                                    variant="outlined"
+                                    size="small"
+                                    onClick={() => setIsBulkUploadOpen(true)}
+                                >
+                                    Mode en lot (IA)
+                                </Button>
+                            </Box>
                             <DocumentList
                                 documents={documents.filter(d => d.linkedEntityId === meeting.id)}
                                 onDelete={(docId, path) => dispatch(deleteDocument({ id: docId, storagePath: path }))}
@@ -434,6 +470,16 @@ const MeetingDetailPage: React.FC = () => {
                     onClose={() => setIsConvocationDialogOpen(false)}
                     onSuccess={handleConvocationSuccess}
                     onError={handleConvocationError}
+                />
+            )}
+
+            {/* Bulk Upload Modal */}
+            {meeting && (
+                <BulkUploadModal
+                    open={isBulkUploadOpen}
+                    onClose={() => setIsBulkUploadOpen(false)}
+                    meeting={meeting}
+                    onUploadComplete={handleBulkUploadComplete}
                 />
             )}
         </Box>

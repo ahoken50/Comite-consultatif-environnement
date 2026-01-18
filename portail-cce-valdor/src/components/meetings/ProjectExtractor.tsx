@@ -21,8 +21,8 @@ import type { AppDispatch } from '../../store/store';
 import type { RootState } from '../../store/rootReducer';
 import type { Meeting } from '../../types/meeting.types';
 import type { Project } from '../../types/project.types';
-import { extractProjectsFromPV } from '../../services/geminiService';
-import type { SuggestedProject } from '../../services/geminiService';
+import { aiService } from '../../services/ai/UnifiedAIService';
+import type { SuggestedProject } from '../../services/ai/ai.types';
 import { createProject } from '../../features/projects/projectsSlice';
 
 interface ProjectExtractorProps {
@@ -67,16 +67,16 @@ const ProjectExtractor: React.FC<ProjectExtractorProps> = ({ meeting, onComplete
         setSuggestedProjects([]);
         setSelectedProjects(new Set());
 
-        const result = await extractProjectsFromPV(meeting);
-
-        setIsLoading(false);
-
-        if (result.success && result.projects) {
-            setSuggestedProjects(result.projects);
+        try {
+            const projects = await aiService.extractProjects(meeting);
+            setSuggestedProjects(projects);
             // Select all by default
-            setSelectedProjects(new Set(result.projects.map((_, i) => i)));
-        } else {
-            setError(result.error || 'Erreur inconnue');
+            setSelectedProjects(new Set(projects.map((_: SuggestedProject, i: number) => i)));
+        } catch (err) {
+            console.error(err);
+            setError(err instanceof Error ? err.message : 'Erreur inconnue');
+        } finally {
+            setIsLoading(false);
         }
     };
 
@@ -118,7 +118,7 @@ const ProjectExtractor: React.FC<ProjectExtractorProps> = ({ meeting, onComplete
                     coordinatorId: user.id,
                     description: suggested.description,
                     currentDetails: '',
-                    nextSteps: suggested.nextSteps,
+                    nextSteps: suggested.nextSteps || '',
                     linkedMeetingIds: [meeting.id],
                     linkedDocumentIds: [],
                     linkedResolutionIds: [],

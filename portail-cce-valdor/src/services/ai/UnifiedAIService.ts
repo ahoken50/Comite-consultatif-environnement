@@ -1,4 +1,4 @@
-import type { AIService, AIProviderId, TranscriptionResult, TranscriptionOptions, SanitizeOptions, ActionItem } from './ai.types';
+import type { AIService, AIProviderId, TranscriptionResult, TranscriptionOptions, SanitizeOptions, SuggestedProject } from './ai.types';
 import type { Meeting, MinutesDraft } from '../../types/meeting.types';
 
 // Registry of available providers (will be populated as we refactor)
@@ -71,8 +71,24 @@ export class UnifiedAIService implements AIService {
         return this.getProvider().generateSummary(transcription);
     }
 
-    async extractActionItems(minutesContent: string): Promise<ActionItem[]> {
-        return this.getProvider().extractActionItems(minutesContent);
+    async extractProjects(meeting: Meeting): Promise<SuggestedProject[]> {
+        return this.getProvider().extractProjects(meeting);
+    }
+
+    async suggestFileMatches(fileNames: string[], agendaItems: string[]): Promise<Array<{ fileName: string; agendaItemTitle: string; confidence: number }>> {
+        return this.getProvider().suggestFileMatches(fileNames, agendaItems);
+    }
+
+    /**
+     * Switch the active AI provider at runtime
+     */
+    setProvider(providerId: AIProviderId) {
+        if (providers[providerId]) {
+            this.id = providerId;
+            console.log(`[UnifiedAIService] Switched to ${providerId}`);
+        } else {
+            console.warn(`[UnifiedAIService] Provider ${providerId} not found`);
+        }
     }
 }
 

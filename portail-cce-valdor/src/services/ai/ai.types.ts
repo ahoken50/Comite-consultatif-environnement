@@ -82,7 +82,12 @@ export interface AIService {
     generateSummary(transcription: string): Promise<string>;
 
     /**
-     * Extract structured action items from the PV
+     * Extract structured projects from the PV
      */
-    extractActionItems(minutesContent: string): Promise<ActionItem[]>;
+    extractProjects(meeting: Meeting): Promise<SuggestedProject[]>;
+
+    /**
+     * Suggest associations between file names and agenda items
+     */
+    suggestFileMatches(fileNames: string[], agendaItems: string[]): Promise<Array<{ fileName: string; agendaItemTitle: string; confidence: number }>>;
 }

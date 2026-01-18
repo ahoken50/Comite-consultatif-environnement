@@ -1,4 +1,4 @@
-import type { AIService, AIProviderId, TranscriptionResult, TranscriptionOptions, SanitizeOptions, ActionItem } from '../ai.types';
+import type { AIService, AIProviderId, TranscriptionResult, TranscriptionOptions, SanitizeOptions } from '../ai.types';
 import type { Meeting, MinutesDraft } from '../../../types/meeting.types';
 import { functions } from '../../firebase';
 import { httpsCallable } from 'firebase/functions';
@@ -106,18 +106,13 @@ export class ClaudeProvider implements AIService {
         return data.content;
     }
 
-    async extractActionItems(minutesContent: string): Promise<ActionItem[]> {
+    async extractProjects(_meeting: Meeting): Promise<any[]> {
         // Not implemented in legacy service yet, can add new function or use chat
-        const chatFunction = httpsCallable(functions, 'chat_claude', { timeout: 120000 });
-        const result = await chatFunction({
-            systemPrompt: "Extrais les tâches au format JSON...",
-            userMessage: minutesContent
-        });
-        const data = result.data as { success: boolean; content: string };
-        try {
-            return JSON.parse(data.content);
-        } catch {
-            return [];
-        }
+        // Returning empty for now as Gemini is primary for this
+        return [];
+    }
+
+    async suggestFileMatches(_fileNames: string[], _agendaItems: string[]): Promise<any[]> {
+        return [];
     }
 }
