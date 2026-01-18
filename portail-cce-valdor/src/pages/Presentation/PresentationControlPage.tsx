@@ -44,9 +44,10 @@ const PresentationControlPage: React.FC = () => {
     // Audio Recording State
     const [isRecording, setIsRecording] = useState(false);
     const [recordingSeconds, setRecordingSeconds] = useState(0);
+    const [_currentRecordingId, setCurrentRecordingId] = useState<string | null>(null);
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-    const audioChunksRef = useRef<Blob[]>([]);
     const recordingIntervalRef = useRef<number | null>(null);
+    const [pendingRecovery, setPendingRecovery] = useState<string | null>(null); // ID of crashed recording
 
     const channelRef = useRef<BroadcastChannel | null>(null);
 
@@ -119,25 +120,59 @@ const PresentationControlPage: React.FC = () => {
         };
     }, [currentIndex, meeting, saveItemDuration]);
 
-    // Audio Logic
+    // Secure Audio Logic
+    useEffect(() => {
+        const checkRecovery = async () => {
+            const { secureRecordingManager } = await import('../../services/audio/SecureRecordingManager');
+            const pending = await secureRecordingManager.listPendingRecordings();
+            if (pending.length > 0) {
+                setPendingRecovery(pending[0].id);
+            }
+        };
+        checkRecovery();
+    }, []);
+
     const startRecording = async () => {
         try {
+            const { secureRecordingManager } = await import('../../services/audio/SecureRecordingManager');
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            mediaRecorderRef.current = new MediaRecorder(stream);
-            audioChunksRef.current = [];
-            mediaRecorderRef.current.ondataavailable = (event) => audioChunksRef.current.push(event.data);
-            mediaRecorderRef.current.onstop = () => {
-                const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-                const link = document.createElement('a');
-                link.href = URL.createObjectURL(audioBlob);
-                link.download = `Enregistrement_CCE_${new Date().toISOString()}.webm`;
-                link.click();
+
+            // Start secure session
+            const recId = await secureRecordingManager.startRecording('audio/webm');
+            setCurrentRecordingId(recId);
+
+            mediaRecorderRef.current = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+
+            let chunkIndex = 0;
+            mediaRecorderRef.current.ondataavailable = async (event) => {
+                if (event.data.size > 0 && recId) {
+                    await secureRecordingManager.saveChunk(recId, event.data, chunkIndex++);
+                }
             };
-            mediaRecorderRef.current.start();
+
+            mediaRecorderRef.current.onstop = async () => {
+                if (recId) {
+                    await secureRecordingManager.completeRecording(recId);
+                    // Generate download immediately
+                    const blob = await secureRecordingManager.recoverRecording(recId);
+                    if (blob) {
+                        const link = document.createElement('a');
+                        link.href = URL.createObjectURL(blob);
+                        link.download = `Enregistrement_Securise_${new Date().toISOString()}.webm`;
+                        link.click();
+
+                        // Optional: Clean up after download or keep as backup?
+                        // For now keep as backup.
+                    }
+                }
+            };
+
+            mediaRecorderRef.current.start(1000); // Save chunk every 1s
             setIsRecording(true);
             recordingIntervalRef.current = window.setInterval(() => setRecordingSeconds(s => s + 1), 1000);
         } catch (err) {
-            alert("Impossible d'accéder au microphone.");
+            console.error(err);
+            alert("Impossible d'accéder au microphone ou erreurs IndexDB.");
         }
     };
 
@@ -147,7 +182,29 @@ const PresentationControlPage: React.FC = () => {
             if (recordingIntervalRef.current) clearInterval(recordingIntervalRef.current);
             setIsRecording(false);
             setRecordingSeconds(0);
+            setCurrentRecordingId(null);
         }
+    };
+
+    const handleRecover = async () => {
+        if (!pendingRecovery) return;
+        const { secureRecordingManager } = await import('../../services/audio/SecureRecordingManager');
+        const blob = await secureRecordingManager.recoverRecording(pendingRecovery);
+        if (blob) {
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = `Récupération_Crash_${new Date().toISOString()}.webm`;
+            link.click();
+        }
+        await secureRecordingManager.deleteRecording(pendingRecovery);
+        setPendingRecovery(null);
+    };
+
+    const handleDiscardRecovery = async () => {
+        if (!pendingRecovery) return;
+        const { secureRecordingManager } = await import('../../services/audio/SecureRecordingManager');
+        await secureRecordingManager.deleteRecording(pendingRecovery);
+        setPendingRecovery(null);
     };
 
     const formatDuration = (totalSeconds: number) => {
@@ -249,13 +306,33 @@ const PresentationControlPage: React.FC = () => {
                         sx={{
                             display: 'flex', alignItems: 'center', gap: 1.5, px: 2, py: 1, borderRadius: 10, transition: 'all 0.3s',
                             bgcolor: isRecording ? '#fff1f2' : '#f8fafc', color: isRecording ? '#e11d48' : '#64748b',
-                            border: 'none', cursor: 'pointer', outline: 'none',
+                            border: '2px solid', borderColor: isRecording ? '#e11d48' : 'transparent',
+                            cursor: 'pointer', outline: 'none',
                             '&:hover': { bgcolor: isRecording ? '#ffe4e6' : '#f1f5f9' }
                         }}
                     >
                         <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: isRecording ? '#ef4444' : '#94a3b8', animation: isRecording ? 'pulse 2s infinite' : 'none' }} />
-                        <Typography variant="caption" fontWeight="bold" sx={{ fontFamily: 'monospace' }}>{formatDuration(recordingSeconds)}</Typography>
+                        <Typography variant="caption" fontWeight="bold" sx={{ fontFamily: 'monospace' }}>
+                            {formatDuration(recordingSeconds)}
+                        </Typography>
+                        {isRecording && <Box title="Enregistrement Sécurisé Activé (Anti-Crash)" sx={{ fontSize: 12 }}>🛡️</Box>}
                     </Box>
+
+                    {/* Recovery Alert */}
+                    <Backdrop open={!!pendingRecovery} sx={{ zIndex: 2000 }}>
+                        <Box sx={{ bgcolor: 'white', p: 4, borderRadius: 2, boxShadow: 24, textAlign: 'center' }}>
+                            <Typography variant="h5" color="warning.main" gutterBottom>⚠️ Enregistrement non terminé détecté</Typography>
+                            <Typography sx={{ mb: 3 }}>Il semble que l'application a quitté inopinément pendant un enregistrement.</Typography>
+                            <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center' }}>
+                                <Box component="button" onClick={handleRecover} sx={{ px: 3, py: 1, bgcolor: '#059669', color: 'white', borderRadius: 1, border: 'none', cursor: 'pointer' }}>
+                                    Récupérer le fichier
+                                </Box>
+                                <Box component="button" onClick={handleDiscardRecovery} sx={{ px: 3, py: 1, bgcolor: '#ef4444', color: 'white', borderRadius: 1, border: 'none', cursor: 'pointer' }}>
+                                    Supprimer
+                                </Box>
+                            </Box>
+                        </Box>
+                    </Backdrop>
 
                     <TopicTimer
                         initialMinutes={currentItem.durationInMinutes}
