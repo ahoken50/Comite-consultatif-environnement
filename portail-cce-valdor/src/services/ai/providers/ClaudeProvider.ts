@@ -2,6 +2,7 @@ import type { AIService, AIProviderId, TranscriptionResult, TranscriptionOptions
 import type { Meeting, MinutesDraft } from '../../../types/meeting.types';
 import { functions } from '../../firebase';
 import { httpsCallable } from 'firebase/functions';
+import { PromptRegistry } from '../PromptRegistry';
 
 export class ClaudeProvider implements AIService {
     id: AIProviderId = 'claude';
@@ -19,22 +20,32 @@ export class ClaudeProvider implements AIService {
         throw new Error("Direct audio transcription with Claude is not supported yet (use Whisper/Gemini).");
     }
 
-    async generateDraft(meeting: Meeting, transcription: string, _historicalContext?: string): Promise<MinutesDraft> {
+    async generateDraft(meeting: Meeting, transcription: string, historicalContext?: string): Promise<MinutesDraft> {
         console.log('[Claude] Calling Cloud Function generate_minutes_claude...');
 
-        // System prompt logic is hidden in backend or simpler here?
-        // authentic logic from claudeService.ts:
-        // const systemPrompt = "Tu es un rédacteur expert de procès-verbaux..."; // Simplified, backend has real one?
-        // Actually, claudeService passed params to backend function.
-        // Let's call the wrapper function that calls `generate_minutes_claude`.
+        const attendeesList = meeting.attendees?.map(a => `${a.name} (${a.role})`).join('\n') || 'Non spécifié';
+        const agendaList = meeting.agendaItems?.map((item, i) => `${i + 1}. ${item.title}`).join('\n') || 'Non spécifié';
+
+        // Use Registry to construct the prompt
+        // Note: Claude Function expects 'systemPrompt' and 'userMessage' separation.
+        // We can pass the full prompt as userMessage if we want, or adapt the Registry.
+        // For now, let's use the registry content as the primary instruction.
+
+        const fullPrompt = PromptRegistry.minutesDraft.get({
+            meetingTitle: meeting.title,
+            meetingDate: meeting.date,
+            meetingLocation: meeting.location || 'Salle de conférence',
+            attendeesList,
+            agendaList,
+            transcription,
+            historicalContext: historicalContext || ''
+        });
 
         const generateFunction = httpsCallable(functions, 'generate_minutes_claude', { timeout: 540000 });
         const result = await generateFunction({
             meetingId: meeting.id,
-            systemPrompt: "Tu es un expert...", // Backend likely constructs this if omitted, or we pass it.
-            // Check legacy service: it passed full prompts.
-            // For now, let's keep it simple or copy prompt logic if necessary.
-            userMessage: `TRANSCRIPTION:\n${transcription.substring(0, 100000)}`
+            systemPrompt: "Tu es un rédacteur expert. Suis les instructions fournies.",
+            userMessage: fullPrompt
         });
 
         const data = result.data as { success: boolean; content: string; error?: string };
@@ -52,11 +63,17 @@ export class ClaudeProvider implements AIService {
         const currentDraft = meeting.minutesDraft?.content;
         if (!currentDraft) throw new Error("No draft to finalize");
 
+        const fullPrompt = PromptRegistry.draftFinalize.get({
+            currentDraft,
+            userFeedback: feedback
+        });
+
         const finalizeFunction = httpsCallable(functions, 'finalize_draft_claude', { timeout: 540000 });
         const result = await finalizeFunction({
             meetingId: meeting.id,
-            userMessage: `FEEDBACK: ${feedback}\n\nDRAFT: ${currentDraft}`,
-            userFeedback: feedback
+            systemPrompt: "Tu es un assistant de rédaction.",
+            userMessage: fullPrompt,
+            userFeedback: feedback // Keeping strictly for compatibility if backend uses it
         });
 
         const data = result.data as { success: boolean; content: string };
