@@ -401,7 +401,7 @@ export const syncProjectToTypesense = onDocumentWritten({
 
 export const syncRegulationToTypesense = onDocumentWritten({
     document: "regulations/{regulationId}",
-    secrets: [typesense.typesenseApiKey, typesense.typesenseHost],
+    secrets: [typesense.typesenseApiKey, typesense.typesenseHost, googleApiKey],
 }, async (event) => {
     const regulationId = event.params.regulationId;
     const change = event.data;
@@ -416,13 +416,34 @@ export const syncRegulationToTypesense = onDocumentWritten({
     const data = change.after.data();
     if (!data) return;
 
+    // Generate Embedding using Gemini
+    let embedding: number[] | undefined;
+    try {
+        const apiKey = googleApiKey.value();
+        if (apiKey && (data.title || data.content)) {
+            const genAI = new GoogleGenerativeAI(apiKey);
+            const model = genAI.getGenerativeModel({ model: "text-embedding-004" });
+
+            const textToEmbed = `${data.title || ''}\n${data.content || ''}`.trim().substring(0, 9000); // Limit context
+            if (textToEmbed) {
+                const result = await model.embedContent(textToEmbed);
+                embedding = result.embedding.values;
+                console.log(`[Typesense] Generated embedding for regulation ${regulationId}`);
+            }
+        }
+    } catch (error) {
+        console.error(`[Typesense] Failed to generate embedding for ${regulationId}`, error);
+        // Continue indexing without embedding (fallback to keyword search)
+    }
+
     const searchableRegulation: typesense.SearchableRegulation = {
         id: regulationId,
         title: data.title || "Sans titre",
         content: data.content || "",
         category: data.category || "Général",
         year: data.year || new Date().getFullYear(),
-        status: data.status || "active"
+        status: data.status || "active",
+        embedding: embedding
     };
 
     await typesense.indexRegulation(searchableRegulation);

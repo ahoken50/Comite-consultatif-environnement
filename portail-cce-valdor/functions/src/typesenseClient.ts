@@ -38,6 +38,7 @@ interface SearchableRegulation {
     category: string;
     year: number;
     status: string;
+    embedding?: number[];
 }
 
 // Helper to get client configuration
