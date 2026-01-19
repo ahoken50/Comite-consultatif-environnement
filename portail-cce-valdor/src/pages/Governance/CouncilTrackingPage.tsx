@@ -22,6 +22,8 @@ import type { AppDispatch } from '../../store/store';
 import { fetchRecommendations, selectRecommendations } from '../../features/governance/governanceSlice';
 import type { CouncilRecommendation } from '../../types/recommendation.types';
 import RecommendationBuilder from '../../components/governance/RecommendationBuilder';
+import type { RecommendationInitialData } from '../../components/governance/RecommendationBuilder';
+import { useLocation } from 'react-router-dom';
 
 import RecommendationDetailsDialog from '../../components/governance/RecommendationDetailsDialog';
 import { AccessControl } from '../../components/auth/AccessControl';
@@ -30,6 +32,18 @@ const CouncilTrackingPage: React.FC = () => {
     const dispatch = useDispatch<AppDispatch>();
     const recommendations = useSelector(selectRecommendations);
     const [isBuilderOpen, setIsBuilderOpen] = useState(false);
+    const location = useLocation();
+    const [initialBuilderData, setInitialBuilderData] = useState<RecommendationInitialData | null>(null);
+
+    // Check for navigation state to open builder automatically
+    useEffect(() => {
+        if (location.state && location.state.createRecommendation) {
+            setInitialBuilderData(location.state.createRecommendation);
+            setIsBuilderOpen(true);
+            // Clear state to prevent reopening on refresh (optional, but good practice)
+            window.history.replaceState({}, document.title);
+        }
+    }, [location]);
 
     // Details Dialog State
     const [selectedRec, setSelectedRec] = useState<CouncilRecommendation | null>(null);
@@ -167,10 +181,14 @@ const CouncilTrackingPage: React.FC = () => {
                 maxWidth="md"
                 fullWidth
             >
-                <RecommendationBuilder onClose={() => {
-                    setIsBuilderOpen(false);
-                    dispatch(fetchRecommendations());
-                }} />
+                <RecommendationBuilder
+                    onClose={() => {
+                        setIsBuilderOpen(false);
+                        setInitialBuilderData(null);
+                        dispatch(fetchRecommendations());
+                    }}
+                    initialData={initialBuilderData}
+                />
             </Dialog>
 
             <RecommendationDetailsDialog

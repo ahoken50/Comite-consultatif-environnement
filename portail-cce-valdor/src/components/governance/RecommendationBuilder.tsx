@@ -56,11 +56,23 @@ import { useToast } from '../../hooks/useToast';
 
 const steps = ['Détails de base', 'Considérants & Analyse', 'Liaisons Stratégiques', 'Révision'];
 
-interface RecommendationBuilderProps {
-    onClose?: () => void;
+export interface RecommendationInitialData {
+    meetingId: string;
+    meetingDate: string;
+    sourceResolutionNumber: string;
+    sourceResolutionContent: string;
+    projectName: string;
+    description: string;
+    notes?: string;
+    considerants?: string[];
 }
 
-const RecommendationBuilder: React.FC<RecommendationBuilderProps> = ({ onClose }) => {
+interface RecommendationBuilderProps {
+    onClose?: () => void;
+    initialData?: RecommendationInitialData | null;
+}
+
+const RecommendationBuilder: React.FC<RecommendationBuilderProps> = ({ onClose, initialData }) => {
     const dispatch = useDispatch<AppDispatch>();
     const navigate = useNavigate();
     const { showWarning } = useToast();
@@ -92,6 +104,26 @@ const RecommendationBuilder: React.FC<RecommendationBuilderProps> = ({ onClose }
 
     const [considerants, setConsiderants] = useState<string[]>(['']);
     const [newLink, setNewLink] = useState({ policyName: '', regulationArticle: '' });
+
+    // Handle Initial Data (Link from Resolution)
+    useEffect(() => {
+        if (initialData) {
+            setFormData(prev => ({
+                ...prev,
+                projectName: initialData.projectName,
+                meetingId: initialData.meetingId,
+                meetingDate: initialData.meetingDate,
+                sourceResolutionNumber: initialData.sourceResolutionNumber,
+                sourceResolutionContent: initialData.sourceResolutionContent,
+                description: initialData.description,
+                notes: initialData.notes
+            }));
+
+            if (initialData.considerants && initialData.considerants.length > 0) {
+                setConsiderants(initialData.considerants);
+            }
+        }
+    }, [initialData]);
 
     // AI Workflow State
     const [aiWizardOpen, setAiWizardOpen] = useState(false);

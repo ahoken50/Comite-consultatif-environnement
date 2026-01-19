@@ -17,7 +17,7 @@ import { Sync, Search, Info } from '@mui/icons-material';
 import { collection, getDocs, query } from 'firebase/firestore';
 import { db } from '../../services/firebase';
 import { parseAnyDate } from '../../utils/dateUtils';
-import { indexMeeting, indexProject, getTypesenseStatus, checkTypesenseHealth } from '../../services/typesenseService';
+import { indexMeeting, indexProject, getTypesenseStatus, checkTypesenseHealth, ensureCollectionsExist } from '../../services/typesenseService';
 import type { Meeting } from '../../types/meeting.types';
 import type { SearchableMeeting, SearchableProject } from '../../services/typesenseService';
 
@@ -46,7 +46,11 @@ const SearchIndexManager: React.FC = () => {
                 throw new Error(`Impossible de contacter Typesense: ${health.error || 'Erreur inconnue'}`);
             }
 
-            // 2. Fetch all data
+            // 2. Ensure Collections Exist
+            setStatus({ type: 'info', message: 'Vérification des schémas de collection...' });
+            await ensureCollectionsExist();
+
+            // 3. Fetch all data
             setStatus({ type: 'info', message: 'Lecture des données Firestore...' });
 
             const meetingsSnapshot = await getDocs(query(collection(db, 'meetings')));

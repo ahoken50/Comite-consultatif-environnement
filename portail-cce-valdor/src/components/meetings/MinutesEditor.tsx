@@ -658,6 +658,8 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate, readOn
                                 onMinuteEntryChange={handleMinuteEntryChange}
                                 onAddMinuteEntry={handleAddMinuteEntry}
                                 onDecisionChange={handleDecisionChange}
+                                meetingId={meeting.id}
+                                meetingDate={meeting.date}
                             />
                         </Grid>
                     ))}

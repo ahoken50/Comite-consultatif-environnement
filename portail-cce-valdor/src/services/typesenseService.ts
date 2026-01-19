@@ -446,6 +446,43 @@ export const deleteFromIndex = async (
     }
 };
 
+/**
+ * Ensure all required collections exist in Typesense
+ * Creates them if they are missing
+ */
+export const ensureCollectionsExist = async (): Promise<void> => {
+    try {
+        const collectionsToCheck = Object.values(COLLECTIONS);
+
+        for (const collectionSchema of collectionsToCheck) {
+            try {
+                // Check if collection exists
+                await fetchTypesense(`/collections/${collectionSchema.name}`);
+                logger.debug('Typesense', `Collection ${collectionSchema.name} exists`);
+            } catch (e: any) {
+                // If 404, create it
+                if (e.message && e.message.includes('404')) {
+                    logger.info('Typesense', `Collection ${collectionSchema.name} not found, creating...`);
+                    await fetchTypesense(
+                        '/collections',
+                        {
+                            method: 'POST',
+                            body: JSON.stringify(collectionSchema)
+                        },
+                        true // Use admin key
+                    );
+                    logger.info('Typesense', `Created collection ${collectionSchema.name}`);
+                } else {
+                    throw e;
+                }
+            }
+        }
+    } catch (error) {
+        logger.error('Typesense', 'Failed to ensure collections exist', { error });
+        throw error;
+    }
+};
+
 // ============================================
 // UTILITIES
 // ============================================
@@ -631,6 +668,7 @@ export default {
     indexProject,
     indexRegulation,
     deleteFromIndex,
+    ensureCollectionsExist,
     checkTypesenseHealth,
     getTypesenseStatus,
     COLLECTIONS

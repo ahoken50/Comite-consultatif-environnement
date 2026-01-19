@@ -13,6 +13,8 @@ interface AgendaItemEditorProps {
     onAddMinuteEntry: (itemId: string) => void;
     onDecisionChange: (itemId: string, value: string) => void;
     readOnly?: boolean;
+    meetingId?: string;
+    meetingDate?: string;
 }
 
 /**
@@ -27,7 +29,9 @@ const AgendaItemEditor: React.FC<AgendaItemEditorProps> = ({
     onMinuteEntryChange,
     onAddMinuteEntry,
     onDecisionChange,
-    readOnly = false
+    readOnly = false,
+    meetingId,
+    meetingDate
 }) => {
     return (
         <Box sx={{ bgcolor: 'background.default', p: 2, borderRadius: 1 }}>
@@ -60,6 +64,8 @@ const AgendaItemEditor: React.FC<AgendaItemEditorProps> = ({
                             readOnly={readOnly}
                             itemTitle={item.title}
                             itemDescription={item.description || ''}
+                            meetingId={meetingId}
+                            meetingDate={meetingDate}
                         />
                     ))}
                 </Box>

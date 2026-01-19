@@ -4,6 +4,7 @@ import { AutoMode, Link, Shield, CheckCircle, Warning, HelpOutline, AutoAwesome 
 import type { MinuteEntry } from '../../types/meeting.types';
 import typesenseService, { searchMeetings } from '../../services/typesenseService';
 import { aiService } from '../../services/ai/UnifiedAIService';
+import { useNavigate } from 'react-router-dom';
 import JurisprudenceChatBox from '../search/JurisprudenceChatBox';
 
 interface MinuteEntryEditorProps {
@@ -14,6 +15,8 @@ interface MinuteEntryEditorProps {
     readOnly?: boolean;
     itemTitle: string;
     itemDescription: string;
+    meetingId?: string;
+    meetingDate?: string;
 }
 
 /**
@@ -27,8 +30,11 @@ const MinuteEntryEditor: React.FC<MinuteEntryEditorProps> = ({
     onChange,
     readOnly = false,
     itemTitle,
-    itemDescription
+    itemDescription,
+    meetingId,
+    meetingDate
 }) => {
+    const navigate = useNavigate();
     const [isExpanded, setIsExpanded] = useState(false);
     const [isDrafting, setIsDrafting] = useState(false);
     const [showChat, setShowChat] = useState(false);
@@ -174,6 +180,28 @@ const MinuteEntryEditor: React.FC<MinuteEntryEditorProps> = ({
         ? "CONSIDÉRANT que...\n\nIL EST RÉSOLU..."
         : "Saisir le commentaire...";
 
+    const handleCreateRecommendation = () => {
+        if (!meetingId || !meetingDate) {
+            alert("Erreur: Informations de réunion manquantes");
+            return;
+        }
+
+        navigate('/recommendations', {
+            state: {
+                createRecommendation: {
+                    meetingId: meetingId,
+                    meetingDate: meetingDate,
+                    sourceResolutionNumber: entry.number || '',
+                    sourceResolutionContent: entry.content || '',
+                    projectName: itemTitle,
+                    description: entry.content || '',
+                    notes: '', // Optional notes
+                    considerants: [] // Could try to extract considerants here too if needed
+                }
+            }
+        });
+    };
+
     return (
         <Box
             id={`resolution-${itemId}-${entryIndex}`}
@@ -211,6 +239,21 @@ const MinuteEntryEditor: React.FC<MinuteEntryEditorProps> = ({
                         disabled={readOnly}
                     />
                 </Grid>
+                {entry.type === 'resolution' && !readOnly && meetingId && (
+                    <Grid size={{ xs: 12, sm: 4 }} sx={{ display: 'flex', alignItems: 'flex-end', pb: 0.5 }}>
+                        <Button
+                            variant="outlined"
+                            size="small"
+                            color="secondary"
+                            onClick={handleCreateRecommendation}
+                            startIcon={<AutoAwesome />}
+                            fullWidth
+                            title="Créer une recommandation au conseil basée sur cette résolution"
+                        >
+                            Promouvoir en Recommandation
+                        </Button>
+                    </Grid>
+                )}
             </Grid>
             <TextField
                 fullWidth

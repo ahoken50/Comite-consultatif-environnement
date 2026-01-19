@@ -39,7 +39,7 @@ import MeetingChecklist from '../../components/meetings/MeetingChecklist';
 import { fetchMembers } from '../../features/members/membersSlice';
 import Breadcrumbs from '../../components/common/Breadcrumbs';
 import { AccessControl } from '../../components/auth/AccessControl';
-import { getLatestConvocation } from '../../services/convocationService';
+import { hasAnyConvocation } from '../../services/convocationService';
 
 interface TabPanelProps {
     children?: React.ReactNode;
@@ -92,9 +92,9 @@ const MeetingDetailPage: React.FC = () => {
             dispatch(fetchDocumentsByEntity({ entityId: id, entityType: 'meeting' }));
             dispatch(fetchMembers());
 
-            // Check if convocation has been sent
-            getLatestConvocation(id).then(convocation => {
-                setHasConvocation(!!convocation);
+            // Check if convocation has been sent (Avis or Regular)
+            hasAnyConvocation(id).then(hasSent => {
+                setHasConvocation(hasSent);
             }).catch(err => {
                 console.warn('Could not check convocation status:', err);
             });

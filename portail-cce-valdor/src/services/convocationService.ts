@@ -375,6 +375,29 @@ export const getLatestConvocation = async (meetingId: string): Promise<Convocati
 };
 
 /**
+ * Check if ANY convocation (Avis or Regular) has been sent
+ * Used for the checklist status
+ */
+export const hasAnyConvocation = async (meetingId: string): Promise<boolean> => {
+    try {
+        // Check for regular convocations
+        const convocationsRef = collection(db, 'meetings', meetingId, 'convocations');
+        const convSnapshot = await getDocs(query(convocationsRef, orderBy('createdAt', 'desc'), where('sentAt', '!=', null)));
+
+        if (!convSnapshot.empty) return true;
+
+        // Check for avis convocations (Phase 1)
+        const avisRef = collection(db, 'meetings', meetingId, 'avis_convocations');
+        const avisSnapshot = await getDocs(query(avisRef, orderBy('createdAt', 'desc')));
+
+        return !avisSnapshot.empty;
+    } catch (error) {
+        console.error('Error checking convocation status:', error);
+        return false;
+    }
+};
+
+/**
  * Get convocation statistics
  */
 export const getConvocationStats = async (meetingId: string): Promise<ConvocationStats | null> => {
