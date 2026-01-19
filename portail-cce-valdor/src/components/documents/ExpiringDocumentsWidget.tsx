@@ -19,6 +19,7 @@ import { db } from '../../services/firebase';
 import { formatDistanceToNow, differenceInDays } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { useNavigate } from 'react-router-dom';
+import { safeDate } from '../../utils/dateUtils';
 import type { Document } from '../../types/document.types';
 
 interface ExpiringDocumentsWidgetProps {
@@ -60,18 +61,9 @@ const ExpiringDocumentsWidget: React.FC<ExpiringDocumentsWidgetProps> = ({
 
             // Sort by expiration date (soonest first)
             docs.sort((a, b) => {
-                const getDate = (d: any) => {
-                    if (!d) return Infinity;
-                    // Handle Firestore Timestamp
-                    if (d.toDate && typeof d.toDate === 'function') {
-                        return d.toDate().getTime();
-                    }
-                    // Handle String or Date
-                    const date = new Date(d);
-                    return isNaN(date.getTime()) ? Infinity : date.getTime();
-                };
-
-                return getDate(a.expirationDate) - getDate(b.expirationDate);
+                const dateA = safeDate(a.expirationDate)?.getTime() ?? Infinity;
+                const dateB = safeDate(b.expirationDate)?.getTime() ?? Infinity;
+                return dateA - dateB;
             });
 
             setDocuments(docs);
@@ -89,17 +81,9 @@ const ExpiringDocumentsWidget: React.FC<ExpiringDocumentsWidgetProps> = ({
 
     const getExpirationStatus = (expirationDate: any) => {
         const now = new Date();
-        let expDate: Date;
+        const expDate = safeDate(expirationDate);
 
-        // Handle Firestore Timestamp
-        if (expirationDate && expirationDate.toDate && typeof expirationDate.toDate === 'function') {
-            expDate = expirationDate.toDate();
-        } else {
-            expDate = new Date(expirationDate);
-        }
-
-        // Safety check
-        if (isNaN(expDate.getTime())) {
+        if (!expDate) {
             return { label: 'Date invalide', color: 'default' as const };
         }
 

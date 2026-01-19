@@ -4,6 +4,7 @@ import { Event, AccessTime } from '@mui/icons-material';
 import { format, differenceInDays } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { useNavigate } from 'react-router-dom';
+import { safeDate } from '../../utils/dateUtils';
 import type { Meeting } from '../../types/meeting.types';
 
 interface NextMeetingCardProps {
@@ -17,7 +18,7 @@ interface NextMeetingCardProps {
 const NextMeetingCard: React.FC<NextMeetingCardProps> = ({ meeting }) => {
     const navigate = useNavigate();
 
-    const nextMeetingDate = meeting ? new Date(meeting.date) : null;
+    const nextMeetingDate = meeting ? safeDate(meeting.date) : null;
     const daysUntil = nextMeetingDate ? differenceInDays(nextMeetingDate, new Date()) : 0;
 
     // Calculate color based on days remaining
