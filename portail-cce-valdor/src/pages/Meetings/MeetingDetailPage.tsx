@@ -39,6 +39,7 @@ import MeetingChecklist from '../../components/meetings/MeetingChecklist';
 import { fetchMembers } from '../../features/members/membersSlice';
 import Breadcrumbs from '../../components/common/Breadcrumbs';
 import { AccessControl } from '../../components/auth/AccessControl';
+import { getLatestConvocation } from '../../services/convocationService';
 
 interface TabPanelProps {
     children?: React.ReactNode;
@@ -82,6 +83,7 @@ const MeetingDetailPage: React.FC = () => {
     const isCoordinator = user?.role === 'coordinator';
 
     const [tabValue, setTabValue] = useState(0);
+    const [hasConvocation, setHasConvocation] = useState(false);
 
     const location = useLocation();
 
@@ -89,6 +91,13 @@ const MeetingDetailPage: React.FC = () => {
         if (id) {
             dispatch(fetchDocumentsByEntity({ entityId: id, entityType: 'meeting' }));
             dispatch(fetchMembers());
+
+            // Check if convocation has been sent
+            getLatestConvocation(id).then(convocation => {
+                setHasConvocation(!!convocation);
+            }).catch(err => {
+                console.warn('Could not check convocation status:', err);
+            });
         }
     }, [dispatch, id]);
 
@@ -336,7 +345,7 @@ const MeetingDetailPage: React.FC = () => {
 
                 {/* #3.1 Meeting Preparation Checklist */}
                 {meeting.status === 'scheduled' && (
-                    <MeetingChecklist meeting={meeting} />
+                    <MeetingChecklist meeting={meeting} hasConvocation={hasConvocation} />
                 )}
 
                 <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>

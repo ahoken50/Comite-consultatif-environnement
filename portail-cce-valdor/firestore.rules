@@ -166,5 +166,14 @@ service cloud.firestore {
       allow update: if isAuthenticated() && (resource.data.userId == request.auth.uid || isCoordinator());
       allow delete: if isAuthenticated() && (resource.data.userId == request.auth.uid || isCoordinator());
     }
+
+    // Sessions Collection (#10.2)
+    // - Users can read/write their own sessions (for SessionsManager)
+    // - Coordinators can view all sessions
+    match /sessions/{sessionId} {
+      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isCoordinator());
+      allow create: if isAuthenticated();
+      allow update, delete: if isAuthenticated() && (resource.data.userId == request.auth.uid || isCoordinator());
+    }
   }
 }

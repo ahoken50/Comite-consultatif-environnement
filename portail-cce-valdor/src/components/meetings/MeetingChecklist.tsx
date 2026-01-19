@@ -24,6 +24,7 @@ import type { Meeting } from '../../types/meeting.types';
 
 interface MeetingChecklistProps {
     meeting: Meeting;
+    hasConvocation?: boolean; // Optional: pass true if convocation has been sent
 }
 
 interface ChecklistItem {
@@ -39,7 +40,7 @@ interface ChecklistItem {
  * Meeting Preparation Checklist (#3.1)
  * Shows a checklist of items to verify before a meeting
  */
-const MeetingChecklist: React.FC<MeetingChecklistProps> = ({ meeting }) => {
+const MeetingChecklist: React.FC<MeetingChecklistProps> = ({ meeting, hasConvocation }) => {
 
     const checklistItems: ChecklistItem[] = useMemo(() => {
         const items: ChecklistItem[] = [];
@@ -71,13 +72,14 @@ const MeetingChecklist: React.FC<MeetingChecklistProps> = ({ meeting }) => {
             importance: 'critical'
         });
 
-        // 3. Convocation sent (check if any RSVP exists - indicates convocation was sent)
-        const convocationSent = rsvps.length > 0;
+        // 3. Convocation sent (check prop first, then fallback to RSVPs)
+        // Note: The actual convocation state is in a subcollection, so prefer the prop
+        const convocationSent = hasConvocation ?? (rsvps.length > 0);
         items.push({
             id: 'convocation',
             label: 'Avis de convocation',
             description: convocationSent
-                ? `Envoyé à ${rsvps.length} membre(s)`
+                ? `Envoyé à ${rsvps.length || 'plusieurs'} membre(s)`
                 : 'Aucune convocation envoyée',
             isComplete: convocationSent,
             icon: <Email />,
@@ -129,16 +131,16 @@ const MeetingChecklist: React.FC<MeetingChecklistProps> = ({ meeting }) => {
 
     const getProgressColor = () => {
         if (progressPercentage === 100) return 'success';
-        if (criticalIncomplete.length > 0) return 'error';
-        if (progressPercentage >= 60) return 'warning';
-        return 'error';
+        if (progressPercentage >= 80) return 'info';
+        if (progressPercentage >= 40) return 'warning';
+        return 'warning'; // Use warning instead of error for softer appearance
     };
 
     const getImportanceColor = (importance: string) => {
         switch (importance) {
-            case 'critical': return 'error';
-            case 'important': return 'warning';
-            default: return 'info';
+            case 'critical': return 'warning'; // Changed from 'error' to 'warning'
+            case 'important': return 'info';
+            default: return 'default';
         }
     };
 
@@ -164,18 +166,20 @@ const MeetingChecklist: React.FC<MeetingChecklistProps> = ({ meeting }) => {
 
             {criticalIncomplete.length > 0 && (
                 <Box sx={{
-                    bgcolor: 'error.light',
-                    color: 'error.contrastText',
-                    p: 1,
+                    bgcolor: 'warning.light',
+                    color: 'warning.dark',
+                    p: 1.5,
                     borderRadius: 1,
                     mb: 2,
                     display: 'flex',
                     alignItems: 'center',
-                    gap: 1
+                    gap: 1,
+                    border: '1px solid',
+                    borderColor: 'warning.main'
                 }}>
                     <Warning fontSize="small" />
                     <Typography variant="body2">
-                        {criticalIncomplete.length} élément(s) critique(s) non complété(s)
+                        {criticalIncomplete.length} élément(s) à compléter avant la réunion
                     </Typography>
                 </Box>
             )}
@@ -187,7 +191,7 @@ const MeetingChecklist: React.FC<MeetingChecklistProps> = ({ meeting }) => {
                             {item.isComplete ? (
                                 <CheckCircle color="success" />
                             ) : (
-                                <Cancel color="error" />
+                                <Cancel color="warning" />
                             )}
                         </ListItemIcon>
                         <ListItemText
