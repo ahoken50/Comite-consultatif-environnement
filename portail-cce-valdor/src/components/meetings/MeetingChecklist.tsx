@@ -74,7 +74,7 @@ const MeetingChecklist: React.FC<MeetingChecklistProps> = ({ meeting, hasConvoca
 
         // 3. Convocation sent (check prop first, then fallback to RSVPs)
         // Note: The actual convocation state is in a subcollection, so prefer the prop
-        const convocationSent = hasConvocation ?? (rsvps.length > 0);
+        const convocationSent = (hasConvocation === true) || (rsvps.length > 0);
         items.push({
             id: 'convocation',
             label: 'Avis de convocation',

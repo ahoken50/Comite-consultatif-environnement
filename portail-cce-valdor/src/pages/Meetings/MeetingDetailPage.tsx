@@ -83,7 +83,7 @@ const MeetingDetailPage: React.FC = () => {
     const isCoordinator = user?.role === 'coordinator';
 
     const [tabValue, setTabValue] = useState(0);
-    const [hasConvocation, setHasConvocation] = useState(false);
+    const [hasConvocation, setHasConvocation] = useState<boolean | undefined>(undefined);
 
     const location = useLocation();
 
@@ -94,9 +94,11 @@ const MeetingDetailPage: React.FC = () => {
 
             // Check if convocation has been sent (Avis or Regular)
             hasAnyConvocation(id).then(hasSent => {
+                console.log('Convocation status check:', hasSent);
                 setHasConvocation(hasSent);
             }).catch(err => {
                 console.warn('Could not check convocation status:', err);
+                // Keep undefined to verify with RSVPs
             });
         }
     }, [dispatch, id]);
