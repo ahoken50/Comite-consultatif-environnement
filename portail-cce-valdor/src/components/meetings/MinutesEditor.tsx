@@ -10,7 +10,7 @@ import {
     Alert,
     Snackbar
 } from '@mui/material';
-import { Save, PictureAsPdf, UploadFile, DeleteSweep, Shield, Send, AutoAwesome } from '@mui/icons-material';
+import { Save, PictureAsPdf, UploadFile, DeleteSweep, Shield, Send, AutoAwesome, SmartToy } from '@mui/icons-material';
 import type { Meeting, AgendaItem, AudioRecording, MinutesDraft } from '../../types/meeting.types';
 import { generateMinutesPDF } from '../../services/pdfServiceMinutes';
 // import { sanitizeMinutes } from '../../services/geminiService'; // Removed in favor of Claude
@@ -20,10 +20,15 @@ import AudioUpload from './AudioUpload';
 import TranscriptionViewer from './TranscriptionViewer';
 import AgendaItemEditor from './AgendaItemEditor';
 import CrossValidationPanel from './CrossValidationPanel';
+import PVModeSelector from './PVModeSelector';
+import PVAgentWizard from './PVAgentWizard';
 import { useMinutesFile } from '../../hooks/useMinutesFile';
 import { useToast } from '../../hooks/useToast';
 import { useTranscriptionProcessor } from '../../hooks/useTranscriptionProcessor';
 import { useMinutesState } from '../../hooks/useMinutesState';
+import { usePVAgent } from '../../hooks/usePVAgent';
+import { useSelector } from 'react-redux';
+import type { RootState } from '../../store/rootReducer';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 // Note: parseAgendaDOCX is imported dynamically when needed
@@ -77,6 +82,23 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate, readOn
 
     const [isImportOpen, setIsImportOpen] = useState(false);
     const [isApprovalDialogOpen, setIsApprovalDialogOpen] = useState(false);
+    const [isModeSelectorOpen, setIsModeSelectorOpen] = useState(false);
+    const [isAgentWizardOpen, setIsAgentWizardOpen] = useState(false);
+
+    // Get members for SmartPV Agent
+    const { items: members } = useSelector((state: RootState) => state.members);
+
+    // SmartPV Agent hook
+    const pvAgent = usePVAgent({
+        meeting,
+        members,
+        onComplete: (_finalState) => {
+            showSuccess('🎉 PV généré avec succès par l\'agent SmartPV!');
+        },
+        onError: (error) => {
+            showError(`Erreur agent: ${error.message}`);
+        },
+    });
 
     // Use custom hook for file management
     const { localFile, handleFileUpload: uploadFile, handleDeleteFile } = useMinutesFile({
@@ -236,6 +258,44 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate, readOn
         });
         setItemDecisions(newDecisions);
         setHasUnsavedChanges(true);
+    };
+
+    // Handler for importing transcription from JSON file
+    const handleTranscriptionJsonImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        try {
+            const text = await file.text();
+            const jsonData = JSON.parse(text);
+
+            // Support various JSON formats
+            const transcriptionText = jsonData.transcription || jsonData.text || jsonData.content ||
+                (Array.isArray(jsonData) ? jsonData.map((seg: any) => seg.text || seg.content).join('\n') : null);
+
+            if (!transcriptionText) {
+                showError('Le fichier JSON ne contient pas de transcription valide. Clés attendues: transcription, text, ou content');
+                return;
+            }
+
+            // Create or update audioRecording with imported transcription
+            const newAudioRecording = {
+                ...(meeting.audioRecording || {}),
+                transcription: transcriptionText,
+                transcriptionStatus: 'completed' as const,
+                importedAt: new Date().toISOString(),
+            };
+
+            onUpdate({ audioRecording: newAudioRecording as any });
+            showSuccess(`✅ Transcription importée avec succès (${transcriptionText.length} caractères)`);
+
+        } catch (jsonError) {
+            console.error('[DEBUG] Transcription JSON parsing failed:', jsonError);
+            showError(`Erreur de parsing JSON: ${jsonError instanceof Error ? jsonError.message : 'Format invalide'}`);
+        }
+
+        // Reset input to allow re-importing same file
+        e.target.value = '';
     };
 
     // Wrapper for file upload including DOCX parsing logic
@@ -433,6 +493,16 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate, readOn
                     {!readOnly && (
                         <>
                             <Button
+                                variant="contained"
+                                color="secondary"
+                                startIcon={<SmartToy />}
+                                onClick={() => setIsModeSelectorOpen(true)}
+                                disabled={!meeting.audioRecording?.transcription}
+                                title="Générer le PV automatiquement avec l'agent IA"
+                            >
+                                SmartPV (Agent IA)
+                            </Button>
+                            <Button
                                 variant="outlined"
                                 component="label"
                                 startIcon={<UploadFile />}
@@ -525,6 +595,24 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate, readOn
                     <Typography variant="body2" color="text.secondary" paragraph>
                         Importez un enregistrement audio/vidéo de l'assemblée pour générer automatiquement un brouillon de procès-verbal.
                     </Typography>
+
+                    {/* Import Transcription JSON Option */}
+                    <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
+                        <Button
+                            variant="outlined"
+                            size="small"
+                            component="label"
+                            startIcon={<UploadFile />}
+                        >
+                            Importer Transcription (JSON)
+                            <input
+                                type="file"
+                                hidden
+                                accept=".json"
+                                onChange={handleTranscriptionJsonImport}
+                            />
+                        </Button>
+                    </Box>
                     <AudioUpload
                         meetingId={meeting.id}
                         audioRecording={meeting.audioRecording}
@@ -600,6 +688,46 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate, readOn
                 onClose={() => setIsApprovalDialogOpen(false)}
                 meetingId={meeting.id}
                 onSuccess={() => showSuccess("Lien d'approbation envoyé avec succès !")}
+            />
+
+            {/* SmartPV Agent Mode Selector */}
+            <PVModeSelector
+                open={isModeSelectorOpen}
+                onClose={() => setIsModeSelectorOpen(false)}
+                hasTranscription={!!meeting.audioRecording?.transcription}
+                onSelectMode={(mode) => {
+                    setIsModeSelectorOpen(false);
+                    if (mode === 'smartpv') {
+                        setIsAgentWizardOpen(true);
+                        pvAgent.start(undefined, meeting.audioRecording?.transcription);
+                    }
+                    // Classic mode just closes the dialog - user continues manually
+                }}
+            />
+
+            {/* SmartPV Agent Wizard */}
+            <PVAgentWizard
+                open={isAgentWizardOpen}
+                state={pvAgent.state}
+                isRunning={pvAgent.isRunning}
+                onValidate={pvAgent.validateStep}
+                onCancel={() => {
+                    pvAgent.cancel();
+                    setIsAgentWizardOpen(false);
+                }}
+                onApply={() => {
+                    // Apply generated PV to local state
+                    const genResult = pvAgent.state?.results.generation;
+                    if (genResult) {
+                        const { agendaItems, globalNotes } = genResult;
+                        if (agendaItems) setLocalAgendaItems(agendaItems);
+                        if (globalNotes) setGlobalNotes(globalNotes);
+                        setHasUnsavedChanges(true);
+                        showSuccess('PV appliqué avec succès !');
+                    }
+                    setIsAgentWizardOpen(false);
+                    pvAgent.reset();
+                }}
             />
 
             {/* Cross Validation Panel - Compare ODJ with PV */}
