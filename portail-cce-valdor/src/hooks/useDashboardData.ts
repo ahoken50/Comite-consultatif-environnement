@@ -3,6 +3,7 @@ import { collection, getDocs, query, where, orderBy, limit } from 'firebase/fire
 import { db } from '../services/firebase';
 import { getRecentActivities } from '../services/activityLogService';
 import { safeDate } from '../utils/dateUtils';
+import { useToast } from './useToast';
 import type { Project, Category } from '../types/project.types';
 import type { Meeting } from '../types/meeting.types';
 import type { ActivityLog } from '../types/activityLog.types';
@@ -72,6 +73,7 @@ const CATEGORY_LABELS: Record<Category, string> = {
 };
 
 export const useDashboardData = (): DashboardData => {
+    const { showError } = useToast();
     const [data, setData] = useState<DashboardData>({
         stats: { projectsCompleted: 0, projectsInProgress: 0, projectsNew: 0, projectsUrgent: 0 },
         alerts: [],
@@ -87,6 +89,7 @@ export const useDashboardData = (): DashboardData => {
     useEffect(() => {
         const fetchDashboardData = async () => {
             try {
+                // ... (existing code) ...
                 // 1. Fetch all projects
                 const projectsSnapshot = await getDocs(collection(db, 'projects'));
                 const projects = projectsSnapshot.docs.map(doc => ({
@@ -214,7 +217,11 @@ export const useDashboardData = (): DashboardData => {
 
                 // 8. Get recently modified projects (#1.2)
                 const recentProjects = [...projects]
-                    .sort((a, b) => new Date(b.dateUpdated).getTime() - new Date(a.dateUpdated).getTime())
+                    .sort((a, b) => {
+                        const dateA = safeDate(a.dateUpdated)?.getTime() || 0;
+                        const dateB = safeDate(b.dateUpdated)?.getTime() || 0;
+                        return dateB - dateA;
+                    })
                     .slice(0, 5);
 
                 setData({
@@ -231,6 +238,10 @@ export const useDashboardData = (): DashboardData => {
 
             } catch (error) {
                 console.error('Error fetching dashboard data:', error);
+
+                // Show toast notification
+                showError('Erreur lors du chargement du tableau de bord');
+
                 setData(prev => ({
                     ...prev,
                     loading: false,

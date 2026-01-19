@@ -15,6 +15,7 @@ import { fr } from 'date-fns/locale';
 import { useNavigate } from 'react-router-dom';
 import type { ActivityLog, ActivityType } from '../../types/activityLog.types';
 import { ActivityTypeLabels } from '../../types/activityLog.types';
+import { safeDate } from '../../utils/dateUtils';
 
 interface ActivityFeedProps {
     activities: ActivityLog[];
@@ -91,7 +92,9 @@ const ActivityFeed: React.FC<ActivityFeedProps> = ({ activities }) => {
                 ) : (
                     activities.map((activity, index) => {
                         const { icon, color } = getActivityIcon(activity.type);
-                        const timeAgo = formatDistanceToNow(new Date(activity.timestamp), {
+                        // Use safeDate to handle Firestore Timestamps and invalid values
+                        const activityDate = safeDate(activity.timestamp) || new Date();
+                        const timeAgo = formatDistanceToNow(activityDate, {
                             addSuffix: true,
                             locale: fr
                         });

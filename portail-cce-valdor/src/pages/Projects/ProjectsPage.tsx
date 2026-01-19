@@ -8,7 +8,6 @@ import {
     TextField,
     InputAdornment,
     Grid,
-    Snackbar,
     Alert
 } from '@mui/material';
 import {
@@ -18,7 +17,8 @@ import {
     ViewKanban,
     Search,
     CalendarMonth,
-    FilterList
+    FilterList,
+    Download
 } from '@mui/icons-material';
 import { useDispatch, useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
@@ -36,10 +36,13 @@ import { ProjectStatus } from '../../types/project.types';
 import type { Project } from '../../types/project.types';
 import ProjectMergeDialog from '../../components/projects/ProjectMergeDialog';
 import { AccessControl } from '../../components/auth/AccessControl';
+import { useToast } from '../../hooks/useToast';
+import { generateStatusBrief } from '../../services/reportService';
 
 const ProjectsPage: React.FC = () => {
     const dispatch = useDispatch<AppDispatch>();
     const navigate = useNavigate();
+    const { showSuccess, showError } = useToast();
     const { items: projects, error } = useSelector((state: RootState) => state.projects);
     const { items: meetings } = useSelector((state: RootState) => state.meetings);
     const { user } = useSelector((state: RootState) => state.auth);
@@ -51,11 +54,6 @@ const ProjectsPage: React.FC = () => {
     const [isMergeOpen, setIsMergeOpen] = useState(false);
     const [mergeSourceProject, setMergeSourceProject] = useState<Project | null>(null);
 
-    const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' }>({
-        open: false,
-        message: '',
-        severity: 'success'
-    });
 
     useEffect(() => {
         dispatch(fetchProjects());
@@ -117,10 +115,11 @@ const ProjectsPage: React.FC = () => {
             })).unwrap();
 
             setIsFormOpen(false);
-            setSnackbar({ open: true, message: 'Projet créé avec succès!', severity: 'success' });
+            setIsFormOpen(false);
+            showSuccess('Projet créé avec succès !');
         } catch (err) {
             console.error('Failed to create project:', err);
-            setSnackbar({ open: true, message: 'Erreur lors de la création du projet', severity: 'error' });
+            showError('Erreur lors de la création du projet');
         }
     }, [dispatch, user]);
 
@@ -150,10 +149,10 @@ const ProjectsPage: React.FC = () => {
                 projectName: project.name
             })).unwrap();
 
-            setSnackbar({ open: true, message: 'Statut mis à jour!', severity: 'success' });
+            showSuccess('Statut mis à jour !');
         } catch (err) {
             console.error('Failed to update project status:', err);
-            setSnackbar({ open: true, message: 'Erreur lors de la mise à jour', severity: 'error' });
+            showError('Erreur lors de la mise à jour');
         }
     }, [dispatch, user, projects]);
 
@@ -175,10 +174,10 @@ const ProjectsPage: React.FC = () => {
                 projectName: project.name
             })).unwrap();
 
-            setSnackbar({ open: true, message: 'Projet supprimé', severity: 'success' });
+            showSuccess('Projet supprimé');
         } catch (err) {
             console.error('Failed to delete project:', err);
-            setSnackbar({ open: true, message: 'Erreur lors de la suppression', severity: 'error' });
+            showError('Erreur lors de la suppression');
         }
     }, [dispatch, user, projects]);
 
@@ -187,6 +186,16 @@ const ProjectsPage: React.FC = () => {
         setIsMergeOpen(true);
     }, []);
 
+    const handleExportBrief = useCallback(() => {
+        try {
+            generateStatusBrief(filteredProjects);
+            showSuccess('Brief de statut généré avec succès');
+        } catch (err) {
+            console.error('Error generating brief:', err);
+            showError('Erreur lors de la génération du PDF');
+        }
+    }, [filteredProjects, showSuccess, showError]);
+
     return (
         <Box>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
@@ -194,6 +203,14 @@ const ProjectsPage: React.FC = () => {
                     Projets
                 </Typography>
                 <AccessControl allowedRoles={['coordinator']}>
+                    <Button
+                        variant="outlined"
+                        startIcon={<Download />}
+                        onClick={handleExportBrief}
+                        sx={{ mr: 2 }}
+                    >
+                        Brief PDF
+                    </Button>
                     <Button
                         variant="contained"
                         startIcon={<Add />}
@@ -309,17 +326,6 @@ const ProjectsPage: React.FC = () => {
                 sourceProject={mergeSourceProject}
                 allProjects={projects}
             />
-
-            <Snackbar
-                open={snackbar.open}
-                autoHideDuration={4000}
-                onClose={() => setSnackbar(prev => ({ ...prev, open: false }))}
-                anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-            >
-                <Alert severity={snackbar.severity} sx={{ width: '100%' }}>
-                    {snackbar.message}
-                </Alert>
-            </Snackbar>
         </Box>
     );
 };

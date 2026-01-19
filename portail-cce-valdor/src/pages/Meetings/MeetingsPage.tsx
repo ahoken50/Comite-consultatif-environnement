@@ -19,7 +19,7 @@ import { AccessControl } from '../../components/auth/AccessControl';
 const MeetingsPage: React.FC = () => {
     const dispatch = useDispatch<AppDispatch>();
     const navigate = useNavigate();
-    const { showError } = useToast();
+    const { showError, showSuccess } = useToast();
     const { items: meetings } = useSelector((state: RootState) => state.meetings);
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [isSmartPlanningOpen, setIsSmartPlanningOpen] = useState(false);
@@ -43,6 +43,7 @@ const MeetingsPage: React.FC = () => {
             if (createMeeting.fulfilled.match(resultAction)) {
                 setIsFormOpen(false);
                 setIsSmartPlanningOpen(false);
+                showSuccess('Réunion créée avec succès !');
 
                 // Index the new meeting in Typesense
                 // We create a temporary object for indexing since we don't have the full object returned easily here
@@ -87,6 +88,7 @@ const MeetingsPage: React.FC = () => {
         if (window.confirm('Êtes-vous sûr de vouloir supprimer cette réunion ?')) {
             try {
                 await dispatch(deleteMeeting(id)).unwrap();
+                showSuccess('Réunion supprimée');
             } catch (err) {
                 console.error('Failed to delete meeting:', err);
                 showError('Erreur lors de la suppression de la réunion.');

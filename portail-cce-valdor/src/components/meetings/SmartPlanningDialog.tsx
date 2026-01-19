@@ -22,6 +22,7 @@ import { AutoAwesome } from '@mui/icons-material';
 import { useSelector } from 'react-redux';
 import type { RootState } from '../../store/rootReducer';
 import { ProjectStatus } from '../../types/project.types';
+import { MeetingStatus } from '../../types/meeting.types';
 import type { AgendaItem } from '../../types/meeting.types';
 
 interface SmartPlanningDialogProps {
@@ -32,11 +33,30 @@ interface SmartPlanningDialogProps {
 
 const SmartPlanningDialog: React.FC<SmartPlanningDialogProps> = ({ open, onClose, onConfirm }) => {
     const { items: projects } = useSelector((state: RootState) => state.projects);
+    const { items: meetings } = useSelector((state: RootState) => state.meetings);
 
     const [selectedProjects, setSelectedProjects] = useState<Record<string, boolean>>({});
     const [includeReview, setIncludeReview] = useState(true);
     const [includeVaria, setIncludeVaria] = useState(true);
     const [includeQuestions, setIncludeQuestions] = useState(true);
+    const [includeRollover, setIncludeRollover] = useState(false);
+
+    // Find last completed meeting
+    const lastCompletedMeeting = useMemo(() => {
+        return [...meetings]
+            .filter(m => m.status === MeetingStatus.COMPLETED)
+            .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
+    }, [meetings]);
+
+    // Candidates for rollover (non-standard items)
+    const rolloverItems = useMemo(() => {
+        if (!lastCompletedMeeting) return [];
+        const standardTitles = ['Ouverture', 'adoption', 'Levée', 'Varia', 'Période de questions'];
+        return lastCompletedMeeting.agendaItems.filter(item =>
+            !standardTitles.some(t => item.title.toLowerCase().includes(t.toLowerCase()))
+        );
+    }, [lastCompletedMeeting]);
+
     const [meetingDate, setMeetingDate] = useState(() => {
         const d = new Date();
         d.setDate(d.getDate() + 7); // Default next week
@@ -181,6 +201,12 @@ const SmartPlanningDialog: React.FC<SmartPlanningDialogProps> = ({ open, onClose
                                 control={<Checkbox checked={includeReview} onChange={(e) => setIncludeReview(e.target.checked)} />}
                                 label="Inclure l'ouverture et adoption du PV"
                             />
+                            {lastCompletedMeeting && rolloverItems.length > 0 && (
+                                <FormControlLabel
+                                    control={<Checkbox checked={includeRollover} onChange={(e) => setIncludeRollover(e.target.checked)} />}
+                                    label={`Importer ${rolloverItems.length} points de la dernière réunion (${new Date(lastCompletedMeeting.date).toLocaleDateString()})`}
+                                />
+                            )}
                             <FormControlLabel
                                 control={<Checkbox checked={includeVaria} onChange={(e) => setIncludeVaria(e.target.checked)} />}
                                 label="Inclure Varia"
@@ -240,7 +266,7 @@ const SmartPlanningDialog: React.FC<SmartPlanningDialogProps> = ({ open, onClose
                     Générer la réunion
                 </Button>
             </DialogActions>
-        </Dialog>
+        </Dialog >
     );
 };
 
