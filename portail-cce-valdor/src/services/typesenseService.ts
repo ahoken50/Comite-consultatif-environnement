@@ -538,51 +538,52 @@ export interface SearchableRegulation {
     embedding?: number[];
 }
 
+// Module-level flag to disable vector search after schema mismatch
+let vectorSearchDisabled = false;
+
 export const searchRegulations = async (
     query: string,
     options: SearchOptions = {}
 ): Promise<SearchResult<SearchableRegulation>> => {
     const timer = logger.time('Typesense', 'Search regulations');
 
-    try {
-        const {
-            page = 1,
-            perPage = 10,
-            filterBy,
-            sortBy = '_text_match:desc',
-            highlightFields = ['title', 'content']
-        } = options;
+    const {
+        page = 1,
+        perPage = 10,
+        filterBy,
+        sortBy = '_text_match:desc',
+        highlightFields = ['title', 'content']
+    } = options;
 
-        const useVectorSearch = !!query && query.length > 3;
+    // Build base search params (text-only)
+    const searchParams = new URLSearchParams({
+        q: query,
+        query_by: 'title,content',
+        page: page.toString(),
+        per_page: perPage.toString(),
+        sort_by: sortBy,
+        highlight_fields: highlightFields.join(','),
+        highlight_full_fields: 'title,content'
+    });
 
-        let vectorQuery = '';
-        if (useVectorSearch) {
-            try {
-                const queryVector = await aiService.generateEmbedding(query);
-                vectorQuery = `embedding:([${queryVector.join(',')}], k:10)`;
-            } catch (e) {
-                logger.warn('Typesense', 'Failed to generate query embedding', { error: e instanceof Error ? e.message : String(e) });
-            }
-        }
+    if (filterBy) {
+        searchParams.append('filter_by', filterBy);
+    }
 
-        const searchParams = new URLSearchParams({
-            q: query,
-            query_by: 'title,content',
-            page: page.toString(),
-            per_page: perPage.toString(),
-            sort_by: sortBy,
-            highlight_fields: highlightFields.join(','),
-            highlight_full_fields: 'title,content' // Highlight in content too
-        });
+    // Only try vector search if not disabled and query is long enough
+    const shouldTryVector = !vectorSearchDisabled && query && query.length > 3;
 
-        if (vectorQuery) {
+    if (shouldTryVector) {
+        try {
+            const queryVector = await aiService.generateEmbedding(query);
+            const vectorQuery = `embedding:([${queryVector.join(',')}], k:10)`;
             searchParams.append('vector_query', vectorQuery);
+        } catch (e) {
+            logger.warn('Typesense', 'Failed to generate query embedding', { error: e instanceof Error ? e.message : String(e) });
         }
+    }
 
-        if (filterBy) {
-            searchParams.append('filter_by', filterBy);
-        }
-
+    try {
         const response = await fetchTypesense<{
             hits: Array<{
                 document: SearchableRegulation;
@@ -615,45 +616,37 @@ export const searchRegulations = async (
         };
 
     } catch (error: any) {
-        // Auto-heal: If collection not found (404), try to create it and retry search
+        // Handle 404 - collection missing
         if (error.message && error.message.includes('404')) {
-            logger.warn('Typesense', 'Regulations collection missing during search. Attempting to create...', { query });
+            logger.warn('Typesense', 'Regulations collection missing. Attempting to create...', { query });
             try {
                 await ensureCollectionsExist();
-                // Retry (recursive or duplicate logic - duplicate for safety)
                 return searchRegulations(query, options);
             } catch (retryError) {
                 logger.error('Typesense', 'Retry failed after creating collection', { error: retryError });
+                timer.end({ error: true });
                 return { hits: [], found: 0, page: 1, totalPages: 0, searchTimeMs: 0 };
             }
         }
 
-        // Fallback: If 400 (Bad Request), likely Schema mismatch (e.g. missing embedding usage). Retry without vector.
-        if (error.message && error.message.includes('400') && query.length > 3) {
-            logger.warn('Typesense', 'Vector search failed (likely schema mismatch). Retrying text-only.', { query });
+        // Handle 400 - likely vector schema mismatch
+        if (error.message && error.message.includes('400') && shouldTryVector) {
+            logger.warn('Typesense', 'Vector search failed (schema mismatch). Disabling vector search and retrying...', { query });
+            vectorSearchDisabled = true; // Disable for future searches
+
+            // Retry without vector
+            const textOnlyParams = new URLSearchParams({
+                q: query,
+                query_by: 'title,content',
+                page: page.toString(),
+                per_page: perPage.toString(),
+                sort_by: sortBy,
+                highlight_fields: highlightFields.join(','),
+                highlight_full_fields: 'title,content'
+            });
+            if (filterBy) textOnlyParams.append('filter_by', filterBy);
+
             try {
-                // Retry with vectors disabled by short-circuiting logic or calling self with modified query? 
-                // Easier to just re-fetch here to avoid recursion loop complexity
-                const {
-                    page = 1,
-                    perPage = 10,
-                    filterBy,
-                    sortBy = '_text_match:desc',
-                    highlightFields = ['title', 'content']
-                } = options;
-
-                const searchParams = new URLSearchParams({
-                    q: query,
-                    query_by: 'title,content',
-                    page: page.toString(),
-                    per_page: perPage.toString(),
-                    sort_by: sortBy,
-                    highlight_fields: highlightFields.join(','),
-                    highlight_full_fields: 'title,content'
-                });
-
-                if (filterBy) searchParams.append('filter_by', filterBy);
-
                 const response = await fetchTypesense<{
                     hits: Array<{
                         document: SearchableRegulation;
@@ -663,7 +656,9 @@ export const searchRegulations = async (
                     found: number;
                     page: number;
                     search_time_ms: number;
-                }>(`/collections/regulations/documents/search?${searchParams}`);
+                }>(`/collections/regulations/documents/search?${textOnlyParams}`);
+
+                timer.end({ found: response.found, fallback: true });
 
                 return {
                     hits: response.hits.map(hit => ({
@@ -679,14 +674,13 @@ export const searchRegulations = async (
                     totalPages: Math.ceil(response.found / perPage),
                     searchTimeMs: response.search_time_ms
                 };
-
             } catch (fallbackError) {
-                logger.error('Typesense', 'Text-only fallback failed', { error: fallbackError });
+                logger.error('Typesense', 'Text-only fallback also failed', { error: fallbackError });
             }
         }
 
         logger.error('Typesense', 'Search regulations failed', { error, query });
-        // Don't throw to UI, return empty to prevent crash
+        timer.end({ error: true });
         return { hits: [], found: 0, page: 1, totalPages: 0, searchTimeMs: 0 };
     }
 };

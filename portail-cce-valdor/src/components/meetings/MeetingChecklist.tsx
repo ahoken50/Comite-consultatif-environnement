@@ -117,7 +117,7 @@ const MeetingChecklist: React.FC<MeetingChecklistProps> = ({ meeting, hasConvoca
         });
 
         return items;
-    }, [meeting]);
+    }, [meeting, hasConvocation]);
 
     // Calculate overall progress
     const completedCount = checklistItems.filter(item => item.isComplete).length;
