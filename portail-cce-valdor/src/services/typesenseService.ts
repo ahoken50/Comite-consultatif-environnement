@@ -456,8 +456,8 @@ export const ensureCollectionsExist = async (): Promise<void> => {
 
         for (const collectionSchema of collectionsToCheck) {
             try {
-                // Check if collection exists
-                await fetchTypesense(`/collections/${collectionSchema.name}`);
+                // Check if collection exists (requires admin key usually)
+                await fetchTypesense(`/collections/${collectionSchema.name}`, {}, true);
                 logger.debug('Typesense', `Collection ${collectionSchema.name} exists`);
             } catch (e: any) {
                 // If 404, create it
