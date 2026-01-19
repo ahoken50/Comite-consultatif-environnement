@@ -155,5 +155,16 @@ service cloud.firestore {
         allow create: if isAuthenticated();
         allow update, delete: if false;
     }
+
+    // Notifications
+    // - Read: Users can read their own notifications.
+    // - Create: Authenticated users can create notifications (e.g. mentions).
+    // - Update: Users can mark their own as read.
+    match /notifications/{notificationId} {
+      allow read: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      allow create: if isAuthenticated(); 
+      allow update: if isAuthenticated() && (resource.data.userId == request.auth.uid || isCoordinator());
+      allow delete: if isAuthenticated() && (resource.data.userId == request.auth.uid || isCoordinator());
+    }
   }
 }

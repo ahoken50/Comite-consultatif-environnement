@@ -60,9 +60,18 @@ const ExpiringDocumentsWidget: React.FC<ExpiringDocumentsWidgetProps> = ({
 
             // Sort by expiration date (soonest first)
             docs.sort((a, b) => {
-                const dateA = a.expirationDate ? new Date(a.expirationDate).getTime() : Infinity;
-                const dateB = b.expirationDate ? new Date(b.expirationDate).getTime() : Infinity;
-                return dateA - dateB;
+                const getDate = (d: any) => {
+                    if (!d) return Infinity;
+                    // Handle Firestore Timestamp
+                    if (d.toDate && typeof d.toDate === 'function') {
+                        return d.toDate().getTime();
+                    }
+                    // Handle String or Date
+                    const date = new Date(d);
+                    return isNaN(date.getTime()) ? Infinity : date.getTime();
+                };
+
+                return getDate(a.expirationDate) - getDate(b.expirationDate);
             });
 
             setDocuments(docs);
@@ -78,9 +87,22 @@ const ExpiringDocumentsWidget: React.FC<ExpiringDocumentsWidgetProps> = ({
         fetchExpiringDocuments();
     }, [daysThreshold]);
 
-    const getExpirationStatus = (expirationDate: string) => {
+    const getExpirationStatus = (expirationDate: any) => {
         const now = new Date();
-        const expDate = new Date(expirationDate);
+        let expDate: Date;
+
+        // Handle Firestore Timestamp
+        if (expirationDate && expirationDate.toDate && typeof expirationDate.toDate === 'function') {
+            expDate = expirationDate.toDate();
+        } else {
+            expDate = new Date(expirationDate);
+        }
+
+        // Safety check
+        if (isNaN(expDate.getTime())) {
+            return { label: 'Date invalide', color: 'default' as const };
+        }
+
         const daysLeft = differenceInDays(expDate, now);
 
         if (daysLeft < 0) {
