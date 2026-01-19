@@ -17,9 +17,9 @@ import { Sync, Search, Info } from '@mui/icons-material';
 import { collection, getDocs, query } from 'firebase/firestore';
 import { db } from '../../services/firebase';
 import { parseAnyDate } from '../../utils/dateUtils';
-import { indexMeeting, indexProject, getTypesenseStatus, checkTypesenseHealth, ensureCollectionsExist } from '../../services/typesenseService';
+import { indexMeeting, indexProject, indexRegulation, resetCollection, getTypesenseStatus, checkTypesenseHealth, ensureCollectionsExist } from '../../services/typesenseService';
 import type { Meeting } from '../../types/meeting.types';
-import type { SearchableMeeting, SearchableProject } from '../../services/typesenseService';
+import type { SearchableMeeting, SearchableProject, SearchableRegulation } from '../../services/typesenseService';
 
 const SearchIndexManager: React.FC = () => {
     const [loading, setLoading] = useState(false);
@@ -136,6 +136,61 @@ const SearchIndexManager: React.FC = () => {
         }
     };
 
+    const handleRepairRegulations = async () => {
+        if (!confirm("ATTENTION: Cette action va supprimer l'index des Règlements dans Typesense et le recréer à partir de Firebase.\n\nAssurez-vous que vos règlements sont bien sauvegardés dans la base de données Firebase (les uploads récents le sont).\n\nVoulez-vous continuer ?")) return;
+
+        setLoading(true);
+        setStatus({ type: 'info', message: 'Réinitialisation de la collection...' });
+        setProgress(0);
+
+        try {
+            // 1. Reset Collection (Delete & Re-create Schema)
+            await resetCollection('regulations');
+
+            // 2. Fetch from Firestore
+            setStatus({ type: 'info', message: 'Lecture des règlements dans Firebase...' });
+            const snapshot = await getDocs(query(collection(db, 'regulations')));
+
+            if (snapshot.empty) {
+                setStatus({ type: 'warning', message: 'Index réinitialisé, mais aucun règlement trouvé dans Firebase à indexer.' });
+                setLoading(false);
+                return;
+            }
+
+            const total = snapshot.size;
+            let processed = 0;
+
+            // 3. Re-index with Embeddings
+            for (const doc of snapshot.docs) {
+                const data = doc.data();
+                const reg: SearchableRegulation = {
+                    id: doc.id,
+                    title: data.title || 'Sans titre',
+                    content: data.content || '',
+                    category: data.category || 'Général',
+                    year: Number(data.year) || new Date().getFullYear(),
+                    status: data.status || 'En vigueur'
+                };
+
+                setStatus({ type: 'info', message: `Indexation: ${reg.title} (${processed + 1}/${total})...` });
+
+                // FORCE embedding generation via Client-side AI
+                await indexRegulation(reg, true);
+
+                processed++;
+                setProgress((processed / total) * 100);
+            }
+
+            setStatus({ type: 'success', message: `Réparation terminée ! ${total} règlements ré-indexés avec succès.` });
+
+        } catch (error) {
+            console.error('Repair failed', error);
+            setStatus({ type: 'error', message: "Échec de la réparation: " + (error instanceof Error ? error.message : String(error)) });
+        } finally {
+            setLoading(false);
+        }
+    };
+
     // if (!isConfigured) block removed to allow debug info to be seen
 
     return (
@@ -247,14 +302,24 @@ const SearchIndexManager: React.FC = () => {
                         {stats.meetings > 0 && <Chip label={`${stats.meetings} réunions`} size="small" />}
                         {stats.projects > 0 && <Chip label={`${stats.projects} projets`} size="small" />}
                     </Box>
-                    <Button
-                        variant="contained"
-                        startIcon={loading ? <Sync sx={{ animation: 'spin 2s linear infinite' }} /> : <Sync />}
-                        onClick={handleSync}
-                        disabled={loading}
-                    >
-                        {loading ? 'Synchronisation...' : 'Lancer la synchronisation'}
-                    </Button>
+                    <Stack direction="row" spacing={2}>
+                        <Button
+                            variant="outlined"
+                            color="warning"
+                            onClick={handleRepairRegulations}
+                            disabled={loading}
+                        >
+                            Réparer Règlements (IA)
+                        </Button>
+                        <Button
+                            variant="contained"
+                            startIcon={loading ? <Sync sx={{ animation: 'spin 2s linear infinite' }} /> : <Sync />}
+                            onClick={handleSync}
+                            disabled={loading}
+                        >
+                            {loading ? 'Synchronisation...' : 'Lancer la synchronisation'}
+                        </Button>
+                    </Stack>
                 </Box>
             </CardContent>
             <style>

@@ -324,3 +324,106 @@ FORMAT EXACT:
         throw new HttpsError("internal", error instanceof Error ? error.message : "Error");
     }
 });
+
+import { onDocumentWritten } from "firebase-functions/v2/firestore";
+import * as typesense from "./typesenseClient";
+
+export const syncMeetingToTypesense = onDocumentWritten({
+    document: "meetings/{meetingId}",
+    secrets: [typesense.typesenseApiKey, typesense.typesenseHost],
+}, async (event) => {
+    const meetingId = event.params.meetingId;
+    const change = event.data;
+
+    if (!change) return; // Should not happen for onDocumentWritten
+
+    // DELETE or Non-existent
+    if (!change.after.exists) {
+        await typesense.deleteFromIndex("meetings", meetingId);
+        return;
+    }
+
+    // CREATE or UPDATE
+    const data = change.after.data();
+    if (!data) return;
+
+    // Transform to SearchableMeeting (simplified for backend)
+    // Note: We avoid importing frontend types to prevent build issues
+    const searchableMeeting: typesense.SearchableMeeting = {
+        id: meetingId,
+        title: data.title || "Sans titre",
+        date: data.date ? new Date(data.date).toISOString() : new Date().toISOString(),
+        dateTimestamp: data.date ? Math.floor(new Date(data.date).getTime() / 1000) : 0,
+        type: data.type || "regular",
+        status: data.status || "scheduled",
+        minutes: data.minutes || "",
+        agendaItemTitles: data.agendaItems?.map((i: any) => i.title) || [],
+        resolutions: data.agendaItems?.flatMap((item: any) =>
+            item.minuteEntries?.map((entry: any) => entry.content) ||
+            (item.minuteContent ? [item.minuteContent] : [])
+        ) || [],
+        attendeeNames: data.attendees?.map((a: any) => a.name) || [],
+    };
+
+    await typesense.indexMeeting(searchableMeeting);
+});
+
+export const syncProjectToTypesense = onDocumentWritten({
+    document: "projects/{projectId}",
+    secrets: [typesense.typesenseApiKey, typesense.typesenseHost],
+}, async (event) => {
+    const projectId = event.params.projectId;
+    const change = event.data;
+
+    if (!change) return;
+
+    if (!change.after.exists) {
+        await typesense.deleteFromIndex("projects", projectId);
+        return;
+    }
+
+    const data = change.after.data();
+    if (!data) return;
+
+    const searchableProject: typesense.SearchableProject = {
+        id: projectId,
+        code: data.code || "",
+        name: data.name || data.title || "Sans nom",
+        description: data.description || "",
+        category: data.category || "Général",
+        status: data.status || "Actif",
+        priority: data.priority || "Moyenne",
+        notes: data.notes || ""
+    };
+
+    await typesense.indexProject(searchableProject);
+});
+
+export const syncRegulationToTypesense = onDocumentWritten({
+    document: "regulations/{regulationId}",
+    secrets: [typesense.typesenseApiKey, typesense.typesenseHost],
+}, async (event) => {
+    const regulationId = event.params.regulationId;
+    const change = event.data;
+
+    if (!change) return;
+
+    if (!change.after.exists) {
+        await typesense.deleteFromIndex("regulations", regulationId);
+        return;
+    }
+
+    const data = change.after.data();
+    if (!data) return;
+
+    const searchableRegulation: typesense.SearchableRegulation = {
+        id: regulationId,
+        title: data.title || "Sans titre",
+        content: data.content || "",
+        category: data.category || "Général",
+        year: data.year || new Date().getFullYear(),
+        status: data.status || "active"
+    };
+
+    await typesense.indexRegulation(searchableRegulation);
+});

@@ -12,6 +12,8 @@ import typesenseService from '../../services/typesenseService';
 import type { SearchableRegulation } from '../../services/typesenseService';
 import { aiService } from '../../services/ai/UnifiedAIService';
 import { useToast } from '../../hooks/useToast';
+import { db } from '../../services/firebase';
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 
 const CATEGORIES = [
     'Urbanisme', 'Zonage', 'Construction', 'Environnement', 'Lotissement', 'Permis', 'Autre'
@@ -74,7 +76,7 @@ const RegulationManager: React.FC = () => {
             // Auto-fill title from filename
             setFormData(prev => ({
                 ...prev,
-                title: selectedFile.name.replace('.pdf', '')
+                title: selectedFile.name.replace(/\.(pdf|docx)$/i, '')
             }));
         }
     };
@@ -85,21 +87,41 @@ const RegulationManager: React.FC = () => {
         setProcessing(true);
         try {
             // 1. OCR / Text Extraction
-            setProcessStep('Extraction du texte via IA (Gemini multimodal)...');
+            setProcessStep('Extraction du texte...');
             let content = formData.content;
 
             if (!content && file) {
-                content = await aiService.extractText(file);
+                if (file.name.toLowerCase().endsWith('.docx')) {
+                    setProcessStep('Lecture du fichier Word...');
+                    const { extractTextFromDOCX } = await import('../../services/docxParserService');
+                    content = await extractTextFromDOCX(file);
+                } else {
+                    setProcessStep('Extraction du texte via IA (Gemini multimodal)...');
+                    content = await aiService.extractText(file);
+                }
                 setFormData(prev => ({ ...prev, content }));
             }
 
             if (!content) throw new Error("Impossible d'extraire le contenu du fichier.");
 
             // 2. Indexing
-            setProcessStep('Indexation vectorielle dans Typesense...');
+            setProcessStep('Sauvegarde et Indexation...');
+
+            // Save to Firestore first to have a permanent record
+            const regulationData = {
+                title: formData.title,
+                content: content,
+                category: formData.category,
+                year: Number(formData.year),
+                status: formData.status,
+                createdAt: serverTimestamp(),
+                updatedAt: serverTimestamp()
+            };
+
+            const docRef = await addDoc(collection(db, 'regulations'), regulationData);
 
             const newReg: SearchableRegulation = {
-                id: crypto.randomUUID(),
+                id: docRef.id, // Use Firestore ID
                 title: formData.title,
                 content: content,
                 category: formData.category,
@@ -164,8 +186,8 @@ const RegulationManager: React.FC = () => {
                                 startIcon={<CloudUpload />}
                                 sx={{ height: '56px' }}
                             >
-                                {file ? file.name : "Choisir un PDF"}
-                                <input type="file" hidden accept="application/pdf" onChange={handleFileSelect} />
+                                {file ? file.name : "Choisir un PDF ou Word"}
+                                <input type="file" hidden accept="application/pdf,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={handleFileSelect} />
                             </Button>
                         </Grid>
                         <Grid size={{ xs: 12, md: 6 }}>

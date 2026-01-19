@@ -620,8 +620,20 @@ export const searchRegulations = async (
             logger.warn('Typesense', 'Regulations collection missing during search. Attempting to create...', { query });
             try {
                 await ensureCollectionsExist();
+                // Retry (recursive or duplicate logic - duplicate for safety)
+                return searchRegulations(query, options);
+            } catch (retryError) {
+                logger.error('Typesense', 'Retry failed after creating collection', { error: retryError });
+                return { hits: [], found: 0, page: 1, totalPages: 0, searchTimeMs: 0 };
+            }
+        }
 
-                // Re-construct params for retry
+        // Fallback: If 400 (Bad Request), likely Schema mismatch (e.g. missing embedding usage). Retry without vector.
+        if (error.message && error.message.includes('400') && query.length > 3) {
+            logger.warn('Typesense', 'Vector search failed (likely schema mismatch). Retrying text-only.', { query });
+            try {
+                // Retry with vectors disabled by short-circuiting logic or calling self with modified query? 
+                // Easier to just re-fetch here to avoid recursion loop complexity
                 const {
                     page = 1,
                     perPage = 10,
@@ -642,21 +654,16 @@ export const searchRegulations = async (
 
                 if (filterBy) searchParams.append('filter_by', filterBy);
 
-                // Retry search once
                 const response = await fetchTypesense<{
                     hits: Array<{
                         document: SearchableRegulation;
                         highlights?: Array<{ field: string; snippet: string }>;
                         text_match: number;
-                        vector_distance?: number;
                     }>;
                     found: number;
                     page: number;
-                    out_of: number;
                     search_time_ms: number;
                 }>(`/collections/regulations/documents/search?${searchParams}`);
-
-                timer.end({ found: response.found, recovered: true });
 
                 return {
                     hits: response.hits.map(hit => ({
@@ -665,23 +672,21 @@ export const searchRegulations = async (
                             acc[h.field] = { snippet: h.snippet };
                             return acc;
                         }, {} as Record<string, { snippet: string }>),
-                        textMatch: hit.text_match,
-                        vectorDistance: hit.vector_distance
+                        textMatch: hit.text_match
                     })),
                     found: response.found,
                     page: response.page,
                     totalPages: Math.ceil(response.found / perPage),
                     searchTimeMs: response.search_time_ms
                 };
-            } catch (retryError) {
-                logger.error('Typesense', 'Retry failed after creating collection', { error: retryError });
-                timer.end({ error: true, retryFailed: true });
-                return { hits: [], found: 0, page: 1, totalPages: 0, searchTimeMs: 0 };
+
+            } catch (fallbackError) {
+                logger.error('Typesense', 'Text-only fallback failed', { error: fallbackError });
             }
         }
 
         logger.error('Typesense', 'Search regulations failed', { error, query });
-        timer.end({ error: true });
+        // Don't throw to UI, return empty to prevent crash
         return { hits: [], found: 0, page: 1, totalPages: 0, searchTimeMs: 0 };
     }
 };
@@ -724,6 +729,34 @@ export const indexRegulation = async (regulation: SearchableRegulation, generate
     }
 };
 
+/**
+ * Reset (Delete and Re-create) a collection
+ * Useful for schema updates
+ */
+export const resetCollection = async (collectionName: keyof typeof COLLECTIONS): Promise<void> => {
+    try {
+        const name = COLLECTIONS[collectionName].name;
+        logger.info('Typesense', `Resetting collection ${name}...`);
+
+        // 1. Delete
+        try {
+            await fetchTypesense(`/collections/${name}`, { method: 'DELETE' }, true);
+        } catch (e: any) {
+            // Ignore 404
+            if (!e.message?.includes('404')) throw e;
+        }
+
+        // 2. Re-create will happen automatically on next ensureCollectionsCheck or index
+        // But we can force it now to be sure
+        await ensureCollectionsExist();
+
+        logger.info('Typesense', `Collection ${name} reset successfully`);
+    } catch (error) {
+        logger.error('Typesense', 'Failed to reset collection', { error, collectionName });
+        throw error;
+    }
+};
+
 export default {
     searchMeetings,
     searchProjects,
@@ -734,6 +767,7 @@ export default {
     indexRegulation,
     deleteFromIndex,
     ensureCollectionsExist,
+    resetCollection,
     checkTypesenseHealth,
     getTypesenseStatus,
     COLLECTIONS

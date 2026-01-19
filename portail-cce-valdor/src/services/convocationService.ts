@@ -388,7 +388,7 @@ export const hasAnyConvocation = async (meetingId: string): Promise<boolean> => 
 
         // Check for avis convocations (Phase 1)
         const avisRef = collection(db, 'meetings', meetingId, 'avis_convocations');
-        const avisSnapshot = await getDocs(query(avisRef, orderBy('createdAt', 'desc')));
+        const avisSnapshot = await getDocs(query(avisRef));
 
         return !avisSnapshot.empty;
     } catch (error) {

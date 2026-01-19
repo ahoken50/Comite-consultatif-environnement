@@ -599,6 +599,26 @@ export const parseAgendaDOCX = async (file: File): Promise<ParsedMeetingData> =>
 };
 
 /**
+ * Extract raw text from a DOCX file using Mammoth
+ * Useful for simple text indexing (Regulations, etc.)
+ */
+export const extractTextFromDOCX = async (file: File): Promise<string> => {
+    try {
+        const arrayBuffer = await file.arrayBuffer();
+        const result = await mammoth.extractRawText({ arrayBuffer });
+
+        if (result.messages.length > 0) {
+            console.warn('[docxParser] Mammoth warnings:', result.messages);
+        }
+
+        return result.value;
+    } catch (error) {
+        console.error('Error extracting text from DOCX:', error);
+        throw new Error('Échec de la lecture du fichier Word.');
+    }
+};
+
+/**
  * Match parsed PV items to existing agenda items by title similarity
  * Uses Levenshtein distance for robust "fuzzy" matching
  */

@@ -162,7 +162,26 @@ export const extractTextFromPDF = async (
             };
         }
 
-        // Convert pages to images and OCR
+        // NEW: Try Full PDF OCR first (Better context, less requests)
+        // Check file size (limit approx 20MB for direct send)
+        const fileSizeMB = file.size / (1024 * 1024);
+        if (fileSizeMB < 18) { // Safety margin under 20MB
+            try {
+                onProgress?.('Tentative d\'analyse globale du document (Contexte complet)...');
+                const fullText = await ocrFullPDF(file);
+                return {
+                    success: true,
+                    text: fullText,
+                    pageCount,
+                    isScanned: true
+                };
+            } catch (e) {
+                console.warn('Full PDF OCR failed, falling back to page-by-page:', e);
+                // Fallback to page-by-page below
+            }
+        }
+
+        // Convert pages to images and OCR (Fallback)
         const ocrText = await ocrPDFWithGemini(pdf, pageCount, onProgress);
 
         return {
@@ -179,6 +198,64 @@ export const extractTextFromPDF = async (
             error: error instanceof Error ? error.message : 'Erreur d\'extraction du PDF'
         };
     }
+};
+
+/**
+ * OCR the full PDF file at once using Gemini 2.0
+ * Preserves full context across pages
+ */
+const ocrFullPDF = async (file: File): Promise<string> => {
+    // Convert File to Base64
+    const arrayBuffer = await file.arrayBuffer();
+    const base64 = btoa(
+        new Uint8Array(arrayBuffer).reduce((data, byte) => data + String.fromCharCode(byte), '')
+    );
+
+    const prompt = `Tu es un système OCR de haute précision. Extrait TOUT le texte visible de ce document PDF complet.
+
+RÈGLES :
+1. Transcris le texte EXACTEMENT comme il apparaît (y compris les en-têtes, numéros, dates)
+2. Préserve la structure (titres, paragraphes, listes)
+3. Si un tableau est présent, formate-le clairement
+4. Ignore les artefacts de scan (taches, lignes parasites)
+5. Si une partie est illisible, indique [illisible]
+6. NE FAIS AUCUN COMMENTAIRE. Retourne SEULEMENT le texte extrait.`;
+
+    const response = await fetch(`${GEMINI_VISION_URL}?key=${GEMINI_API_KEY}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            contents: [{
+                parts: [
+                    { text: prompt },
+                    {
+                        inline_data: {
+                            mime_type: 'application/pdf',
+                            data: base64
+                        }
+                    }
+                ]
+            }],
+            generationConfig: {
+                temperature: 0.1,
+                maxOutputTokens: 8192 // Increased for full doc
+            }
+        })
+    });
+
+    if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error?.message || `Erreur API Gemini: ${response.status}`);
+    }
+
+    const data = await response.json();
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+
+    if (!text) {
+        throw new Error('Aucun texte retourné par l\'IA');
+    }
+
+    return text;
 };
 
 /**
