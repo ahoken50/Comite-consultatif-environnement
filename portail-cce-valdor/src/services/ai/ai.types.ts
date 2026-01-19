@@ -102,6 +102,34 @@ export interface AIService {
      * Draft a specific resolution based on context and similar precedents
      */
     draftResolution(context: ResolutionContext): Promise<string>;
+
+    /**
+     * Extract text from a document (PDF, Image, etc.)
+     */
+    extractText(file: File): Promise<string>;
+
+    /**
+     * Check if a resolution complies with existing regulations
+     */
+    checkRegulatoryCompliance(resolutionText: string, context?: string): Promise<{
+        compliant: boolean;
+        issues: string[];
+        suggestions: string[];
+        citedRegulations: string[];
+    }>;
+
+    /**
+     * Analyze a project to suggest relevant regulations
+     */
+    analyzeProjectRegulations(projectDescription: string): Promise<{
+        relevantRegulationIds: string[];
+        reasoning: string;
+    }>;
+
+    /**
+     * Chat with the jurisprudence knowledge base
+     */
+    chatWithJurisprudence(question: string, context: string): Promise<string>;
 }
 
 export interface ResolutionContext {

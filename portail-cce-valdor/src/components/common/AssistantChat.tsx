@@ -18,7 +18,7 @@ import type { AppDispatch } from '../../store/store';
 import type { RootState } from '../../store/rootReducer';
 import { fetchProjects } from '../../features/projects/projectsSlice';
 import { fetchMeetings } from '../../features/meetings/meetingsSlice';
-// @ts-ignore
+// @ts-expect-error
 import { getGenerativeModel } from 'firebase/ai';
 import { vertexAI } from '../../services/firebase';
 

@@ -28,6 +28,7 @@ import ProjectForm from '../../components/projects/ProjectForm';
 import ProjectComments from '../../components/projects/ProjectComments';
 import ProjectDecisions from '../../components/projects/ProjectDecisions';
 import LinkedResolutions from '../../components/projects/LinkedResolutions';
+import ProjectRegulations from '../../components/projects/ProjectRegulations';
 import Breadcrumbs from '../../components/common/Breadcrumbs'; // [NEW]
 import { AccessControl } from '../../components/auth/AccessControl';
 
@@ -170,6 +171,7 @@ const ProjectDetailPage: React.FC = () => {
                         <Tab label="Vue d'ensemble" />
                         <Tab label="Tâches" />
                         <Tab label="Résolutions CCE" />
+                        <Tab label="Règlements" />
                         <Tab label="Décisions Caucus" />
                         <Tab label="Documents" />
                         <Tab label="Commentaires" />
@@ -225,10 +227,14 @@ const ProjectDetailPage: React.FC = () => {
                 </TabPanel>
 
                 <TabPanel value={tabValue} index={3}>
-                    <ProjectDecisions project={project} />
+                    <ProjectRegulations project={project} />
                 </TabPanel>
 
                 <TabPanel value={tabValue} index={4}>
+                    <ProjectDecisions project={project} />
+                </TabPanel>
+
+                <TabPanel value={tabValue} index={5}>
                     <Grid container spacing={3}>
                         <Grid size={{ xs: 12, md: 8 }}>
                             <Typography variant="h6" gutterBottom>Documents du projet</Typography>
@@ -248,7 +254,7 @@ const ProjectDetailPage: React.FC = () => {
                     </Grid>
                 </TabPanel>
 
-                <TabPanel value={tabValue} index={5}>
+                <TabPanel value={tabValue} index={6}>
                     <ProjectComments project={project} />
                 </TabPanel>
             </Paper>

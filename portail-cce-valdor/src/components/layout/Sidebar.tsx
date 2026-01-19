@@ -15,6 +15,7 @@ const menuItems = [
     { text: 'Projets', icon: <Assignment />, path: '/projects' },
     { text: 'Assemblées', icon: <Event />, path: '/meetings' },
     { text: 'Résolutions', icon: <Gavel />, path: '/resolutions' },
+    { text: 'Règlements', icon: <Gavel />, path: '/regulations' },
     { text: 'Documents', icon: <Description />, path: '/documents' },
     { text: 'Procès-verbaux', icon: <BarChart />, path: '/minutes' },
     { text: 'Recommandations', icon: <Gavel />, path: '/recommendations' },

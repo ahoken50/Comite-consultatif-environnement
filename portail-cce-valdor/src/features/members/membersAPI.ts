@@ -62,7 +62,7 @@ export const ensureMemberProfile = async (user: any): Promise<Member> => {
     const userEmail = user.email;
 
     // 1. Try to find by Auth UID (standard case)
-    let existingMember = await fetchMemberById(userId);
+    const existingMember = await fetchMemberById(userId);
     if (existingMember) {
         return existingMember;
     }

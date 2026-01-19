@@ -2,7 +2,6 @@ import * as pdfjsLib from 'pdfjs-dist';
 import { type AgendaItem } from '../types/meeting.types';
 import { extractTextFromPDF } from './ocrService';
 
-// @ts-ignore
 import pdfWorker from 'pdfjs-dist/build/pdf.worker?url';
 
 // Set worker source
@@ -97,7 +96,6 @@ export const parseAgendaPDF = async (
 
     // 3. Extract Agenda Items
     let currentItem: Partial<AgendaItem> | null = null;
-    let itemOrder = 1;
 
     // Metadata exclusion regex
     const metadataRegex = /COMIT[ÉE]\s+CONSULTATIF|ASSEMBL[ÉE]E\s+ORDINAIRE|ASSEMBL[ÉE]E\s+SP[ÉE]CIALE/i;
@@ -130,7 +128,6 @@ export const parseAgendaPDF = async (
                 objective: 'Information',
                 decision: ''
             };
-            itemOrder++;
         } else if (isNumberOnly) {
             // New Item with number only (title likely on next line)
 
@@ -150,7 +147,6 @@ export const parseAgendaPDF = async (
                 objective: 'Information',
                 decision: ''
             };
-            itemOrder++;
         } else if (currentItem) {
             // Append continuation line logic
             if (currentItem.title === '' || currentItem.title === 'Point sans titre') {

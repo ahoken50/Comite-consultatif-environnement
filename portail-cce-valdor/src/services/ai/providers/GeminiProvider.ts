@@ -450,4 +450,221 @@ RÉSOLUTION PROPOSÉE :`;
 
         return result.candidates?.[0]?.content?.parts?.[0]?.text || '';
     }
+
+    async extractText(file: File): Promise<string> {
+        if (!this.isConfigured()) throw new Error('Gemini API key not configured');
+
+        // Reuse the upload method - assumes file is PDF or Image
+        const fileUri = await this.uploadToGemini(file, file.type, `ocr-${Date.now()}`);
+
+        const response = await fetch(`${GEMINI_API_URL}?key=${GEMINI_API_KEY}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                contents: [{
+                    parts: [
+                        { text: "OCR TASK: Extract all text from this document verbatim. Preserve structure (headers, lists) using Markdown." },
+                        { file_data: { mime_type: file.type, file_uri: fileUri } }
+                    ]
+                }]
+            })
+        });
+
+        if (!response.ok) throw new Error('Gemini API refused connection');
+        const data: GeminiResponse = await response.json();
+
+        if (data.error) throw new Error(data.error.message);
+        return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    }
+
+    async checkRegulatoryCompliance(resolutionText: string, context?: string): Promise<{
+        compliant: boolean;
+        issues: string[];
+        suggestions: string[];
+        citedRegulations: string[];
+    }> {
+        if (!this.isConfigured()) throw new Error('Gemini API key not configured');
+
+        // 1. Search for relevant regulations in Typesense (RAG)
+        const { searchRegulations } = await import('../../typesenseService');
+        const searchResults = await searchRegulations(resolutionText, {
+            perPage: 3,
+            filterBy: 'status:=[En vigueur]'
+        });
+
+        const relevantRegulations = searchResults.hits
+            .map(h => `RÈGLEMENT: ${h.document.title}\nCONTENU:\n${h.document.content.substring(0, 1000)}...`)
+            .join('\n\n');
+
+        // 2. Ask Gemini to validate
+        const prompt = `Tu es "Le Gardien", une IA experte en conformité réglementaire municipale.
+TÂCHE : Analyser si le PROJET DE RÉSOLUTION proposé respecte les RÈGLEMENTS MUNICIPAUX fournis.
+
+PROJET DE RÉSOLUTION :
+"${resolutionText}"
+${context ? `CONTEXTE SUPPLÉMENTAIRE : ${context}` : ''}
+
+RÈGLEMENTS PERTINENTS TROUVÉS :
+${relevantRegulations || "Aucun règlement spécifique trouvé (Analyse générale seulement)."}
+
+INSTRUCTIONS D'ANALYSE :
+1. Détecte les conflits directs (ex: hauteur maximale dépassée, marge de recul, usage interdit).
+2. Détecte les omissions procédurales (ex: mention manquante d'un PIIA, permis requis).
+3. Si le texte est conforme, confirme-le.
+4. Réponds UNIQUEMENT en format JSON valide.
+
+FORMAT JSON ATTENDU :
+{
+  "compliant": boolean,
+  "issues": ["Description du conflit 1", "Description du conflit 2"], 
+  "suggestions": ["Suggestion pour corriger 1", "Suggestion 2"],
+  "citedRegulations": ["Titre du règlement cité 1", "Titre 2"]
+}
+`;
+
+        const response = await fetch(`${GEMINI_API_URL}?key=${GEMINI_API_KEY}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                contents: [{ parts: [{ text: prompt }] }],
+                generationConfig: {
+                    temperature: 0.1, // Low temp for analytical precision
+                    responseMimeType: "application/json" // Force JSON mode
+                }
+            })
+        });
+
+        const result: GeminiResponse = await response.json();
+        if (result.error) throw new Error(result.error.message);
+
+        const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (!text) throw new Error('No compliance analysis generated');
+
+        try {
+            const parsed = JSON.parse(text);
+            return {
+                compliant: parsed.compliant ?? false,
+                issues: parsed.issues || [],
+                suggestions: parsed.suggestions || [],
+                citedRegulations: parsed.citedRegulations || []
+            };
+        } catch (e) {
+            console.error('Failed to parse compliance JSON', e);
+            return {
+                compliant: false,
+                issues: ["Erreur d'analyse IA (Format invalide)"],
+                suggestions: [],
+                citedRegulations: []
+            };
+        }
+    }
+
+    async analyzeProjectRegulations(projectDescription: string): Promise<{
+        relevantRegulationIds: string[];
+        reasoning: string;
+    }> {
+        if (!this.isConfigured()) throw new Error('Gemini API key not configured');
+
+        // 1. Search for potentially relevant regulations
+        const { searchRegulations } = await import('../../typesenseService');
+        const searchResults = await searchRegulations(projectDescription, {
+            perPage: 5,
+            filterBy: 'status:=[En vigueur]'
+        });
+
+        if (searchResults.hits.length === 0) {
+            return { relevantRegulationIds: [], reasoning: "Aucun règlement pertinent trouvé dans la recherche initiale." };
+        }
+
+        const candidates = searchResults.hits.map(h => ({
+            id: h.document.id,
+            title: h.document.title,
+            snippet: h.document.content.substring(0, 500)
+        }));
+
+        const candidatesText = candidates.map((c) => `[ID: ${c.id}] ${c.title}\n${c.snippet}...`).join('\n\n');
+
+        // 2. Ask Gemini to filter and explain
+        const prompt = `Tu es un expert en urbanisme.
+TÂCHE : Identifier les règlements applicables à ce projet municipal.
+
+DESCRIPTION DU PROJET :
+"${projectDescription}"
+
+RÈGLEMENTS CANDIDATS (trouvés par recherche par mots-clés) :
+${candidatesText}
+
+INSTRUCTIONS :
+1. Analyse quels règlements de cette liste sont réellement pertinents pour ce projet.
+2. Retourne les IDs des règlements pertinents.
+3. Explique brièvement pourquoi.
+4. Format JSON attendu :
+{
+  "relevantRegulationIds": ["id1", "id2"],
+  "reasoning": "Explication courte..."
+}`;
+
+        const response = await fetch(`${GEMINI_API_URL}?key=${GEMINI_API_KEY}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                contents: [{ parts: [{ text: prompt }] }],
+                generationConfig: {
+                    temperature: 0.1,
+                    responseMimeType: "application/json"
+                }
+            })
+        });
+
+        const result: GeminiResponse = await response.json();
+        if (result.error) throw new Error(result.error.message);
+
+        const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (!text) return { relevantRegulationIds: [], reasoning: "Erreur d'analyse IA" };
+
+        try {
+            const parsed = JSON.parse(text);
+            return {
+                relevantRegulationIds: parsed.relevantRegulationIds || [],
+                reasoning: parsed.reasoning || "Analyse complétée."
+            };
+        } catch (e) {
+            console.error('Failed to parse analysis JSON', e);
+            return { relevantRegulationIds: [], reasoning: "Erreur de formatage IA" };
+        }
+    }
+
+    async chatWithJurisprudence(question: string, context: string): Promise<string> {
+        if (!this.isConfigured()) throw new Error('Gemini API key not configured');
+
+        const prompt = `Tu es un assistant juridique municipal pour la ville de Val-d'Or.
+TÂCHE : Répondre à la question de l'utilisateur en te basant UNIQUEMENT sur la jurisprudence (résolutions passées) fournie.
+
+CONTEXTE (JURISPRUDENCE) :
+${context}
+
+QUESTION :
+"${question}"
+
+INSTRUCTIONS :
+1. Réponds de manière précise et factuelle.
+2. Cite les résolutions pertinentes (Titre et Date) pour appuyer ta réponse.
+3. Si la jurisprudence ne contient pas la réponse, dis-le clairement.
+4. Synthétise les tendances si plusieurs résolutions sont similaires.
+
+RÉPONSE :`;
+
+        const response = await fetch(`${GEMINI_API_URL}?key=${GEMINI_API_KEY}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                contents: [{ parts: [{ text: prompt }] }]
+            })
+        });
+
+        const result: GeminiResponse = await response.json();
+        if (result.error) throw new Error(result.error.message);
+
+        return result.candidates?.[0]?.content?.parts?.[0]?.text || "Désolé, je n'ai pas pu générer de réponse.";
+    }
 }

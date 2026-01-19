@@ -243,10 +243,11 @@ export const truncateToTokens = (
             break;
 
         case 'balanced':
-        default:
+        default: {
             const halfLength = Math.floor(availableChars / 2);
             result = text.slice(0, halfLength) + truncationMarker + text.slice(-halfLength);
             break;
+        }
     }
 
     logger.info('TokenChunking', `Truncated ${estimateTokens(text)} tokens to ${maxTokens}`);

@@ -18,7 +18,10 @@ const Dashboard = lazy(() => import('./pages/Dashboard/Dashboard'));
 const ProjectsPage = lazy(() => import('./pages/Projects/ProjectsPage'));
 const ProjectDetailPage = lazy(() => import('./pages/Projects/ProjectDetailPage'));
 const MeetingsPage = lazy(() => import('./pages/Meetings/MeetingsPage'));
+const RegulationManagerPage = lazy(() => import('./pages/Regulations/RegulationManagerPage'));
 const MeetingDetailPage = lazy(() => import('./pages/Meetings/MeetingDetailPage'));
+
+
 const DocumentsPage = lazy(() => import('./pages/Documents/DocumentsPage'));
 const MembersPage = lazy(() => import('./pages/Members/MembersPage'));
 const ResolutionsPage = lazy(() => import('./pages/Resolutions/ResolutionsPage'));
@@ -240,6 +243,7 @@ function App() {
                 <Route path="documents" element={<DocumentsPage />} />
                 <Route path="members" element={<MembersPage />} />
                 <Route path="resolutions" element={<ResolutionsPage />} />
+                <Route path="regulations" element={<RegulationManagerPage />} />
                 <Route path="jurisprudence" element={<JurisprudenceSearch />} />
                 <Route path="recommendations" element={<CouncilTrackingPage />} />
                 {/* Reports and Settings moved to Protected Route above */}

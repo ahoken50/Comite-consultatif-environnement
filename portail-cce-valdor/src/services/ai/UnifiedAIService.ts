@@ -87,6 +87,30 @@ export class UnifiedAIService implements AIService {
         return this.getProvider().draftResolution(context);
     }
 
+    async extractText(file: File): Promise<string> {
+        return this.getProvider().extractText(file);
+    }
+
+    async checkRegulatoryCompliance(resolutionText: string, context?: string): Promise<{
+        compliant: boolean;
+        issues: string[];
+        suggestions: string[];
+        citedRegulations: string[];
+    }> {
+        return this.getProvider().checkRegulatoryCompliance(resolutionText, context);
+    }
+
+    async analyzeProjectRegulations(projectDescription: string): Promise<{
+        relevantRegulationIds: string[];
+        reasoning: string;
+    }> {
+        return this.getProvider().analyzeProjectRegulations(projectDescription);
+    }
+
+    async chatWithJurisprudence(question: string, context: string): Promise<string> {
+        return this.getProvider().chatWithJurisprudence(question, context);
+    }
+
     /**
      * Switch the active AI provider at runtime
      */

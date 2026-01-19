@@ -103,7 +103,7 @@ export const usePagination = <T extends DocumentData>(
         setState(prev => ({ ...prev, loading: true, error: null }));
 
         try {
-            let queryConstraints: QueryConstraint[] = [
+            const queryConstraints: QueryConstraint[] = [
                 ...constraints,
                 orderBy(orderByField, orderDirection),
             ];

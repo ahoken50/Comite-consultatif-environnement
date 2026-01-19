@@ -2,7 +2,6 @@ import React, { useRef, useEffect, useState } from 'react';
 import { Box, Typography, IconButton, Button } from '@mui/material';
 import { FolderOpen, ChevronLeft, ChevronRight, Close, Image as ImageIcon, PictureAsPdf, Circle, TableView, Web } from '@mui/icons-material';
 import type { Attachment } from '../types';
-// @ts-ignore
 import * as XLSX from 'xlsx';
 
 interface DocumentViewerProps {

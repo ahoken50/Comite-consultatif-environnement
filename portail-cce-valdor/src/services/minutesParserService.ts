@@ -64,7 +64,7 @@ export const parseMinutesDraft = (
             const orderNumber = numberedMatch[1] ? parseInt(numberedMatch[1], 10) : 0;
             const fullTitle = numberedMatch[2].trim();
             const headerLine = numberedMatch[0];
-            let rawContent = trimmed.slice(trimmed.indexOf(headerLine) + headerLine.length).trim();
+            const rawContent = trimmed.slice(trimmed.indexOf(headerLine) + headerLine.length).trim();
 
             // Determine primary entry type from title
             const primaryEntryType = determineEntryType(fullTitle);
@@ -205,8 +205,8 @@ function parseEmbeddedEntries(
     // Regex to find COMMENTAIRE XX-A or COMMENTAIRE (without number)
     const commentaireRegex = /(?:\*\*|__)?COMMENTAIRE(?:\*\*|__)?(?:[\s:]*(\d{2}-[A-Z]))?[\s:.-]*/gi;
 
-    let resMatches = [...content.matchAll(resolutionRegex)];
-    let comMatches = [...content.matchAll(commentaireRegex)];
+    const resMatches = [...content.matchAll(resolutionRegex)];
+    const comMatches = [...content.matchAll(commentaireRegex)];
 
     // Collect all markers with their positions
     interface Marker {

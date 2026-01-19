@@ -87,7 +87,7 @@ export const parseAgendaDOCX = async (file: File): Promise<ParsedMeetingData> =>
         const results: Array<{ name: string, role: string }> = [];
 
         // First, normalize the text
-        let normalized = text
+        const normalized = text
             .replace(/\s+/g, ' ')  // Normalize spaces
             .replace(/\s+et\s+/gi, ', ')  // Replace "et" with comma
             .trim();
@@ -354,7 +354,7 @@ export const parseAgendaDOCX = async (file: File): Promise<ParsedMeetingData> =>
         else if (block.type === 'RESOLUTION' || block.type === 'COMMENT') {
             if (!currentSection) startSection("Section Inconnue");
 
-            let num = block.metadata!.number!;
+            const num = block.metadata!.number!;
 
             currentEntry = {
                 type: block.metadata!.type! as 'resolution' | 'comment',
@@ -442,7 +442,7 @@ export const parseAgendaDOCX = async (file: File): Promise<ParsedMeetingData> =>
     // Check if we found better items via other methods
     // If we only found 1-2 items and they look like titles, we might have missed the real list
     if (!parsedResult.agendaItems || parsedResult.agendaItems.length < 3) {
-        let fallbackItems: AgendaItem[] = [];
+        const fallbackItems: AgendaItem[] = [];
 
         // STRATEGY A: Check for Tables (Common in some ODJ formats)
         // Look for rows with numbered items or specific columns

@@ -123,4 +123,27 @@ export class ClaudeProvider implements AIService {
     async draftResolution(_context: ResolutionContext): Promise<string> {
         throw new Error('Resolution drafting not supported by Claude provider yet.');
     }
+
+    async extractText(_file: File): Promise<string> {
+        throw new Error('Text extraction not supported by Claude provider yet.');
+    }
+
+    async checkRegulatoryCompliance(_resolutionText: string, _context?: string): Promise<{
+        compliant: boolean;
+        issues: string[];
+        suggestions: string[];
+        citedRegulations: string[];
+    }> {
+        throw new Error('Compliance check not supported by Claude provider yet.');
+    }
+
+    async analyzeProjectRegulations(_projectDescription: string): Promise<{
+        relevantRegulationIds: string[];
+        reasoning: string;
+    }> {
+        throw new Error('Project analysis not supported by Claude provider yet.');
+    }
+    async chatWithJurisprudence(_question: string, _context: string): Promise<string> {
+        throw new Error('Chat not supported by Claude provider yet.');
+    }
 }

@@ -1,7 +1,6 @@
 import type { Meeting } from '../types/meeting.types';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
-// @ts-ignore
 import html2pdf from 'html2pdf.js';
 
 export interface PDFGenerationResult {

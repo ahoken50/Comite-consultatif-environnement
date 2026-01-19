@@ -30,7 +30,7 @@ const MinutesImportDialog: React.FC<MinutesImportDialogProps> = ({ open, onClose
             if (match) {
                 const type = match[1].toUpperCase() === 'RÉSOLUTION' ? 'resolution' : 'comment';
                 const number = match[2].trim();
-                let content = match[3].trim();
+                const content = match[3].trim();
 
                 // Extract Proposer/Seconder
                 let proposer = '';

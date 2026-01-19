@@ -397,27 +397,20 @@ const MeetingDetailPage: React.FC = () => {
                 </TabPanel>
 
                 <TabPanel value={tabValue} index={2}>
-                    <AccessControl allowedRoles={['coordinator']} fallback={<Typography sx={{ py: 4, textAlign: 'center', color: 'text.secondary' }}>Accès réservé au coordonnateur</Typography>}>
+                    <AccessControl allowedRoles={['coordinator']}>
                         <ConvocationDashboard
                             meeting={meeting}
                             onUpdate={() => dispatch(updateMeeting({ id: meeting.id, updates: { ...meeting } }))}
                         />
                         <Divider sx={{ my: 4 }} />
-                        <AttendanceManager
-                            meeting={meeting}
-                            onUpdate={handleMeetingUpdate}
-                        />
                     </AccessControl>
-                    {/* View Only for others */}
-                    <AccessControl allowedRoles={['member', 'president', 'elected_official']}>
-                        <Typography variant="h6" gutterBottom>Présences</Typography>
-                        {/* We might want a read-only view here later, for now just hiding the management tools */}
-                        <AttendanceManager
-                            meeting={meeting}
-                            onUpdate={() => { }} // No-op for read-only
-                            readOnly={true} // Assuming AttendanceManager supports readOnly (if not we'll need to update it)
-                        />
-                    </AccessControl>
+
+                    <Typography variant="h6" gutterBottom>Présences</Typography>
+                    <AttendanceManager
+                        meeting={meeting}
+                        onUpdate={isCoordinator ? handleMeetingUpdate : () => { }}
+                        readOnly={!isCoordinator}
+                    />
                 </TabPanel>
 
                 <TabPanel value={tabValue} index={3}>

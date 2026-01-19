@@ -121,6 +121,19 @@ export const COLLECTIONS = {
             { name: 'notes', type: 'string' as const }
         ],
         defaultSortingField: 'name'
+    },
+    regulations: {
+        name: 'regulations',
+        fields: [
+            { name: 'id', type: 'string' as const },
+            { name: 'title', type: 'string' as const },
+            { name: 'content', type: 'string' as const },
+            { name: 'category', type: 'string' as const, facet: true },
+            { name: 'year', type: 'int32' as const, facet: true },
+            { name: 'status', type: 'string' as const, facet: true },
+            { name: 'embedding', type: 'float[]' as const, num_dim: 768, optional: true }
+        ],
+        defaultSortingField: 'year'
     }
 };
 
@@ -351,7 +364,7 @@ export const searchAll = async (
  */
 export const indexMeeting = async (meeting: SearchableMeeting, generateEmbedding = false): Promise<void> => {
     try {
-        let meetingToIndex = { ...meeting };
+        const meetingToIndex = { ...meeting };
 
         if (generateEmbedding) {
             // Generate semantic text from relevant fields
@@ -415,7 +428,7 @@ export const indexProject = async (project: SearchableProject): Promise<void> =>
  * Delete a document from the index
  */
 export const deleteFromIndex = async (
-    collectionName: 'meetings' | 'projects',
+    collectionName: 'meetings' | 'projects' | 'regulations',
     documentId: string
 ): Promise<void> => {
     try {
@@ -472,12 +485,151 @@ export const getTypesenseStatus = (): {
     host: TYPESENSE_CONFIG.host || 'Not configured'
 });
 
+
+
+// ============================================
+// REGULATION FUNCTIONS
+// ============================================
+
+export interface SearchableRegulation {
+    id: string;
+    title: string;
+    content: string;
+    category: string;
+    year: number;
+    status: string;
+    embedding?: number[];
+}
+
+export const searchRegulations = async (
+    query: string,
+    options: SearchOptions = {}
+): Promise<SearchResult<SearchableRegulation>> => {
+    const timer = logger.time('Typesense', 'Search regulations');
+
+    try {
+        const {
+            page = 1,
+            perPage = 10,
+            filterBy,
+            sortBy = '_text_match:desc',
+            highlightFields = ['title', 'content']
+        } = options;
+
+        const useVectorSearch = !!query && query.length > 3;
+
+        let vectorQuery = '';
+        if (useVectorSearch) {
+            try {
+                const queryVector = await aiService.generateEmbedding(query);
+                vectorQuery = `embedding:([${queryVector.join(',')}], k:10)`;
+            } catch (e) {
+                logger.warn('Typesense', 'Failed to generate query embedding', { error: e instanceof Error ? e.message : String(e) });
+            }
+        }
+
+        const searchParams = new URLSearchParams({
+            q: query,
+            query_by: 'title,content',
+            page: page.toString(),
+            per_page: perPage.toString(),
+            sort_by: sortBy,
+            highlight_fields: highlightFields.join(','),
+            highlight_full_fields: 'title,content' // Highlight in content too
+        });
+
+        if (vectorQuery) {
+            searchParams.append('vector_query', vectorQuery);
+        }
+
+        if (filterBy) {
+            searchParams.append('filter_by', filterBy);
+        }
+
+        const response = await fetchTypesense<{
+            hits: Array<{
+                document: SearchableRegulation;
+                highlights?: Array<{ field: string; snippet: string }>;
+                text_match: number;
+                vector_distance?: number;
+            }>;
+            found: number;
+            page: number;
+            out_of: number;
+            search_time_ms: number;
+        }>(`/collections/regulations/documents/search?${searchParams}`);
+
+        timer.end({ found: response.found });
+
+        return {
+            hits: response.hits.map(hit => ({
+                document: hit.document,
+                highlight: hit.highlights?.reduce((acc, h) => {
+                    acc[h.field] = { snippet: h.snippet };
+                    return acc;
+                }, {} as Record<string, { snippet: string }>),
+                textMatch: hit.text_match,
+                vectorDistance: hit.vector_distance
+            })),
+            found: response.found,
+            page: response.page,
+            totalPages: Math.ceil(response.found / perPage),
+            searchTimeMs: response.search_time_ms
+        };
+
+    } catch (error) {
+        logger.error('Typesense', 'Search regulations failed', { error, query });
+        timer.end({ error: true });
+        throw error;
+    }
+};
+
+export const indexRegulation = async (regulation: SearchableRegulation, generateEmbedding = false): Promise<void> => {
+    try {
+        const regToIndex = { ...regulation };
+
+        if (generateEmbedding) {
+            // Include content in embedding for semantic search
+            const semanticText = `
+                Titre: ${regulation.title}
+                Catégorie: ${regulation.category}
+                Contenu: ${regulation.content.substring(0, 1500)}
+            `.trim();
+
+            try {
+                const vector = await aiService.generateEmbedding(semanticText);
+                regToIndex.embedding = vector;
+                logger.debug('Typesense', 'Generated embedding for regulation', { id: regulation.id });
+            } catch (e) {
+                logger.warn('Typesense', 'Failed to generate embedding for regulation', { error: e });
+            }
+        }
+
+        await fetchTypesense(
+            `/collections/regulations/documents?action=upsert`,
+            {
+                method: 'POST',
+                body: JSON.stringify(regToIndex)
+            },
+            true // Use admin key
+        );
+
+        logger.debug('Typesense', `Indexed regulation ${regulation.id}`);
+
+    } catch (error) {
+        logger.error('Typesense', 'Failed to index regulation', { error, regId: regulation.id });
+        throw error;
+    }
+};
+
 export default {
     searchMeetings,
     searchProjects,
+    searchRegulations,
     searchAll,
     indexMeeting,
     indexProject,
+    indexRegulation,
     deleteFromIndex,
     checkTypesenseHealth,
     getTypesenseStatus,

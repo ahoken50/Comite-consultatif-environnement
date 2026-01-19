@@ -5,7 +5,6 @@
 
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 
-// @ts-ignore
 import pdfWorker from 'pdfjs-dist/build/pdf.worker?url';
 
 // Set worker source
@@ -123,7 +122,6 @@ export const extractTextFromPDF = async (
 ): Promise<OCRResult> => {
     try {
         const arrayBuffer = await file.arrayBuffer();
-        // @ts-ignore
         const pdf = await (pdfjsLib as any).getDocument({ data: arrayBuffer }).promise;
         const pageCount = pdf.numPages;
 

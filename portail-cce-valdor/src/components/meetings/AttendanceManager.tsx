@@ -134,7 +134,7 @@ const AttendanceManager: React.FC<AttendanceManagerProps> = ({ meeting, onUpdate
         const presentMatch = draftContent.match(/Sont présents\s*:\s*([^]*?)(?=\n\n|\n[A-Z]|$)/i);
         const absentMatch = draftContent.match(/Sont absents\s*:\s*([^]*?)(?=\n\n|\n[A-Z]|$)/i);
 
-        let updatedAttendees: Attendee[] = [...(meeting.attendees || [])];
+        const updatedAttendees: Attendee[] = [...(meeting.attendees || [])];
         let changesCount = 0;
 
         const processNames = (text: string, isPresent: boolean) => {

@@ -4,7 +4,6 @@ import { type AgendaItem, type MinuteEntry } from '../types/meeting.types';
 import { extractTextFromPDF } from './ocrService';
 import { extractPVWithGroq, mapAIExtractedToAgendaItems } from './groqService';
 
-// @ts-ignore
 import pdfWorker from 'pdfjs-dist/build/pdf.worker?url';
 
 // Set worker source

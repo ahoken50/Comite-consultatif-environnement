@@ -69,6 +69,7 @@ export interface Project {
     linkedDocumentIds: string[];
     linkedResolutions?: LinkedResolution[];  // New: array of linked resolutions
     linkedResolutionIds: string[];           // Legacy: kept for backward compatibility
+    linkedRegulationIds?: string[];          // New: array of linked regulation IDs from Typesense
     tags: string[];
     isUrgent: boolean;
     estimatedCompletionDate: string | null;
