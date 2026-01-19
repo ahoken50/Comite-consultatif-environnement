@@ -15,16 +15,6 @@
             ]
         },
         {
-            "collectionGroup": "projects",
-            "queryScope": "COLLECTION",
-            "fields": [
-                {
-                    "fieldPath": "dateUpdated",
-                    "order": "DESCENDING"
-                }
-            ]
-        },
-        {
             "collectionGroup": "activity_log",
             "queryScope": "COLLECTION",
             "fields": [
