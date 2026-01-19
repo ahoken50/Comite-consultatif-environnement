@@ -79,7 +79,7 @@ const MeetingDetailPage: React.FC = () => {
     const { items: documents } = useSelector((state: RootState) => state.documents);
     const { user } = useSelector((state: RootState) => state.auth);
     const { items: members } = useSelector((state: RootState) => state.members);
-    const currentMember = members.find(m => m.id === (user?.id || user?.uid));
+    const currentMember = members.find(m => m.id === (user?.id || user?.uid) || m.email === user?.email);
     const isCoordinator = user?.role === 'coordinator';
 
     const [tabValue, setTabValue] = useState(0);

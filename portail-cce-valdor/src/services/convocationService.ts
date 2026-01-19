@@ -382,7 +382,7 @@ export const hasAnyConvocation = async (meetingId: string): Promise<boolean> => 
     try {
         // Check for regular convocations
         const convocationsRef = collection(db, 'meetings', meetingId, 'convocations');
-        const convSnapshot = await getDocs(query(convocationsRef, orderBy('createdAt', 'desc'), where('sentAt', '!=', null)));
+        const convSnapshot = await getDocs(query(convocationsRef, where('sentAt', '!=', null)));
 
         if (!convSnapshot.empty) return true;
 

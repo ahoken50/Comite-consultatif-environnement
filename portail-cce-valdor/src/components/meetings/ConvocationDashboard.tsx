@@ -43,7 +43,7 @@ const ConvocationDashboard: React.FC<ConvocationDashboardProps> = ({ meeting, on
 
     const { user } = useSelector((state: RootState) => state.auth);
     const { items: members } = useSelector((state: RootState) => state.members);
-    const currentMember = members.find(m => m.id === user?.uid);
+    const currentMember = members.find(m => m.id === user?.uid || m.email === user?.email);
 
     const loadData = async () => {
         setLoading(true);
