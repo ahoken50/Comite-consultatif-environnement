@@ -32,6 +32,7 @@ import {
     markNotificationAsRead,
     markAllNotificationsAsRead
 } from '../../services/notificationService';
+import { safeDate } from '../../utils/dateUtils';
 
 interface NotificationCenterProps {
     onClose?: () => void;
@@ -199,7 +200,7 @@ const NotificationCenter: React.FC<NotificationCenterProps> = ({ onClose }) => {
                                                     color="text.disabled"
                                                     sx={{ mt: 0.5, display: 'block' }}
                                                 >
-                                                    {formatDistanceToNow(new Date(notification.createdAt), {
+                                                    {formatDistanceToNow(safeDate(notification.createdAt) || new Date(), {
                                                         addSuffix: true,
                                                         locale: fr
                                                     })}

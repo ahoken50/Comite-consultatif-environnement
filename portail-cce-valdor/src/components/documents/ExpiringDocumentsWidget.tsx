@@ -177,7 +177,7 @@ const ExpiringDocumentsWidget: React.FC<ExpiringDocumentsWidgetProps> = ({
                                             }
                                             secondary={
                                                 <Typography variant="caption" color="text.secondary">
-                                                    {formatDistanceToNow(new Date(doc.expirationDate!), {
+                                                    {formatDistanceToNow(safeDate(doc.expirationDate) || new Date(), {
                                                         addSuffix: true,
                                                         locale: fr
                                                     })}

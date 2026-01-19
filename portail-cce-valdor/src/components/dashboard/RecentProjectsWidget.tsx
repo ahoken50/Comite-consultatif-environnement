@@ -6,6 +6,7 @@ import { formatDistanceToNow } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import type { Project } from '../../types/project.types';
 import { CategoryLabels, ProjectStatusLabels } from '../../constants';
+import { safeDate } from '../../utils/dateUtils';
 
 interface RecentProjectsWidgetProps {
     projects: Project[];
@@ -108,7 +109,7 @@ const RecentProjectsWidget: React.FC<RecentProjectsWidgetProps> = ({ projects, l
                                         }
                                     />
                                     <Typography variant="caption" color="text.secondary" sx={{ ml: 1, whiteSpace: 'nowrap' }}>
-                                        {formatDistanceToNow(new Date(project.dateUpdated), { addSuffix: true, locale: fr })}
+                                        {formatDistanceToNow(safeDate(project.dateUpdated) || new Date(), { addSuffix: true, locale: fr })}
                                     </Typography>
                                 </ListItemButton>
                             </ListItem>

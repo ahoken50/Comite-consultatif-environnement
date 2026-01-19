@@ -28,6 +28,7 @@ import { db } from '../../services/firebase';
 import { useSelector } from 'react-redux';
 import type { RootState } from '../../store/rootReducer';
 import type { UserSession } from '../../types/notification.types';
+import { safeDate } from '../../utils/dateUtils';
 
 /**
  * Sessions Manager Component (#10.2)
@@ -60,8 +61,11 @@ const SessionsManager: React.FC = () => {
             } as UserSession));
 
             // Sort by last active (most recent first)
-            sessionsData.sort((a, b) =>
-                new Date(b.lastActiveAt).getTime() - new Date(a.lastActiveAt).getTime()
+            sessionsData.sort((a, b) => {
+                const dateA = safeDate(a.lastActiveAt)?.getTime() || 0;
+                const dateB = safeDate(b.lastActiveAt)?.getTime() || 0;
+                return dateB - dateA;
+            }
             );
 
             setSessions(sessionsData);
@@ -194,7 +198,7 @@ const SessionsManager: React.FC = () => {
                                     </TableCell>
                                     <TableCell>
                                         <Typography variant="body2">
-                                            {formatDistanceToNow(new Date(session.lastActiveAt), {
+                                            {formatDistanceToNow(safeDate(session.lastActiveAt) || new Date(), {
                                                 addSuffix: true,
                                                 locale: fr
                                             })}
