@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { AppBar, Toolbar, Typography, IconButton, Avatar, Menu, MenuItem, Box, Badge } from '@mui/material';
+import React, { useState, useEffect } from 'react';
+import { AppBar, Toolbar, Typography, IconButton, Avatar, Menu, MenuItem, Box, Badge, Popover } from '@mui/material';
 import { Menu as MenuIcon, Notifications, AccountCircle } from '@mui/icons-material';
 import { useDispatch, useSelector } from 'react-redux';
 import { signOut } from 'firebase/auth';
@@ -8,6 +8,9 @@ import { logout } from '../../features/auth/authSlice';
 import type { RootState } from '../../store/rootReducer';
 import logo from '../../assets/logo-valdor.png';
 import GlobalSearch from '../common/GlobalSearch';
+import NotificationCenter from '../common/NotificationCenter';
+import { subscribeToNotifications } from '../../services/notificationService';
+import type { Notification } from '../../types/notification.types';
 import { useNavigate } from 'react-router-dom';
 
 interface HeaderProps {
@@ -20,6 +23,20 @@ const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
     const navigate = useNavigate();
     const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
     const [notificationAnchorEl, setNotificationAnchorEl] = useState<null | HTMLElement>(null);
+    const [unreadCount, setUnreadCount] = useState(0);
+
+    // Subscribe to real-time notifications
+    useEffect(() => {
+        const userId = user?.id || user?.uid;
+        if (!userId) return;
+
+        const unsubscribe = subscribeToNotifications(userId, (notifications: Notification[]) => {
+            const unread = notifications.filter(n => !n.isRead).length;
+            setUnreadCount(unread);
+        });
+
+        return () => unsubscribe();
+    }, [user]);
 
     const handleMenu = (event: React.MouseEvent<HTMLElement>) => {
         setAnchorEl(event.currentTarget);
@@ -79,14 +96,14 @@ const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
                         size="large"
                         onClick={handleNotificationClick}
                     >
-                        <Badge badgeContent={0} color="error">
+                        <Badge badgeContent={unreadCount} color="error">
                             <Notifications />
                         </Badge>
                     </IconButton>
 
-                    <Menu
-                        anchorEl={notificationAnchorEl}
+                    <Popover
                         open={Boolean(notificationAnchorEl)}
+                        anchorEl={notificationAnchorEl}
                         onClose={handleNotificationClose}
                         anchorOrigin={{
                             vertical: 'bottom',
@@ -97,8 +114,8 @@ const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
                             horizontal: 'right',
                         }}
                     >
-                        <MenuItem onClick={handleNotificationClose}>Aucune notification</MenuItem>
-                    </Menu>
+                        <NotificationCenter onClose={handleNotificationClose} />
+                    </Popover>
 
                     <IconButton
                         size="large"

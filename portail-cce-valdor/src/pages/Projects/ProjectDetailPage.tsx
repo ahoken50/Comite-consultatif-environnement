@@ -11,16 +11,18 @@ import {
     Chip,
     Divider,
     IconButton,
-    LinearProgress
+    LinearProgress,
+    Alert,
+    CircularProgress
 } from '@mui/material';
-import { Edit, Delete } from '@mui/icons-material';
+import { Edit, Delete, AutoAwesome } from '@mui/icons-material';
 import { useDispatch, useSelector } from 'react-redux';
 import type { AppDispatch } from '../../store/store';
 import type { RootState } from '../../store/rootReducer';
 import { fetchDocumentsByEntity, deleteDocument, fetchDocuments } from '../../features/documents/documentsSlice';
 import { fetchMembers } from '../../features/members/membersSlice';
 import { fetchMeetings } from '../../features/meetings/meetingsSlice';
-import { updateProject, deleteProject } from '../../features/projects/projectsSlice';
+import { updateProject, deleteProject, fetchProjects } from '../../features/projects/projectsSlice';
 import DocumentList from '../../components/documents/DocumentList';
 import DocumentUpload from '../../components/documents/DocumentUpload';
 import ProjectTasks from '../../components/projects/ProjectTasks';
@@ -29,8 +31,10 @@ import ProjectComments from '../../components/projects/ProjectComments';
 import ProjectDecisions from '../../components/projects/ProjectDecisions';
 import LinkedResolutions from '../../components/projects/LinkedResolutions';
 import ProjectRegulations from '../../components/projects/ProjectRegulations';
-import Breadcrumbs from '../../components/common/Breadcrumbs'; // [NEW]
+import ProjectDependencies from '../../components/projects/ProjectDependencies';
+import Breadcrumbs from '../../components/common/Breadcrumbs';
 import { AccessControl } from '../../components/auth/AccessControl';
+import { generateProjectSummary, isGroqConfigured } from '../../services/ai/projectSummaryService';
 
 interface TabPanelProps {
     children?: React.ReactNode;
@@ -64,6 +68,10 @@ const ProjectDetailPage: React.FC = () => {
     const dispatch = useDispatch<AppDispatch>();
     const [tabValue, setTabValue] = useState(0);
     const [editDialogOpen, setEditDialogOpen] = useState(false);
+
+    // #11.1 AI Summary state
+    const [summaryLoading, setSummaryLoading] = useState(false);
+    const [summaryError, setSummaryError] = useState<string | null>(null);
 
     // Selectors
     const project = useSelector((state: RootState) =>
@@ -114,6 +122,47 @@ const ProjectDetailPage: React.FC = () => {
             }));
             navigate('/projects');
         }
+    };
+
+    // #11.1 Generate AI Summary handler
+    const handleGenerateSummary = async () => {
+        if (!project) return;
+
+        setSummaryLoading(true);
+        setSummaryError(null);
+
+        try {
+            const result = await generateProjectSummary(project);
+
+            if (result.success && result.summary) {
+                // Update project with summary
+                await dispatch(updateProject({
+                    id: project.id,
+                    updates: {
+                        aiSummary: result.summary,
+                        aiSummaryGeneratedAt: new Date().toISOString(),
+                        dateUpdated: new Date().toISOString()
+                    },
+                    userId: user?.id || user?.uid || '',
+                    userName: user?.displayName || 'Utilisateur',
+                    projectName: project.name
+                }));
+                // Refresh projects to get updated summary
+                dispatch(fetchProjects());
+            } else {
+                setSummaryError(result.error || 'Erreur lors de la génération');
+            }
+        } catch (err) {
+            console.error('Error generating summary:', err);
+            setSummaryError('Erreur inattendue');
+        } finally {
+            setSummaryLoading(false);
+        }
+    };
+
+    // #2.7 Refresh projects when dependencies change
+    const handleDependencyUpdate = () => {
+        dispatch(fetchProjects());
     };
 
     const coordinator = members.find(m => m.id === project.coordinatorId);
@@ -167,9 +216,10 @@ const ProjectDetailPage: React.FC = () => {
                 <Divider sx={{ my: 2 }} />
 
                 <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
-                    <Tabs value={tabValue} onChange={handleTabChange} aria-label="project tabs">
+                    <Tabs value={tabValue} onChange={handleTabChange} aria-label="project tabs" variant="scrollable" scrollButtons="auto">
                         <Tab label="Vue d'ensemble" />
                         <Tab label="Tâches" />
+                        <Tab label="Dépendances" />
                         <Tab label="Résolutions CCE" />
                         <Tab label="Règlements" />
                         <Tab label="Décisions Caucus" />
@@ -200,7 +250,7 @@ const ProjectDetailPage: React.FC = () => {
                             <Typography paragraph sx={{ whiteSpace: 'pre-line' }}>{project.nextSteps}</Typography>
                         </Grid>
                         <Grid size={{ xs: 12, md: 4 }}>
-                            <Paper variant="outlined" sx={{ p: 2, bgcolor: 'background.default' }}>
+                            <Paper variant="outlined" sx={{ p: 2, bgcolor: 'background.default', mb: 2 }}>
                                 <Typography variant="subtitle2" gutterBottom>Informations clés</Typography>
                                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
                                     <Typography variant="body2"><strong>Créé le:</strong> {new Date(project.dateCreated).toLocaleDateString()}</Typography>
@@ -214,6 +264,46 @@ const ProjectDetailPage: React.FC = () => {
                                     )}
                                 </Box>
                             </Paper>
+
+                            {/* #11.1 AI Summary Widget */}
+                            <Paper variant="outlined" sx={{ p: 2, bgcolor: 'background.default' }}>
+                                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                                    <Typography variant="subtitle2">Résumé IA</Typography>
+                                    {isGroqConfigured() && (
+                                        <Button
+                                            size="small"
+                                            startIcon={summaryLoading ? <CircularProgress size={16} /> : <AutoAwesome />}
+                                            onClick={handleGenerateSummary}
+                                            disabled={summaryLoading}
+                                        >
+                                            {project.aiSummary ? 'Regénérer' : 'Générer'}
+                                        </Button>
+                                    )}
+                                </Box>
+                                {summaryError && (
+                                    <Alert severity="error" sx={{ mb: 1 }} onClose={() => setSummaryError(null)}>
+                                        {summaryError}
+                                    </Alert>
+                                )}
+                                {project.aiSummary ? (
+                                    <Box>
+                                        <Typography variant="body2" sx={{ whiteSpace: 'pre-line' }}>
+                                            {project.aiSummary}
+                                        </Typography>
+                                        {project.aiSummaryGeneratedAt && (
+                                            <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+                                                Généré le {new Date(project.aiSummaryGeneratedAt).toLocaleDateString()}
+                                            </Typography>
+                                        )}
+                                    </Box>
+                                ) : (
+                                    <Typography variant="body2" color="text.secondary">
+                                        {isGroqConfigured()
+                                            ? 'Cliquez sur "Générer" pour créer un résumé automatique.'
+                                            : 'Clé API Groq non configurée.'}
+                                    </Typography>
+                                )}
+                            </Paper>
                         </Grid>
                     </Grid>
                 </TabPanel>
@@ -222,19 +312,24 @@ const ProjectDetailPage: React.FC = () => {
                     <ProjectTasks project={project} />
                 </TabPanel>
 
+                {/* #2.7 Dependencies Tab */}
                 <TabPanel value={tabValue} index={2}>
-                    <LinkedResolutions project={project} />
+                    <ProjectDependencies project={project} onUpdate={handleDependencyUpdate} />
                 </TabPanel>
 
                 <TabPanel value={tabValue} index={3}>
-                    <ProjectRegulations project={project} />
+                    <LinkedResolutions project={project} />
                 </TabPanel>
 
                 <TabPanel value={tabValue} index={4}>
-                    <ProjectDecisions project={project} />
+                    <ProjectRegulations project={project} />
                 </TabPanel>
 
                 <TabPanel value={tabValue} index={5}>
+                    <ProjectDecisions project={project} />
+                </TabPanel>
+
+                <TabPanel value={tabValue} index={6}>
                     <Grid container spacing={3}>
                         <Grid size={{ xs: 12, md: 8 }}>
                             <Typography variant="h6" gutterBottom>Documents du projet</Typography>
@@ -254,7 +349,7 @@ const ProjectDetailPage: React.FC = () => {
                     </Grid>
                 </TabPanel>
 
-                <TabPanel value={tabValue} index={6}>
+                <TabPanel value={tabValue} index={7}>
                     <ProjectComments project={project} />
                 </TabPanel>
             </Paper>

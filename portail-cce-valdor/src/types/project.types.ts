@@ -50,6 +50,20 @@ export interface LinkedResolution {
     linkedBy: string;                        // User ID who created the link
 }
 
+/**
+ * Represents a dependency between two projects.
+ * Allows tracking blocking relationships (e.g., "Project A cannot start until Project B is completed").
+ */
+export interface ProjectDependency {
+    id: string;                              // Unique ID for this dependency
+    dependsOnProjectId: string;              // ID of the project this depends on
+    dependsOnProjectCode: string;            // Code of the dependency project (e.g., "EC-01")
+    dependsOnProjectName: string;            // Name of the dependency project
+    dependencyType: 'blocks' | 'requires' | 'related'; // Type of dependency
+    createdAt: string;                       // When the link was created
+    createdBy: string;                       // User ID who created the link
+}
+
 export interface Project {
     id: string;
     code: string;
@@ -79,6 +93,11 @@ export interface Project {
     comments?: Comment[];
     startDate?: string; // ISO Date
     caucusDecisions?: CaucusDecision[];
+    // #2.7 Dependencies between projects
+    dependencies?: ProjectDependency[];
+    // #11.1 AI-generated executive summary (Groq)
+    aiSummary?: string;
+    aiSummaryGeneratedAt?: string;
 }
 
 export interface Comment {

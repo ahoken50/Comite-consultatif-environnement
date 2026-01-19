@@ -35,6 +35,7 @@ import ConvocationDialog from '../../components/meetings/ConvocationDialog';
 import ConvocationDashboard from '../../components/meetings/ConvocationDashboard';
 import MeetingApprovalCard from '../../components/meetings/MeetingApprovalCard';
 import ApprovalRequestsPanel from '../../components/meetings/ApprovalRequestsPanel';
+import MeetingChecklist from '../../components/meetings/MeetingChecklist';
 import { fetchMembers } from '../../features/members/membersSlice';
 import Breadcrumbs from '../../components/common/Breadcrumbs';
 import { AccessControl } from '../../components/auth/AccessControl';
@@ -332,6 +333,11 @@ const MeetingDetailPage: React.FC = () => {
                 </Box>
 
                 <Divider sx={{ my: 2 }} />
+
+                {/* #3.1 Meeting Preparation Checklist */}
+                {meeting.status === 'scheduled' && (
+                    <MeetingChecklist meeting={meeting} />
+                )}
 
                 <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
                     <Tabs value={tabValue} onChange={(_, v) => setTabValue(v)}>

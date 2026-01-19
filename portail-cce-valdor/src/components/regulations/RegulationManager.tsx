@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import {
     Box, Typography, Paper, TextField, Button, Grid, Chip,
     Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
-    IconButton, LinearProgress, InputAdornment, MenuItem, Select, FormControl, InputLabel
+    IconButton, LinearProgress, InputAdornment, MenuItem, Select, FormControl, InputLabel,
+    Alert
 } from '@mui/material';
 import {
     CloudUpload, Search, Delete, Add
@@ -25,6 +26,7 @@ const RegulationManager: React.FC = () => {
     const [searchQuery, setSearchQuery] = useState('');
     const [regulations, setRegulations] = useState<SearchableRegulation[]>([]);
     const [loading, setLoading] = useState(false);
+    const [collectionMissing, setCollectionMissing] = useState(false);
 
     // Upload State
     const [uploadMode, setUploadMode] = useState(false);
@@ -44,9 +46,18 @@ const RegulationManager: React.FC = () => {
         try {
             const results = await typesenseService.searchRegulations(searchQuery, { perPage: 20 });
             setRegulations(results.hits.map(h => h.document));
+            setCollectionMissing(false);
         } catch (error) {
-            console.error('Search failed', error);
-            showToast('Erreur lors du chargement des règlements', 'error');
+            // Check if it's a "Collection not found" error
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            if (errorMessage.includes('404') || errorMessage.includes('Collection not found')) {
+                console.info('Typesense regulations collection not yet created');
+                setCollectionMissing(true);
+                setRegulations([]);
+            } else {
+                console.error('Search failed', error);
+                showToast('Erreur lors du chargement des règlements', 'error');
+            }
         } finally {
             setLoading(false);
         }
@@ -278,10 +289,23 @@ const RegulationManager: React.FC = () => {
                                             </TableCell>
                                         </TableRow>
                                     ))}
-                                    {regulations.length === 0 && (
+                                    {regulations.length === 0 && !collectionMissing && (
                                         <TableRow>
                                             <TableCell colSpan={5} align="center">
                                                 Aucun règlement trouvé.
+                                            </TableCell>
+                                        </TableRow>
+                                    )}
+                                    {collectionMissing && (
+                                        <TableRow>
+                                            <TableCell colSpan={5}>
+                                                <Alert severity="info" sx={{ m: 2 }}>
+                                                    <Typography variant="subtitle2" gutterBottom>Collection Typesense non configurée</Typography>
+                                                    <Typography variant="body2">
+                                                        La collection "regulations" doit être créée dans Typesense Cloud.
+                                                        Ajoutez un règlement pour initialiser automatiquement la collection.
+                                                    </Typography>
+                                                </Alert>
                                             </TableCell>
                                         </TableRow>
                                     )}

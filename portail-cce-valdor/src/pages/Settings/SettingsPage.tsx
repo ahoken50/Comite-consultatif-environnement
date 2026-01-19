@@ -18,13 +18,14 @@ import {
     Divider,
     Alert
 } from '@mui/material';
-import { Save, Storage, Settings as SettingsIcon, Person } from '@mui/icons-material';
+import { Save, Storage, Settings as SettingsIcon, Person, Security } from '@mui/icons-material';
 import { useDispatch, useSelector } from 'react-redux';
 import type { AppDispatch } from '../../store/store';
 import type { RootState } from '../../store/rootReducer';
 import { updateMember, ensureMemberProfile } from '../../features/members/membersSlice';
 import CategoryManager from '../../components/settings/CategoryManager';
 import SearchIndexManager from '../../components/settings/SearchIndexManager';
+import SessionsManager from '../../components/settings/SessionsManager';
 
 interface TabPanelProps {
     children?: React.ReactNode;
@@ -120,6 +121,7 @@ const SettingsPage: React.FC = () => {
                 <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
                     <Tabs value={tabValue} onChange={handleTabChange} aria-label="settings tabs">
                         <Tab icon={<Person />} label="Mon Profil" iconPosition="start" />
+                        <Tab icon={<Security />} label="Sécurité" iconPosition="start" />
                         <Tab icon={<SettingsIcon />} label="Système" iconPosition="start" />
                     </Tabs>
                 </Box>
@@ -199,7 +201,16 @@ const SettingsPage: React.FC = () => {
                     </Box>
                 </TabPanel>
 
+                {/* Security Tab with Sessions Manager (#10.2) */}
                 <TabPanel value={tabValue} index={1}>
+                    <Typography variant="h6" gutterBottom>Sécurité du compte</Typography>
+                    <Alert severity="info" sx={{ mb: 3 }}>
+                        Gérez vos sessions actives et la sécurité de votre compte.
+                    </Alert>
+                    <SessionsManager />
+                </TabPanel>
+
+                <TabPanel value={tabValue} index={2}>
                     <Typography variant="h6" gutterBottom>Paramètres du système</Typography>
                     <Alert severity="info" sx={{ mb: 3 }}>
                         Ces paramètres affectent l'ensemble de l'application et sont réservés aux administrateurs.

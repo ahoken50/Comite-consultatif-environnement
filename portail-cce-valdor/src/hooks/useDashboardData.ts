@@ -41,6 +41,7 @@ export interface DashboardData {
     categoryData: CategoryData[];
     progressData: ProgressData[];
     activities: ActivityLog[];
+    recentProjects: Project[];  // #1.2 Recently modified projects
     loading: boolean;
     error: string | null;
 }
@@ -77,6 +78,7 @@ export const useDashboardData = (): DashboardData => {
         categoryData: [],
         progressData: [],
         activities: [],
+        recentProjects: [],
         loading: true,
         error: null
     });
@@ -212,6 +214,11 @@ export const useDashboardData = (): DashboardData => {
                 // 7. Fetch recent activities
                 const activities = await getRecentActivities(10);
 
+                // 8. Get recently modified projects (#1.2)
+                const recentProjects = [...projects]
+                    .sort((a, b) => new Date(b.dateUpdated).getTime() - new Date(a.dateUpdated).getTime())
+                    .slice(0, 5);
+
                 setData({
                     stats,
                     alerts,
@@ -219,6 +226,7 @@ export const useDashboardData = (): DashboardData => {
                     categoryData,
                     progressData,
                     activities,
+                    recentProjects,
                     loading: false,
                     error: null
                 });

@@ -8,12 +8,14 @@ import NextMeetingCard from '../../components/dashboard/NextMeetingCard';
 import CategoryChart from '../../components/dashboard/CategoryChart';
 import ProgressChart from '../../components/dashboard/ProgressChart';
 import ActivityFeed from '../../components/dashboard/ActivityFeed';
+import RecentProjectsWidget from '../../components/dashboard/RecentProjectsWidget';
+import ExpiringDocumentsWidget from '../../components/documents/ExpiringDocumentsWidget';
 import DashboardSkeleton from '../../components/dashboard/DashboardSkeleton';
 import { useDashboardData } from '../../hooks/useDashboardData';
 
 const Dashboard: React.FC = () => {
     const navigate = useNavigate();
-    const { stats, alerts, nextMeeting, categoryData, progressData, activities, loading, error } = useDashboardData();
+    const { stats, alerts, nextMeeting, categoryData, progressData, activities, recentProjects, loading, error } = useDashboardData();
 
     if (loading) {
         return <DashboardSkeleton />;
@@ -64,20 +66,28 @@ const Dashboard: React.FC = () => {
                     <NextMeetingCard meeting={nextMeeting} />
                 </Grid>
 
-                {/* Charts */}
+                {/* Recent Projects (#1.2) & Charts */}
+                <Grid size={{ xs: 12, md: 4 }}>
+                    <RecentProjectsWidget projects={recentProjects} loading={loading} />
+                </Grid>
                 <Grid size={{ xs: 12, md: 4 }}>
                     <Box sx={{ height: 400 }}>
                         <CategoryChart data={categoryData} />
                     </Box>
                 </Grid>
-                <Grid size={{ xs: 12, md: 8 }}>
+                <Grid size={{ xs: 12, md: 4 }}>
                     <Box sx={{ height: 400 }}>
                         <ProgressChart data={progressData} />
                     </Box>
                 </Grid>
 
+                {/* Expiring Documents (#4.7) */}
+                <Grid size={{ xs: 12, md: 6 }}>
+                    <ExpiringDocumentsWidget daysThreshold={30} />
+                </Grid>
+
                 {/* Activity Feed */}
-                <Grid size={{ xs: 12 }}>
+                <Grid size={{ xs: 12, md: 6 }}>
                     <ActivityFeed activities={activities} />
                 </Grid>
             </Grid>
@@ -86,3 +96,4 @@ const Dashboard: React.FC = () => {
 };
 
 export default Dashboard;
+
