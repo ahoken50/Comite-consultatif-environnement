@@ -614,10 +614,75 @@ export const searchRegulations = async (
             searchTimeMs: response.search_time_ms
         };
 
-    } catch (error) {
+    } catch (error: any) {
+        // Auto-heal: If collection not found (404), try to create it and retry search
+        if (error.message && error.message.includes('404')) {
+            logger.warn('Typesense', 'Regulations collection missing during search. Attempting to create...', { query });
+            try {
+                await ensureCollectionsExist();
+
+                // Re-construct params for retry
+                const {
+                    page = 1,
+                    perPage = 10,
+                    filterBy,
+                    sortBy = '_text_match:desc',
+                    highlightFields = ['title', 'content']
+                } = options;
+
+                const searchParams = new URLSearchParams({
+                    q: query,
+                    query_by: 'title,content',
+                    page: page.toString(),
+                    per_page: perPage.toString(),
+                    sort_by: sortBy,
+                    highlight_fields: highlightFields.join(','),
+                    highlight_full_fields: 'title,content'
+                });
+
+                if (filterBy) searchParams.append('filter_by', filterBy);
+
+                // Retry search once
+                const response = await fetchTypesense<{
+                    hits: Array<{
+                        document: SearchableRegulation;
+                        highlights?: Array<{ field: string; snippet: string }>;
+                        text_match: number;
+                        vector_distance?: number;
+                    }>;
+                    found: number;
+                    page: number;
+                    out_of: number;
+                    search_time_ms: number;
+                }>(`/collections/regulations/documents/search?${searchParams}`);
+
+                timer.end({ found: response.found, recovered: true });
+
+                return {
+                    hits: response.hits.map(hit => ({
+                        document: hit.document,
+                        highlight: hit.highlights?.reduce((acc, h) => {
+                            acc[h.field] = { snippet: h.snippet };
+                            return acc;
+                        }, {} as Record<string, { snippet: string }>),
+                        textMatch: hit.text_match,
+                        vectorDistance: hit.vector_distance
+                    })),
+                    found: response.found,
+                    page: response.page,
+                    totalPages: Math.ceil(response.found / perPage),
+                    searchTimeMs: response.search_time_ms
+                };
+            } catch (retryError) {
+                logger.error('Typesense', 'Retry failed after creating collection', { error: retryError });
+                timer.end({ error: true, retryFailed: true });
+                return { hits: [], found: 0, page: 1, totalPages: 0, searchTimeMs: 0 };
+            }
+        }
+
         logger.error('Typesense', 'Search regulations failed', { error, query });
         timer.end({ error: true });
-        throw error;
+        return { hits: [], found: 0, page: 1, totalPages: 0, searchTimeMs: 0 };
     }
 };
 

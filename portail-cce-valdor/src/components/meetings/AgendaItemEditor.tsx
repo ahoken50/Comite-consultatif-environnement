@@ -66,6 +66,7 @@ const AgendaItemEditor: React.FC<AgendaItemEditorProps> = ({
                             itemDescription={item.description || ''}
                             meetingId={meetingId}
                             meetingDate={meetingDate}
+                            siblingEntries={item.minuteEntries}
                         />
                     ))}
                 </Box>

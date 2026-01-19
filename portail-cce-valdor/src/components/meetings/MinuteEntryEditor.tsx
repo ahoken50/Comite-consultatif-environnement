@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { Box, Grid, TextField, MenuItem, IconButton, Tooltip, CircularProgress, InputAdornment, Typography, Dialog, DialogTitle, DialogContent, DialogActions, Button } from '@mui/material';
 import { AutoMode, Link, Shield, CheckCircle, Warning, HelpOutline, AutoAwesome } from '@mui/icons-material';
+import { useSelector } from 'react-redux';
+import type { RootState } from '../../store/rootReducer';
 import type { MinuteEntry } from '../../types/meeting.types';
 import typesenseService, { searchMeetings } from '../../services/typesenseService';
 import { aiService } from '../../services/ai/UnifiedAIService';
@@ -17,6 +19,7 @@ interface MinuteEntryEditorProps {
     itemDescription: string;
     meetingId?: string;
     meetingDate?: string;
+    siblingEntries?: MinuteEntry[];
 }
 
 /**
@@ -32,12 +35,14 @@ const MinuteEntryEditor: React.FC<MinuteEntryEditorProps> = ({
     itemTitle,
     itemDescription,
     meetingId,
-    meetingDate
+    meetingDate,
+    siblingEntries = []
 }) => {
     const navigate = useNavigate();
     const [isExpanded, setIsExpanded] = useState(false);
     const [isDrafting, setIsDrafting] = useState(false);
     const [showChat, setShowChat] = useState(false);
+    const { user } = useSelector((state: RootState) => state.auth);
 
     const handleFieldChange = (field: string, value: any) => {
         onChange(itemId, entryIndex, field, value);
@@ -195,7 +200,11 @@ const MinuteEntryEditor: React.FC<MinuteEntryEditorProps> = ({
                     sourceResolutionContent: entry.content || '',
                     projectName: itemTitle,
                     description: entry.content || '',
-                    notes: '', // Optional notes
+                    // Collect sibling comments to pass as context notes for AI
+                    notes: siblingEntries
+                        .filter(e => e.type === 'comment' && e.content)
+                        .map(e => `[Commentaire PV]: ${e.content}`)
+                        .join('\n\n'),
                     considerants: [] // Could try to extract considerants here too if needed
                 }
             }
@@ -239,7 +248,7 @@ const MinuteEntryEditor: React.FC<MinuteEntryEditorProps> = ({
                         disabled={readOnly}
                     />
                 </Grid>
-                {entry.type === 'resolution' && !readOnly && meetingId && (
+                {entry.type === 'resolution' && meetingId && (user?.role === 'coordinator') && (
                     <Grid size={{ xs: 12, sm: 4 }} sx={{ display: 'flex', alignItems: 'flex-end', pb: 0.5 }}>
                         <Button
                             variant="outlined"
