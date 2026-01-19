@@ -228,6 +228,7 @@ const MeetingDetailPage: React.FC = () => {
             ? `✅ Avis de convocation envoyé à ${sentCount} membre${sentCount !== 1 ? 's' : ''}!`
             : `✅ Ordre du jour et RSVP envoyés à ${sentCount} membre${sentCount !== 1 ? 's' : ''}!`;
         showInfo(message);
+        setHasConvocation(true); // Update checklist immediately
     };
 
     const handleConvocationError = (error: string) => {

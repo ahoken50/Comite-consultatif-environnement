@@ -14,6 +14,7 @@ import {
     query,
     where,
     orderBy,
+    limit,
     serverTimestamp
 } from 'firebase/firestore';
 import { db } from './firebase';
@@ -380,15 +381,15 @@ export const getLatestConvocation = async (meetingId: string): Promise<Convocati
  */
 export const hasAnyConvocation = async (meetingId: string): Promise<boolean> => {
     try {
-        // Check for regular convocations
+        // Check for regular convocations (limit 1 is sufficient and faster)
         const convocationsRef = collection(db, 'meetings', meetingId, 'convocations');
-        const convSnapshot = await getDocs(query(convocationsRef, where('sentAt', '!=', null)));
+        const convSnapshot = await getDocs(query(convocationsRef, limit(1)));
 
         if (!convSnapshot.empty) return true;
 
         // Check for avis convocations (Phase 1)
         const avisRef = collection(db, 'meetings', meetingId, 'avis_convocations');
-        const avisSnapshot = await getDocs(query(avisRef));
+        const avisSnapshot = await getDocs(query(avisRef, limit(1)));
 
         return !avisSnapshot.empty;
     } catch (error) {

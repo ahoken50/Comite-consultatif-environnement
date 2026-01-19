@@ -136,6 +136,12 @@ service cloud.firestore {
 
 
 
+    // Regulations Collection
+    match /regulations/{regulationId} {
+      allow read: if isAuthenticated();
+      allow write: if isCoordinator();
+    }
+
     // Documents
     // - Read: All authenticated.
     // - Create: All authenticated (Upload).
