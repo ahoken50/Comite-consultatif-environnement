@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { collection, getDocs, query, where, orderBy, limit } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { getRecentActivities } from '../services/activityLogService';
+import { safeDate } from '../utils/dateUtils';
 import type { Project, Category } from '../types/project.types';
 import type { Meeting } from '../types/meeting.types';
 import type { ActivityLog } from '../types/activityLog.types';
@@ -142,15 +143,8 @@ export const useDashboardData = (): DashboardData => {
                 const currentYear = now.getFullYear();
                 const currentMonth = now.getMonth();
 
-                // Helper to safely parse dates (handles Strings and Firestore Timestamps)
-                const getDate = (dateField: any): Date | null => {
-                    if (!dateField) return null;
-                    if (dateField.toDate) return dateField.toDate();
-                    return new Date(dateField);
-                };
-
                 const getBucketIndex = (dateField: any) => {
-                    const date = getDate(dateField);
+                    const date = safeDate(dateField);
                     if (!date) return -1;
 
                     const diff = (currentYear - date.getFullYear()) * 12 + (currentMonth - date.getMonth());
@@ -190,7 +184,7 @@ export const useDashboardData = (): DashboardData => {
                         nextMeeting = {
                             id: doc.id,
                             ...meetingData,
-                            date: meetingData.date?.toDate ? meetingData.date.toDate().toISOString() : meetingData.date
+                            date: safeDate(meetingData.date)?.toISOString() || meetingData.date
                         } as Meeting;
                     }
                 } catch (e) {
@@ -201,10 +195,14 @@ export const useDashboardData = (): DashboardData => {
                         .map(doc => ({
                             id: doc.id,
                             ...doc.data(),
-                            date: doc.data().date?.toDate ? doc.data().date.toDate().toISOString() : doc.data().date
+                            date: safeDate(doc.data().date)?.toISOString() || doc.data().date
                         }))
-                        .filter((m: any) => m.status === 'scheduled' && new Date(m.date) > new Date())
-                        .sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime());
+                        .filter((m: any) => m.status === 'scheduled' && safeDate(m.date) && safeDate(m.date)! > new Date())
+                        .sort((a: any, b: any) => {
+                            const dateA = safeDate(a.date)?.getTime() || 0;
+                            const dateB = safeDate(b.date)?.getTime() || 0;
+                            return dateA - dateB;
+                        });
 
                     if (meetings.length > 0) {
                         nextMeeting = meetings[0] as Meeting;
