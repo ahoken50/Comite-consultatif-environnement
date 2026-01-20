@@ -276,24 +276,27 @@ Modèle à suivre pour CHAQUE point :
 
 ## [Numéro]. [Titre du point]
 
-[Ici, rédige directement le texte narratif de la discussion. Sois détaillé. Fais plusieurs paragraphes si nécessaire. Ne mets aucun titre avant ce texte.]
+[Ici, rédige directement le texte narratif de la discussion. Sois détaillé. Ne mets aucun titre.]
 
-[Ici, insère le bloc RÉSOLUTION, COMMENTAIRE ou DÉCISION selon le format ci-dessous]
+[Ici, insère le(s) bloc(s) ISSUE :]
+- PAR DÉFAUT : Si pas de vote, c'est un **COMMENTAIRE** (discussion, dépôt).
+- Si VOTE : C'est une **RÉSOLUTION**.
+- **IMPORTANT** : Un point peut avoir UN COMMENTAIRE (discussion) ET UNE RÉSOLUTION (décision). Dans ce cas, mets le Commentaire puis la Résolution.
 
 ---
 
 ### 2. EXEMPLES DE FORMAT D'ISSUE (À COPIER)
 
-**CAS A : RÉSOLUTION**
+**CAS A : RÉSOLUTION** (Pour un vote / décision formelle)
 **RÉSOLUTION CCE-[ANNÉE]-[NUMÉRO]**
 CONSIDÉRANT [X];
 IL EST RÉSOLU QUE [Y].
 _Proposé par..._
 
-**CAS B : COMMENTAIRE**
-**COMMENTAIRE :** Le Comité prend acte de...
+**CAS B : COMMENTAIRE** (Pour une discussion ou un suivi)
+**COMMENTAIRE :** Le Comité prend acte de... (ou) Les membres ont discuté de...
 
-**CAS C : DÉCISION**
+**CAS C : DÉCISION** (Consensus sans vote formel)
 **DÉCISION :** Le Comité convient de...
 
 
