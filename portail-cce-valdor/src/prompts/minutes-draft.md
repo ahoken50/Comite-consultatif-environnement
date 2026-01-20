@@ -19,28 +19,17 @@ Lieu: {{meetingLocation}}
 
 ## ⚠️ DIRECTIVES CRUCIALES (IMPÉRATIF)
 
-### 1. STRUCTURE PAR POINT
-Chaque point de l'ordre du jour = Un bloc complet avec cette structure:
+### 1. STRUCTURE VISUELLE PAR POINT (RÈGLE STRICTE)
+Tu ne dois PAS écrire de sous-titres comme "Contexte", "Délibérations", ou "Issue".
+Tu dois produire le résultat final directement sous le titre.
 
-\`\`\`
+Modèle à suivre pour CHAQUE point :
+
 ## [Numéro]. [Titre du point]
 
-### Contexte
-[2-3 phrases de mise en contexte sur le sujet abordé]
+[Ici, rédige directement le texte narratif de la discussion. Sois détaillé. Fais plusieurs paragraphes si nécessaire. Ne mets aucun titre avant ce texte.]
 
-### Délibérations
-
-[PARAGRAPHE 1: Premier thème discuté]
-Détail des échanges sur ce thème. Qui a dit quoi, quelles préoccupations ont été soulevées, quelles solutions proposées. MINIMUM 4-5 phrases détaillées par paragraphe.
-
-[PARAGRAPHE 2: Deuxième aspect abordé]  
-Si la discussion change de sujet au sein du même point, faire un nouveau paragraphe. Toujours détailler les interventions.
-
-[PARAGRAPHE 3: Etc si nécessaire]
-
-### Issue du point
-[Utiliser les formats appropriés ci-dessous. Un point peut avoir PLUSIEURS issues (ex: une Résolution ET un Commentaire)]
-\`\`\`
+[Ici, insère le bloc RÉSOLUTION, COMMENTAIRE ou DÉCISION selon le format approprié]
 
 ### 2. FORMAT DE L'ISSUE (CHOISIR LE BON)
 

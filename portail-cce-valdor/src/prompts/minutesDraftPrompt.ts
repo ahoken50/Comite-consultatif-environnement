@@ -296,23 +296,7 @@ _Proposé par..._
 **CAS C : DÉCISION**
 **DÉCISION :** Le Comité convient de...
 
-### 2. FORMAT DE L'ISSUE (CHOISIR LE BON - UN SEUL PAR POINT)
 
-**OPTION A - RÉSOLUTION** (S'il y a eu un VOTE formel)
-**RÉSOLUTION CCE-[ANNÉE]-[NUMÉRO]**
-
-CONSIDÉRANT [contexte factuel];
-CONSIDÉRANT [justification de la décision];
-
-IL EST RÉSOLU QUE [décision claire et actionnable].
-
-_Proposé par: [Nom] | Appuyé par: [Nom] | Adopté à l'unanimité / X voix pour, Y contre_
-
-**OPTION B - DÉCISION** (Action décidée SANS vote formel)
-**DÉCISION :** Le Comité convient de [action spécifique avec responsable et échéance si mentionnés].
-
-**OPTION C - COMMENTAIRE** (Discussion informative, pas d'action)
-**COMMENTAIRE :** Le Comité prend acte de [information]. Les membres ont [résumé des points retenus en 3-4 phrases].
 
 ### 3. RÈGLES DE RÉDACTION
 - **DÉTAIL** : Les délibérations doivent être LONGUES et DÉTAILLÉES, pas des résumés en 2 lignes
