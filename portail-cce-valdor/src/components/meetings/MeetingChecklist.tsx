@@ -78,10 +78,18 @@ const MeetingChecklist: React.FC<MeetingChecklistProps> = ({ meeting, hasConvoca
         // - Required: floor(Total / 2) + 1
         // - Present: RSVPs with status 'present' who are voting members
 
+        // Roles to exclude from voting count (both keys and French labels)
+        const EXCLUDED_ROLES = [
+            'coordonnateur', 'coordinator',
+            'observateur', 'observer',
+            'invité', 'guest',
+            'secrétaire', 'secretary'
+        ];
+
         const activeMembers = members.filter(m => m.isActive);
         const votingMembers = activeMembers.filter(m => {
             const role = (m.role || '').toLowerCase();
-            return role !== 'coordonnateur' && role !== 'observateur';
+            return !EXCLUDED_ROLES.some(excluded => role.includes(excluded));
         });
 
         const totalVotingMembersCount = votingMembers.length;
@@ -90,23 +98,40 @@ const MeetingChecklist: React.FC<MeetingChecklistProps> = ({ meeting, hasConvoca
         // Use meeting.quorumRequired if manually overridden, otherwise calculated
         const effectiveQuorumRequired = meeting.quorumRequired || calculatedQuorumRequired;
 
+        // Source: Prioritize actual attendees (if meeting started/prepared), fallback to RSVPs
+        const sourceAttendees = (meeting.attendees && meeting.attendees.length > 0)
+            ? meeting.attendees
+            : null;
+
         const rsvps = meeting.rsvps || [];
 
-        const presentVotingCount = rsvps.filter(r => {
-            if (r.status !== 'present') return false;
-            const member = members.find(m => m.id === r.userId);
-            if (!member) return false; // RSVP from unknown member?
+        let presentVotingCount = 0;
 
-            const role = (member.role || '').toLowerCase();
-            return role !== 'coordonnateur' && role !== 'observateur';
-        }).length;
+        if (sourceAttendees) {
+            // Case A: Use Actual Attendance List
+            presentVotingCount = sourceAttendees.filter(a => {
+                if (!a.isPresent) return false;
+                const role = (a.role || '').toLowerCase();
+                return !EXCLUDED_ROLES.some(excluded => role.includes(excluded));
+            }).length;
+        } else {
+            // Case B: Use RSVPs (Fallback)
+            presentVotingCount = rsvps.filter(r => {
+                if (r.status !== 'present') return false;
+                const member = members.find(m => m.id === r.userId);
+                if (!member) return false;
+
+                const role = (member.role || '').toLowerCase();
+                return !EXCLUDED_ROLES.some(excluded => role.includes(excluded));
+            }).length;
+        }
 
         const quorumMet = presentVotingCount >= effectiveQuorumRequired;
 
         items.push({
             id: 'quorum',
             label: 'Quorum prévu',
-            description: `${presentVotingCount} présence(s) confirmée(s) sur ${effectiveQuorumRequired} requises (Observateurs exclus)`,
+            description: `${presentVotingCount} présence(s) confirmée(s) sur ${effectiveQuorumRequired} requises${sourceAttendees ? ' (selon présences)' : ' (selon avis)'}`,
             isComplete: quorumMet,
             icon: <Group />,
             importance: 'critical'
