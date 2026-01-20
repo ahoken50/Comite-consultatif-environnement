@@ -53,10 +53,17 @@ const AttendanceManager: React.FC<AttendanceManagerProps> = ({ meeting, onUpdate
     // 2. Voting members EXCLUDE 'coordonnateur' and 'observateur'.
     // 3. Formula: Quorum = floor(Total Voting Members / 2) + 1.
 
+    const EXCLUDED_ROLES = [
+        'coordonnateur', 'coordinator',
+        'observateur', 'observer',
+        'invité', 'guest',
+        'secrétaire', 'secretary'
+    ];
+
     const activeMembers = members.filter(m => m.isActive);
     const votingMembers = activeMembers.filter(m => {
         const role = (m.role || '').toLowerCase();
-        return role !== 'coordonnateur' && role !== 'observateur';
+        return !EXCLUDED_ROLES.some(excluded => role.includes(excluded));
     });
 
     const totalVotingMembersCount = votingMembers.length;
@@ -69,10 +76,9 @@ const AttendanceManager: React.FC<AttendanceManagerProps> = ({ meeting, onUpdate
 
         // Check role directly from attendee list (snapshot of time)
         const role = (a.role || '').toLowerCase();
-        if (role === 'coordonnateur' || role === 'observateur') return false;
 
-        // Exclude guests from quorum
-        if (role.includes('invité') || role.includes('guest')) return false;
+        // Exclude non-voting roles
+        if (EXCLUDED_ROLES.some(excluded => role.includes(excluded))) return false;
 
         // Safety check: specific exclusion requested
         if (a.name.toLowerCase().includes('michaël ross')) return false;
