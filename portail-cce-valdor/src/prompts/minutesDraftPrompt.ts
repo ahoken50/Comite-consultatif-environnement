@@ -31,7 +31,13 @@ export const formatAttendeesList = (meeting: Meeting): string => {
  */
 export const formatAgendaList = (meeting: Meeting): string => {
   return meeting.agendaItems
-    ?.map((item, i) => `${i + 1}. ${item.title}`)
+    ?.map((item, i) => {
+      const details = [];
+      if (item.objective) details.push(`Objectif: ${item.objective}`);
+      if (item.presenter) details.push(`Resp: ${item.presenter}`);
+      const detailsStr = details.length > 0 ? ` [${details.join(' | ')}]` : '';
+      return `${i + 1}. ${item.title}${detailsStr}`;
+    })
     .join('\n') || 'Non spécifié';
 };
 
@@ -279,7 +285,10 @@ Modèle à suivre pour CHAQUE point :
 [Ici, rédige directement le texte narratif de la discussion. Sois détaillé. Ne mets aucun titre.]
 
 [Ici, insère le(s) bloc(s) ISSUE :]
-- PAR DÉFAUT : Si pas de vote, c'est un **COMMENTAIRE** (discussion, dépôt).
+- **RÈGLE IMPORTANTE :** Regarde l'ODJ (ex: [Objectif: Décision]).
+  - Si l'objectif est **DÉCISION** : Tu DOIS générer une **RÉSOLUTION** (et potentiellement un commentaire avant).
+  - Si l'objectif est **INFORMATION** ou **CONSULTATION** : Tu génères un **COMMENTAIRE**.
+- PAR DÉFAUT : Si pas de vote, c'est un **COMMENTAIRE**.
 - Si VOTE : C'est une **RÉSOLUTION**.
 - **IMPORTANT** : Un point peut avoir UN COMMENTAIRE (discussion) ET UNE RÉSOLUTION (décision). Dans ce cas, mets le Commentaire puis la Résolution.
 

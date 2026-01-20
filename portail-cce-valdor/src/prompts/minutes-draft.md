@@ -30,7 +30,10 @@ Modèle à suivre pour CHAQUE point :
 [Ici, rédige directement le texte narratif de la discussion. Sois détaillé. Ne mets aucun titre.]
 
 [Ici, insère le(s) bloc(s) ISSUE :]
-- PAR DÉFAUT : Si pas de vote, c'est un **COMMENTAIRE** (discussion, dépôt).
+- **RÈGLE IMPORTANTE :** Regarde l'ODJ (ex: [Objectif: Décision]).
+  - Si l'objectif est **DÉCISION** : Tu DOIS générer une **RÉSOLUTION** (et potentiellement un commentaire avant).
+  - Si l'objectif est **INFORMATION** ou **CONSULTATION** : Tu génères un **COMMENTAIRE**.
+- PAR DÉFAUT : Si pas de vote, c'est un **COMMENTAIRE**.
 - Si VOTE : C'est une **RÉSOLUTION**.
 - **IMPORTANT** : Un point peut avoir UN COMMENTAIRE (discussion) ET UNE RÉSOLUTION (décision). Dans ce cas, mets le Commentaire puis la Résolution.
 
