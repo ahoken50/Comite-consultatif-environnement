@@ -268,26 +268,33 @@ ${transcription}
 
 ## ⚠️ DIRECTIVES CRUCIALES (IMPÉRATIF)
 
-### 1. STRUCTURE PAR POINT
-Chaque point de l'ordre du jour = Un bloc complet avec cette structure:
+### 1. STRUCTURE VISUELLE PAR POINT (RÈGLE STRICTE)
+Tu ne dois PAS écrire de sous-titres comme "Contexte", "Délibérations", ou "Issue".
+Tu dois produire le résultat final directement.
+
+Modèle à suivre pour CHAQUE point :
 
 ## [Numéro]. [Titre du point]
 
-**[ISSUE DU POINT]** (Optionnelle ici, peut aussi être à la fin selon le sens)
-Si c'est une RÉSOLUTION ou un COMMENTAIRE principal, tu peux le mettre ici.
+[Ici, rédige directement le texte narratif de la discussion. Sois détaillé. Fais plusieurs paragraphes si nécessaire. Ne mets aucun titre avant ce texte.]
 
-**[DÉLIBÉRATIONS ET CONTEXTE]**
-Rédige directement le texte narratif sans sous-titres (PAS de "### Contexte" ni "### Délibérations").
-Fais des paragraphes clairs et détaillés pour rapporter les échanges.
+[Ici, insère le bloc RÉSOLUTION, COMMENTAIRE ou DÉCISION selon le format ci-dessous]
 
-[PARAGRAPHE 1]
-Détail des échanges...
+---
 
-[PARAGRAPHE 2]
-...
+### 2. EXEMPLES DE FORMAT D'ISSUE (À COPIER)
 
-**[ISSUE DU POINT]** (Si pas mise au début)
-[CHOISIR UNE SEULE OPTION : RÉSOLUTION, DÉCISION ou COMMENTAIRE]
+**CAS A : RÉSOLUTION**
+**RÉSOLUTION CCE-[ANNÉE]-[NUMÉRO]**
+CONSIDÉRANT [X];
+IL EST RÉSOLU QUE [Y].
+_Proposé par..._
+
+**CAS B : COMMENTAIRE**
+**COMMENTAIRE :** Le Comité prend acte de...
+
+**CAS C : DÉCISION**
+**DÉCISION :** Le Comité convient de...
 
 ### 2. FORMAT DE L'ISSUE (CHOISIR LE BON - UN SEUL PAR POINT)
 
