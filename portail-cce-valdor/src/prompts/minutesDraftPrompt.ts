@@ -272,11 +272,14 @@ ${transcription}
 
 ---
 
-## ⚠️ DIRECTIVES CRUCIALES (IMPÉRATIF)
-
 ### 1. STRUCTURE VISUELLE PAR POINT (RÈGLE STRICTE)
 Tu ne dois PAS écrire de sous-titres comme "Contexte", "Délibérations", ou "Issue".
 Tu dois produire le résultat final directement.
+
+### ⛔ INTERDICTIONS FINALES (TRÈS IMPORTANT)
+- NE GÉNÈRE PAS de section "Résumé", "Décisions", "Actions" ou "Conclusion" à la fin du document.
+- Les Résolutions et Décisions doivent être UNIQUEMENT sous leur point respectif.
+- Le document s'arrête net après le dernier point de l'ordre du jour.
 
 Modèle à suivre pour CHAQUE point :
 
