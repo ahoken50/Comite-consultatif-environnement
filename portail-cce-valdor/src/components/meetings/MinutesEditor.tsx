@@ -269,25 +269,51 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate, readOn
             const text = await file.text();
             const jsonData = JSON.parse(text);
 
-            // Support various JSON formats
-            const transcriptionText = jsonData.transcription || jsonData.text || jsonData.content ||
-                (Array.isArray(jsonData) ? jsonData.map((seg: any) => seg.text || seg.content).join('\n') : null);
+            let transcriptionText: string | null = null;
+            let rawSegments: any[] | null = null;
+
+            // Check for array format with speaker segments: [{start, end, speaker, text}, ...]
+            if (Array.isArray(jsonData) && jsonData.length > 0 && jsonData[0].speaker && jsonData[0].text) {
+                rawSegments = jsonData;
+                // Format transcription with speaker labels for each segment
+                transcriptionText = jsonData
+                    .map((seg: { speaker?: string; text?: string }) => {
+                        const speaker = seg.speaker || 'Inconnu';
+                        const segText = seg.text || '';
+                        return `[${speaker}] ${segText}`;
+                    })
+                    .join('\n');
+            } else {
+                // Support other JSON formats
+                transcriptionText = jsonData.transcription || jsonData.text || jsonData.content ||
+                    (Array.isArray(jsonData) ? jsonData.map((seg: any) => seg.text || seg.content).join('\n') : null);
+            }
 
             if (!transcriptionText) {
-                showError('Le fichier JSON ne contient pas de transcription valide. Clés attendues: transcription, text, ou content');
+                showError('Le fichier JSON ne contient pas de transcription valide. Format attendu: tableau avec {speaker, text} ou objet avec {transcription/text/content}');
                 return;
             }
 
             // Create or update audioRecording with imported transcription
             const newAudioRecording = {
                 ...(meeting.audioRecording || {}),
+                fileName: file.name,
                 transcription: transcriptionText,
                 transcriptionStatus: 'completed' as const,
                 importedAt: new Date().toISOString(),
+                isImported: true, // Flag to indicate this was imported, not transcribed
+                rawSegments: rawSegments, // Store raw segments for speaker identification
             };
 
             onUpdate({ audioRecording: newAudioRecording as any });
-            showSuccess(`✅ Transcription importée avec succès (${transcriptionText.length} caractères)`);
+
+            // Count unique speakers
+            const uniqueSpeakers = rawSegments
+                ? new Set(rawSegments.map(s => s.speaker)).size
+                : 0;
+            const speakerInfo = uniqueSpeakers > 0 ? ` (${uniqueSpeakers} intervenants identifiés)` : '';
+
+            showSuccess(`✅ Transcription importée avec succès${speakerInfo}`);
 
         } catch (jsonError) {
             console.error('[DEBUG] Transcription JSON parsing failed:', jsonError);

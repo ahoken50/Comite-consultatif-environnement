@@ -107,6 +107,7 @@ const AudioUpload: React.FC<AudioUploadProps> = ({
     };
 
     const handleDelete = async () => {
+        // If there's a storage path, delete from Firebase Storage
         if (audioRecording?.storagePath) {
             const success = await deleteAudioFile(meetingId, audioRecording.storagePath);
             if (success) {
@@ -114,6 +115,9 @@ const AudioUpload: React.FC<AudioUploadProps> = ({
             } else {
                 setError('Erreur lors de la suppression');
             }
+        } else {
+            // For imported transcriptions without storage, just call onDelete
+            onDelete?.();
         }
     };
 
