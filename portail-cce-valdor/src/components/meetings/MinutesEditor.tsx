@@ -277,10 +277,18 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate, readOn
                 rawSegments = jsonData;
                 // Format transcription with speaker labels for each segment
                 transcriptionText = jsonData
-                    .map((seg: { speaker?: string; text?: string }) => {
+                    .map((seg: { speaker?: string; text?: string; start?: number }) => {
                         const speaker = seg.speaker || 'Inconnu';
                         const segText = seg.text || '';
-                        return `[${speaker}] ${segText}`;
+
+                        let timestamp = '';
+                        if (typeof seg.start === 'number') {
+                            const min = Math.floor(seg.start / 60);
+                            const sec = Math.floor(seg.start % 60);
+                            timestamp = `[${min.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}] `;
+                        }
+
+                        return `${timestamp}[${speaker}] ${segText}`;
                     })
                     .join('\n');
             } else {
