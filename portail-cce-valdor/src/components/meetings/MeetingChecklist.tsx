@@ -36,11 +36,25 @@ interface ChecklistItem {
     importance: 'critical' | 'important' | 'nice-to-have';
 }
 
+import { useSelector, useDispatch } from 'react-redux';
+import type { AppDispatch } from '../../store/store';
+import type { RootState } from '../../store/rootReducer';
+import { fetchMembers } from '../../features/members/membersSlice';
+import { useEffect } from 'react';
+
 /**
  * Meeting Preparation Checklist (#3.1)
  * Shows a checklist of items to verify before a meeting
  */
 const MeetingChecklist: React.FC<MeetingChecklistProps> = ({ meeting, hasConvocation }) => {
+    const dispatch = useDispatch<AppDispatch>();
+    const { items: members } = useSelector((state: RootState) => state.members);
+
+    useEffect(() => {
+        if (members.length === 0) {
+            dispatch(fetchMembers());
+        }
+    }, [dispatch, members.length]);
 
     const checklistItems: ChecklistItem[] = useMemo(() => {
         const items: ChecklistItem[] = [];
@@ -59,14 +73,40 @@ const MeetingChecklist: React.FC<MeetingChecklistProps> = ({ meeting, hasConvoca
         });
 
         // 2. Quorum projected (from RSVPs)
+        // Logic matched with AttendanceManager:
+        // - Base: Total active voting members (excluding coordinator/observer)
+        // - Required: floor(Total / 2) + 1
+        // - Present: RSVPs with status 'present' who are voting members
+
+        const activeMembers = members.filter(m => m.isActive);
+        const votingMembers = activeMembers.filter(m => {
+            const role = (m.role || '').toLowerCase();
+            return role !== 'coordonnateur' && role !== 'observateur';
+        });
+
+        const totalVotingMembersCount = votingMembers.length;
+        const calculatedQuorumRequired = Math.floor(totalVotingMembersCount / 2) + 1;
+
+        // Use meeting.quorumRequired if manually overridden, otherwise calculated
+        const effectiveQuorumRequired = meeting.quorumRequired || calculatedQuorumRequired;
+
         const rsvps = meeting.rsvps || [];
-        const presentCount = rsvps.filter(r => r.status === 'present').length;
-        const quorumRequired = meeting.quorumRequired || 3;
-        const quorumMet = presentCount >= quorumRequired;
+
+        const presentVotingCount = rsvps.filter(r => {
+            if (r.status !== 'present') return false;
+            const member = members.find(m => m.id === r.userId);
+            if (!member) return false; // RSVP from unknown member?
+
+            const role = (member.role || '').toLowerCase();
+            return role !== 'coordonnateur' && role !== 'observateur';
+        }).length;
+
+        const quorumMet = presentVotingCount >= effectiveQuorumRequired;
+
         items.push({
             id: 'quorum',
             label: 'Quorum prévu',
-            description: `${presentCount} présence(s) confirmée(s) sur ${quorumRequired} requises`,
+            description: `${presentVotingCount} présence(s) confirmée(s) sur ${effectiveQuorumRequired} requises (Observateurs exclus)`,
             isComplete: quorumMet,
             icon: <Group />,
             importance: 'critical'
@@ -117,7 +157,7 @@ const MeetingChecklist: React.FC<MeetingChecklistProps> = ({ meeting, hasConvoca
         });
 
         return items;
-    }, [meeting, hasConvocation]);
+    }, [meeting, hasConvocation, members]);
 
     // Calculate overall progress
     const completedCount = checklistItems.filter(item => item.isComplete).length;
