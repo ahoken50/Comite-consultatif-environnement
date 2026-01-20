@@ -71,6 +71,9 @@ const AttendanceManager: React.FC<AttendanceManagerProps> = ({ meeting, onUpdate
         const role = (a.role || '').toLowerCase();
         if (role === 'coordonnateur' || role === 'observateur') return false;
 
+        // Exclude guests from quorum
+        if (role.includes('invité') || role.includes('guest')) return false;
+
         // Safety check: specific exclusion requested
         if (a.name.toLowerCase().includes('michaël ross')) return false;
 

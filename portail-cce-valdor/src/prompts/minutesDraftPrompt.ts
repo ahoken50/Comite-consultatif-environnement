@@ -9,9 +9,21 @@ import type { Meeting } from '../types/meeting.types';
  * Format attendees list for prompt
  */
 export const formatAttendeesList = (meeting: Meeting): string => {
-  return meeting.attendees
-    ?.map(a => `${a.name} (${a.role})${a.isPresent ? '' : ' - ABSENT'}`)
-    .join('\n') || 'Non spécifié';
+  if (!meeting.attendees?.length) return 'Non spécifié';
+
+  // Separate members from guests
+  const guests = meeting.attendees.filter(a => a.role.toLowerCase().includes('invité') || a.role.toLowerCase().includes('guest'));
+  const members = meeting.attendees.filter(a => !a.role.toLowerCase().includes('invité') && !a.role.toLowerCase().includes('guest'));
+
+  let output = 'MEMBRES (Comptent pour le QUORUM) :\n';
+  output += members.map(a => `- ${a.name} (${a.role})${a.isPresent ? '' : ' - ABSENT'}`).join('\n');
+
+  if (guests.length > 0) {
+    output += '\n\nINVITÉS (Ne comptent PAS pour le quorum) :\n';
+    output += guests.map(a => `- ${a.name} (${a.role})${a.isPresent ? '' : ' - ABSENT'}`).join('\n');
+  }
+
+  return output;
 };
 
 /**
@@ -261,21 +273,21 @@ Chaque point de l'ordre du jour = Un bloc complet avec cette structure:
 
 ## [Numéro]. [Titre du point]
 
-### Contexte
-[2-3 phrases de mise en contexte sur le sujet abordé]
+**[ISSUE DU POINT]** (Optionnelle ici, peut aussi être à la fin selon le sens)
+Si c'est une RÉSOLUTION ou un COMMENTAIRE principal, tu peux le mettre ici.
 
-### Délibérations
+**[DÉLIBÉRATIONS ET CONTEXTE]**
+Rédige directement le texte narratif sans sous-titres (PAS de "### Contexte" ni "### Délibérations").
+Fais des paragraphes clairs et détaillés pour rapporter les échanges.
 
-[PARAGRAPHE 1: Premier thème discuté]
-Détail des échanges sur ce thème. Qui a dit quoi, quelles préoccupations ont été soulevées, quelles solutions proposées. MINIMUM 4-5 phrases détaillées par paragraphe.
+[PARAGRAPHE 1]
+Détail des échanges...
 
-[PARAGRAPHE 2: Deuxième aspect abordé]
-Si la discussion change de sujet au sein du même point, faire un nouveau paragraphe. Toujours détailler les interventions.
+[PARAGRAPHE 2]
+...
 
-[PARAGRAPHE 3: Etc si nécessaire]
-
-### Issue du point
-[CHOISIR UNE SEULE OPTION PARMI : RÉSOLUTION, DÉCISION ou COMMENTAIRE. Ne jamais en mettre plusieurs pour un même point.]
+**[ISSUE DU POINT]** (Si pas mise au début)
+[CHOISIR UNE SEULE OPTION : RÉSOLUTION, DÉCISION ou COMMENTAIRE]
 
 ### 2. FORMAT DE L'ISSUE (CHOISIR LE BON - UN SEUL PAR POINT)
 
