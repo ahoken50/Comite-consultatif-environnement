@@ -211,7 +211,7 @@ const generateHTMLDocument = (meeting: Meeting, _globalNotes?: string): string =
             coordinator: 'coordonnateur',
             elected_official: 'conseiller responsable',
             guest: 'invité',
-            member: '',
+            member: 'membre',
             observer: 'observateur'
         };
         return labels[role.toLowerCase()] || labels[role] || role;
@@ -697,50 +697,46 @@ const generateHTMLDocument = (meeting: Meeting, _globalNotes?: string): string =
                 <div>${absents.map(a => a.name).join(', ')}.</div>
             </div>
             ` : ''}
-}
-</section>
+        </section>
 
-    < !--CONTENU -->
+        <!-- CONTENU -->
         ${sectionsHTML}
 
-<!--SIGNATURES -->
-    <section class="signatures" >
-        <div class="signature-block" >
-            <div class="signature-line" >
+        <!-- SIGNATURES -->
+        <section class="signatures">
+            <div class="signature-block">
+                <div class="signature-line">
                 ${(() => {
             const sig = meeting.approvalSignatures?.find(s => s.role === 'president' || s.role === 'elected_official');
             if (sig) {
                 return `<div class="digital-signature">Signé numériquement<br>${new Date(sig.signedAt).toLocaleDateString('fr-CA')}</div>`;
             }
             return '';
-        })()
-        }
-</div>
-    < div class="signature-name" > ${(() => {
+        })()}
+                </div>
+                <div class="signature-name">${(() => {
             const sig = meeting.approvalSignatures?.find(s => s.role === 'president' || s.role === 'elected_official');
             return sig ? sig.signedByName : presidentName;
-        })()
-        } </div>
-    < div class="signature-role" > Président(e) / Élu(e) Responsable </div>
-        </div>
-        < div class="signature-block" >
-            <div class="signature-line" >
-                ${(() => {
+        })()}</div>
+                <div class="signature-role">Président(e) / Élu(e) Responsable</div>
+            </div>
+            <div class="signature-block">
+                <div class="signature-line">
+                     ${(() => {
             const sig = meeting.approvalSignatures?.find(s => s.role === 'coordinator'); // Assuming coordinator signs as secretary for now, or validation
             if (sig) {
                 return `<div class="digital-signature">Validé administrativement<br>${new Date(sig.signedAt).toLocaleDateString('fr-CA')}</div>`;
             }
             return '';
-        })()
-        }
-</div>
-    < div class="signature-name" > ${secretaryName} </div>
-        < div class="signature-role" > Secrétaire / Coordonnateur </div>
+        })()}
+                </div>
+                <div class="signature-name">${secretaryName}</div>
+                <div class="signature-role">Secrétaire / Coordonnateur</div>
             </div>
-            </section>
-            </div>
-            </body>
-            </html>`;
+        </section>
+    </div>
+</body>
+</html>`;
 };
 
 /**
