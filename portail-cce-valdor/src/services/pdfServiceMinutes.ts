@@ -191,10 +191,7 @@ const generateHTMLDocument = (meeting: Meeting, _globalNotes?: string): string =
     // "Étaient également présents(es):" - coordinator, elected_official (élu), guest (invité)
 
     const memberRoles = ['member', 'Membre', 'president', 'Président(e)', 'vice_president', 'Vice-président(e)'];
-    const otherRoles = ['coordinator', 'Coordonnateur', 'elected_official', 'Élu(e)', 'guest', 'Invité', 'Invité(e)', 'observer', 'Observateur'];
-
     const isMemberRole = (role: string) => memberRoles.some(r => r.toLowerCase() === role.toLowerCase());
-    const isOtherRole = (role: string) => otherRoles.some(r => r.toLowerCase() === role.toLowerCase());
 
     // All absents (not present, any role)
     const absents = meeting.attendees?.filter(a => !a.isPresent) || [];
@@ -202,8 +199,9 @@ const generateHTMLDocument = (meeting: Meeting, _globalNotes?: string): string =
     // Presents: members/president/VP who are checked as present
     const presents = meeting.attendees?.filter(a => a.isPresent && isMemberRole(a.role)) || [];
 
-    // Others present: coordinator/élu/invité who are checked as present
-    const othersPresent = meeting.attendees?.filter(a => a.isPresent && isOtherRole(a.role)) || [];
+    // Others present: Anyone present who is NOT in the 'presents' list
+    // This catches 'advisor', 'secretary', 'coordinator', 'guest', and any custom roles
+    const othersPresent = meeting.attendees?.filter(a => a.isPresent && !isMemberRole(a.role)) || [];
 
     // Role label mapping for PDF display
     const getRoleLabelPDF = (role: string): string => {
@@ -695,50 +693,54 @@ const generateHTMLDocument = (meeting: Meeting, _globalNotes?: string): string =
             ` : ''}
             ${absents.length > 0 ? `
             <div class="attendance-group">
-                <h3>Était absent${absents.length > 1 ? 's' : ''}</h3>
+                <h3>Étaient absents</h3>
                 <div>${absents.map(a => a.name).join(', ')}.</div>
             </div>
             ` : ''}
-        </section>
+}
+</section>
 
-        <!-- CONTENU -->
+    < !--CONTENU -->
         ${sectionsHTML}
 
-        <!-- SIGNATURES -->
-        <section class="signatures">
-            <div class="signature-block">
-                <div class="signature-line">
-                    ${(() => {
+<!--SIGNATURES -->
+    <section class="signatures" >
+        <div class="signature-block" >
+            <div class="signature-line" >
+                ${(() => {
             const sig = meeting.approvalSignatures?.find(s => s.role === 'president' || s.role === 'elected_official');
             if (sig) {
                 return `<div class="digital-signature">Signé numériquement<br>${new Date(sig.signedAt).toLocaleDateString('fr-CA')}</div>`;
             }
             return '';
-        })()}
-                </div>
-                <div class="signature-name">${(() => {
+        })()
+        }
+</div>
+    < div class="signature-name" > ${(() => {
             const sig = meeting.approvalSignatures?.find(s => s.role === 'president' || s.role === 'elected_official');
             return sig ? sig.signedByName : presidentName;
-        })()}</div>
-                <div class="signature-role">Président(e) / Élu(e) Responsable</div>
-            </div>
-            <div class="signature-block">
-                <div class="signature-line">
-                     ${(() => {
+        })()
+        } </div>
+    < div class="signature-role" > Président(e) / Élu(e) Responsable </div>
+        </div>
+        < div class="signature-block" >
+            <div class="signature-line" >
+                ${(() => {
             const sig = meeting.approvalSignatures?.find(s => s.role === 'coordinator'); // Assuming coordinator signs as secretary for now, or validation
             if (sig) {
                 return `<div class="digital-signature">Validé administrativement<br>${new Date(sig.signedAt).toLocaleDateString('fr-CA')}</div>`;
             }
             return '';
-        })()}
-                </div>
-                <div class="signature-name">${secretaryName}</div>
-                <div class="signature-role">Secrétaire / Coordonnateur</div>
+        })()
+        }
+</div>
+    < div class="signature-name" > ${secretaryName} </div>
+        < div class="signature-role" > Secrétaire / Coordonnateur </div>
             </div>
-        </section>
-    </div>
-</body>
-</html>`;
+            </section>
+            </div>
+            </body>
+            </html>`;
 };
 
 /**
