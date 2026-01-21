@@ -396,7 +396,11 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
                 onMouseUp={!isProjection ? handleMouseUp : undefined}
                 onMouseLeave={() => { if (!isProjection) { setShowLaser(false); setIsDrawing(false); } }}
             >
-                {/* Overlay to capture mouse events over iframe when tools are active */}
+                {/* Overlay to capture mouse events over iframe/container when tools are active */}
+                {/* CRITICAL: This MUST be present for Drawing/Laser to work (captures events) */}
+                {(enableLaser || enableDrawing) && (
+                    <Box sx={{ position: 'absolute', inset: 0, zIndex: 55, cursor: 'crosshair', touchAction: 'none' }} />
+                )}
 
                 {/* CONTENT - No flex centering, just block layout */}
                 {activeAttachment.type === 'image' ? (
