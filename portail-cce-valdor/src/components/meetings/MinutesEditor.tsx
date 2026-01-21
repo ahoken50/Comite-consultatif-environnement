@@ -763,12 +763,23 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate, readOn
             <PVModeSelector
                 open={isModeSelectorOpen}
                 onClose={() => setIsModeSelectorOpen(false)}
-                hasTranscription={!!meeting.audioRecording?.transcription}
+                hasTranscription={
+                    (meeting.audioRecordings && meeting.audioRecordings.some(r => !!r.transcription)) ||
+                    !!meeting.audioRecording?.transcription
+                }
                 onSelectMode={(mode) => {
                     setIsModeSelectorOpen(false);
                     if (mode === 'smartpv') {
                         setIsAgentWizardOpen(true);
-                        pvAgent.start(undefined, meeting.audioRecording?.transcription);
+
+                        // Aggregate transcriptions from all recordings
+                        const recordings = meeting.audioRecordings || (meeting.audioRecording ? [meeting.audioRecording] : []);
+                        const fullTranscription = recordings
+                            .map(r => r.transcription)
+                            .filter(t => !!t)
+                            .join('\n\n--- TRANSCRIPTION SUIVANTE ---\n\n');
+
+                        pvAgent.start(undefined, fullTranscription);
                     }
                     // Classic mode just closes the dialog - user continues manually
                 }}

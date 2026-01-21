@@ -1,6 +1,6 @@
-import { storage, db } from './firebase';
+import { storage } from './firebase';
 import { ref, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage';
-import { doc, updateDoc } from 'firebase/firestore';
+// import { doc } from 'firebase/firestore'; // Removed unused imports
 import type { AudioRecording } from '../types/meeting.types';
 
 // Supported audio/video formats
@@ -163,12 +163,12 @@ export const uploadAudioFile = (
                             transcriptionStatus: 'pending'
                         };
 
-                        // Update meeting in Firestore
-                        const meetingRef = doc(db, 'meetings', meetingId);
-                        await updateDoc(meetingRef, {
-                            audioRecording,
-                            dateUpdated: new Date().toISOString()
-                        });
+                        // Update meeting in Firestore - REMOVED: UI handles this now to support multiple files
+                        // const meetingRef = doc(db, 'meetings', meetingId);
+                        // await updateDoc(meetingRef, {
+                        //     audioRecording,
+                        //     dateUpdated: new Date().toISOString()
+                        // });
 
                         onProgress?.({
                             bytesTransferred: file.size,
@@ -194,17 +194,17 @@ export const uploadAudioFile = (
 /**
  * Delete audio file from Firebase Storage
  */
-export const deleteAudioFile = async (meetingId: string, storagePath: string): Promise<boolean> => {
+export const deleteAudioFile = async (storagePath: string): Promise<boolean> => {
     try {
         const storageRef = ref(storage, storagePath);
         await deleteObject(storageRef);
 
-        // Update meeting to remove audio recording
-        const meetingRef = doc(db, 'meetings', meetingId);
-        await updateDoc(meetingRef, {
-            audioRecording: null,
-            dateUpdated: new Date().toISOString()
-        });
+        // Update meeting to remove audio recording - REMOVED: UI handles this now
+        // const meetingRef = doc(db, 'meetings', meetingId);
+        // await updateDoc(meetingRef, {
+        //     audioRecording: null,
+        //     dateUpdated: new Date().toISOString()
+        // });
 
         return true;
     } catch (error) {

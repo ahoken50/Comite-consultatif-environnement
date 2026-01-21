@@ -19,7 +19,7 @@ import {
     Merge,
     QueueMusic
 } from '@mui/icons-material';
-import { aiService } from '../../services/ai/UnifiedAIService';
+// import { aiService } from '../../services/ai/UnifiedAIService'; // Removed unused import
 
 import type { AudioRecording } from '../../types/meeting.types';
 import type { UploadProgress } from '../../services/audioStorageService';
@@ -30,7 +30,7 @@ import {
     formatFileSize,
     formatDuration
 } from '../../services/audioStorageService';
-import { isGeminiConfigured } from '../../services/geminiService';
+import { isGeminiConfigured, transcribeAudio } from '../../services/geminiService';
 
 interface AudioUploadProps {
     meetingId: string;
@@ -118,7 +118,7 @@ const AudioUpload: React.FC<AudioUploadProps> = ({
 
     const handleDelete = async (rec: AudioRecording) => {
         if (rec.storagePath) {
-            const success = await deleteAudioFile(meetingId, rec.storagePath);
+            const success = await deleteAudioFile(rec.storagePath);
             if (success) {
                 onDelete?.(rec);
             } else {
@@ -154,34 +154,36 @@ const AudioUpload: React.FC<AudioUploadProps> = ({
         setError(null);
 
         try {
-            const transcriptions: string[] = [];
+            // Process all recordings
+            for (const rec of recordings) {
+                // Skip already completed ones unless forcing? For now just skip
+                if (rec.transcriptionStatus === 'completed' && rec.transcription) {
+                    continue;
+                }
 
-            // Process sequentially
-            for (let i = 0; i < recordings.length; i++) {
-                const rec = recordings[i];
-                // Update specific status if possible (but we only have global state here)
-                // We could use a local status map but simpler to just show global loading
+                console.log(`[AudioUpload] Submitting transcription for ${rec.fileName}`);
 
-                // Fetch Blob
-                const response = await fetch(rec.fileUrl);
-                const blob = await response.blob();
-                const file = new File([blob], rec.fileName, { type: rec.mimeType });
+                // Call server-side transcription trigger (Speechmatics Webhook)
+                const result = await transcribeAudio(
+                    meetingId,
+                    rec.fileUrl,
+                    rec.mimeType,
+                    rec.storagePath
+                );
 
-                // Transcribe
-                const result = await aiService.transcribe(file);
-                if (result.text) {
-                    transcriptions.push(result.text);
+                if (!result.success) {
+                    console.error(`Failed to submit ${rec.fileName}:`, result.error);
+                    // Don't stop others, but maybe show error? 
                 }
             }
 
-            const mergedText = transcriptions.join('\n\n--- FUSION FICHIER SUIVANT ---\n\n');
-
-            // Pass back merged text
-            onTranscriptionComplete?.(mergedText);
+            // We don't wait for text, we wait for submission.
+            // Feedback to user
+            onTranscriptionComplete?.('Transcription démarrée. Veuillez patienter, les statuts se mettront à jour automatiquement.');
 
         } catch (err) {
-            console.error('Merge transcription failed:', err);
-            setError(err instanceof Error ? err.message : 'Erreur de transcription fusionnée');
+            console.error('Transcription submission failed:', err);
+            setError(err instanceof Error ? err.message : 'Erreur de soumission');
         }
 
         setIsTranscribing(false);
@@ -251,7 +253,7 @@ const AudioUpload: React.FC<AudioUploadProps> = ({
                         onClick={handleMergeAndTranscribe}
                         disabled={isTranscribing}
                     >
-                        {isTranscribing ? 'Fusion et Transcription en cours...' : 'Fusionner Audio & Transcrire Tout'}
+                        {isTranscribing ? 'Démarrage des transcriptions...' : 'Lancer la Transcription (Tout)'}
                     </Button>
                 </Box>
 
