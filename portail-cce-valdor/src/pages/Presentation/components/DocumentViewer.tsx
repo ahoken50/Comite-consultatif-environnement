@@ -268,11 +268,44 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
 
     useEffect(() => {
         if (containerRef.current && canvasRef.current) {
-            canvasRef.current.width = containerRef.current.offsetWidth;
-            canvasRef.current.height = containerRef.current.offsetHeight;
+            // CRITICAL FIX: Canvas must match the SCROLLABLE height, not just the visible viewport
+            // We use a ResizeObserver to keep it updated if content changes
+            const updateCanvasSize = () => {
+                if (containerRef.current && canvasRef.current) {
+                    const newWidth = containerRef.current.scrollWidth;
+                    const newHeight = containerRef.current.scrollHeight;
+
+                    if (canvasRef.current.width !== newWidth || canvasRef.current.height !== newHeight) {
+                        canvasRef.current.width = newWidth;
+                        canvasRef.current.height = newHeight;
+
+                        // Re-apply context settings after resize
+                        const ctx = canvasRef.current.getContext('2d');
+                        if (ctx) {
+                            ctx.lineCap = 'round';
+                            ctx.lineJoin = 'round';
+                        }
+                    }
+                }
+            };
+
+            updateCanvasSize();
+
+            // Observe changes in the container's size (content loading)
+            const observer = new ResizeObserver(updateCanvasSize);
+            observer.observe(containerRef.current);
+            // Also observe the likely content child (if accessible via a wrapper ref)? 
+            // The scroll container change should trigger it.
+
+            // Also update on window resize
+            window.addEventListener('resize', updateCanvasSize);
+
+            return () => {
+                observer.disconnect();
+                window.removeEventListener('resize', updateCanvasSize);
+            };
         }
     }, [activeAttachment, enableDrawing, onScroll]);
-
 
     if (!activeAttachment) {
         if (isProjection) return null;
@@ -366,7 +399,7 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
             >
                 {/* DEBUG MARKER */}
                 <Box sx={{ position: 'sticky', top: 0, right: 0, zIndex: 9999, bgcolor: 'red', color: 'white', p: 1, fontWeight: 'bold', width: 'fit-content', ml: 'auto' }}>
-                    DEBUG V4 - CURSOR FIX
+                    DEBUG V5 - CANVAS & OVERLAP FIX
                 </Box>
 
                 {/* Overlay to capture mouse events over iframe when tools are active */}
@@ -426,7 +459,7 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
                                 <div dangerouslySetInnerHTML={{ __html: excelHtml }} />
                             </Box>
                         ) : activeAttachment.name.match(/\.docx$/i) ? (
-                            <Box sx={{ bgcolor: '#f1f5f9', p: 4, minHeight: '100%' }}>
+                            <Box sx={{ bgcolor: '#f1f5f9', p: 4, minHeight: '100%', pt: 8 /* Avoid Custom Header overlap */ }}>
                                 <div
                                     ref={setDocxContainer}
                                     className="docx-content"
@@ -437,7 +470,9 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
                                         margin: '0 auto', // Center horizontally
                                         background: 'white',
                                         padding: '40px',
-                                        boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
+                                        boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+                                        position: 'relative', // Ensure Z-index context
+                                        zIndex: 1
                                     }}
                                 />
                             </Box>
@@ -450,7 +485,7 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
                             />
                         ) : (
                             // PDF Section - Switched to Block Layout for reliable scrolling
-                            <Box sx={{ display: 'block', minHeight: '100%', p: 4, bgcolor: '#525659' }}>
+                            <Box sx={{ display: 'block', minHeight: '100%', p: 4, bgcolor: '#525659', pt: 8 }}>
                                 <Box sx={{ maxWidth: '850px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 2 }}>
                                     <PdfRenderer url={activeAttachment.url} onLoadComplete={(total) => setDetectedTotalPages(total)} />
                                 </Box>
@@ -473,7 +508,7 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
                     </>
                 )}
 
-                {enableDrawing && <canvas ref={canvasRef} style={{ position: 'absolute', inset: 0, zIndex: 30, pointerEvents: 'none' }} />}
+                {enableDrawing && <canvas ref={canvasRef} style={{ position: 'absolute', inset: 0, zIndex: 50, pointerEvents: 'none' }} />}
 
                 {enableLaser && showLaser && (
                     <Box
