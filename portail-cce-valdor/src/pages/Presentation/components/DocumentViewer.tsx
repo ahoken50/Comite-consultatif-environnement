@@ -389,23 +389,14 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
                     overflowX: 'hidden',
                     position: 'relative',
                     cursor: (enableDrawing || enableLaser) ? 'crosshair' : 'default',
-                    bgcolor: activeAttachment.type === 'image' ? '#020617' : '#525659',
-                    border: '5px solid red' // DEBUG: VISUAL MARKER
+                    bgcolor: activeAttachment.type === 'image' ? '#020617' : '#f1f5f9', // Light background for docs
                 }}
                 onMouseMove={!isProjection ? handleMouseMove : undefined}
                 onMouseDown={!isProjection ? handleMouseDown : undefined}
                 onMouseUp={!isProjection ? handleMouseUp : undefined}
                 onMouseLeave={() => { if (!isProjection) { setShowLaser(false); setIsDrawing(false); } }}
             >
-                {/* DEBUG MARKER */}
-                <Box sx={{ position: 'sticky', top: 0, right: 0, zIndex: 9999, bgcolor: 'red', color: 'white', p: 1, fontWeight: 'bold', width: 'fit-content', ml: 'auto' }}>
-                    DEBUG V5 - CANVAS & OVERLAP FIX
-                </Box>
-
                 {/* Overlay to capture mouse events over iframe when tools are active */}
-                {(enableLaser || enableDrawing) && (
-                    <Box sx={{ position: 'absolute', inset: 0, zIndex: 20, cursor: 'crosshair' }} />
-                )}
 
                 {/* CONTENT - No flex centering, just block layout */}
                 {activeAttachment.type === 'image' ? (
