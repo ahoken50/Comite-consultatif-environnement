@@ -326,12 +326,19 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
                 </Box>
             )}
 
-            {/* Content Viewport */}
+            {/* Content Viewport - SINGLE SCROLL CONTAINER */}
             <Box
-                ref={containerRef}
+                ref={(el: HTMLDivElement | null) => {
+                    // Assign to both refs
+                    (containerRef as React.MutableRefObject<HTMLDivElement | null>).current = el;
+                    (scrollRef as React.MutableRefObject<HTMLDivElement | null>).current = el;
+                }}
                 sx={{
-                    flex: 1, overflow: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    position: 'relative', cursor: (enableDrawing || enableLaser) ? 'crosshair' : 'default'
+                    flex: 1,
+                    overflow: 'auto',
+                    position: 'relative',
+                    cursor: (enableDrawing || enableLaser) ? 'crosshair' : 'default',
+                    bgcolor: activeAttachment.type === 'image' ? '#020617' : '#525659'
                 }}
                 onMouseMove={!isProjection ? handleMouseMove : undefined}
                 onMouseDown={!isProjection ? handleMouseDown : undefined}
@@ -342,93 +349,90 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
                 {(enableLaser || enableDrawing) && (
                     <Box sx={{ position: 'absolute', inset: 0, zIndex: 20, cursor: 'none' }} />
                 )}
-                <Box sx={{ position: 'relative', zIndex: 10, width: '100%', height: '100%', p: 2, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    {activeAttachment.type === 'image' ? (
-                        <Box ref={scrollRef} sx={{ width: '100%', height: '100%', overflow: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                            <img
-                                src={activeAttachment.url}
-                                alt={activeAttachment.name}
-                                style={{
-                                    maxWidth: isZoomed ? 'none' : '100%',
-                                    maxHeight: isZoomed ? 'none' : '100%',
-                                    objectFit: 'contain',
-                                    transition: 'all 0.3s'
-                                }}
-                            />
-                            {!isProjection && (
+
+                {/* CONTENT - No flex centering, just block layout */}
+                {activeAttachment.type === 'image' ? (
+                    <Box sx={{ minHeight: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', p: 2 }}>
+                        <img
+                            src={activeAttachment.url}
+                            alt={activeAttachment.name}
+                            style={{
+                                maxWidth: isZoomed ? 'none' : '100%',
+                                maxHeight: isZoomed ? 'none' : '100%',
+                                objectFit: 'contain',
+                                transition: 'all 0.3s'
+                            }}
+                        />
+                        {!isProjection && (
+                            <Button
+                                onClick={() => setIsZoomed(!isZoomed)}
+                                variant="contained" size="small"
+                                sx={{ position: 'absolute', top: 16, right: 16, bgcolor: 'rgba(0,0,0,0.5)', '&:hover': { bgcolor: 'rgba(0,0,0,0.7)' } }}
+                            >
+                                {isZoomed ? "Ajuster" : "Zoom 100%"}
+                            </Button>
+                        )}
+                    </Box>
+                ) : (
+                    <>
+                        {/* Excel Toggle (only for Excel/XLSX files) */}
+                        {activeAttachment.name.match(/\.(xlsx|xls)$/i) && !isProjection && (
+                            <Box sx={{ p: 1, borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end', bgcolor: '#f8fafc', position: 'sticky', top: 0, zIndex: 5 }}>
                                 <Button
-                                    onClick={() => setIsZoomed(!isZoomed)}
-                                    variant="contained" size="small"
-                                    sx={{ position: 'absolute', top: 16, right: 16, bgcolor: 'rgba(0,0,0,0.5)', '&:hover': { bgcolor: 'rgba(0,0,0,0.7)' } }}
+                                    size="small"
+                                    onClick={() => setUseNativeExcel(!useNativeExcel)}
+                                    startIcon={useNativeExcel ? <Web /> : <TableView />}
+                                    variant="outlined"
+                                    color="secondary"
                                 >
-                                    {isZoomed ? "Ajuster" : "Zoom 100%"}
+                                    {useNativeExcel ? "Vue Web (Google)" : "Vue Cellules (Bêta)"}
                                 </Button>
-                            )}
-                        </Box>
-                    ) : (
-                        <Box ref={scrollRef} sx={{ width: '100%', height: '100%', bgcolor: 'white', boxShadow: 10, overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
+                            </Box>
+                        )}
 
-                            {/* Excel Toggle (only for Excel/XLSX files) */}
-                            {activeAttachment.name.match(/\.(xlsx|xls)$/i) && !isProjection && (
-                                <Box sx={{ p: 1, borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end', bgcolor: '#f8fafc' }}>
-                                    <Button
-                                        size="small"
-                                        onClick={() => setUseNativeExcel(!useNativeExcel)}
-                                        startIcon={useNativeExcel ? <Web /> : <TableView />}
-                                        variant="outlined"
-                                        color="secondary"
-                                    >
-                                        {useNativeExcel ? "Vue Web (Google)" : "Vue Cellules (Bêta)"}
-                                    </Button>
-                                </Box>
-                            )}
+                        {(activeAttachment.name.match(/\.(xlsx|xls)$/i) && useNativeExcel && excelHtml) ? (
+                            <Box sx={{ p: 4, bgcolor: 'white' }}>
+                                <style>
+                                    {`
+                                  #excel-table table { border-collapse: collapse; width: 100%; font-family: sans-serif; }
+                                  #excel-table td, #excel-table th { border: 1px solid #cbd5e1; padding: 4px 8px; font-size: 14px; }
+                                  #excel-table tr:nth-of-type(even) { background-color: #f8fafc; }
+                                `}
+                                </style>
+                                <div dangerouslySetInnerHTML={{ __html: excelHtml }} />
+                            </Box>
+                        ) : activeAttachment.name.match(/\.docx$/i) ? (
+                            <Box sx={{ bgcolor: '#f1f5f9', p: 4, display: 'flex', justifyContent: 'center' }}>
+                                <div ref={setDocxContainer} style={{ width: '100%', maxWidth: '850px', background: 'white', padding: '40px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }} />
+                            </Box>
+                        ) : activeAttachment.name.match(/\.(xlsx|xls|doc|pptx|ppt)$/i) ? (
+                            <iframe
+                                key={activeAttachment.id}
+                                src={`https://docs.google.com/viewer?url=${encodeURIComponent(activeAttachment.url)}&embedded=true`}
+                                style={{ width: '100%', height: '100%', minHeight: '80vh', border: 'none' }}
+                                title={activeAttachment.name}
+                            />
+                        ) : (
+                            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, p: 4 }}>
+                                <PdfRenderer url={activeAttachment.url} onLoadComplete={(total) => setDetectedTotalPages(total)} />
+                            </Box>
+                        )}
 
-                            {(activeAttachment.name.match(/\.(xlsx|xls)$/i) && useNativeExcel && excelHtml) ? (
-                                <Box sx={{ p: 4, bgcolor: 'white', minHeight: 'fit-content' }}>
-                                    <style>
-                                        {`
-                                      #excel-table table { border-collapse: collapse; width: 100%; font-family: sans-serif; }
-                                      #excel-table td, #excel-table th { border: 1px solid #cbd5e1; padding: 4px 8px; font-size: 14px; }
-                                      #excel-table tr:nth-of-type(even) { background-color: #f8fafc; }
-                                    `}
-                                    </style>
-                                    <div dangerouslySetInnerHTML={{ __html: excelHtml }} />
-                                </Box>
-                            ) : activeAttachment.name.match(/\.docx$/i) ? (
-                                <Box sx={{ bgcolor: '#f1f5f9', minHeight: 'fit-content', textAlign: 'center', p: 4 }}>
-                                    {/* Wrapper for docx-preview - Strict block layout */}
-                                    <div ref={setDocxContainer} style={{ display: 'inline-block', background: 'white', padding: '40px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)', textAlign: 'left' }} />
-                                </Box>
-                            ) : activeAttachment.name.match(/\.(xlsx|xls|doc|pptx|ppt)$/i) ? (
-                                <iframe
-                                    // Office docs in Google Viewer for unsupported formats (XLS, PPT, DOC legacy)
-                                    key={activeAttachment.id}
-                                    src={`https://docs.google.com/viewer?url=${encodeURIComponent(activeAttachment.url)}&embedded=true`}
-                                    style={{ width: '100%', height: '100%', border: 'none' }}
-                                    title={activeAttachment.name}
-                                />
-                            ) : (
-                                <Box sx={{ width: '100%', minHeight: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', p: 4, bgcolor: '#525659' }}>
-                                    <PdfRenderer url={activeAttachment.url} onLoadComplete={(total) => setDetectedTotalPages(total)} />
-                                </Box>
-                            )}
-
-                            {/* Fallback/External Open Button for Office Docs */}
-                            {(activeAttachment.name.match(/\.(xlsx|xls|docx|doc|pptx|ppt)$/i) && !isProjection) && (
-                                <Box sx={{ position: 'absolute', bottom: 16, right: 16, zIndex: 15 }}>
-                                    <Button
-                                        variant="contained"
-                                        size="small"
-                                        onClick={() => window.open(activeAttachment.url, '_blank')}
-                                        sx={{ bgcolor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', '&:hover': { bgcolor: 'rgba(0,0,0,0.8)' } }}
-                                    >
-                                        Ouvrir l'original
-                                    </Button>
-                                </Box>
-                            )}
-                        </Box>
-                    )}
-                </Box>
+                        {/* Fallback/External Open Button for Office Docs */}
+                        {(activeAttachment.name.match(/\.(xlsx|xls|docx|doc|pptx|ppt)$/i) && !isProjection) && (
+                            <Box sx={{ position: 'fixed', bottom: 80, right: 16, zIndex: 15 }}>
+                                <Button
+                                    variant="contained"
+                                    size="small"
+                                    onClick={() => window.open(activeAttachment.url, '_blank')}
+                                    sx={{ bgcolor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', '&:hover': { bgcolor: 'rgba(0,0,0,0.8)' } }}
+                                >
+                                    Ouvrir l'original
+                                </Button>
+                            </Box>
+                        )}
+                    </>
+                )}
 
                 {enableDrawing && <canvas ref={canvasRef} style={{ position: 'absolute', inset: 0, zIndex: 30, pointerEvents: 'none' }} />}
 
