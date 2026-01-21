@@ -384,7 +384,7 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
                             )}
 
                             {(activeAttachment.name.match(/\.(xlsx|xls)$/i) && useNativeExcel && excelHtml) ? (
-                                <Box sx={{ flex: 1, overflow: 'auto', p: 4, bgcolor: 'white' }}>
+                                <Box sx={{ p: 4, bgcolor: 'white', minHeight: 'fit-content' }}>
                                     <style>
                                         {`
                                       #excel-table table { border-collapse: collapse; width: 100%; font-family: sans-serif; }
@@ -395,7 +395,7 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
                                     <div dangerouslySetInnerHTML={{ __html: excelHtml }} />
                                 </Box>
                             ) : activeAttachment.name.match(/\.docx$/i) ? (
-                                <Box sx={{ flex: 1, overflow: 'auto', bgcolor: '#f1f5f9', p: 4, display: 'flex', justifyContent: 'center' }}>
+                                <Box sx={{ bgcolor: '#f1f5f9', p: 4, display: 'flex', justifyContent: 'center', minHeight: 'fit-content' }}>
                                     {/* Wrapper for docx-preview */}
                                     <div ref={setDocxContainer} style={{ width: '100%', maxWidth: '850px', background: 'white', padding: '40px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }} />
                                 </Box>
@@ -408,7 +408,7 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
                                     title={activeAttachment.name}
                                 />
                             ) : (
-                                <Box sx={{ flex: 1, width: '100%', display: 'flex', justifyContent: 'center', p: 4, bgcolor: '#525659' }}>
+                                <Box sx={{ width: '100%', display: 'flex', justifyContent: 'center', p: 4, bgcolor: '#525659', minHeight: 'fit-content' }}>
                                     <PdfRenderer url={activeAttachment.url} onLoadComplete={(total) => setDetectedTotalPages(total)} />
                                 </Box>
                             )}
