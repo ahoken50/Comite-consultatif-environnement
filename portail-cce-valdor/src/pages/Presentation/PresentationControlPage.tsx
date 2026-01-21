@@ -21,7 +21,7 @@ const getBroadcastChannel = (id: string) => new BroadcastChannel(`cce_presentati
 
 const PresentationControlPage: React.FC = () => {
     const { id: meetingId } = useParams<{ id: string }>();
-    const { meeting, loading, error, saveItemDuration } = usePresentationData(meetingId);
+    const { meeting, loading, error, saveItemDuration, saveNote } = usePresentationData(meetingId);
 
     const [currentIndex, setCurrentIndex] = useState(0);
     const [documentPage, setDocumentPage] = useState(1); // Controlled document page
@@ -521,7 +521,10 @@ const PresentationControlPage: React.FC = () => {
                         <QuickNotesPanel
                             itemId={currentItem.id}
                             itemTitle={currentItem.title}
-                            onSave={(note) => setNotes(p => ({ ...p, [currentItem.id]: note }))}
+                            onSave={(note) => {
+                                setNotes(p => ({ ...p, [currentItem.id]: note })); // Optimistic update
+                                saveNote(currentItem.id, note); // Persistent save
+                            }}
                             initialNote={notes[currentItem.id]}
                         />
                     )}

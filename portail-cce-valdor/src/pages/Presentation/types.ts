@@ -14,6 +14,10 @@ export interface AgendaItem {
     durationInMinutes: number;
     actualDuration?: number;
     attachments: Attachment[];
+    // Persistent fields to preserve
+    objective?: string;
+    agendaNote?: string;
+    decision?: string;
 }
 
 export interface PresentationMeeting {

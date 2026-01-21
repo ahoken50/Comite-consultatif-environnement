@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { doc, getDoc, collection, getDocs, query, where, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, collection, getDocs, query, where, updateDoc, setDoc } from 'firebase/firestore';
 import { db } from '../../../services/firebase';
 import type { PresentationMeeting, AgendaItem, Attachment } from '../types';
 import type { Meeting } from '../../../types/meeting.types';
@@ -55,7 +55,10 @@ export const usePresentationData = (meetingId?: string) => {
                         presenter: item.presenter || '',
                         durationInMinutes: item.duration || 10, // Default duration if missing
                         actualDuration: item.actualDuration || 0,
-                        attachments: attachments
+                        attachments: attachments,
+                        objective: item.objective,
+                        agendaNote: item.agendaNote,
+                        decision: item.decision
                     };
                 });
 
@@ -124,9 +127,10 @@ export const usePresentationData = (meetingId?: string) => {
                     duration: item.durationInMinutes,
                     presenter: item.presenter,
                     actualDuration: item.actualDuration || 0,
-                    // Preserve other fields that might be lost if we don't include them?
-                    // Ideally we should use the original data, but here we just ensure we save the duration.
-                    // A better way is to read the doc, find the index, and update.
+                    // Preserve other fields
+                    objective: item.objective || '',
+                    agendaNote: item.agendaNote || '',
+                    decision: item.decision || ''
                 }))
             });
 
@@ -135,5 +139,20 @@ export const usePresentationData = (meetingId?: string) => {
         }
     }, [meeting]);
 
-    return { meeting, loading, error, saveItemDuration };
+    const saveNote = useCallback(async (itemId: string, content: string) => {
+        if (!meeting) return;
+        try {
+            // Save to a subcollection 'notes' under the meeting document
+            // Structure: meetings/{meetingId}/notes/{itemId}
+            const noteRef = doc(db, 'meetings', meeting.id, 'notes', itemId);
+            await setDoc(noteRef, {
+                content,
+                timestamp: Date.now()
+            }, { merge: true });
+        } catch (err) {
+            console.error("Error saving note:", err);
+        }
+    }, [meeting]);
+
+    return { meeting, loading, error, saveItemDuration, saveNote };
 };

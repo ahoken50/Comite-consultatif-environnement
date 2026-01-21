@@ -274,7 +274,7 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
             <Box
                 ref={containerRef}
                 sx={{
-                    flex: 1, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    flex: 1, overflow: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'center',
                     position: 'relative', cursor: (enableDrawing || enableLaser) ? 'crosshair' : 'default'
                 }}
                 onMouseMove={!isProjection ? handleMouseMove : undefined}
