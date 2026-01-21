@@ -47,7 +47,7 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
     const scrollRef = useRef<HTMLDivElement>(null);
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const isExternalScrolling = useRef(false);
-    const scrollTimeout = useRef<number | null>(null);
+
 
     const [internalPage, setInternalPage] = useState(1);
     const currentPage = controlledPage || internalPage; // Use prop if available, else internal
