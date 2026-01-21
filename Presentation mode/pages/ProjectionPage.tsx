@@ -14,11 +14,16 @@ const ProjectionPage: React.FC = () => {
     isLaserEnabled: false,
     isDrawingEnabled: false
   });
+  const [scrollPosition, setScrollPosition] = useState<{ scrollTop: number; scrollLeft: number } | null>(null);
 
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
       if (event.data && event.data.type === 'SYNC_STATE') {
         setState(event.data.payload);
+        // Reset scroll position when document changes
+        setScrollPosition(null);
+      } else if (event.data && event.data.type === 'SYNC_SCROLL') {
+        setScrollPosition(event.data.payload);
       }
     };
 
@@ -56,6 +61,7 @@ const ProjectionPage: React.FC = () => {
                     enableLaser={state.isLaserEnabled}
                     enableDrawing={state.isDrawingEnabled}
                     isProjection={true} // Hides all UI controls
+                    externalScroll={scrollPosition}
                 />
             </div>
          </>

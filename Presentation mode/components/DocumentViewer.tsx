@@ -11,6 +11,8 @@ interface DocumentViewerProps {
   enableDrawing?: boolean;
   onPageChange?: (page: number) => void;
   isProjection?: boolean; // New prop to hide UI for projector
+  onScrollChange?: (scrollData: { scrollTop: number; scrollLeft: number }) => void;
+  externalScroll?: { scrollTop: number; scrollLeft: number } | null;
 }
 
 const DocumentViewer: React.FC<DocumentViewerProps> = ({ 
@@ -20,11 +22,16 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
   onClose,
   enableLaser = false,
   enableDrawing = false,
-  isProjection = false
+  isProjection = false,
+  onScrollChange,
+  externalScroll
 }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const scrollTimeoutRef = useRef<number | null>(null);
+  const isExternalScrollingRef = useRef(false);
   
   const [currentPage, setCurrentPage] = useState(1);
   const totalPages = activeAttachment?.pageCount || (activeAttachment?.type === 'image' ? 1 : 12);
@@ -92,6 +99,99 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
           canvasRef.current.height = containerRef.current.offsetHeight;
       }
   }, [activeAttachment, enableDrawing]);
+
+  // Handle scroll events from the presenter view
+  useEffect(() => {
+    if (!onScrollChange || !containerRef.current) return;
+
+    const handleScroll = (e: Event) => {
+      if (isExternalScrollingRef.current) return;
+
+      const target = e.target as HTMLElement;
+      if (scrollTimeoutRef.current) {
+        clearTimeout(scrollTimeoutRef.current);
+      }
+
+      scrollTimeoutRef.current = window.setTimeout(() => {
+        onScrollChange({
+          scrollTop: target.scrollTop,
+          scrollLeft: target.scrollLeft
+        });
+      }, 50); // Debounce scroll events
+    };
+
+    const container = containerRef.current;
+    container.addEventListener('scroll', handleScroll);
+
+    // Try to attach scroll listener to iframe content if it's a PDF/DOCX
+    const setupIframeScrollListener = () => {
+      try {
+        const iframe = iframeRef.current;
+        if (iframe && iframe.contentWindow) {
+          const iframeDoc = iframe.contentWindow.document;
+          if (iframeDoc && iframeDoc.body) {
+            iframeDoc.addEventListener('scroll', handleScroll);
+            // Also listen to scroll on the body and documentElement
+            iframeDoc.body.addEventListener('scroll', handleScroll);
+            iframeDoc.documentElement.addEventListener('scroll', handleScroll);
+          }
+        }
+      } catch (e) {
+        // Cross-origin iframe, can't access
+        console.warn('Cannot access iframe content for scroll sync:', e);
+      }
+    };
+
+    // Wait for iframe to load
+    if (iframeRef.current) {
+      iframeRef.current.addEventListener('load', setupIframeScrollListener);
+      setupIframeScrollListener(); // Try immediately in case already loaded
+    }
+
+    return () => {
+      container.removeEventListener('scroll', handleScroll);
+      if (scrollTimeoutRef.current) {
+        clearTimeout(scrollTimeoutRef.current);
+      }
+    };
+  }, [onScrollChange]);
+
+  // Apply external scroll from projector sync
+  useEffect(() => {
+    if (!externalScroll || !containerRef.current) return;
+
+    isExternalScrollingRef.current = true;
+
+    // Scroll the container
+    containerRef.current.scrollTo({
+      top: externalScroll.scrollTop,
+      left: externalScroll.scrollLeft,
+      behavior: 'smooth'
+    });
+
+    // Try to scroll iframe content if it's a PDF/DOCX
+    try {
+      const iframe = iframeRef.current;
+      if (iframe && iframe.contentWindow) {
+        const iframeDoc = iframe.contentWindow.document;
+        if (iframeDoc) {
+          iframeDoc.documentElement.scrollTo({
+            top: externalScroll.scrollTop,
+            left: externalScroll.scrollLeft,
+            behavior: 'smooth'
+          });
+        }
+      }
+    } catch (e) {
+      // Cross-origin iframe, can't access
+      console.warn('Cannot scroll iframe content:', e);
+    }
+
+    // Reset flag after scroll completes
+    setTimeout(() => {
+      isExternalScrollingRef.current = false;
+    }, 300);
+  }, [externalScroll]);
 
 
   if (!activeAttachment) {
@@ -169,8 +269,9 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
                 className="max-w-full max-h-full object-contain shadow-2xl"
             />
             ) : (
-            <div className="w-full h-full bg-white shadow-2xl overflow-hidden">
+            <div className="w-full h-full bg-white shadow-2xl overflow-auto" ref={scrollRef}>
                 <iframe 
+                ref={iframeRef}
                 src={activeAttachment.url} 
                 className="w-full h-full border-none pointer-events-none"
                 title={activeAttachment.name}
