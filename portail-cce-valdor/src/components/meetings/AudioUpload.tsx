@@ -16,9 +16,10 @@ import {
     Delete,
     PlayArrow,
     Pause,
-    Psychology,
-    UploadFile
+    Merge,
+    QueueMusic
 } from '@mui/icons-material';
+import { aiService } from '../../services/ai/UnifiedAIService';
 
 import type { AudioRecording } from '../../types/meeting.types';
 import type { UploadProgress } from '../../services/audioStorageService';
@@ -29,19 +30,21 @@ import {
     formatFileSize,
     formatDuration
 } from '../../services/audioStorageService';
-import { transcribeAudio, transcribeLocalFile, isGeminiConfigured } from '../../services/geminiService';
+import { isGeminiConfigured } from '../../services/geminiService';
 
 interface AudioUploadProps {
     meetingId: string;
-    audioRecording?: AudioRecording;
+    audioRecording?: AudioRecording; // Legacy
+    audioRecordings?: AudioRecording[]; // New
     onUploadComplete?: (recording: AudioRecording) => void;
-    onDelete?: () => void;
-    onTranscriptionComplete?: () => void;
+    onDelete?: (recording?: AudioRecording) => void;
+    onTranscriptionComplete?: (mergedTranscription?: string) => void;
 }
 
 const AudioUpload: React.FC<AudioUploadProps> = ({
     meetingId,
     audioRecording,
+    audioRecordings,
     onUploadComplete,
     onDelete,
     onTranscriptionComplete
@@ -49,9 +52,15 @@ const AudioUpload: React.FC<AudioUploadProps> = ({
     const [isDragging, setIsDragging] = useState(false);
     const [uploadProgress, setUploadProgress] = useState<UploadProgress | null>(null);
     const [error, setError] = useState<string | null>(null);
-    const [isPlaying, setIsPlaying] = useState(false);
+    const [playingUrl, setPlayingUrl] = useState<string | null>(null); // Track which file is playing
     const [isTranscribing, setIsTranscribing] = useState(false);
     const audioRef = React.useRef<HTMLAudioElement | null>(null);
+
+    // Merge legacy and new props into a single list
+    const recordings = audioRecordings || (audioRecording ? [audioRecording] : []);
+
+    // Also track local files for immediate transcription if needed (though we upload first now)
+    // We rely on 'recordings' (AudioRecording) which contain download URLs.
 
     const handleDragOver = useCallback((e: React.DragEvent) => {
         e.preventDefault();
@@ -69,14 +78,15 @@ const AudioUpload: React.FC<AudioUploadProps> = ({
 
         const files = e.dataTransfer.files;
         if (files.length > 0) {
-            handleFileUpload(files[0]);
+            // Handle all dropped files
+            Array.from(files).forEach(file => handleFileUpload(file));
         }
     }, []);
 
     const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
         const files = e.target.files;
         if (files && files.length > 0) {
-            handleFileUpload(files[0]);
+            Array.from(files).forEach(file => handleFileUpload(file));
         }
     }, []);
 
@@ -106,79 +116,78 @@ const AudioUpload: React.FC<AudioUploadProps> = ({
         }
     };
 
-    const handleDelete = async () => {
-        // If there's a storage path, delete from Firebase Storage
-        if (audioRecording?.storagePath) {
-            const success = await deleteAudioFile(meetingId, audioRecording.storagePath);
+    const handleDelete = async (rec: AudioRecording) => {
+        if (rec.storagePath) {
+            const success = await deleteAudioFile(meetingId, rec.storagePath);
             if (success) {
-                onDelete?.();
+                onDelete?.(rec);
             } else {
                 setError('Erreur lors de la suppression');
             }
         } else {
-            // For imported transcriptions without storage, just call onDelete
-            onDelete?.();
+            onDelete?.(rec);
         }
     };
 
-    const togglePlayback = () => {
+    const togglePlayback = (url: string) => {
         if (audioRef.current) {
-            if (isPlaying) {
+            if (playingUrl === url && !audioRef.current.paused) {
                 audioRef.current.pause();
+                setPlayingUrl(null);
             } else {
+                setPlayingUrl(url);
+                audioRef.current.src = url;
                 audioRef.current.play();
             }
-            setIsPlaying(!isPlaying);
         }
     };
 
-    const handleTranscribe = async () => {
-        if (!audioRecording) return;
+    const handleMergeAndTranscribe = async () => {
+        if (recordings.length === 0) return;
 
         if (!isGeminiConfigured()) {
-            setError('Clé API Gemini non configurée. Ajoutez VITE_GEMINI_API_KEY dans votre fichier .env');
+            setError('Clé API Gemini non configurée.');
             return;
         }
 
         setIsTranscribing(true);
         setError(null);
 
-        const result = await transcribeAudio(
-            meetingId,
-            audioRecording.fileUrl,
-            audioRecording.mimeType,
-            audioRecording.storagePath
-        );
+        try {
+            const transcriptions: string[] = [];
 
-        if (result.success) {
-            onTranscriptionComplete?.();
-        } else {
-            console.error('Auto-transcription failed:', result.error);
-            // Show specific error for manual upload suggestion
-            if (result.error?.includes('Failed to fetch') || result.error?.includes('NetworkError')) {
-                setError('Le téléchargement automatique a échoué (blocage réseau/navigateur). Veuillez utiliser l\'option de transcription manuelle ci-dessous.');
-            } else {
-                setError(result.error || 'Erreur lors de la transcription');
+            // Process sequentially
+            for (let i = 0; i < recordings.length; i++) {
+                const rec = recordings[i];
+                // Update specific status if possible (but we only have global state here)
+                // We could use a local status map but simpler to just show global loading
+
+                // Fetch Blob
+                const response = await fetch(rec.fileUrl);
+                const blob = await response.blob();
+                const file = new File([blob], rec.fileName, { type: rec.mimeType });
+
+                // Transcribe
+                const result = await aiService.transcribe(file);
+                if (result.text) {
+                    transcriptions.push(result.text);
+                }
             }
+
+            const mergedText = transcriptions.join('\n\n--- FUSION FICHIER SUIVANT ---\n\n');
+
+            // Pass back merged text
+            onTranscriptionComplete?.(mergedText);
+
+        } catch (err) {
+            console.error('Merge transcription failed:', err);
+            setError(err instanceof Error ? err.message : 'Erreur de transcription fusionnée');
         }
 
         setIsTranscribing(false);
     };
 
-    const handleManualTranscription = async (file: File) => {
-        setIsTranscribing(true);
-        setError(null);
 
-        const result = await transcribeLocalFile(meetingId, file);
-
-        if (result.success) {
-            onTranscriptionComplete?.();
-        } else {
-            setError(result.error || 'Erreur lors de la transcription manuelle');
-        }
-
-        setIsTranscribing(false);
-    };
 
     const getStatusColor = (status: AudioRecording['transcriptionStatus']) => {
         switch (status) {
@@ -198,124 +207,83 @@ const AudioUpload: React.FC<AudioUploadProps> = ({
         }
     };
 
-    // If there's an existing recording, show it
-    if (audioRecording) {
+    // If there are existing recordings, show list
+    if (recordings.length > 0) {
         return (
-            <Paper
-                sx={{
-                    p: 3,
-                    mb: 3,
-                    bgcolor: 'background.default',
-                    border: '1px solid',
-                    borderColor: 'divider'
-                }}
-            >
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                    <AudioFile color="primary" sx={{ fontSize: 40 }} />
-                    <Box sx={{ flexGrow: 1 }}>
-                        <Typography variant="subtitle1" fontWeight={600}>
-                            {audioRecording.fileName}
-                        </Typography>
-                        <Typography variant="body2" color="text.secondary">
-                            {formatFileSize(audioRecording.fileSize)} • {formatDuration(audioRecording.duration)}
-                        </Typography>
-                        <Chip
-                            label={getStatusLabel(audioRecording.transcriptionStatus)}
-                            color={getStatusColor(audioRecording.transcriptionStatus)}
-                            size="small"
-                            sx={{ mt: 1 }}
-                        />
+            <Paper sx={{ p: 3, mb: 3, bgcolor: 'background.default', border: '1px solid', borderColor: 'divider' }}>
+                <Typography variant="subtitle2" gutterBottom color="text.secondary">
+                    Fichiers Audio ({recordings.length})
+                </Typography>
+
+                {recordings.map((rec, index) => (
+                    <Box key={index} sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2, p: 2, bgcolor: 'background.paper', borderRadius: 1 }}>
+                        <AudioFile color="primary" />
+                        <Box sx={{ flexGrow: 1 }}>
+                            <Typography variant="subtitle2" fontWeight={600}>
+                                {rec.fileName}
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary">
+                                {formatFileSize(rec.fileSize)} • {formatDuration(rec.duration)}
+                            </Typography>
+                            <Chip
+                                label={getStatusLabel(rec.transcriptionStatus)}
+                                color={getStatusColor(rec.transcriptionStatus)}
+                                size="small"
+                                sx={{ ml: 2, height: 20, fontSize: '0.65rem' }}
+                            />
+                        </Box>
+                        <IconButton onClick={() => togglePlayback(rec.fileUrl)} color="primary">
+                            {playingUrl === rec.fileUrl ? <Pause /> : <PlayArrow />}
+                        </IconButton>
+                        <IconButton onClick={() => handleDelete(rec)} color="error">
+                            <Delete />
+                        </IconButton>
                     </Box>
-                    <IconButton onClick={togglePlayback} color="primary">
-                        {isPlaying ? <Pause /> : <PlayArrow />}
-                    </IconButton>
-                    <IconButton onClick={handleDelete} color="error">
-                        <Delete />
-                    </IconButton>
+                ))}
+
+                {/* Merge Transcription Button */}
+                <Box sx={{ mt: 2 }}>
+                    <Button
+                        variant="contained"
+                        color="secondary"
+                        fullWidth
+                        startIcon={isTranscribing ? <CircularProgress size={20} color="inherit" /> : <Merge />}
+                        onClick={handleMergeAndTranscribe}
+                        disabled={isTranscribing}
+                    >
+                        {isTranscribing ? 'Fusion et Transcription en cours...' : 'Fusionner Audio & Transcrire Tout'}
+                    </Button>
                 </Box>
 
-                {/* Transcription Button */}
-                {audioRecording.transcriptionStatus === 'pending' && (
-                    <Box sx={{ mt: 2 }}>
-                        <Button
-                            variant="contained"
-                            color="primary"
-                            fullWidth
-                            startIcon={isTranscribing ? <CircularProgress size={20} color="inherit" /> : <Psychology />}
-                            onClick={handleTranscribe}
-                            disabled={isTranscribing}
-                        >
-                            {isTranscribing ? 'Transcription en cours...' : 'Lancer la transcription IA'}
-                        </Button>
-                    </Box>
+                {error && (
+                    <Alert severity="error" sx={{ mt: 2 }}>{error}</Alert>
                 )}
-
-                {audioRecording.transcriptionStatus === 'processing' && (
-                    <Box sx={{ mt: 2, textAlign: 'center' }}>
-                        <CircularProgress size={24} sx={{ mr: 1 }} />
-                        <Typography variant="body2" color="text.secondary" component="span">
-                            Transcription en cours, veuillez patienter...
-                        </Typography>
-                    </Box>
-                )}
-
-                {audioRecording.transcriptionStatus === 'error' && (
-                    <Box sx={{ mt: 2 }}>
-                        <Alert severity="error">
-                            {audioRecording.transcriptionError || 'Erreur de transcription'}
-                        </Alert>
-                        <Button
-                            variant="outlined"
-                            color="primary"
-                            fullWidth
-                            sx={{ mt: 1 }}
-                            startIcon={<Psychology />}
-                            onClick={handleTranscribe}
-                            disabled={isTranscribing}
-                        >
-                            Réessayer
-                        </Button>
-
-                        {/* Fallback Manual Upload Button */}
-                        <Box sx={{ mt: 2, pt: 2, borderTop: '1px dashed', borderColor: 'divider' }}>
-                            <Typography variant="body2" color="info.main" sx={{ mb: 1 }}>
-                                Si le bouton "Réessayer" échoue (erreur réseau), téléchargez le fichier manuellement ici :
-                            </Typography>
-                            <input
-                                accept="audio/*"
-                                style={{ display: 'none' }}
-                                id="manual-upload-file"
-                                type="file"
-                                onChange={(e) => {
-                                    if (e.target.files && e.target.files[0]) {
-                                        handleManualTranscription(e.target.files[0]);
-                                    }
-                                }}
-                            />
-                            <label htmlFor="manual-upload-file">
-                                <Button
-                                    variant="contained"
-                                    color="secondary"
-                                    component="span"
-                                    fullWidth
-                                    startIcon={<UploadFile />}
-                                    disabled={isTranscribing}
-                                >
-                                    Transcription Manuelle (Upload Local)
-                                </Button>
-                            </label>
-                        </Box>
-                    </Box>
-                )}
-
 
                 <audio
                     ref={audioRef}
-                    src={audioRecording.fileUrl}
-                    onEnded={() => setIsPlaying(false)}
+                    onEnded={() => setPlayingUrl(null)}
                     style={{ display: 'none' }}
                 />
-            </Paper >
+
+                {/* Allow adding MORE files */}
+                <Box sx={{ mt: 3, borderTop: '1px dashed', borderColor: 'divider', pt: 2 }}>
+                    <Typography variant="caption" color="text.secondary" sx={{ mb: 1, display: 'block' }}>Ajouter une autre partie :</Typography>
+                    <Box
+                        onDragOver={handleDragOver}
+                        onDragLeave={handleDragLeave}
+                        onDrop={handleDrop}
+                        sx={{
+                            p: 2, textAlign: 'center', border: '2px dashed', borderColor: isDragging ? 'primary.main' : 'divider',
+                            bgcolor: isDragging ? 'action.hover' : 'background.paper', cursor: 'pointer', borderRadius: 1
+                        }}
+                    >
+                        <Button component="label" startIcon={<QueueMusic />}>
+                            Ajouter un fichier
+                            <input type="file" hidden accept="audio/*,video/*" multiple onChange={handleFileSelect} />
+                        </Button>
+                    </Box>
+                </Box>
+            </Paper>
         );
     }
 

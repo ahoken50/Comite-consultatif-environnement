@@ -108,7 +108,8 @@ export interface Meeting {
     minutesFileDocumentId?: string; // ID of the document in Documents collection
 
     // AI Transcription fields
-    audioRecording?: AudioRecording;
+    audioRecording?: AudioRecording; // Legacy (single)
+    audioRecordings?: AudioRecording[]; // New (multiple)
     minutesDraft?: MinutesDraft;
 
     // PV Approval Flow

@@ -650,15 +650,50 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate, readOn
                     <AudioUpload
                         meetingId={meeting.id}
                         audioRecording={meeting.audioRecording}
+                        audioRecordings={meeting.audioRecordings}
                         onUploadComplete={(recording: AudioRecording) => {
-                            onUpdate({ audioRecording: recording });
+                            const current = meeting.audioRecordings || (meeting.audioRecording ? [meeting.audioRecording] : []);
+                            // Check uniqueness by path or name
+                            if (!current.some(r => r.storagePath === recording.storagePath)) {
+                                const newRecordings = [...current, recording];
+                                onUpdate({
+                                    audioRecordings: newRecordings,
+                                    // Update legacy field if it's the first one
+                                    audioRecording: !meeting.audioRecording ? recording : meeting.audioRecording
+                                });
+                            }
                         }}
-                        onDelete={() => {
-                            onUpdate({ audioRecording: undefined as any });
+                        onDelete={(rec?: AudioRecording) => {
+                            if (rec) {
+                                const current = meeting.audioRecordings || (meeting.audioRecording ? [meeting.audioRecording] : []);
+                                const updated = current.filter(r => r.storagePath !== rec.storagePath);
+                                onUpdate({
+                                    audioRecordings: updated,
+                                    // If we deleted the "primary" (legacy) one, update it to next available
+                                    audioRecording: meeting.audioRecording?.storagePath === rec.storagePath
+                                        ? (updated.length > 0 ? updated[0] : undefined as any)
+                                        : meeting.audioRecording
+                                });
+                            } else {
+                                onUpdate({ audioRecording: undefined as any, audioRecordings: [] });
+                            }
                         }}
-                        onTranscriptionComplete={() => {
-                            // Force refresh by toggling a state or calling parent
-                            console.log('Transcription complete, refresh meeting data!');
+                        onTranscriptionComplete={(text) => {
+                            console.log('Merge complete:', text?.substring(0, 50) + '...');
+                            if (text) {
+                                // Save merged transcription to the primary recording container
+                                // so TranscriptionViewer can see it
+                                const primary = meeting.audioRecording || (meeting.audioRecordings && meeting.audioRecordings[0]);
+                                if (primary) {
+                                    onUpdate({
+                                        audioRecording: {
+                                            ...primary,
+                                            transcription: text,
+                                            transcriptionStatus: 'completed'
+                                        }
+                                    });
+                                }
+                            }
                         }}
                     />
 

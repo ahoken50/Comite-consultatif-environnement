@@ -329,6 +329,7 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
                                 />
                             ) : (
                                 <iframe
+                                    key={`${activeAttachment.id}-page-${currentPage}`} // Force reload to ensure page change works
                                     src={`${activeAttachment.url}#page=${currentPage}`}
                                     style={{ width: '100%', height: '100%', border: 'none' }}
                                     title={activeAttachment.name}

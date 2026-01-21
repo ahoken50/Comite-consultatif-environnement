@@ -385,7 +385,8 @@ const PresentationControlPage: React.FC = () => {
                             overflowY: 'auto', transition: 'all 0.5s ease-in-out',
                             bgcolor: isFullscreen ? 'black' : 'white', color: isFullscreen ? 'rgba(255,255,255,0.7)' : 'text.primary',
                             width: isCinemaMode ? 0 : '35%', opacity: isCinemaMode ? 0 : 1, p: isCinemaMode ? 0 : 5, // Use 0 padding when hidden
-                            height: '100%' // Ensure full height for scrolling
+                            height: '100%', // Ensure full height for scrolling
+                            maxHeight: '100%' // Crucial for overflow to work in flex child
                         }}>
                             <Box sx={{ minWidth: 300, display: isCinemaMode ? 'none' : 'block' }}> {/* Hide content when collapsed to avoid layout shifts */}
                                 {/* Header */}
