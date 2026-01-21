@@ -351,7 +351,8 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
                 }}
                 sx={{
                     flex: 1,
-                    overflow: 'auto',
+                    overflowY: 'scroll', // Force scrollbar
+                    overflowX: 'hidden',
                     position: 'relative',
                     cursor: (enableDrawing || enableLaser) ? 'crosshair' : 'default',
                     bgcolor: activeAttachment.type === 'image' ? '#020617' : '#525659'
@@ -418,8 +419,20 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
                                 <div dangerouslySetInnerHTML={{ __html: excelHtml }} />
                             </Box>
                         ) : activeAttachment.name.match(/\.docx$/i) ? (
-                            <Box sx={{ bgcolor: '#f1f5f9', p: 4, display: 'flex', justifyContent: 'center' }}>
-                                <div ref={setDocxContainer} style={{ width: '100%', maxWidth: '850px', background: 'white', padding: '40px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }} />
+                            <Box sx={{ bgcolor: '#f1f5f9', p: 4, minHeight: '100%' }}>
+                                <div
+                                    ref={setDocxContainer}
+                                    className="docx-content"
+                                    style={{
+                                        width: '100%',
+                                        maxWidth: '850px',
+                                        minHeight: '1000px', // Ensure it looks like a full page
+                                        margin: '0 auto', // Center horizontally
+                                        background: 'white',
+                                        padding: '40px',
+                                        boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
+                                    }}
+                                />
                             </Box>
                         ) : activeAttachment.name.match(/\.(xlsx|xls|doc|pptx|ppt)$/i) ? (
                             <iframe
@@ -429,8 +442,11 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
                                 title={activeAttachment.name}
                             />
                         ) : (
-                            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, p: 4 }}>
-                                <PdfRenderer url={activeAttachment.url} onLoadComplete={(total) => setDetectedTotalPages(total)} />
+                            // PDF Section - Switched to Block Layout for reliable scrolling
+                            <Box sx={{ display: 'block', minHeight: '100%', p: 4, bgcolor: '#525659' }}>
+                                <Box sx={{ maxWidth: '850px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 2 }}>
+                                    <PdfRenderer url={activeAttachment.url} onLoadComplete={(total) => setDetectedTotalPages(total)} />
+                                </Box>
                             </Box>
                         )}
 
