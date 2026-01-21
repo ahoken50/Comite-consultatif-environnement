@@ -2,6 +2,8 @@ import React, { useRef, useEffect, useState } from 'react';
 import { Box, Typography, IconButton, Button } from '@mui/material';
 import { FolderOpen, ChevronLeft, ChevronRight, Close, Image as ImageIcon, PictureAsPdf, TableView, Web } from '@mui/icons-material';
 import type { Attachment } from '../types';
+import { renderAsync } from 'docx-preview';
+import { PdfRenderer } from './PdfRenderer';
 import * as XLSX from 'xlsx';
 
 interface DocumentViewerProps {
@@ -52,7 +54,16 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
         if (onPageChange) onPageChange(newPage);
     };
 
-    const totalPages = activeAttachment?.pageCount || (activeAttachment?.type === 'image' ? 1 : 12);
+    const [detectedTotalPages, setDetectedTotalPages] = useState<number>(0);
+    const totalPages = detectedTotalPages || activeAttachment?.pageCount || (activeAttachment?.type === 'image' ? 1 : 12);
+
+    // Reset detected detectedTotalPages on new attachment
+    useEffect(() => {
+        setDetectedTotalPages(0);
+        setUseNativeExcel(false);
+        setExcelHtml(null);
+        if (docxContainer) docxContainer.innerHTML = '';
+    }, [activeAttachment?.id]);
 
     const [laserPos, setLaserPos] = useState({ x: 0, y: 0 });
     const [showLaser, setShowLaser] = useState(false);
@@ -61,12 +72,38 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
     // Excel Native Mode State
     const [useNativeExcel, setUseNativeExcel] = useState(false);
     const [excelHtml, setExcelHtml] = useState<string | null>(null);
+    const [isZoomed, setIsZoomed] = useState(false);
+
+    // Native DOCX State
+    const [docxContainer, setDocxContainer] = useState<HTMLDivElement | null>(null);
 
     // Reset native mode on attachment change
+
+
+    // Parse DOCX Native
     useEffect(() => {
-        setUseNativeExcel(false);
-        setExcelHtml(null);
-    }, [activeAttachment]);
+        const loadDocx = async () => {
+            if (activeAttachment && activeAttachment.name.match(/\.docx$/i) && docxContainer) {
+                try {
+                    const response = await fetch(activeAttachment.url);
+                    const blob = await response.blob();
+                    await renderAsync(blob, docxContainer, docxContainer, {
+                        className: 'docx-preview-wrapper',
+                        inWrapper: true,
+                        ignoreWidth: false,
+                        ignoreHeight: false,
+                        ignoreFonts: false,
+                        breakPages: true,
+                        experimental: false,
+                        useBase64URL: true
+                    });
+                } catch (err) {
+                    console.error("Failed to render DOCX native", err);
+                }
+            }
+        };
+        loadDocx();
+    }, [activeAttachment, docxContainer]);
 
     // Parse Excel when in native mode
     useEffect(() => {
@@ -253,7 +290,7 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
 
                         {/* Controls */}
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                            {activeAttachment.type === 'pdf' && (
+                            {(activeAttachment.type === 'pdf' && !activeAttachment.name.match(/\.(xlsx|xls|docx|doc|pptx|ppt)$/i)) && (
                                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, bgcolor: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(8px)', borderRadius: 10, px: 2, py: 0.5, color: 'rgba(255,255,255,0.8)' }}>
                                     <IconButton onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1} size="small" sx={{ color: 'inherit', '&:disabled': { opacity: 0.3 } }}><ChevronLeft fontSize="small" /></IconButton>
                                     <Typography variant="caption" fontWeight="bold" sx={{ fontFamily: 'monospace' }}>{currentPage} / {totalPages}</Typography>
@@ -288,11 +325,27 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
                 )}
                 <Box sx={{ position: 'relative', zIndex: 10, width: '100%', height: '100%', p: 2, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     {activeAttachment.type === 'image' ? (
-                        <img
-                            src={activeAttachment.url}
-                            alt={activeAttachment.name}
-                            style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)' }}
-                        />
+                        <Box sx={{ position: 'relative', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <img
+                                src={activeAttachment.url}
+                                alt={activeAttachment.name}
+                                style={{
+                                    maxWidth: isZoomed ? 'none' : '100%',
+                                    maxHeight: isZoomed ? 'none' : '100%',
+                                    objectFit: 'contain',
+                                    transition: 'all 0.3s'
+                                }}
+                            />
+                            {!isProjection && (
+                                <Button
+                                    onClick={() => setIsZoomed(!isZoomed)}
+                                    variant="contained" size="small"
+                                    sx={{ position: 'absolute', top: 16, right: 16, bgcolor: 'rgba(0,0,0,0.5)', '&:hover': { bgcolor: 'rgba(0,0,0,0.7)' } }}
+                                >
+                                    {isZoomed ? "Ajuster" : "Zoom 100%"}
+                                </Button>
+                            )}
+                        </Box>
                     ) : (
                         <Box sx={{ width: '100%', height: '100%', bgcolor: 'white', boxShadow: 10, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
 
@@ -322,25 +375,23 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
                                     </style>
                                     <div dangerouslySetInnerHTML={{ __html: excelHtml }} />
                                 </Box>
-                            ) : activeAttachment.name.match(/\.(xlsx|xls|docx|doc|pptx|ppt)$/i) ? (
+                            ) : activeAttachment.name.match(/\.docx$/i) ? (
+                                <Box sx={{ flex: 1, overflow: 'auto', bgcolor: '#f1f5f9', p: 4, display: 'flex', justifyContent: 'center' }}>
+                                    {/* Wrapper for docx-preview */}
+                                    <div ref={setDocxContainer} style={{ width: '100%', maxWidth: '850px', background: 'white', padding: '40px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }} />
+                                </Box>
+                            ) : activeAttachment.name.match(/\.(xlsx|xls|doc|pptx|ppt)$/i) ? (
                                 <iframe
-                                    key={`${activeAttachment.id}${isProjection ? `-${currentPage}` : ''}`}
+                                    // Office docs in Google Viewer for unsupported formats (XLS, PPT, DOC legacy)
+                                    key={activeAttachment.id}
                                     src={`https://docs.google.com/viewer?url=${encodeURIComponent(activeAttachment.url)}&embedded=true`}
                                     style={{ width: '100%', height: '100%', border: 'none' }}
                                     title={activeAttachment.name}
                                 />
                             ) : (
-                                <iframe
-                                    // Use a composite key that ONLY changes when we REALLY need a reload
-                                    // Using just ID or ID+Page might cause flashing.
-                                    // But PDF hash nav requires reload if it doesn't support pushState.
-                                    // Try using `key` only on ID change, and let hash do the work.
-                                    // If hash doesn't work, we revert to ID+Page key.
-                                    key={`${activeAttachment.id}${isProjection ? `-${currentPage}` : ''}`}
-                                    src={`${activeAttachment.url}#page=${currentPage}`}
-                                    style={{ width: '100%', height: '100%', border: 'none' }}
-                                    title={activeAttachment.name}
-                                />
+                                <Box sx={{ flex: 1, width: '100%', display: 'flex', justifyContent: 'center', p: 4, bgcolor: '#525659' }}>
+                                    <PdfRenderer url={activeAttachment.url} onLoadComplete={(total) => setDetectedTotalPages(total)} />
+                                </Box>
                             )}
 
                             {/* Fallback/External Open Button for Office Docs */}
@@ -376,7 +427,7 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
             </Box>
 
 
-        </Box>
+        </Box >
     );
 };
 

@@ -104,6 +104,12 @@ service cloud.firestore {
          allow create: if isAuthenticated(); // Members can propose
          allow update, delete: if isCoordinator() || (isAuthenticated() && resource.data.proposedBy == request.auth.uid);
       }
+
+      // Notes Subcollection (Presentation Mode)
+      match /notes/{noteId} {
+         allow read: if isAuthenticated();
+         allow write: if isAuthenticated();
+      }
       
       // Convocations subcollection
       match /convocations/{convocationId} {
