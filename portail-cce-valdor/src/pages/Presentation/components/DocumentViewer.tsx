@@ -275,6 +275,9 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
 
     return (
         <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', bgcolor: '#020617', position: 'relative', overflow: 'hidden', '&:hover .header-controls': { opacity: 1 } }}>
+            <Box sx={{ bgcolor: 'red', color: 'white', p: 0.5, fontSize: 10, textAlign: 'center', fontWeight: 'bold', zIndex: 9999 }}>
+                VERSION DEBUG: SCROLL SYNC + DOCX FIX
+            </Box>
 
             {/* Floating Header (Moved to Bottom to avoid PDF Toolbar overlap) */}
             {!isProjection && (
