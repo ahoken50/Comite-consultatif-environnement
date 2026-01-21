@@ -164,24 +164,40 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
 
     // Master Mode: Emit Scroll Events
     useEffect(() => {
+        let rafId: number | null = null;
+        let lastScroll = { top: 0, left: 0 };
+
         const handleScroll = (e: Event) => {
             if (isExternalScrolling.current) return;
 
             const target = e.target as HTMLDivElement;
-            if (onScroll) {
-                // Debounce/Throttle could be added here if needed
-                onScroll(target.scrollTop, target.scrollLeft);
+            const newTop = target.scrollTop;
+            const newLeft = target.scrollLeft;
+
+            // Simple check to avoid processing if values haven't changed (though scroll event implies they did)
+            if (newTop === lastScroll.top && newLeft === lastScroll.left) return;
+
+            lastScroll = { top: newTop, left: newLeft };
+
+            if (!rafId && onScroll) {
+                rafId = requestAnimationFrame(() => {
+                    onScroll(lastScroll.top, lastScroll.left);
+                    rafId = null;
+                });
             }
         };
 
         const scrollContainer = scrollRef.current;
         if (scrollContainer) {
-            scrollContainer.addEventListener('scroll', handleScroll);
+            scrollContainer.addEventListener('scroll', handleScroll, { passive: true });
         }
 
         return () => {
             if (scrollContainer) {
                 scrollContainer.removeEventListener('scroll', handleScroll);
+            }
+            if (rafId) {
+                cancelAnimationFrame(rafId);
             }
         };
     }, [onScroll]);

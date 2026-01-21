@@ -1,8 +1,0 @@
-{
-  "name": "CCE Assemblée - Mode Présentation",
-  "description": "Une interface immersive pour le Comité Consultatif en Environnement (CCE) permettant de gérer et projeter les assemblées avec suivi de l'ordre du jour, minuteur et prise de notes.",
-  "requestFramePermissions": [
-    "camera",
-    "microphone"
-  ]
-}
