@@ -328,13 +328,23 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
         // Image
         if (activeAttachment.type === 'image') {
             return (
-                <Box sx={{ minHeight: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', p: 4 }}>
+                <Box sx={{ minHeight: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', p: 4, position: 'relative' }}>
                     <img
                         src={activeAttachment.url}
                         alt={activeAttachment.name}
                         style={{ maxWidth: isZoomed ? 'none' : '100%', maxHeight: isZoomed ? 'none' : '100%', objectFit: 'contain' }}
                         onLoad={() => setLoading(false)}
                     />
+                    {!isProjection && (
+                        <Button
+                            onClick={() => setIsZoomed(!isZoomed)}
+                            variant="contained"
+                            size="small"
+                            sx={{ position: 'absolute', top: 16, right: 16, bgcolor: 'rgba(0,0,0,0.6)' }}
+                        >
+                            {isZoomed ? "Ajuster" : "Zoom 100%"}
+                        </Button>
+                    )}
                 </Box>
             );
         }
