@@ -12,6 +12,7 @@ interface DocumentViewerProps {
     enableLaser?: boolean;
     enableDrawing?: boolean;
     onPageChange?: (page: number) => void;
+    currentPage?: number; // Controlled page number
     isProjection?: boolean;
     // New Sync Props
     onLaserMove?: (pos: { x: number, y: number }) => void;
@@ -36,12 +37,21 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
     onScroll,
     externalLaserPos,
     externalDrawPoints,
-    externalScroll
+    externalScroll,
+    currentPage: controlledPage,
+    onPageChange
 }) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const canvasRef = useRef<HTMLCanvasElement>(null);
 
-    const [currentPage, setCurrentPage] = useState(1);
+    const [internalPage, setInternalPage] = useState(1);
+    const currentPage = controlledPage || internalPage; // Use prop if available, else internal
+    const setCurrentPage = (page: number | ((prev: number) => number)) => {
+        const newPage = typeof page === 'function' ? page(currentPage) : page;
+        setInternalPage(newPage);
+        if (onPageChange) onPageChange(newPage);
+    };
+
     const totalPages = activeAttachment?.pageCount || (activeAttachment?.type === 'image' ? 1 : 12);
 
     const [laserPos, setLaserPos] = useState({ x: 0, y: 0 });
@@ -79,7 +89,8 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
     }, [useNativeExcel, activeAttachment]);
 
     useEffect(() => {
-        setCurrentPage(1);
+        // Reset page on attachment change
+        if (!controlledPage) setInternalPage(1);
         const canvas = canvasRef.current;
         if (canvas) {
             const ctx = canvas.getContext('2d');
@@ -209,15 +220,14 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
     return (
         <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', bgcolor: '#020617', position: 'relative', overflow: 'hidden', '&:hover .header-controls': { opacity: 1 } }}>
 
-            {/* Floating Header */}
+            {/* Floating Header (Moved to Bottom to avoid PDF Toolbar overlap) */}
             {!isProjection && (
                 <Box className="header-controls" sx={{
-                    position: 'absolute', top: 0, left: 0, right: 0, zIndex: 50, p: 3,
+                    position: 'absolute', bottom: 80, left: '50%', transform: 'translateX(-50%)', zIndex: 50, p: 0,
                     opacity: 0, transition: 'opacity 0.3s',
-                    background: 'linear-gradient(to bottom, rgba(0,0,0,0.8), transparent)',
-                    pointerEvents: 'none'
+                    pointerEvents: 'none', width: 'auto'
                 }}>
-                    <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', pointerEvents: 'auto' }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 2, pointerEvents: 'auto', bgcolor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(8px)', borderRadius: 10, p: 1 }}>
 
                         {/* Tabs */}
                         <Box sx={{ display: 'flex', gap: 1 }}>
@@ -319,7 +329,7 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
                                 />
                             ) : (
                                 <iframe
-                                    src={activeAttachment.url}
+                                    src={`${activeAttachment.url}#page=${currentPage}`}
                                     style={{ width: '100%', height: '100%', border: 'none' }}
                                     title={activeAttachment.name}
                                 />

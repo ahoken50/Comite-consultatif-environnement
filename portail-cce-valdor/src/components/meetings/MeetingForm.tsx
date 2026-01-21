@@ -44,6 +44,7 @@ const agendaItemSchema = z.object({
     proposer: z.any().optional(),
     seconder: z.any().optional(),
     linkedProjectId: z.any().optional(),
+    agendaNote: z.string().optional(),
 });
 
 const meetingSchema = z.object({

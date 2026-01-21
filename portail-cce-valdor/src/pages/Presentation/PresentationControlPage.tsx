@@ -24,6 +24,7 @@ const PresentationControlPage: React.FC = () => {
     const { meeting, loading, error, saveItemDuration } = usePresentationData(meetingId);
 
     const [currentIndex, setCurrentIndex] = useState(0);
+    const [documentPage, setDocumentPage] = useState(1); // Controlled document page
     const lastTimeRef = useRef<number>(Date.now());
     const currentIndexRef = useRef(currentIndex); // To track prev index in effects
     const [activeAttachment, setActiveAttachment] = useState<Attachment | null>(null);
@@ -64,10 +65,10 @@ const PresentationControlPage: React.FC = () => {
         if (channelRef.current) {
             channelRef.current.postMessage({
                 type: 'SYNC_STATE',
-                payload: { currentIndex, activeAttachment, isLaserEnabled, isDrawingEnabled }
+                payload: { currentIndex, activeAttachment, isLaserEnabled, isDrawingEnabled, documentPage }
             });
         }
-    }, [currentIndex, activeAttachment, isLaserEnabled, isDrawingEnabled]);
+    }, [currentIndex, activeAttachment, isLaserEnabled, isDrawingEnabled, documentPage]);
 
     // Real-time Event Handlers for Dual Screen
     const handleLaserMove = useCallback((pos: { x: number, y: number }) => {
@@ -89,7 +90,13 @@ const PresentationControlPage: React.FC = () => {
     useEffect(() => {
         if (currentItem && currentItem.attachments.length > 0) setActiveAttachment(currentItem.attachments[0]);
         else setActiveAttachment(null);
+        setDocumentPage(1); // Reset page on item change
     }, [currentIndex, currentItem]);
+
+    // Reset page on attachment change (if triggered manually)
+    useEffect(() => {
+        setDocumentPage(1);
+    }, [activeAttachment?.id]);
 
     // Time Tracking Logic
     useEffect(() => {
@@ -208,8 +215,13 @@ const PresentationControlPage: React.FC = () => {
     };
 
     const formatDuration = (totalSeconds: number) => {
+        const hours = Math.floor(totalSeconds / 3600);
         const mins = Math.floor((totalSeconds % 3600) / 60);
         const secs = totalSeconds % 60;
+
+        if (hours > 0) {
+            return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+        }
         return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
     };
 
@@ -372,7 +384,8 @@ const PresentationControlPage: React.FC = () => {
                         <Box sx={{
                             overflowY: 'auto', transition: 'all 0.5s ease-in-out',
                             bgcolor: isFullscreen ? 'black' : 'white', color: isFullscreen ? 'rgba(255,255,255,0.7)' : 'text.primary',
-                            width: isCinemaMode ? 0 : '35%', opacity: isCinemaMode ? 0 : 1, p: isCinemaMode ? 0 : 5 // Use 0 padding when hidden
+                            width: isCinemaMode ? 0 : '35%', opacity: isCinemaMode ? 0 : 1, p: isCinemaMode ? 0 : 5, // Use 0 padding when hidden
+                            height: '100%' // Ensure full height for scrolling
                         }}>
                             <Box sx={{ minWidth: 300, display: isCinemaMode ? 'none' : 'block' }}> {/* Hide content when collapsed to avoid layout shifts */}
                                 {/* Header */}
@@ -460,6 +473,8 @@ const PresentationControlPage: React.FC = () => {
                                 onLaserMove={handleLaserMove}
                                 onDrawLine={handleDrawLine}
                                 onScroll={handleScrollSync}
+                                currentPage={documentPage}
+                                onPageChange={setDocumentPage}
                             />
                         </Box>
                     </Box>

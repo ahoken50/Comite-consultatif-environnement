@@ -17,7 +17,8 @@ const ProjectionPage: React.FC = () => {
         currentIndex: 0,
         activeAttachment: null as Attachment | null,
         isLaserEnabled: false,
-        isDrawingEnabled: false
+        isDrawingEnabled: false,
+        documentPage: 1
     });
 
     // Real-time Sync State
@@ -95,6 +96,7 @@ const ProjectionPage: React.FC = () => {
                             externalLaserPos={syncLaserPos}
                             externalDrawPoints={syncDrawPoints}
                             externalScroll={syncScroll}
+                            currentPage={state.documentPage}
                         />
                     </Box>
                 </>
