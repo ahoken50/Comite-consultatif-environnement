@@ -24,6 +24,9 @@ const PresentationPage: React.FC = () => {
   const [isLaserEnabled, setIsLaserEnabled] = useState(false);
   const [isDrawingEnabled, setIsDrawingEnabled] = useState(false);
   
+  // Scroll synchronization state
+  const [scrollPosition, setScrollPosition] = useState({ scrollTop: 0, scrollLeft: 0 });
+  
   // Search State (#9)
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -43,6 +46,15 @@ const PresentationPage: React.FC = () => {
       payload: { currentIndex, activeAttachment, isLaserEnabled, isDrawingEnabled }
     });
   }, [currentIndex, activeAttachment, isLaserEnabled, isDrawingEnabled]);
+
+  // Broadcast scroll position changes
+  const handleScrollChange = useCallback((scrollData: { scrollTop: number; scrollLeft: number }) => {
+    setScrollPosition(scrollData);
+    broadcastChannel.postMessage({
+      type: 'SYNC_SCROLL',
+      payload: scrollData
+    });
+  }, []);
 
   const openProjectorWindow = () => {
     window.open('/#/projection', 'CCE_Projector', 'width=1280,height=720,menubar=no,toolbar=no,location=no,status=no');
@@ -259,6 +271,7 @@ const PresentationPage: React.FC = () => {
                 onClose={() => setActiveAttachment(null)}
                 enableLaser={isLaserEnabled}
                 enableDrawing={isDrawingEnabled}
+                onScrollChange={handleScrollChange}
               />
             </div>
           </div>
