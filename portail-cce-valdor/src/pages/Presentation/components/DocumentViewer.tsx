@@ -275,9 +275,6 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
 
     return (
         <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', bgcolor: '#020617', position: 'relative', overflow: 'hidden', '&:hover .header-controls': { opacity: 1 } }}>
-            <Box sx={{ bgcolor: 'red', color: 'white', p: 0.5, fontSize: 10, textAlign: 'center', fontWeight: 'bold', zIndex: 9999 }}>
-                VERSION DEBUG: SCROLL SYNC + DOCX FIX
-            </Box>
 
             {/* Floating Header (Moved to Bottom to avoid PDF Toolbar overlap) */}
             {!isProjection && (
@@ -398,9 +395,9 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
                                     <div dangerouslySetInnerHTML={{ __html: excelHtml }} />
                                 </Box>
                             ) : activeAttachment.name.match(/\.docx$/i) ? (
-                                <Box sx={{ bgcolor: '#f1f5f9', p: 4, display: 'flex', justifyContent: 'center', minHeight: 'fit-content' }}>
-                                    {/* Wrapper for docx-preview */}
-                                    <div ref={setDocxContainer} style={{ width: '100%', maxWidth: '850px', background: 'white', padding: '40px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }} />
+                                <Box sx={{ bgcolor: '#f1f5f9', p: 4, minHeight: 'fit-content', textAlign: 'center' }}>
+                                    {/* Wrapper for docx-preview - Block display with margin auto for centering */}
+                                    <div ref={setDocxContainer} style={{ display: 'inline-block', width: '100%', maxWidth: '850px', background: 'white', padding: '40px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)', textAlign: 'left' }} />
                                 </Box>
                             ) : activeAttachment.name.match(/\.(xlsx|xls|doc|pptx|ppt)$/i) ? (
                                 <iframe
