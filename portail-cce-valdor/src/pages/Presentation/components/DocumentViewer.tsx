@@ -44,7 +44,10 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
     onPageChange
 }) => {
     const containerRef = useRef<HTMLDivElement>(null);
+    const scrollRef = useRef<HTMLDivElement>(null);
     const canvasRef = useRef<HTMLCanvasElement>(null);
+    const isExternalScrolling = useRef(false);
+    const scrollTimeout = useRef<number | null>(null);
 
     const [internalPage, setInternalPage] = useState(1);
     const currentPage = controlledPage || internalPage; // Use prop if available, else internal
@@ -145,14 +148,43 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
 
     // Slave Mode Effect: Sync Scroll
     useEffect(() => {
-        if (isProjection && externalScroll && containerRef.current) {
-            containerRef.current.scrollTo({
+        if (isProjection && externalScroll && scrollRef.current) {
+            isExternalScrolling.current = true;
+            scrollRef.current.scrollTo({
                 top: externalScroll.top,
                 left: externalScroll.left,
-                behavior: 'auto' // Instant sync
+                behavior: 'auto'
             });
+            // Reset flag after a short delay
+            setTimeout(() => {
+                isExternalScrolling.current = false;
+            }, 100);
         }
     }, [isProjection, externalScroll]);
+
+    // Master Mode: Emit Scroll Events
+    useEffect(() => {
+        const handleScroll = (e: Event) => {
+            if (isExternalScrolling.current) return;
+
+            const target = e.target as HTMLDivElement;
+            if (onScroll) {
+                // Debounce/Throttle could be added here if needed
+                onScroll(target.scrollTop, target.scrollLeft);
+            }
+        };
+
+        const scrollContainer = scrollRef.current;
+        if (scrollContainer) {
+            scrollContainer.addEventListener('scroll', handleScroll);
+        }
+
+        return () => {
+            if (scrollContainer) {
+                scrollContainer.removeEventListener('scroll', handleScroll);
+            }
+        };
+    }, [onScroll]);
 
     // Slave Mode Effect: Sync Drawing
     useEffect(() => {
@@ -223,19 +255,6 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
             canvasRef.current.width = containerRef.current.offsetWidth;
             canvasRef.current.height = containerRef.current.offsetHeight;
         }
-
-        const handleScroll = () => {
-            if (containerRef.current && onScroll) {
-                onScroll(containerRef.current.scrollTop, containerRef.current.scrollLeft);
-            }
-        };
-
-        const container = containerRef.current;
-        if (container) container.addEventListener('scroll', handleScroll);
-
-        return () => {
-            if (container) container.removeEventListener('scroll', handleScroll);
-        };
     }, [activeAttachment, enableDrawing, onScroll]);
 
 
@@ -325,7 +344,7 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
                 )}
                 <Box sx={{ position: 'relative', zIndex: 10, width: '100%', height: '100%', p: 2, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     {activeAttachment.type === 'image' ? (
-                        <Box sx={{ position: 'relative', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <Box ref={scrollRef} sx={{ width: '100%', height: '100%', overflow: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                             <img
                                 src={activeAttachment.url}
                                 alt={activeAttachment.name}
@@ -347,7 +366,7 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
                             )}
                         </Box>
                     ) : (
-                        <Box sx={{ width: '100%', height: '100%', bgcolor: 'white', boxShadow: 10, overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
+                        <Box ref={scrollRef} sx={{ width: '100%', height: '100%', bgcolor: 'white', boxShadow: 10, overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
 
                             {/* Excel Toggle (only for Excel/XLSX files) */}
                             {activeAttachment.name.match(/\.(xlsx|xls)$/i) && !isProjection && (
