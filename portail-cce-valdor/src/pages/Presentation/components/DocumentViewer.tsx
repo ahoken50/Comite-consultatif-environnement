@@ -351,17 +351,24 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
                 }}
                 sx={{
                     flex: 1,
+                    minHeight: 0, // Fix for nested flex scrolling
                     overflowY: 'scroll', // Force scrollbar
                     overflowX: 'hidden',
                     position: 'relative',
                     cursor: (enableDrawing || enableLaser) ? 'crosshair' : 'default',
-                    bgcolor: activeAttachment.type === 'image' ? '#020617' : '#525659'
+                    bgcolor: activeAttachment.type === 'image' ? '#020617' : '#525659',
+                    border: '5px solid red' // DEBUG: VISUAL MARKER
                 }}
                 onMouseMove={!isProjection ? handleMouseMove : undefined}
                 onMouseDown={!isProjection ? handleMouseDown : undefined}
                 onMouseUp={!isProjection ? handleMouseUp : undefined}
                 onMouseLeave={() => { if (!isProjection) { setShowLaser(false); setIsDrawing(false); } }}
             >
+                {/* DEBUG MARKER */}
+                <Box sx={{ position: 'sticky', top: 0, right: 0, zIndex: 9999, bgcolor: 'red', color: 'white', p: 1, fontWeight: 'bold', width: 'fit-content', ml: 'auto' }}>
+                    DEBUG DEPLOIEMENT V3: SCROLL FIXED?
+                </Box>
+
                 {/* Overlay to capture mouse events over iframe when tools are active */}
                 {(enableLaser || enableDrawing) && (
                     <Box sx={{ position: 'absolute', inset: 0, zIndex: 20, cursor: 'none' }} />
