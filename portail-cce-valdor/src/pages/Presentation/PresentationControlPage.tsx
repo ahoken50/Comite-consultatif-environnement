@@ -386,9 +386,9 @@ const PresentationControlPage: React.FC = () => {
                             bgcolor: isFullscreen ? 'black' : 'white', color: isFullscreen ? 'rgba(255,255,255,0.7)' : 'text.primary',
                             width: isCinemaMode ? 0 : '35%', opacity: isCinemaMode ? 0 : 1, p: isCinemaMode ? 0 : 5, // Use 0 padding when hidden
                             height: '100%', // Ensure full height for scrolling
-                            maxHeight: '100%' // Crucial for overflow to work in flex child
+                            maxHeight: 'calc(100vh - 90px)' // Explicit max height: Viewport - Header Height
                         }}>
-                            <Box sx={{ minWidth: 300, display: isCinemaMode ? 'none' : 'block' }}> {/* Hide content when collapsed to avoid layout shifts */}
+                            <Box sx={{ minWidth: 300, display: isCinemaMode ? 'none' : 'block', pb: 10 }}> {/* Added pb-10 for bottom clearance */}
                                 {/* Header */}
                                 <Box sx={{ mb: 3, display: 'flex', alignItems: 'center', gap: 2 }}>
                                     <Typography variant="h3" sx={{ fontWeight: 900, color: 'text.disabled', fontFamily: 'monospace' }}>

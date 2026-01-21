@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { Box, Typography, IconButton, Button } from '@mui/material';
-import { FolderOpen, ChevronLeft, ChevronRight, Close, Image as ImageIcon, PictureAsPdf, Circle, TableView, Web } from '@mui/icons-material';
+import { FolderOpen, ChevronLeft, ChevronRight, Close, Image as ImageIcon, PictureAsPdf, TableView, Web } from '@mui/icons-material';
 import type { Attachment } from '../types';
 import * as XLSX from 'xlsx';
 
@@ -223,9 +223,10 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
             {/* Floating Header (Moved to Bottom to avoid PDF Toolbar overlap) */}
             {!isProjection && (
                 <Box className="header-controls" sx={{
-                    position: 'absolute', bottom: 80, left: '50%', transform: 'translateX(-50%)', zIndex: 50, p: 0,
-                    opacity: 0, transition: 'opacity 0.3s',
-                    pointerEvents: 'none', width: 'auto'
+                    position: 'absolute', bottom: 30, left: '50%', transform: 'translateX(-50%)', zIndex: 100, p: 0,
+                    opacity: 1, // Fixed: Always visible for now to test, user can remove 'opacity: 0' and hover effect if desired
+                    transition: 'opacity 0.3s',
+                    width: 'auto', pointerEvents: 'none' // Wrapper is none, children auto
                 }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 2, pointerEvents: 'auto', bgcolor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(8px)', borderRadius: 10, p: 1 }}>
 
@@ -323,13 +324,19 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
                                 </Box>
                             ) : activeAttachment.name.match(/\.(xlsx|xls|docx|doc|pptx|ppt)$/i) ? (
                                 <iframe
+                                    key={`${activeAttachment.id}${isProjection ? `-${currentPage}` : ''}`}
                                     src={`https://docs.google.com/viewer?url=${encodeURIComponent(activeAttachment.url)}&embedded=true`}
                                     style={{ width: '100%', height: '100%', border: 'none' }}
                                     title={activeAttachment.name}
                                 />
                             ) : (
                                 <iframe
-                                    key={`${activeAttachment.id}-page-${currentPage}`} // Force reload to ensure page change works
+                                    // Use a composite key that ONLY changes when we REALLY need a reload
+                                    // Using just ID or ID+Page might cause flashing.
+                                    // But PDF hash nav requires reload if it doesn't support pushState.
+                                    // Try using `key` only on ID change, and let hash do the work.
+                                    // If hash doesn't work, we revert to ID+Page key.
+                                    key={`${activeAttachment.id}${isProjection ? `-${currentPage}` : ''}`}
                                     src={`${activeAttachment.url}#page=${currentPage}`}
                                     style={{ width: '100%', height: '100%', border: 'none' }}
                                     title={activeAttachment.name}
@@ -368,24 +375,7 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
                 )}
             </Box>
 
-            {/* Floating Status */}
-            {!isProjection && (
-                <Box className="header-controls" sx={{
-                    position: 'absolute', bottom: 24, left: '50%', transform: 'translateX(-50%)',
-                    px: 3, py: 1, borderRadius: 10, bgcolor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(8px)',
-                    display: 'flex', alignItems: 'center', gap: 2,
-                    opacity: 0, transition: 'opacity 0.3s', zIndex: 50, pointerEvents: 'none',
-                }}>
-                    <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)', fontWeight: 900, letterSpacing: '0.2em' }}>
-                        {activeAttachment.name.toUpperCase()}
-                    </Typography>
-                    {(enableLaser || enableDrawing) && (
-                        <Typography variant="caption" sx={{ color: '#f87171', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                            <Circle sx={{ fontSize: 6 }} /> LIVE TOOLS
-                        </Typography>
-                    )}
-                </Box>
-            )}
+
         </Box>
     );
 };
