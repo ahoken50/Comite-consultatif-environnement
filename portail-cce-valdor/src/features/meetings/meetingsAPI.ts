@@ -42,7 +42,7 @@ const sanitizeForFirestore = (obj: any): any => {
         const value = obj[key];
         if (value === undefined) {
             // For string-type fields, use empty string; otherwise null
-            if (['decision', 'description', 'proposer', 'seconder', 'minuteNumber', 'minutes'].includes(key)) {
+            if (['decision', 'description', 'proposer', 'seconder', 'minuteNumber', 'minutes', 'agendaNote', 'objective'].includes(key)) {
                 cleaned[key] = '';
             }
             // Skip undefined values entirely for fields that should be absent

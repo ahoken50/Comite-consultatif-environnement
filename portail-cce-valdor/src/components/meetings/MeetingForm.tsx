@@ -171,7 +171,22 @@ const SortableAgendaItem: React.FC<SortableAgendaItemProps> = ({ field, index, c
                                 <TextField
                                     {...field}
                                     id={`${formId}-agenda-${index}-description`}
-                                    label="Notes / Description (Agenda)"
+                                    label="Description publique (Agenda)"
+                                    fullWidth
+                                    size="small"
+                                />
+                            )}
+                        />
+                    </Grid>
+                    <Grid size={{ xs: 12, sm: 6 }}>
+                        <Controller
+                            name={`agendaItems.${index}.agendaNote`}
+                            control={control}
+                            render={({ field }) => (
+                                <TextField
+                                    {...field}
+                                    id={`${formId}-agenda-${index}-agendaNote`}
+                                    label="Note / Décision attendue (Interne)"
                                     fullWidth
                                     size="small"
                                 />
@@ -344,7 +359,8 @@ const MeetingForm: React.FC<MeetingFormProps> = ({ open, onClose, onSubmit, init
                     presenter: item.presenter || 'Coordonnateur',
                     objective: item.objective || 'Information',
                     decision: item.decision || '',
-                    description: item.description || ''
+                    description: item.description || '',
+                    agendaNote: item.agendaNote || ''
                 }));
                 replace(formItems);
             }
@@ -541,7 +557,7 @@ const MeetingForm: React.FC<MeetingFormProps> = ({ open, onClose, onSubmit, init
                                     <Typography variant="h6">Ordre du jour</Typography>
                                     <Button
                                         startIcon={<Add />}
-                                        onClick={() => append({ title: '', duration: 15, presenter: '', objective: 'Information', decision: '' })}
+                                        onClick={() => append({ title: '', duration: 15, presenter: '', objective: 'Information', decision: '', description: '', agendaNote: '' })}
                                         variant="outlined"
                                         size="small"
                                     >
