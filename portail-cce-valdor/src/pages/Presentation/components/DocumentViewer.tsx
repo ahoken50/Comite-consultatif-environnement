@@ -347,7 +347,7 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
                             )}
                         </Box>
                     ) : (
-                        <Box sx={{ width: '100%', height: '100%', bgcolor: 'white', boxShadow: 10, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+                        <Box sx={{ width: '100%', height: '100%', bgcolor: 'white', boxShadow: 10, overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
 
                             {/* Excel Toggle (only for Excel/XLSX files) */}
                             {activeAttachment.name.match(/\.(xlsx|xls)$/i) && !isProjection && (
@@ -376,9 +376,9 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
                                     <div dangerouslySetInnerHTML={{ __html: excelHtml }} />
                                 </Box>
                             ) : activeAttachment.name.match(/\.docx$/i) ? (
-                                <Box sx={{ flex: 1, overflow: 'auto', bgcolor: '#f1f5f9', p: 4, display: 'flex', justifyContent: 'center' }}>
+                                <Box sx={{ flex: 1, overflow: 'auto', bgcolor: '#f1f5f9', p: 4, display: 'flex', justifyContent: 'center', minHeight: 0 }}>
                                     {/* Wrapper for docx-preview */}
-                                    <div ref={setDocxContainer} style={{ width: '100%', maxWidth: '850px', background: 'white', padding: '40px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }} />
+                                    <div ref={setDocxContainer} style={{ width: '100%', maxWidth: '850px', background: 'white', padding: '40px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)', height: 'fit-content' }} />
                                 </Box>
                             ) : activeAttachment.name.match(/\.(xlsx|xls|doc|pptx|ppt)$/i) ? (
                                 <iframe
