@@ -366,12 +366,12 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
             >
                 {/* DEBUG MARKER */}
                 <Box sx={{ position: 'sticky', top: 0, right: 0, zIndex: 9999, bgcolor: 'red', color: 'white', p: 1, fontWeight: 'bold', width: 'fit-content', ml: 'auto' }}>
-                    DEBUG DEPLOIEMENT V3: SCROLL FIXED?
+                    DEBUG V4 - CURSOR FIX
                 </Box>
 
                 {/* Overlay to capture mouse events over iframe when tools are active */}
                 {(enableLaser || enableDrawing) && (
-                    <Box sx={{ position: 'absolute', inset: 0, zIndex: 20, cursor: 'none' }} />
+                    <Box sx={{ position: 'absolute', inset: 0, zIndex: 20, cursor: 'crosshair' }} />
                 )}
 
                 {/* CONTENT - No flex centering, just block layout */}
