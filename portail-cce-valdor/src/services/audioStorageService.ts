@@ -66,7 +66,9 @@ export const getAudioDuration = (file: File): Promise<number> => {
             window.URL.revokeObjectURL(audio.src);
             const duration = audio.duration;
 
-            if (duration > MAX_DURATION) {
+            if (duration === Infinity) {
+                resolve(duration);
+            } else if (duration > MAX_DURATION) {
                 reject(new Error(`Durée trop longue: ${Math.round(duration / 60)} minutes. Maximum: 150 minutes`));
             } else {
                 resolve(duration);
@@ -224,6 +226,8 @@ export const formatFileSize = (bytes: number): string => {
  * Format duration for display
  */
 export const formatDuration = (seconds: number): string => {
+    if (seconds === Infinity) return "Durée inconnue";
+
     const hours = Math.floor(seconds / 3600);
     const minutes = Math.floor((seconds % 3600) / 60);
     const secs = Math.floor(seconds % 60);
