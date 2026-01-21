@@ -395,9 +395,9 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
                                     <div dangerouslySetInnerHTML={{ __html: excelHtml }} />
                                 </Box>
                             ) : activeAttachment.name.match(/\.docx$/i) ? (
-                                <Box sx={{ bgcolor: '#f1f5f9', p: 4, minHeight: 'fit-content', textAlign: 'center' }}>
-                                    {/* Wrapper for docx-preview - Block display with margin auto for centering */}
-                                    <div ref={setDocxContainer} style={{ display: 'inline-block', width: '100%', maxWidth: '850px', background: 'white', padding: '40px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)', textAlign: 'left' }} />
+                                <Box sx={{ bgcolor: '#f1f5f9', minHeight: 'fit-content', textAlign: 'center', p: 4 }}>
+                                    {/* Wrapper for docx-preview - Strict block layout */}
+                                    <div ref={setDocxContainer} style={{ display: 'inline-block', background: 'white', padding: '40px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)', textAlign: 'left' }} />
                                 </Box>
                             ) : activeAttachment.name.match(/\.(xlsx|xls|doc|pptx|ppt)$/i) ? (
                                 <iframe
@@ -408,7 +408,7 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
                                     title={activeAttachment.name}
                                 />
                             ) : (
-                                <Box sx={{ width: '100%', display: 'flex', justifyContent: 'center', p: 4, bgcolor: '#525659', minHeight: 'fit-content' }}>
+                                <Box sx={{ width: '100%', minHeight: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', p: 4, bgcolor: '#525659' }}>
                                     <PdfRenderer url={activeAttachment.url} onLoadComplete={(total) => setDetectedTotalPages(total)} />
                                 </Box>
                             )}
