@@ -311,7 +311,7 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
             <Box
                 ref={containerRef}
                 sx={{
-                    flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column',
+                    flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column',
                     position: 'relative', cursor: (enableDrawing || enableLaser) ? 'crosshair' : 'default'
                 }}
                 onMouseMove={!isProjection ? handleMouseMove : undefined}
@@ -347,7 +347,7 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
                             )}
                         </Box>
                     ) : (
-                        <Box sx={{ width: '100%', flex: 1, bgcolor: 'white', boxShadow: 10, display: 'flex', flexDirection: 'column', minHeight: 0, position: 'relative' }}>
+                        <Box sx={{ width: '100%', bgcolor: 'white', boxShadow: 10, display: 'flex', flexDirection: 'column', position: 'relative' }}>
 
                             {/* Excel Toggle (only for Excel/XLSX files) */}
                             {activeAttachment.name.match(/\.(xlsx|xls)$/i) && !isProjection && (
@@ -376,7 +376,7 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
                                     <div dangerouslySetInnerHTML={{ __html: excelHtml }} />
                                 </Box>
                             ) : activeAttachment.name.match(/\.docx$/i) ? (
-                                <Box sx={{ flex: 1, overflow: 'auto', bgcolor: '#f1f5f9', p: 4, display: 'flex', justifyContent: 'center', alignItems: 'flex-start', minHeight: 0 }}>
+                                <Box sx={{ bgcolor: '#f1f5f9', p: 4, display: 'flex', justifyContent: 'center', alignItems: 'flex-start' }}>
                                     {/* Wrapper for docx-preview */}
                                     <div ref={setDocxContainer} style={{ width: '100%', maxWidth: '850px', background: 'white', padding: '40px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)', height: 'fit-content' }} />
                                 </Box>
@@ -389,7 +389,7 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
                                     title={activeAttachment.name}
                                 />
                             ) : (
-                                <Box sx={{ flex: 1, width: '100%', display: 'flex', justifyContent: 'center', overflow: 'auto', p: 4, bgcolor: '#525659', minHeight: 0 }}>
+                                <Box sx={{ width: '100%', display: 'flex', justifyContent: 'center', p: 4, bgcolor: '#525659' }}>
                                     <PdfRenderer url={activeAttachment.url} onLoadComplete={(total) => setDetectedTotalPages(total)} />
                                 </Box>
                             )}
