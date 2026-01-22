@@ -160,6 +160,7 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
                         // Send percentage for zoom-independent sync
                         const maxScroll = container.scrollHeight - container.clientHeight;
                         const scrollPercent = maxScroll > 0 ? container.scrollTop / maxScroll : 0;
+                        console.log(`[SYNC SENDER] Emitting: ${scrollPercent * 100}%`);
                         onScroll(container.scrollTop, scrollPercent);
                     }
                     rafId = null;
@@ -178,20 +179,25 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
     useEffect(() => {
         if (!isProjection || externalScrollPercent === undefined || !scrollContainerRef.current) return;
 
+        // Debug Log
+        console.log(`[SYNC RECEIVER] Applying scroll: ${externalScrollPercent * 100}%`);
+
         isExternalScrolling.current = true;
 
         const container = scrollContainerRef.current;
         const maxScroll = container.scrollHeight - container.clientHeight;
         const targetTop = maxScroll * externalScrollPercent;
 
-        container.scrollTo({
-            top: targetTop,
-            behavior: 'auto'
-        });
+        if (maxScroll > 0) {
+            container.scrollTo({
+                top: targetTop,
+                behavior: 'auto'
+            });
+        }
 
         const timer = setTimeout(() => { isExternalScrolling.current = false; }, 100);
         return () => clearTimeout(timer);
-    }, [isProjection, externalScrollPercent]);
+    }, [isProjection, externalScrollPercent, detectedTotalPages, activeAttachment?.id]);
 
     // ==================== CANVAS SIZING ====================
     useEffect(() => {
