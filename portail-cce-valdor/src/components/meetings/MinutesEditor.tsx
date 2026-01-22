@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { arrayUnion, arrayRemove } from 'firebase/firestore';
+import { arrayUnion } from 'firebase/firestore';
 import {
     Box,
     Typography,
