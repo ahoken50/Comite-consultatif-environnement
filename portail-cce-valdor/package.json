@@ -14,6 +14,7 @@
     "@ai-sdk/anthropic": "^3.0.15",
     "@ai-sdk/google": "^3.0.10",
     "@ai-sdk/groq": "^3.0.11",
+    "@cyntler/react-doc-viewer": "^1.17.1",
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",

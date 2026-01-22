@@ -56,11 +56,16 @@ const AudioUpload: React.FC<AudioUploadProps> = ({
     const [isTranscribing, setIsTranscribing] = useState(false);
     const audioRef = React.useRef<HTMLAudioElement | null>(null);
 
-    // Merge legacy and new props into a single list
-    const recordings = (Array.isArray(audioRecordings) ? audioRecordings : []).concat(audioRecording && !audioRecordings?.length ? [audioRecording] : []);
-
-    // Also track local files for immediate transcription if needed (though we upload first now)
-    // We rely on 'recordings' (AudioRecording) which contain download URLs.
+    // Use audioRecordings array if available, otherwise fall back to legacy single recording
+    // Avoid mixing both to prevent duplicates and stale data issues
+    const recordings: AudioRecording[] = (() => {
+        const arr = Array.isArray(audioRecordings) ? audioRecordings : [];
+        if (arr.length > 0) {
+            return arr;
+        }
+        // Fall back to legacy single recording only if array is empty
+        return audioRecording ? [audioRecording] : [];
+    })();
 
     const handleDragOver = useCallback((e: React.DragEvent) => {
         e.preventDefault();

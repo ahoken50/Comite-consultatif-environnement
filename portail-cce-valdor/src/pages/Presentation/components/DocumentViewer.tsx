@@ -3,6 +3,7 @@ import { Box, Typography, IconButton, Button } from '@mui/material';
 import { FolderOpen, ChevronLeft, ChevronRight, Close, Image as ImageIcon, PictureAsPdf, TableView, Web } from '@mui/icons-material';
 import type { Attachment } from '../types';
 import * as XLSX from 'xlsx';
+import DocViewer, { DocViewerRenderers } from '@cyntler/react-doc-viewer';
 
 interface DocumentViewerProps {
     activeAttachment: Attachment | null;
@@ -322,13 +323,19 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
                                     </style>
                                     <div dangerouslySetInnerHTML={{ __html: excelHtml }} />
                                 </Box>
-                            ) : activeAttachment.name.match(/\.(xlsx|xls|docx|doc|pptx|ppt)$/i) ? (
-                                <iframe
-                                    key={`${activeAttachment.id}${isProjection ? `-${currentPage}` : ''}`}
-                                    src={`https://docs.google.com/viewer?url=${encodeURIComponent(activeAttachment.url)}&embedded=true`}
-                                    style={{ width: '100%', height: '100%', border: 'none' }}
-                                    title={activeAttachment.name}
-                                />
+                            ) : activeAttachment.name.match(/\.(xlsx|xls|docx|doc|pptx|ppt|pdf)$/i) ? (
+                                <Box sx={{ flex: 1, overflow: 'auto', bgcolor: 'white' }}>
+                                    <DocViewer
+                                        documents={[{ uri: activeAttachment.url, fileName: activeAttachment.name }]}
+                                        pluginRenderers={DocViewerRenderers}
+                                        config={{
+                                            header: { disableHeader: true, disableFileName: true },
+                                            pdfZoom: { defaultZoom: 1, zoomJump: 0.2 },
+                                            pdfVerticalScrollByDefault: true
+                                        }}
+                                        style={{ width: '100%', height: '100%', minHeight: '500px' }}
+                                    />
+                                </Box>
                             ) : (
                                 <iframe
                                     // Use a composite key that ONLY changes when we REALLY need a reload
