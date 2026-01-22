@@ -81,8 +81,8 @@ const PresentationControlPage: React.FC = () => {
 
     // Note: Scroll sync is tricky with iframes/different viewports. 
     // We'll sync explicit page changes for PDFs/Images if applicable, or scroll percentage.
-    const handleScrollSync = useCallback((scrollTop: number, scrollLeft: number) => {
-        channelRef.current?.postMessage({ type: 'SYNC_SCROLL', payload: { scrollTop, scrollLeft } });
+    const handleScrollSync = useCallback((scrollTop: number, scrollPercent: number) => {
+        channelRef.current?.postMessage({ type: 'SYNC_SCROLL', payload: { scrollTop, scrollPercent } });
     }, []);
 
     const currentItem = meeting?.agenda[currentIndex];

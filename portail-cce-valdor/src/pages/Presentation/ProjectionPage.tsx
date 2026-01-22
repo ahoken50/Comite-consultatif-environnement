@@ -24,7 +24,7 @@ const ProjectionPage: React.FC = () => {
     // Real-time Sync State
     const [syncLaserPos, setSyncLaserPos] = useState({ x: 0, y: 0 });
     const [syncDrawPoints, setSyncDrawPoints] = useState<{ x: number, y: number }[]>([]);
-    const [syncScroll, setSyncScroll] = useState({ top: 0, left: 0 });
+    const [syncScrollPercent, setSyncScrollPercent] = useState(0);
     // We trigger a re-render or ref update for scroll
 
     useEffect(() => {
@@ -46,7 +46,7 @@ const ProjectionPage: React.FC = () => {
                         setSyncDrawPoints(prev => [...prev, event.data.payload]);
                         break;
                     case 'SYNC_SCROLL':
-                        setSyncScroll({ top: event.data.payload.scrollTop, left: event.data.payload.scrollLeft });
+                        setSyncScrollPercent(event.data.payload.scrollPercent || 0);
                         break;
                 }
             }
@@ -95,7 +95,7 @@ const ProjectionPage: React.FC = () => {
                             // Slave Props
                             externalLaserPos={syncLaserPos}
                             externalDrawPoints={syncDrawPoints}
-                            externalScroll={syncScroll}
+                            externalScrollPercent={syncScrollPercent}
                             currentPage={state.documentPage}
                         />
                     </Box>

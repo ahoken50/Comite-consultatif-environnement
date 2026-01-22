@@ -18,11 +18,11 @@ interface DocumentViewerProps {
     // New Sync Props
     onLaserMove?: (pos: { x: number, y: number }) => void;
     onDrawLine?: (line: { x: number, y: number }) => void;
-    onScroll?: (scrollTop: number, scrollLeft: number) => void;
+    onScroll?: (scrollTop: number, scrollPercent: number) => void;
     // Slave Props (for Projection)
     externalLaserPos?: { x: number, y: number };
     externalDrawPoints?: { x: number, y: number }[];
-    externalScroll?: { top: number, left: number };
+    externalScrollPercent?: number;
 }
 
 const DocumentViewer: React.FC<DocumentViewerProps> = ({
@@ -38,7 +38,7 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
     onScroll,
     externalLaserPos,
     externalDrawPoints,
-    externalScroll,
+    externalScrollPercent,
     currentPage: controlledPage,
     onPageChange
 }) => {
@@ -107,16 +107,46 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
         }
     }, [isProjection, externalLaserPos]);
 
-    // Slave Mode Effect: Sync Scroll
+    // Slave Mode Effect: Sync Scroll (Percentage-based for DocViewer compatibility)
     useEffect(() => {
-        if (isProjection && externalScroll && containerRef.current) {
-            containerRef.current.scrollTo({
-                top: externalScroll.top,
-                left: externalScroll.left,
-                behavior: 'auto' // Instant sync
+        if (!isProjection || externalScrollPercent === undefined || !containerRef.current) return;
+
+        // Find all scrollable elements inside the container (including DocViewer internals)
+        const findScrollableElements = (root: HTMLElement): HTMLElement[] => {
+            const scrollables: HTMLElement[] = [];
+            const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT);
+            let node = walker.currentNode as HTMLElement;
+            while (node) {
+                const style = getComputedStyle(node);
+                const isScrollable =
+                    (style.overflow === 'auto' || style.overflow === 'scroll' ||
+                        style.overflowY === 'auto' || style.overflowY === 'scroll') &&
+                    node.scrollHeight > node.clientHeight;
+                if (isScrollable) {
+                    scrollables.push(node);
+                }
+                node = walker.nextNode() as HTMLElement;
+            }
+            return scrollables;
+        };
+
+        // Apply scroll to container and all internal scrollable elements
+        const applyScroll = () => {
+            const scrollables = findScrollableElements(containerRef.current!);
+            [...scrollables, containerRef.current!].forEach(el => {
+                const maxScroll = el.scrollHeight - el.clientHeight;
+                if (maxScroll > 0) {
+                    const targetTop = maxScroll * externalScrollPercent;
+                    el.scrollTo({ top: targetTop, behavior: 'auto' });
+                }
             });
-        }
-    }, [isProjection, externalScroll]);
+        };
+
+        // Apply immediately and after a delay (for DocViewer to load)
+        applyScroll();
+        const timer = setTimeout(applyScroll, 500);
+        return () => clearTimeout(timer);
+    }, [isProjection, externalScrollPercent]);
 
     // Slave Mode Effect: Sync Drawing
     useEffect(() => {
@@ -188,17 +218,65 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
             canvasRef.current.height = containerRef.current.offsetHeight;
         }
 
-        const handleScroll = () => {
-            if (containerRef.current && onScroll) {
-                onScroll(containerRef.current.scrollTop, containerRef.current.scrollLeft);
+        // Find ALL scrollable elements inside the container (including DocViewer internals)
+        const findScrollableElements = (root: HTMLElement): HTMLElement[] => {
+            const scrollables: HTMLElement[] = [];
+            const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT);
+            let node = walker.currentNode as HTMLElement;
+            while (node) {
+                const style = getComputedStyle(node);
+                const isScrollable =
+                    (style.overflow === 'auto' || style.overflow === 'scroll' ||
+                        style.overflowY === 'auto' || style.overflowY === 'scroll') &&
+                    node.scrollHeight > node.clientHeight;
+                if (isScrollable) {
+                    scrollables.push(node);
+                }
+                node = walker.nextNode() as HTMLElement;
+            }
+            return scrollables;
+        };
+
+        const handleScroll = (e: Event) => {
+            const target = e.target as HTMLElement;
+            if (target && onScroll) {
+                // Calculate scroll percentage for zoom-independent sync
+                const maxScroll = target.scrollHeight - target.clientHeight;
+                const scrollPercent = maxScroll > 0 ? target.scrollTop / maxScroll : 0;
+                onScroll(target.scrollTop, scrollPercent);
             }
         };
 
-        const container = containerRef.current;
-        if (container) container.addEventListener('scroll', handleScroll);
+        // Setup scroll listeners on all found scrollable elements
+        let scrollableElements: HTMLElement[] = [];
+        const setupListeners = () => {
+            if (!containerRef.current) return;
+            scrollableElements = findScrollableElements(containerRef.current);
+            scrollableElements.forEach(el => {
+                el.addEventListener('scroll', handleScroll, { passive: true });
+            });
+            // Also listen on the container itself
+            containerRef.current.addEventListener('scroll', handleScroll, { passive: true });
+        };
+
+        // Use MutationObserver to re-setup listeners when DOM changes (DocViewer loads)
+        const observer = new MutationObserver(() => {
+            // Cleanup old listeners
+            scrollableElements.forEach(el => el.removeEventListener('scroll', handleScroll));
+            // Setup new listeners
+            setupListeners();
+        });
+
+        if (containerRef.current) {
+            observer.observe(containerRef.current, { childList: true, subtree: true });
+            // Initial setup after a small delay for DocViewer to render
+            setTimeout(setupListeners, 500);
+        }
 
         return () => {
-            if (container) container.removeEventListener('scroll', handleScroll);
+            observer.disconnect();
+            scrollableElements.forEach(el => el.removeEventListener('scroll', handleScroll));
+            containerRef.current?.removeEventListener('scroll', handleScroll);
         };
     }, [activeAttachment, enableDrawing, onScroll]);
 

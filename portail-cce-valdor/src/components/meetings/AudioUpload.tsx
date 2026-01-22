@@ -355,11 +355,12 @@ const AudioUpload: React.FC<AudioUploadProps> = ({
                     component="label"
                     startIcon={<CloudUpload />}
                 >
-                    Sélectionner un fichier
+                    Sélectionner des fichiers
                     <input
                         type="file"
                         hidden
                         accept="audio/*,video/*"
+                        multiple
                         onChange={handleFileSelect}
                     />
                 </Button>
