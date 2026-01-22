@@ -663,9 +663,12 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate, readOn
                         }}
                         onDelete={(rec?: AudioRecording) => {
                             if (rec) {
-                                // Use arrayRemove to safely remove from the list
+                                // Manual filter to ensure deletion by path (arrayRemove requires exact object match)
+                                const current = Array.isArray(meeting.audioRecordings) ? meeting.audioRecordings : [];
+                                const updated = current.filter(r => r.storagePath !== rec.storagePath);
+
                                 onUpdate({
-                                    audioRecordings: arrayRemove(rec) as any,
+                                    audioRecordings: updated,
                                     // If we deleted the "primary" (legacy) one
                                     audioRecording: meeting.audioRecording?.storagePath === rec.storagePath
                                         ? undefined as any // Force undefined

@@ -402,8 +402,15 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
                                     <div dangerouslySetInnerHTML={{ __html: excelHtml }} />
                                 </Box>
                             ) : activeAttachment.name.match(/\.(xlsx|xls|docx|doc|pptx|ppt|pdf)$/i) ? (
-                                // ALL Office/PDF: Use DocViewer for native rendering (scroll sync works)
-                                <Box sx={{ flex: 1, overflow: 'auto', bgcolor: 'white' }}>
+                                // ALL Office + PDF: Use DocViewer for native rendering (enables scroll sync)
+                                <Box sx={{
+                                    flex: 1,
+                                    overflowY: 'scroll', // Force scrollbar presence
+                                    bgcolor: 'white',
+                                    '&::-webkit-scrollbar': { width: '10px' },
+                                    '&::-webkit-scrollbar-track': { bgcolor: '#f1f5f9' },
+                                    '&::-webkit-scrollbar-thumb': { bgcolor: '#94a3b8', borderRadius: '5px', '&:hover': { bgcolor: '#64748b' } }
+                                }}>
                                     <DocViewer
                                         documents={[{ uri: activeAttachment.url, fileName: activeAttachment.name }]}
                                         pluginRenderers={DocViewerRenderers}

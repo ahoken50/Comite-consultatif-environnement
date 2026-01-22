@@ -159,11 +159,11 @@ const AudioUpload: React.FC<AudioUploadProps> = ({
         setError(null);
 
         try {
-            // Process all recordings
-            for (const rec of recordings) {
-                // Skip already completed ones unless forcing? For now just skip
+            // Process all recordings in parallel
+            const promises = recordings.map(async (rec) => {
+                // Skip already completed ones
                 if (rec.transcriptionStatus === 'completed' && rec.transcription) {
-                    continue;
+                    return;
                 }
 
                 console.log(`[AudioUpload] Submitting transcription for ${rec.fileName}`);
@@ -178,9 +178,11 @@ const AudioUpload: React.FC<AudioUploadProps> = ({
 
                 if (!result.success) {
                     console.error(`Failed to submit ${rec.fileName}:`, result.error);
-                    // Don't stop others, but maybe show error? 
+                    // Don't throw, let others proceed. Errors will be visible in status if applicable.
                 }
-            }
+            });
+
+            await Promise.all(promises);
 
             // We don't wait for text, we wait for submission.
             // Feedback to user

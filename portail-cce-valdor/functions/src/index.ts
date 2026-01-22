@@ -294,14 +294,50 @@ FORMAT EXACT:
             finalTranscription += '\n\n⚠️ **Note:** La transcription peut être incomplète. Veuillez vérifier.';
         }
 
-        await admin.firestore().doc(`meetings/${meetingId}`).update({
-            'audioRecording.transcription': finalTranscription,
-            'audioRecording.rawTranscription': rawTranscription,
-            'audioRecording.transcriptionStatus': isComplete ? 'completed' : 'partial',
-            'audioRecording.transcribedAt': new Date().toISOString(),
-            'audioRecording.isOrganized': isOrganized,
+        // Update Firestore - Handle both legacy and new array structure
+        const docRef = admin.firestore().doc(`meetings/${meetingId}`);
+        const currentDoc = await docRef.get();
+        const currentData = currentDoc.data();
+
+        const updates: any = {
             dateUpdated: new Date().toISOString()
-        });
+        };
+
+        // 1. Update legacy field if it exists and matches
+        if (currentData?.audioRecording?.storagePath &&
+            (currentData.audioRecording.storagePath === storagePath || !currentData.audioRecording.transcription)) {
+            updates['audioRecording.transcription'] = finalTranscription;
+            updates['audioRecording.rawTranscription'] = rawTranscription;
+            updates['audioRecording.transcriptionStatus'] = isComplete ? 'completed' : 'partial';
+            updates['audioRecording.transcribedAt'] = new Date().toISOString();
+            updates['audioRecording.isOrganized'] = isOrganized;
+        }
+
+        // 2. Update item in new array
+        if (Array.isArray(currentData?.audioRecordings)) {
+            const recordings = currentData.audioRecordings;
+            const index = recordings.findIndex((r: any) => r.storagePath === storagePath);
+
+            if (index !== -1) {
+                // Update existing item in array
+                const updatedRecording = {
+                    ...recordings[index],
+                    transcription: finalTranscription,
+                    rawTranscription: rawTranscription,
+                    transcriptionStatus: isComplete ? 'completed' : 'partial',
+                    transcribedAt: new Date().toISOString(),
+                    isOrganized: isOrganized
+                };
+
+                // Remove old, add new (Firestore doesn't support updating index directly easily without reading first)
+                // Since we read it, we can just replace the whole array or specific item. 
+                // Replacing array is safer for now.
+                recordings[index] = updatedRecording;
+                updates['audioRecordings'] = recordings;
+            }
+        }
+
+        await docRef.update(updates);
 
         return {
             success: true,
