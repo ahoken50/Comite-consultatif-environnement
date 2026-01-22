@@ -57,7 +57,7 @@ const AudioUpload: React.FC<AudioUploadProps> = ({
     const audioRef = React.useRef<HTMLAudioElement | null>(null);
 
     // Merge legacy and new props into a single list
-    const recordings = audioRecordings || (audioRecording ? [audioRecording] : []);
+    const recordings = (Array.isArray(audioRecordings) ? audioRecordings : []).concat(audioRecording && !audioRecordings?.length ? [audioRecording] : []);
 
     // Also track local files for immediate transcription if needed (though we upload first now)
     // We rely on 'recordings' (AudioRecording) which contain download URLs.

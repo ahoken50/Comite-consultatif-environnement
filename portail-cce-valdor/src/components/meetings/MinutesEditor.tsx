@@ -681,7 +681,7 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate, readOn
                             if (text) {
                                 // Save merged transcription to the primary recording container
                                 // so TranscriptionViewer can see it
-                                const primary = meeting.audioRecording || (meeting.audioRecordings && meeting.audioRecordings[0]);
+                                const primary = meeting.audioRecording || (Array.isArray(meeting.audioRecordings) && meeting.audioRecordings[0]);
                                 if (primary) {
                                     onUpdate({
                                         audioRecording: {
@@ -762,7 +762,7 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate, readOn
                 open={isModeSelectorOpen}
                 onClose={() => setIsModeSelectorOpen(false)}
                 hasTranscription={
-                    (meeting.audioRecordings && meeting.audioRecordings.some(r => !!r.transcription)) ||
+                    (Array.isArray(meeting.audioRecordings) && meeting.audioRecordings.some(r => !!r.transcription)) ||
                     !!meeting.audioRecording?.transcription
                 }
                 onSelectMode={(mode) => {
@@ -771,7 +771,7 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate, readOn
                         setIsAgentWizardOpen(true);
 
                         // Aggregate transcriptions from all recordings
-                        const recordings = meeting.audioRecordings || (meeting.audioRecording ? [meeting.audioRecording] : []);
+                        const recordings = (Array.isArray(meeting.audioRecordings) ? meeting.audioRecordings : []) || (meeting.audioRecording ? [meeting.audioRecording] : []);
                         const fullTranscription = recordings
                             .map(r => r.transcription)
                             .filter(t => !!t)
