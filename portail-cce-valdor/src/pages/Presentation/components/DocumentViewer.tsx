@@ -402,6 +402,7 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
                                     <div dangerouslySetInnerHTML={{ __html: excelHtml }} />
                                 </Box>
                             ) : activeAttachment.name.match(/\.(xlsx|xls|docx|doc|pptx|ppt|pdf)$/i) ? (
+                                // ALL Office/PDF: Use DocViewer for native rendering (scroll sync works)
                                 <Box sx={{ flex: 1, overflow: 'auto', bgcolor: 'white' }}>
                                     <DocViewer
                                         documents={[{ uri: activeAttachment.url, fileName: activeAttachment.name }]}
