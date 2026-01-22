@@ -467,18 +467,23 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
                 ref={scrollContainerRef}
                 sx={{
                     flex: 1,
-                    overflowY: 'auto',
+                    overflowY: 'scroll', // Force scrollbar
                     overflowX: 'hidden',
                     position: 'relative',
-                    cursor: (enableDrawing || enableLaser) ? 'crosshair' : 'default'
+                    cursor: (enableDrawing || enableLaser) ? 'crosshair' : 'default',
+                    '&::-webkit-scrollbar': { width: '10px' },
+                    '&::-webkit-scrollbar-thumb': { backgroundColor: '#94a3b8', borderRadius: '4px' },
+                    '&::-webkit-scrollbar-track': { backgroundColor: '#1e293b' }
                 }}
                 onMouseMove={handleMouseMove}
                 onMouseDown={handleMouseDown}
                 onMouseUp={handleMouseUp}
                 onMouseLeave={() => { if (!isProjection) { setShowLaser(false); setIsDrawing(false); } }}
             >
-                {/* Document Content */}
-                {renderContent()}
+                {/* Document Content Wrapper to establish height context */}
+                <Box sx={{ position: 'relative', minHeight: '100%', zIndex: 1 }}>
+                    {renderContent()}
+                </Box>
 
                 {/* Drawing Canvas */}
                 {enableDrawing && (
