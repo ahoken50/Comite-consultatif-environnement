@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { arrayUnion, arrayRemove } from 'firebase/firestore';
 import {
     Box,
     Typography,
@@ -652,29 +653,26 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate, readOn
                         audioRecording={meeting.audioRecording}
                         audioRecordings={meeting.audioRecordings}
                         onUploadComplete={(recording: AudioRecording) => {
-                            const current = meeting.audioRecordings || (meeting.audioRecording ? [meeting.audioRecording] : []);
-                            // Check uniqueness by path or name
-                            if (!current.some(r => r.storagePath === recording.storagePath)) {
-                                const newRecordings = [...current, recording];
-                                onUpdate({
-                                    audioRecordings: newRecordings,
-                                    // Update legacy field if it's the first one
-                                    audioRecording: !meeting.audioRecording ? recording : meeting.audioRecording
-                                });
-                            }
+                            // Use arrayUnion to safely add to the list without race conditions
+                            // Note: arrayUnion only adds unique elements, which is what we want
+                            onUpdate({
+                                audioRecordings: arrayUnion(recording) as any, // Cast as any to bypass Partial<Meeting> type check on frontend
+                                // Update legacy field if it's the first one (this is still subject to race condition but less critical)
+                                audioRecording: !meeting.audioRecording ? recording : meeting.audioRecording
+                            });
                         }}
                         onDelete={(rec?: AudioRecording) => {
                             if (rec) {
-                                const current = meeting.audioRecordings || (meeting.audioRecording ? [meeting.audioRecording] : []);
-                                const updated = current.filter(r => r.storagePath !== rec.storagePath);
+                                // Use arrayRemove to safely remove from the list
                                 onUpdate({
-                                    audioRecordings: updated,
-                                    // If we deleted the "primary" (legacy) one, update it to next available
+                                    audioRecordings: arrayRemove(rec) as any,
+                                    // If we deleted the "primary" (legacy) one
                                     audioRecording: meeting.audioRecording?.storagePath === rec.storagePath
-                                        ? (updated.length > 0 ? updated[0] : undefined as any)
+                                        ? undefined as any // Force undefined
                                         : meeting.audioRecording
                                 });
                             } else {
+                                // Clear all (legacy behavior?)
                                 onUpdate({ audioRecording: undefined as any, audioRecordings: [] });
                             }
                         }}

@@ -8,7 +8,8 @@ import {
     query,
     orderBy,
     Timestamp,
-    getDoc
+    getDoc,
+    FieldValue
 } from 'firebase/firestore';
 import { db } from '../../services/firebase';
 import type { Meeting } from '../../types/meeting.types';
@@ -32,6 +33,9 @@ const sanitizeForFirestore = (obj: any): any => {
     }
     if (obj instanceof Timestamp) {
         return obj; // Preserve Firestore Timestamps
+    }
+    if (obj instanceof FieldValue) {
+        return obj; // Preserve Firestore FieldValues (arrayUnion, arrayRemove)
     }
     if (Array.isArray(obj)) {
         return obj.map(item => sanitizeForFirestore(item));
