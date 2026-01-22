@@ -207,7 +207,12 @@ export const deleteAudioFile = async (storagePath: string): Promise<boolean> => 
         // });
 
         return true;
-    } catch (error) {
+    } catch (error: any) {
+        // If file doesn't exist, we consider it a success (it's already gone)
+        if (error.code === 'storage/object-not-found') {
+            console.warn('Audio file not found in storage (already deleted?):', storagePath);
+            return true;
+        }
         console.error('Error deleting audio:', error);
         return false;
     }
