@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.transcribeAudioV2 = void 0;
+exports.syncRegulationToTypesense = exports.syncProjectToTypesense = exports.syncMeetingToTypesense = exports.transcribeAudioV2 = void 0;
 const admin = require("firebase-admin");
 const fs = require("fs");
 const path = require("path");
@@ -32,7 +32,7 @@ exports.transcribeAudioV2 = (0, https_1.onCall)({
     memory: "4GiB",
     secrets: [googleApiKey], // Make secret available
 }, async (request) => {
-    var _a, _b, _c;
+    var _a, _b, _c, _d;
     const data = request.data;
     console.log('[V5-V2] Start:', JSON.stringify(data));
     try {
@@ -253,14 +253,37 @@ FORMAT EXACT:
         if (!isComplete) {
             finalTranscription += '\n\n⚠️ **Note:** La transcription peut être incomplète. Veuillez vérifier.';
         }
-        await admin.firestore().doc(`meetings/${meetingId}`).update({
-            'audioRecording.transcription': finalTranscription,
-            'audioRecording.rawTranscription': rawTranscription,
-            'audioRecording.transcriptionStatus': isComplete ? 'completed' : 'partial',
-            'audioRecording.transcribedAt': new Date().toISOString(),
-            'audioRecording.isOrganized': isOrganized,
+        // Update Firestore - Handle both legacy and new array structure
+        const docRef = admin.firestore().doc(`meetings/${meetingId}`);
+        const currentDoc = await docRef.get();
+        const currentData = currentDoc.data();
+        const updates = {
             dateUpdated: new Date().toISOString()
-        });
+        };
+        // 1. Update legacy field if it exists and matches
+        if (((_d = currentData === null || currentData === void 0 ? void 0 : currentData.audioRecording) === null || _d === void 0 ? void 0 : _d.storagePath) &&
+            (currentData.audioRecording.storagePath === storagePath || !currentData.audioRecording.transcription)) {
+            updates['audioRecording.transcription'] = finalTranscription;
+            updates['audioRecording.rawTranscription'] = rawTranscription;
+            updates['audioRecording.transcriptionStatus'] = isComplete ? 'completed' : 'partial';
+            updates['audioRecording.transcribedAt'] = new Date().toISOString();
+            updates['audioRecording.isOrganized'] = isOrganized;
+        }
+        // 2. Update item in new array
+        if (Array.isArray(currentData === null || currentData === void 0 ? void 0 : currentData.audioRecordings)) {
+            const recordings = currentData.audioRecordings;
+            const index = recordings.findIndex((r) => r.storagePath === storagePath);
+            if (index !== -1) {
+                // Update existing item in array
+                const updatedRecording = Object.assign(Object.assign({}, recordings[index]), { transcription: finalTranscription, rawTranscription: rawTranscription, transcriptionStatus: isComplete ? 'completed' : 'partial', transcribedAt: new Date().toISOString(), isOrganized: isOrganized });
+                // Remove old, add new (Firestore doesn't support updating index directly easily without reading first)
+                // Since we read it, we can just replace the whole array or specific item. 
+                // Replacing array is safer for now.
+                recordings[index] = updatedRecording;
+                updates['audioRecordings'] = recordings;
+            }
+        }
+        await docRef.update(updates);
         return {
             success: true,
             transcription: finalTranscription,
@@ -279,5 +302,117 @@ FORMAT EXACT:
         // HttpsError from Gen 2
         throw new https_1.HttpsError("internal", error instanceof Error ? error.message : "Error");
     }
+});
+const firestore_1 = require("firebase-functions/v2/firestore");
+const typesense = require("./typesenseClient");
+exports.syncMeetingToTypesense = (0, firestore_1.onDocumentWritten)({
+    document: "meetings/{meetingId}",
+    secrets: [typesense.typesenseApiKey, typesense.typesenseHost],
+}, async (event) => {
+    var _a, _b, _c;
+    const meetingId = event.params.meetingId;
+    const change = event.data;
+    if (!change)
+        return; // Should not happen for onDocumentWritten
+    // DELETE or Non-existent
+    if (!change.after.exists) {
+        await typesense.deleteFromIndex("meetings", meetingId);
+        return;
+    }
+    // CREATE or UPDATE
+    const data = change.after.data();
+    if (!data)
+        return;
+    // Transform to SearchableMeeting (simplified for backend)
+    // Note: We avoid importing frontend types to prevent build issues
+    const searchableMeeting = {
+        id: meetingId,
+        title: data.title || "Sans titre",
+        date: data.date ? new Date(data.date).toISOString() : new Date().toISOString(),
+        dateTimestamp: data.date ? Math.floor(new Date(data.date).getTime() / 1000) : 0,
+        type: data.type || "regular",
+        status: data.status || "scheduled",
+        minutes: data.minutes || "",
+        agendaItemTitles: ((_a = data.agendaItems) === null || _a === void 0 ? void 0 : _a.map((i) => i.title)) || [],
+        resolutions: ((_b = data.agendaItems) === null || _b === void 0 ? void 0 : _b.flatMap((item) => {
+            var _a;
+            return ((_a = item.minuteEntries) === null || _a === void 0 ? void 0 : _a.map((entry) => entry.content)) ||
+                (item.minuteContent ? [item.minuteContent] : []);
+        })) || [],
+        attendeeNames: ((_c = data.attendees) === null || _c === void 0 ? void 0 : _c.map((a) => a.name)) || [],
+    };
+    await typesense.indexMeeting(searchableMeeting);
+});
+exports.syncProjectToTypesense = (0, firestore_1.onDocumentWritten)({
+    document: "projects/{projectId}",
+    secrets: [typesense.typesenseApiKey, typesense.typesenseHost],
+}, async (event) => {
+    const projectId = event.params.projectId;
+    const change = event.data;
+    if (!change)
+        return;
+    if (!change.after.exists) {
+        await typesense.deleteFromIndex("projects", projectId);
+        return;
+    }
+    const data = change.after.data();
+    if (!data)
+        return;
+    const searchableProject = {
+        id: projectId,
+        code: data.code || "",
+        name: data.name || data.title || "Sans nom",
+        description: data.description || "",
+        category: data.category || "Général",
+        status: data.status || "Actif",
+        priority: data.priority || "Moyenne",
+        notes: data.notes || ""
+    };
+    await typesense.indexProject(searchableProject);
+});
+exports.syncRegulationToTypesense = (0, firestore_1.onDocumentWritten)({
+    document: "regulations/{regulationId}",
+    secrets: [typesense.typesenseApiKey, typesense.typesenseHost, googleApiKey],
+}, async (event) => {
+    const regulationId = event.params.regulationId;
+    const change = event.data;
+    if (!change)
+        return;
+    if (!change.after.exists) {
+        await typesense.deleteFromIndex("regulations", regulationId);
+        return;
+    }
+    const data = change.after.data();
+    if (!data)
+        return;
+    // Generate Embedding using Gemini
+    let embedding;
+    try {
+        const apiKey = googleApiKey.value();
+        if (apiKey && (data.title || data.content)) {
+            const genAI = new generative_ai_1.GoogleGenerativeAI(apiKey);
+            const model = genAI.getGenerativeModel({ model: "text-embedding-004" });
+            const textToEmbed = `${data.title || ''}\n${data.content || ''}`.trim().substring(0, 9000); // Limit context
+            if (textToEmbed) {
+                const result = await model.embedContent(textToEmbed);
+                embedding = result.embedding.values;
+                console.log(`[Typesense] Generated embedding for regulation ${regulationId}`);
+            }
+        }
+    }
+    catch (error) {
+        console.error(`[Typesense] Failed to generate embedding for ${regulationId}`, error);
+        // Continue indexing without embedding (fallback to keyword search)
+    }
+    const searchableRegulation = {
+        id: regulationId,
+        title: data.title || "Sans titre",
+        content: data.content || "",
+        category: data.category || "Général",
+        year: data.year || new Date().getFullYear(),
+        status: data.status || "active",
+        embedding: embedding
+    };
+    await typesense.indexRegulation(searchableRegulation);
 });
 //# sourceMappingURL=index.js.map
