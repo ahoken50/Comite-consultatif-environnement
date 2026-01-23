@@ -329,28 +329,24 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
                     alignItems: isImage ? 'center' : 'initial',
                     justifyContent: isImage ? 'center' : 'initial',
                     position: 'relative', cursor: (enableDrawing || enableLaser) ? 'crosshair' : 'default',
-                    bgcolor: '#334155' // Darker bg for viewer context
+                    bgcolor: isImage ? '#1e293b' : '#f1f5f9' // Dark for images, light for documents
                 }}
                 onMouseMove={!isProjection ? handleMouseMove : undefined}
                 onMouseDown={!isProjection ? handleMouseDown : undefined}
                 onMouseUp={!isProjection ? handleMouseUp : undefined}
                 onMouseLeave={() => { if (!isProjection) { setShowLaser(false); setIsDrawing(false); } }}
             >
-                {/* Overlay to capture mouse events */}
-                {(enableLaser || enableDrawing) && (
-                    <Box sx={{ position: 'sticky', top: 0, left: 0, width: '100%', height: '100%', minHeight: '100vh', zIndex: 20, cursor: 'none' }} />
-                )}
+                {/* Note: Mouse events are handled on the containerRef Box directly, no overlay needed */}
 
                 {/* Content Container */}
                 <Box sx={{
-                    position: 'relative',
-                    zIndex: 10,
                     width: '100%',
                     minHeight: '100%',
                     display: 'flex',
                     flexDirection: 'column',
                     alignItems: 'center',
-                    p: 2
+                    py: 4,
+                    px: 2
                 }}>
 
                     {isImage && (

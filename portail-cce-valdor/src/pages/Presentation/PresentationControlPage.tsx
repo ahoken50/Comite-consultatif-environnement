@@ -378,7 +378,7 @@ const PresentationControlPage: React.FC = () => {
 
                 {/* Main Content */}
                 <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', position: 'relative' }}>
-                    <Box sx={{ flex: 1, display: 'flex' }}>
+                    <Box sx={{ flex: 1, display: 'flex', height: '100%', overflow: 'hidden' }}>
 
                         {/* Details Panel */}
                         <Box sx={{
@@ -462,7 +462,7 @@ const PresentationControlPage: React.FC = () => {
                         </Box>
 
                         {/* Document Viewer */}
-                        <Box sx={{ flex: 1, position: 'relative', bgcolor: isFullscreen ? 'black' : '#f1f5f9', transition: 'background-color 0.5s' }}>
+                        <Box sx={{ flex: 1, position: 'relative', bgcolor: isFullscreen ? 'black' : '#f1f5f9', transition: 'background-color 0.5s', height: '100%', overflow: 'hidden' }}>
                             <DocumentViewer
                                 activeAttachment={activeAttachment}
                                 allAttachments={currentItem.attachments}
