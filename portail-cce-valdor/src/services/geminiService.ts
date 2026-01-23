@@ -97,23 +97,21 @@ export const transcribeAudio = async (
     meetingId: string,
     audioUrl: string,
     _mimeType: string,
-    _storagePath?: string
+    storagePath?: string
 ): Promise<{ success: boolean; transcription?: string; error?: string }> => {
     try {
-        // Update status to processing
-        const meetingRef = doc(db, 'meetings', meetingId);
-        await updateDoc(meetingRef, {
-            'audioRecording.transcriptionStatus': 'processing',
-            dateUpdated: new Date().toISOString()
-        });
+        console.log(`[Transcription] Submitting job for meeting ${meetingId}`);
+        if (storagePath) {
+            console.log(`[Transcription] Storage path: ${storagePath}`);
+        }
 
         // Submit transcription job (returns immediately)
-        console.log('[Transcription] Submitting job to Speechmatics...');
         const submitFunction = httpsCallable(functions, 'submit_transcription', { timeout: 120000 });
 
         const submitResult = await submitFunction({
             meetingId,
-            downloadUrl: audioUrl
+            downloadUrl: audioUrl,
+            storagePath  // Pass storagePath to identify recording in array
         });
 
         const submitData = submitResult.data as { success: boolean; jobId?: string; error?: string };
@@ -127,7 +125,7 @@ export const transcribeAudio = async (
 
         // Start background polling - don't await (fire and forget)
         // The polling will update Firestore when complete
-        pollTranscriptionStatus(meetingId).catch(err => {
+        pollTranscriptionStatus(meetingId, storagePath).catch(err => {
             console.error('[Transcription] Polling error:', err);
         });
 
@@ -141,13 +139,6 @@ export const transcribeAudio = async (
         console.error('Transcription error handling:', error);
 
         const err = error as Error;
-        const meetingRef = doc(db, 'meetings', meetingId);
-
-        await updateDoc(meetingRef, {
-            'audioRecording.transcriptionStatus': 'error',
-            'audioRecording.transcriptionError': err.message,
-            dateUpdated: new Date().toISOString()
-        });
 
         return {
             success: false,
@@ -160,16 +151,19 @@ export const transcribeAudio = async (
  * Poll transcription status until complete or timeout
  * Polls every 30 seconds for up to 30 minutes
  */
-const pollTranscriptionStatus = async (meetingId: string): Promise<void> => {
+const pollTranscriptionStatus = async (meetingId: string, storagePath?: string): Promise<void> => {
     const checkFunction = httpsCallable(functions, 'check_transcription', { timeout: 180000 });
     const maxAttempts = 60; // 30 minutes at 30-second intervals
     const intervalMs = 30000; // 30 seconds
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
         try {
-            console.log(`[Transcription Poll] Attempt ${attempt}/${maxAttempts} for meeting ${meetingId}`);
+            console.log(`[Transcription Poll] Attempt ${attempt}/${maxAttempts} for meeting ${meetingId}${storagePath ? ` (${storagePath})` : ''}`);
 
-            const result = await checkFunction({ meetingId });
+            const result = await checkFunction({
+                meetingId,
+                storagePath  // Pass storagePath to identify recording in array
+            });
             const data = result.data as { status: string; message?: string; error?: string };
 
             console.log(`[Transcription Poll] Status: ${data.status}`);

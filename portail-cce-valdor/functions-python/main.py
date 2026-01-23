@@ -1335,6 +1335,7 @@ def submit_transcription(req: https_fn.CallableRequest) -> dict:
     """
     Submit a transcription job to Speechmatics.
     Returns immediately with job_id - does NOT wait for completion.
+    Supports both legacy audioRecording and new audioRecordings[] array.
     """
     if not req.auth:
         raise https_fn.HttpsError(
@@ -1345,6 +1346,7 @@ def submit_transcription(req: https_fn.CallableRequest) -> dict:
     data = req.data
     meeting_id = data.get("meetingId")
     download_url = data.get("downloadUrl")
+    storage_path = data.get("storagePath")  # Used to identify recording in array
     
     if not meeting_id or not download_url:
         raise https_fn.HttpsError(
@@ -1353,27 +1355,68 @@ def submit_transcription(req: https_fn.CallableRequest) -> dict:
         )
     
     print(f"[Async Transcription] Submitting job for meeting {meeting_id}")
+    if storage_path:
+        print(f"[Async Transcription] Storage path: {storage_path}")
     
     try:
         db = firestore.client()
         meeting_ref = db.collection("meetings").document(meeting_id)
+        meeting_doc = meeting_ref.get()
         
-        # Submit to Speechmatics (with webhook notification)
+        if not meeting_doc.exists:
+            raise https_fn.HttpsError(
+                code=https_fn.FunctionsErrorCode.NOT_FOUND,
+                message="Meeting not found."
+            )
+        
+        # Submit to Speechmatics
         job_id = submit_speechmatics_job(download_url, meeting_id, language_code="fr")
         
-        # Save job_id to Firestore
-        meeting_ref.update({
-            "audioRecording.speechmaticsJobId": job_id,
-            "audioRecording.transcriptionStatus": "processing",
-            "audioRecording.transcriptionStartedAt": datetime.now().isoformat(),
-            "dateUpdated": datetime.now().isoformat()
-        })
+        meeting_data = meeting_doc.to_dict()
+        audio_recordings = meeting_data.get("audioRecordings", [])
+        
+        # If we have audioRecordings array and a storagePath, update the specific entry
+        if storage_path and isinstance(audio_recordings, list) and len(audio_recordings) > 0:
+            # Find the recording by storagePath
+            updated = False
+            for i, rec in enumerate(audio_recordings):
+                if rec.get("storagePath") == storage_path:
+                    audio_recordings[i]["speechmaticsJobId"] = job_id
+                    audio_recordings[i]["transcriptionStatus"] = "processing"
+                    audio_recordings[i]["transcriptionStartedAt"] = datetime.now().isoformat()
+                    updated = True
+                    print(f"[Async Transcription] Updated audioRecordings[{i}] with job {job_id}")
+                    break
+            
+            if updated:
+                meeting_ref.update({
+                    "audioRecordings": audio_recordings,
+                    "dateUpdated": datetime.now().isoformat()
+                })
+            else:
+                print(f"[Async Transcription] Warning: Could not find recording with storagePath {storage_path}")
+                # Fall back to legacy field
+                meeting_ref.update({
+                    "audioRecording.speechmaticsJobId": job_id,
+                    "audioRecording.transcriptionStatus": "processing",
+                    "audioRecording.transcriptionStartedAt": datetime.now().isoformat(),
+                    "dateUpdated": datetime.now().isoformat()
+                })
+        else:
+            # Legacy: update audioRecording (singular)
+            meeting_ref.update({
+                "audioRecording.speechmaticsJobId": job_id,
+                "audioRecording.transcriptionStatus": "processing",
+                "audioRecording.transcriptionStartedAt": datetime.now().isoformat(),
+                "dateUpdated": datetime.now().isoformat()
+            })
         
         print(f"[Async Transcription] Job {job_id} submitted for meeting {meeting_id}")
         
         return {
             "success": True,
             "jobId": job_id,
+            "storagePath": storage_path,
             "message": "Transcription submitted. Check back in a few minutes."
         }
         
@@ -1393,6 +1436,7 @@ def check_transcription(req: https_fn.CallableRequest) -> dict:
     """
     Check the status of a transcription job.
     If complete, saves the result to Firestore.
+    Supports both legacy audioRecording and new audioRecordings[] array.
     """
     if not req.auth:
         raise https_fn.HttpsError(
@@ -1402,12 +1446,15 @@ def check_transcription(req: https_fn.CallableRequest) -> dict:
     
     data = req.data
     meeting_id = data.get("meetingId")
+    storage_path = data.get("storagePath")  # Used to identify recording in array
     
     if not meeting_id:
         raise https_fn.HttpsError(
             code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT,
             message="Missing meetingId."
         )
+    
+    print(f"[Check Transcription] Checking meeting {meeting_id}, storagePath: {storage_path}")
     
     try:
         db = firestore.client()
@@ -1421,9 +1468,28 @@ def check_transcription(req: https_fn.CallableRequest) -> dict:
             )
         
         meeting_data = meeting_doc.to_dict()
-        audio_recording = meeting_data.get("audioRecording", {})
-        job_id = audio_recording.get("speechmaticsJobId")
-        current_status = audio_recording.get("transcriptionStatus")
+        audio_recordings = meeting_data.get("audioRecordings", [])
+        
+        # Try to find the specific recording in the array first
+        job_id = None
+        current_status = None
+        recording_index = -1
+        
+        if storage_path and isinstance(audio_recordings, list) and len(audio_recordings) > 0:
+            for i, rec in enumerate(audio_recordings):
+                if rec.get("storagePath") == storage_path:
+                    job_id = rec.get("speechmaticsJobId")
+                    current_status = rec.get("transcriptionStatus")
+                    recording_index = i
+                    print(f"[Check Transcription] Found recording at index {i}, job_id: {job_id}, status: {current_status}")
+                    break
+        
+        # Fall back to legacy audioRecording field
+        if job_id is None:
+            audio_recording = meeting_data.get("audioRecording", {})
+            job_id = audio_recording.get("speechmaticsJobId")
+            current_status = audio_recording.get("transcriptionStatus")
+            print(f"[Check Transcription] Using legacy audioRecording, job_id: {job_id}, status: {current_status}")
         
         # Already completed?
         if current_status == "completed":
@@ -1444,13 +1510,30 @@ def check_transcription(req: https_fn.CallableRequest) -> dict:
         if result["status"] == "completed":
             # Save result to Firestore
             full_transcription = result["result"].get("text", "")
-            meeting_ref.update({
-                "audioRecording.transcription": full_transcription,
-                "audioRecording.transcriptionStatus": "completed",
-                "audioRecording.transcribedAt": datetime.now().isoformat(),
-                "audioRecording.transcriptionEngine": "speechmatics-enhanced-async",
-                "dateUpdated": datetime.now().isoformat()
-            })
+            
+            # Update the correct location
+            if recording_index >= 0 and isinstance(audio_recordings, list):
+                # Update specific recording in array
+                audio_recordings[recording_index]["transcription"] = full_transcription
+                audio_recordings[recording_index]["transcriptionStatus"] = "completed"
+                audio_recordings[recording_index]["transcribedAt"] = datetime.now().isoformat()
+                audio_recordings[recording_index]["transcriptionEngine"] = "speechmatics-async"
+                
+                meeting_ref.update({
+                    "audioRecordings": audio_recordings,
+                    "dateUpdated": datetime.now().isoformat()
+                })
+                print(f"[Check Transcription] Updated audioRecordings[{recording_index}] with {len(full_transcription)} chars")
+            else:
+                # Legacy: update audioRecording (singular)
+                meeting_ref.update({
+                    "audioRecording.transcription": full_transcription,
+                    "audioRecording.transcriptionStatus": "completed",
+                    "audioRecording.transcribedAt": datetime.now().isoformat(),
+                    "audioRecording.transcriptionEngine": "speechmatics-async",
+                    "dateUpdated": datetime.now().isoformat()
+                })
+            
             print(f"[Async Transcription] Job {job_id} completed! {len(full_transcription)} chars saved.")
             return {
                 "status": "completed",
@@ -1458,11 +1541,20 @@ def check_transcription(req: https_fn.CallableRequest) -> dict:
             }
         
         elif result["status"] == "failed":
-            meeting_ref.update({
-                "audioRecording.transcriptionStatus": "failed",
-                "audioRecording.transcriptionError": result.get("error", "Unknown error"),
-                "dateUpdated": datetime.now().isoformat()
-            })
+            # Update failure status
+            if recording_index >= 0 and isinstance(audio_recordings, list):
+                audio_recordings[recording_index]["transcriptionStatus"] = "failed"
+                audio_recordings[recording_index]["transcriptionError"] = result.get("error", "Unknown error")
+                meeting_ref.update({
+                    "audioRecordings": audio_recordings,
+                    "dateUpdated": datetime.now().isoformat()
+                })
+            else:
+                meeting_ref.update({
+                    "audioRecording.transcriptionStatus": "failed",
+                    "audioRecording.transcriptionError": result.get("error", "Unknown error"),
+                    "dateUpdated": datetime.now().isoformat()
+                })
             return {
                 "status": "failed",
                 "error": result.get("error", "Unknown error")

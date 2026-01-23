@@ -96,7 +96,7 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
                             debug: false,
                             experimental: false,
                             useBase64URL: true,
-                            renderChanges: false
+                            renderChanges: true  // Enable Track Changes (red text)
                         });
                     }
                 } catch (err) {
@@ -329,7 +329,7 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
                     alignItems: isImage ? 'center' : 'initial',
                     justifyContent: isImage ? 'center' : 'initial',
                     position: 'relative', cursor: (enableDrawing || enableLaser) ? 'crosshair' : 'default',
-                    bgcolor: isImage ? '#1e293b' : '#f1f5f9' // Dark for images, light for documents
+                    bgcolor: isImage ? '#1e293b' : 'white' // Dark for images, white for documents
                 }}
                 onMouseMove={!isProjection ? handleMouseMove : undefined}
                 onMouseDown={!isProjection ? handleMouseDown : undefined}
@@ -362,12 +362,18 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
                     )}
 
                     {isDocx && (
-                        <Box sx={{ width: '100%', maxWidth: '900px', bgcolor: 'white', p: 4, minHeight: '800px', boxShadow: 3 }}>
+                        <Box sx={{ width: '100%', maxWidth: '900px', bgcolor: 'white', p: 4, minHeight: '800px', boxShadow: 3, borderRadius: 1 }}>
                             {docxLoading && <CircularProgress />}
                             {docxError && <Typography color="error">{docxError}</Typography>}
                             <div ref={docxContainerRef} className="docx-content" />
                             <style>{`
-                                .docx-preview-wrapper { padding: 0 !important; background: transparent !important; }
+                                .docx-preview-wrapper { padding: 0 !important; background: white !important; }
+                                .docx-content { background: white !important; }
+                                .docx-content table { background: white !important; }
+                                .docx-content td, .docx-content th { background: inherit !important; }
+                                /* Track Changes styling */
+                                .docx-content ins { color: #059669 !important; text-decoration: underline !important; background: #ecfdf5 !important; }
+                                .docx-content del { color: #dc2626 !important; text-decoration: line-through !important; background: #fef2f2 !important; }
                             `}</style>
                         </Box>
                     )}
