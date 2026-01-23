@@ -1491,12 +1491,8 @@ def check_transcription(req: https_fn.CallableRequest) -> dict:
             current_status = audio_recording.get("transcriptionStatus")
             print(f"[Check Transcription] Using legacy audioRecording, job_id: {job_id}, status: {current_status}")
         
-        # Already completed?
-        if current_status == "completed":
-            return {
-                "status": "completed",
-                "message": "Transcription already completed."
-            }
+        # Note: Removed early-exit "already completed" check.
+        # Always query Speechmatics for job status since a new job may have been submitted.
         
         if not job_id:
             return {
