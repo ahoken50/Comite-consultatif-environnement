@@ -266,12 +266,13 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
     }
 
     const isImage = activeAttachment.type === 'image';
-    const isPdf = activeAttachment.type === 'pdf' || activeAttachment.name.toLowerCase().endsWith('.pdf');
     const isDocx = activeAttachment.name.toLowerCase().endsWith('.docx');
     const isExcel = activeAttachment.name.match(/\.(xlsx|xls)$/i);
+    // isPdf should only be true if it's actually a PDF, not a DOCX or other office file
+    const isPdf = !isDocx && !isExcel && (activeAttachment.type === 'pdf' || activeAttachment.name.toLowerCase().endsWith('.pdf'));
 
     return (
-        <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', bgcolor: '#020617', position: 'relative', overflow: 'hidden', '&:hover .header-controls': { opacity: 1 } }}>
+        <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', bgcolor: '#020617', position: 'relative', overflow: 'auto', '&:hover .header-controls': { opacity: 1 } }}>
 
             {/* Floating Header */}
             {!isProjection && (
