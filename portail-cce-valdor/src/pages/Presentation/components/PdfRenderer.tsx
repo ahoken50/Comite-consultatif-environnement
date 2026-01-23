@@ -27,7 +27,12 @@ export const PdfRenderer: React.FC<PdfRendererProps> = ({ url, onLoadComplete })
             setLoading(true);
             setError(null);
             try {
-                const loadingTask = pdfjsLib.getDocument(url);
+                // Fetch valid PDF data first to avoid "bs" (bad structure) errors from pdfjs
+                const response = await fetch(url);
+                if (!response.ok) throw new Error(`Failed to fetch PDF: ${response.statusText}`);
+                const arrayBuffer = await response.arrayBuffer();
+
+                const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
                 const _pdf = await loadingTask.promise;
                 setPdf(_pdf);
 
