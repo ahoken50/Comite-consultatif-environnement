@@ -194,7 +194,8 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
             const y = e.clientY - rect.top;
             const ctx = canvasRef.current.getContext('2d');
             if (ctx) {
-                ctx.stroke();
+                ctx.lineTo(x, y);  // Add the line to the path
+                ctx.stroke();      // Draw it
                 if (onDrawLine) onDrawLine({ x, y });
             }
         }

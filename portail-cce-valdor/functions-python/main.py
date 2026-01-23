@@ -1435,7 +1435,8 @@ def submit_transcription(req: https_fn.CallableRequest) -> dict:
 def check_transcription(req: https_fn.CallableRequest) -> dict:
     """
     Check the status of a transcription job.
-    If complete, saves the result to Firestore.
+    If complete, saves the result to Firestore using a transaction
+    to prevent race conditions when multiple jobs complete simultaneously.
     Supports both legacy audioRecording and new audioRecordings[] array.
     """
     if not req.auth:
@@ -1504,24 +1505,43 @@ def check_transcription(req: https_fn.CallableRequest) -> dict:
         result = check_speechmatics_job(job_id)
         
         if result["status"] == "completed":
-            # Save result to Firestore
+            # Save result to Firestore using a transaction to prevent race conditions
             full_transcription = result["result"].get("text", "")
             
             # Update the correct location
-            if recording_index >= 0 and isinstance(audio_recordings, list):
-                # Update specific recording in array
-                audio_recordings[recording_index]["transcription"] = full_transcription
-                audio_recordings[recording_index]["transcriptionStatus"] = "completed"
-                audio_recordings[recording_index]["transcribedAt"] = datetime.now().isoformat()
-                audio_recordings[recording_index]["transcriptionEngine"] = "speechmatics-async"
+            if recording_index >= 0:
+                # Use transaction to safely update the array
+                @firestore.transactional
+                def update_in_transaction(transaction, doc_ref, rec_index, transcription_text):
+                    snapshot = doc_ref.get(transaction=transaction)
+                    if not snapshot.exists:
+                        return False
+                    
+                    data = snapshot.to_dict()
+                    recordings = data.get("audioRecordings", [])
+                    
+                    if rec_index < len(recordings):
+                        recordings[rec_index]["transcription"] = transcription_text
+                        recordings[rec_index]["transcriptionStatus"] = "completed"
+                        recordings[rec_index]["transcribedAt"] = datetime.now().isoformat()
+                        recordings[rec_index]["transcriptionEngine"] = "speechmatics-async"
+                        
+                        transaction.update(doc_ref, {
+                            "audioRecordings": recordings,
+                            "dateUpdated": datetime.now().isoformat()
+                        })
+                        return True
+                    return False
                 
-                meeting_ref.update({
-                    "audioRecordings": audio_recordings,
-                    "dateUpdated": datetime.now().isoformat()
-                })
-                print(f"[Check Transcription] Updated audioRecordings[{recording_index}] with {len(full_transcription)} chars")
+                transaction = db.transaction()
+                success = update_in_transaction(transaction, meeting_ref, recording_index, full_transcription)
+                
+                if success:
+                    print(f"[Check Transcription] Transaction updated audioRecordings[{recording_index}] with {len(full_transcription)} chars")
+                else:
+                    print(f"[Check Transcription] Transaction failed for index {recording_index}")
             else:
-                # Legacy: update audioRecording (singular)
+                # Legacy: update audioRecording (singular) - no transaction needed
                 meeting_ref.update({
                     "audioRecording.transcription": full_transcription,
                     "audioRecording.transcriptionStatus": "completed",
@@ -1537,14 +1557,28 @@ def check_transcription(req: https_fn.CallableRequest) -> dict:
             }
         
         elif result["status"] == "failed":
-            # Update failure status
-            if recording_index >= 0 and isinstance(audio_recordings, list):
-                audio_recordings[recording_index]["transcriptionStatus"] = "failed"
-                audio_recordings[recording_index]["transcriptionError"] = result.get("error", "Unknown error")
-                meeting_ref.update({
-                    "audioRecordings": audio_recordings,
-                    "dateUpdated": datetime.now().isoformat()
-                })
+            # Update failure status (also use transaction for array)
+            if recording_index >= 0:
+                @firestore.transactional
+                def update_failure_in_transaction(transaction, doc_ref, rec_index, error_msg):
+                    snapshot = doc_ref.get(transaction=transaction)
+                    if not snapshot.exists:
+                        return
+                    
+                    data = snapshot.to_dict()
+                    recordings = data.get("audioRecordings", [])
+                    
+                    if rec_index < len(recordings):
+                        recordings[rec_index]["transcriptionStatus"] = "failed"
+                        recordings[rec_index]["transcriptionError"] = error_msg
+                        
+                        transaction.update(doc_ref, {
+                            "audioRecordings": recordings,
+                            "dateUpdated": datetime.now().isoformat()
+                        })
+                
+                transaction = db.transaction()
+                update_failure_in_transaction(transaction, meeting_ref, recording_index, result.get("error", "Unknown error"))
             else:
                 meeting_ref.update({
                     "audioRecording.transcriptionStatus": "failed",
