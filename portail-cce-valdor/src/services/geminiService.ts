@@ -88,10 +88,10 @@ const _uploadToGemini = async (blob: Blob, mimeType: string, displayName: string
 
 
 /**
- * Transcribe audio file using Speechmatics (webhook pattern)
+ * Transcribe audio file using Speechmatics (polling pattern)
  * 1. Submit job (returns immediately)
- * 2. Speechmatics webhook will update Firestore when done
- * 3. UI listens to Firestore for status changes (real-time)
+ * 2. Poll check_transcription until complete (more reliable than webhooks)
+ * 3. Firestore is updated when complete
  */
 export const transcribeAudio = async (
     meetingId: string,
@@ -108,8 +108,7 @@ export const transcribeAudio = async (
         });
 
         // Submit transcription job (returns immediately)
-        // Speechmatics will call our webhook when done, which updates Firestore
-        console.log('[Transcription] Submitting job to Speechmatics (webhook mode)...');
+        console.log('[Transcription] Submitting job to Speechmatics...');
         const submitFunction = httpsCallable(functions, 'submit_transcription', { timeout: 120000 });
 
         const submitResult = await submitFunction({
@@ -124,10 +123,15 @@ export const transcribeAudio = async (
         }
 
         console.log(`[Transcription] Job submitted: ${submitData.jobId}`);
-        console.log('[Transcription] Webhook will update Firestore when complete. Listen for status changes.');
+        console.log('[Transcription] Starting polling for completion...');
 
-        // Return success immediately - the UI should listen to Firestore for updates
-        // The webhook will set transcriptionStatus to "completed" when done
+        // Start background polling - don't await (fire and forget)
+        // The polling will update Firestore when complete
+        pollTranscriptionStatus(meetingId).catch(err => {
+            console.error('[Transcription] Polling error:', err);
+        });
+
+        // Return success immediately
         return {
             success: true,
             transcription: `Transcription en cours (ID: ${submitData.jobId}). La page se mettra à jour automatiquement.`
@@ -150,6 +154,51 @@ export const transcribeAudio = async (
             error: err.message
         };
     }
+};
+
+/**
+ * Poll transcription status until complete or timeout
+ * Polls every 30 seconds for up to 30 minutes
+ */
+const pollTranscriptionStatus = async (meetingId: string): Promise<void> => {
+    const checkFunction = httpsCallable(functions, 'check_transcription', { timeout: 180000 });
+    const maxAttempts = 60; // 30 minutes at 30-second intervals
+    const intervalMs = 30000; // 30 seconds
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        try {
+            console.log(`[Transcription Poll] Attempt ${attempt}/${maxAttempts} for meeting ${meetingId}`);
+
+            const result = await checkFunction({ meetingId });
+            const data = result.data as { status: string; message?: string; error?: string };
+
+            console.log(`[Transcription Poll] Status: ${data.status}`);
+
+            if (data.status === 'completed') {
+                console.log('[Transcription Poll] ✅ Transcription completed!');
+                return; // Firestore already updated by check_transcription
+            }
+
+            if (data.status === 'failed') {
+                console.error('[Transcription Poll] ❌ Transcription failed:', data.error);
+                return; // Firestore already updated with error
+            }
+
+            if (data.status === 'not_started') {
+                console.warn('[Transcription Poll] Job not started, waiting...');
+            }
+
+            // Still processing, wait and retry
+            await new Promise(resolve => setTimeout(resolve, intervalMs));
+
+        } catch (err) {
+            console.error(`[Transcription Poll] Check error (attempt ${attempt}):`, err);
+            // Continue polling despite errors
+            await new Promise(resolve => setTimeout(resolve, intervalMs));
+        }
+    }
+
+    console.warn('[Transcription Poll] Timeout after 30 minutes of polling');
 };
 
 
