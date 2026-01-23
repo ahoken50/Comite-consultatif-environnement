@@ -421,17 +421,40 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
                     )}
                 </Box>
 
-                {enableDrawing && <canvas ref={canvasRef} style={{ position: 'absolute', inset: 0, zIndex: 30, pointerEvents: 'none' }} />}
-
-                {enableLaser && showLaser && (
+                {/* Drawing and Laser Overlay - Fixed over viewport, doesn't scroll */}
+                {(enableDrawing || enableLaser) && (
                     <Box
                         sx={{
-                            position: 'absolute', width: 16, height: 16, bgcolor: '#dc2626', borderRadius: '50%',
-                            boxShadow: '0 0 15px 4px rgba(220,38,38,0.8)', zIndex: 40, pointerEvents: 'none', mixBlendMode: 'screen',
-                            left: laserPos.x, top: laserPos.y, transform: 'translate(-50%, -50%)'
+                            position: 'absolute',
+                            inset: 0,
+                            zIndex: 50,
+                            pointerEvents: 'none' // Allow clicks to pass through to content
                         }}
                     >
-                        <Box sx={{ position: 'absolute', inset: 0, bgcolor: '#ef4444', borderRadius: '50%', animation: 'ping 1s cubic-bezier(0, 0, 0.2, 1) infinite', opacity: 0.5 }} />
+                        {enableDrawing && (
+                            <canvas
+                                ref={canvasRef}
+                                style={{
+                                    position: 'absolute',
+                                    inset: 0,
+                                    width: '100%',
+                                    height: '100%',
+                                    pointerEvents: 'none'
+                                }}
+                            />
+                        )}
+
+                        {enableLaser && showLaser && (
+                            <Box
+                                sx={{
+                                    position: 'absolute', width: 20, height: 20, bgcolor: '#dc2626', borderRadius: '50%',
+                                    boxShadow: '0 0 20px 6px rgba(220,38,38,0.9)', pointerEvents: 'none',
+                                    left: laserPos.x, top: laserPos.y, transform: 'translate(-50%, -50%)'
+                                }}
+                            >
+                                <Box sx={{ position: 'absolute', inset: 0, bgcolor: '#ef4444', borderRadius: '50%', animation: 'ping 1s cubic-bezier(0, 0, 0.2, 1) infinite', opacity: 0.6 }} />
+                            </Box>
+                        )}
                     </Box>
                 )}
             </Box>
