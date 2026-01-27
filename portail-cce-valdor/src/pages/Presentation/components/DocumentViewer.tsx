@@ -1,9 +1,10 @@
 import React, { useRef, useEffect, useState } from 'react';
-import { Box, Typography, IconButton, Button } from '@mui/material';
-import { FolderOpen, ChevronLeft, ChevronRight, Close, Image as ImageIcon, PictureAsPdf, TableView, Web } from '@mui/icons-material';
+import { Box, Typography, IconButton, Button, CircularProgress } from '@mui/material';
+import { FolderOpen, Close, Image as ImageIcon, PictureAsPdf, TableView, Web } from '@mui/icons-material';
 import type { Attachment } from '../types';
 import * as XLSX from 'xlsx';
-import DocViewer, { DocViewerRenderers } from '@cyntler/react-doc-viewer';
+import { renderAsync } from 'docx-preview';
+import { PdfRenderer } from './PdfRenderer';
 
 interface DocumentViewerProps {
     activeAttachment: Attachment | null;
@@ -39,40 +40,80 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
     externalLaserPos,
     externalDrawPoints,
     externalScrollPercent,
-    currentPage: controlledPage,
-    onPageChange
+    // currentPage, // Not used in continuous scroll mode, but kept for interface compatibility
+    // onPageChange
 }) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const canvasRef = useRef<HTMLCanvasElement>(null);
-
-    const [internalPage, setInternalPage] = useState(1);
-    const currentPage = controlledPage || internalPage; // Use prop if available, else internal
-    const setCurrentPage = (page: number | ((prev: number) => number)) => {
-        const newPage = typeof page === 'function' ? page(currentPage) : page;
-        setInternalPage(newPage);
-        if (onPageChange) onPageChange(newPage);
-    };
-
-    const totalPages = activeAttachment?.pageCount || (activeAttachment?.type === 'image' ? 1 : 12);
+    const docxContainerRef = useRef<HTMLDivElement>(null);
 
     const [laserPos, setLaserPos] = useState({ x: 0, y: 0 });
     const [showLaser, setShowLaser] = useState(false);
     const [isDrawing, setIsDrawing] = useState(false);
 
+    // DOCX State
+    const [docxLoading, setDocxLoading] = useState(false);
+    const [docxError, setDocxError] = useState<string | null>(null);
+
     // Excel Native Mode State
-    const [useNativeExcel, setUseNativeExcel] = useState(false);
+    const [useNativeExcel, setUseNativeExcel] = useState(true); // Default to native for local handling
     const [excelHtml, setExcelHtml] = useState<string | null>(null);
 
-    // Reset native mode on attachment change
+    // Reset states on attachment change
     useEffect(() => {
-        setUseNativeExcel(false);
+        setUseNativeExcel(true);
         setExcelHtml(null);
+        setDocxError(null);
+
+        // Clear canvas
+        const canvas = canvasRef.current;
+        if (canvas) {
+            const ctx = canvas.getContext('2d');
+            ctx?.clearRect(0, 0, canvas.width, canvas.height);
+        }
     }, [activeAttachment]);
 
-    // Parse Excel when in native mode
+    // DOCX Rendering
+    useEffect(() => {
+        const renderDocx = async () => {
+            if (activeAttachment?.name.toLowerCase().endsWith('.docx') && docxContainerRef.current) {
+                setDocxLoading(true);
+                setDocxError(null);
+                try {
+                    const response = await fetch(activeAttachment.url);
+                    if (!response.ok) throw new Error("Erreur network");
+                    const blob = await response.blob();
+
+                    if (docxContainerRef.current) {
+                        docxContainerRef.current.innerHTML = ''; // Clear previous
+                        await renderAsync(blob, docxContainerRef.current, docxContainerRef.current, {
+                            className: 'docx-preview-wrapper',
+                            inWrapper: true,
+                            ignoreWidth: false,
+                            ignoreHeight: false,
+                            ignoreFonts: false,
+                            breakPages: true,
+                            debug: false,
+                            experimental: false,
+                            useBase64URL: true,
+                            renderChanges: true  // Enable Track Changes (red text)
+                        });
+                    }
+                } catch (err) {
+                    console.error("Error rendering DOCX:", err);
+                    setDocxError("Impossible d'afficher le document DOCX.");
+                } finally {
+                    setDocxLoading(false);
+                }
+            }
+        };
+        renderDocx();
+    }, [activeAttachment]);
+
+    // Excel Parsing
     useEffect(() => {
         const loadExcel = async () => {
-            if (useNativeExcel && activeAttachment && activeAttachment.name.match(/\.(xlsx|xls)$/i)) {
+            if (activeAttachment && activeAttachment.name.match(/\.(xlsx|xls)$/i)) {
                 try {
                     const response = await fetch(activeAttachment.url);
                     const arrayBuffer = await response.arrayBuffer();
@@ -87,16 +128,6 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
             }
         };
         loadExcel();
-    }, [useNativeExcel, activeAttachment]);
-
-    useEffect(() => {
-        // Reset page on attachment change
-        if (!controlledPage) setInternalPage(1);
-        const canvas = canvasRef.current;
-        if (canvas) {
-            const ctx = canvas.getContext('2d');
-            ctx?.clearRect(0, 0, canvas.width, canvas.height);
-        }
     }, [activeAttachment]);
 
     // Slave Mode Effect: Sync Laser
@@ -107,45 +138,17 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
         }
     }, [isProjection, externalLaserPos]);
 
-    // Slave Mode Effect: Sync Scroll (Percentage-based for DocViewer compatibility)
+    // Slave Mode Effect: Sync Scroll
     useEffect(() => {
         if (!isProjection || externalScrollPercent === undefined || !containerRef.current) return;
 
-        // Find all scrollable elements inside the container (including DocViewer internals)
-        const findScrollableElements = (root: HTMLElement): HTMLElement[] => {
-            const scrollables: HTMLElement[] = [];
-            const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT);
-            let node = walker.currentNode as HTMLElement;
-            while (node) {
-                const style = getComputedStyle(node);
-                const isScrollable =
-                    (style.overflow === 'auto' || style.overflow === 'scroll' ||
-                        style.overflowY === 'auto' || style.overflowY === 'scroll') &&
-                    node.scrollHeight > node.clientHeight;
-                if (isScrollable) {
-                    scrollables.push(node);
-                }
-                node = walker.nextNode() as HTMLElement;
-            }
-            return scrollables;
-        };
-
-        // Apply scroll to container and all internal scrollable elements
-        const applyScroll = () => {
-            const scrollables = findScrollableElements(containerRef.current!);
-            [...scrollables, containerRef.current!].forEach(el => {
-                const maxScroll = el.scrollHeight - el.clientHeight;
-                if (maxScroll > 0) {
-                    const targetTop = maxScroll * externalScrollPercent;
-                    el.scrollTo({ top: targetTop, behavior: 'auto' });
-                }
-            });
-        };
-
-        // Apply immediately and after a delay (for DocViewer to load)
-        applyScroll();
-        const timer = setTimeout(applyScroll, 500);
-        return () => clearTimeout(timer);
+        // Apply scroll to container
+        const el = containerRef.current;
+        const maxScroll = el.scrollHeight - el.clientHeight;
+        if (maxScroll > 0) {
+            const targetTop = maxScroll * externalScrollPercent;
+            el.scrollTo({ top: targetTop, behavior: 'auto' });
+        }
     }, [isProjection, externalScrollPercent]);
 
     // Slave Mode Effect: Sync Drawing
@@ -171,9 +174,16 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
     const handleMouseMove = (e: React.MouseEvent) => {
         if (enableLaser && containerRef.current) {
             const rect = containerRef.current.getBoundingClientRect();
-            setLaserPos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+
+            // Adjust calculations to be relative to the scrollable content if needed, 
+            // but for overlay overlay logic, viewport relative is usually expected unless we transform coords.
+            // Here we assume the overlay covers the viewport of the container.
+
+            setLaserPos({ x, y });
             setShowLaser(true);
-            if (onLaserMove) onLaserMove({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+            if (onLaserMove) onLaserMove({ x, y });
         } else {
             setShowLaser(false);
         }
@@ -184,7 +194,8 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
             const y = e.clientY - rect.top;
             const ctx = canvasRef.current.getContext('2d');
             if (ctx) {
-                ctx.stroke();
+                ctx.lineTo(x, y);  // Add the line to the path
+                ctx.stroke();      // Draw it
                 if (onDrawLine) onDrawLine({ x, y });
             }
         }
@@ -218,65 +229,24 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
             canvasRef.current.height = containerRef.current.offsetHeight;
         }
 
-        // Find ALL scrollable elements inside the container (including DocViewer internals)
-        const findScrollableElements = (root: HTMLElement): HTMLElement[] => {
-            const scrollables: HTMLElement[] = [];
-            const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT);
-            let node = walker.currentNode as HTMLElement;
-            while (node) {
-                const style = getComputedStyle(node);
-                const isScrollable =
-                    (style.overflow === 'auto' || style.overflow === 'scroll' ||
-                        style.overflowY === 'auto' || style.overflowY === 'scroll') &&
-                    node.scrollHeight > node.clientHeight;
-                if (isScrollable) {
-                    scrollables.push(node);
-                }
-                node = walker.nextNode() as HTMLElement;
-            }
-            return scrollables;
-        };
-
         const handleScroll = (e: Event) => {
             const target = e.target as HTMLElement;
             if (target && onScroll) {
-                // Calculate scroll percentage for zoom-independent sync
                 const maxScroll = target.scrollHeight - target.clientHeight;
                 const scrollPercent = maxScroll > 0 ? target.scrollTop / maxScroll : 0;
                 onScroll(target.scrollTop, scrollPercent);
             }
         };
 
-        // Setup scroll listeners on all found scrollable elements
-        let scrollableElements: HTMLElement[] = [];
-        const setupListeners = () => {
-            if (!containerRef.current) return;
-            scrollableElements = findScrollableElements(containerRef.current);
-            scrollableElements.forEach(el => {
-                el.addEventListener('scroll', handleScroll, { passive: true });
-            });
-            // Also listen on the container itself
-            containerRef.current.addEventListener('scroll', handleScroll, { passive: true });
-        };
-
-        // Use MutationObserver to re-setup listeners when DOM changes (DocViewer loads)
-        const observer = new MutationObserver(() => {
-            // Cleanup old listeners
-            scrollableElements.forEach(el => el.removeEventListener('scroll', handleScroll));
-            // Setup new listeners
-            setupListeners();
-        });
-
-        if (containerRef.current) {
-            observer.observe(containerRef.current, { childList: true, subtree: true });
-            // Initial setup after a small delay for DocViewer to render
-            setTimeout(setupListeners, 500);
+        const currentContainer = containerRef.current;
+        if (currentContainer) {
+            currentContainer.addEventListener('scroll', handleScroll, { passive: true });
         }
 
         return () => {
-            observer.disconnect();
-            scrollableElements.forEach(el => el.removeEventListener('scroll', handleScroll));
-            containerRef.current?.removeEventListener('scroll', handleScroll);
+            if (currentContainer) {
+                currentContainer.removeEventListener('scroll', handleScroll);
+            }
         };
     }, [activeAttachment, enableDrawing, onScroll]);
 
@@ -296,16 +266,22 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
         );
     }
 
-    return (
-        <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', bgcolor: '#020617', position: 'relative', overflow: 'hidden', '&:hover .header-controls': { opacity: 1 } }}>
+    const isImage = activeAttachment.type === 'image';
+    const isDocx = activeAttachment.name.toLowerCase().endsWith('.docx');
+    const isExcel = activeAttachment.name.match(/\.(xlsx|xls)$/i);
+    // isPdf should only be true if it's actually a PDF, not a DOCX or other office file
+    const isPdf = !isDocx && !isExcel && (activeAttachment.type === 'pdf' || activeAttachment.name.toLowerCase().endsWith('.pdf'));
 
-            {/* Floating Header (Moved to Bottom to avoid PDF Toolbar overlap) */}
+    return (
+        <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', bgcolor: '#020617', position: 'relative', overflow: 'auto', '&:hover .header-controls': { opacity: 1 } }}>
+
+            {/* Floating Header */}
             {!isProjection && (
                 <Box className="header-controls" sx={{
                     position: 'absolute', bottom: 30, left: '50%', transform: 'translateX(-50%)', zIndex: 100, p: 0,
-                    opacity: 1, // Fixed: Always visible for now to test, user can remove 'opacity: 0' and hover effect if desired
+                    opacity: 1,
                     transition: 'opacity 0.3s',
-                    width: 'auto', pointerEvents: 'none' // Wrapper is none, children auto
+                    width: 'auto', pointerEvents: 'none'
                 }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 2, pointerEvents: 'auto', bgcolor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(8px)', borderRadius: 10, p: 1 }}>
 
@@ -332,13 +308,6 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
 
                         {/* Controls */}
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                            {activeAttachment.type === 'pdf' && (
-                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, bgcolor: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(8px)', borderRadius: 10, px: 2, py: 0.5, color: 'rgba(255,255,255,0.8)' }}>
-                                    <IconButton onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1} size="small" sx={{ color: 'inherit', '&:disabled': { opacity: 0.3 } }}><ChevronLeft fontSize="small" /></IconButton>
-                                    <Typography variant="caption" fontWeight="bold" sx={{ fontFamily: 'monospace' }}>{currentPage} / {totalPages}</Typography>
-                                    <IconButton onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages} size="small" sx={{ color: 'inherit', '&:disabled': { opacity: 0.3 } }}><ChevronRight fontSize="small" /></IconButton>
-                                </Box>
-                            )}
                             {onClose && (
                                 <IconButton onClick={onClose} size="small" sx={{ bgcolor: 'rgba(0,0,0,0.4)', color: 'white', '&:hover': { bgcolor: 'white', color: 'black' } }}>
                                     <Close fontSize="small" />
@@ -353,44 +322,78 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
             <Box
                 ref={containerRef}
                 sx={{
-                    flex: 1, overflow: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    position: 'relative', cursor: (enableDrawing || enableLaser) ? 'crosshair' : 'default'
+                    flex: 1, overflow: 'auto',
+                    // For PDF and DOCX we want block display to allow scrolling, for images maybe flex center
+                    // But 'display: flex' interferes with scrollable block content if we are not careful.
+                    // Let's use flex for image, block for others.
+                    display: isImage ? 'flex' : 'block',
+                    alignItems: isImage ? 'center' : 'initial',
+                    justifyContent: isImage ? 'center' : 'initial',
+                    position: 'relative', cursor: (enableDrawing || enableLaser) ? 'crosshair' : 'default',
+                    bgcolor: isImage ? '#1e293b' : 'white' // Dark for images, white for documents
                 }}
                 onMouseMove={!isProjection ? handleMouseMove : undefined}
                 onMouseDown={!isProjection ? handleMouseDown : undefined}
                 onMouseUp={!isProjection ? handleMouseUp : undefined}
                 onMouseLeave={() => { if (!isProjection) { setShowLaser(false); setIsDrawing(false); } }}
             >
-                {/* Overlay to capture mouse events over iframe when tools are active */}
-                {(enableLaser || enableDrawing) && (
-                    <Box sx={{ position: 'absolute', inset: 0, zIndex: 20, cursor: 'none' }} />
-                )}
-                <Box sx={{ position: 'relative', zIndex: 10, width: '100%', height: '100%', p: 2, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    {activeAttachment.type === 'image' ? (
+                {/* Note: Mouse events are handled on the containerRef Box directly, no overlay needed */}
+
+                {/* Content Container */}
+                <Box sx={{
+                    width: '100%',
+                    minHeight: '100%',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    py: 4,
+                    px: 2
+                }}>
+
+                    {isImage && (
                         <img
                             src={activeAttachment.url}
                             alt={activeAttachment.name}
                             style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)' }}
                         />
-                    ) : (
-                        <Box sx={{ width: '100%', height: '100%', bgcolor: 'white', boxShadow: 10, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+                    )}
 
-                            {/* Excel Toggle (only for Excel/XLSX files) */}
-                            {activeAttachment.name.match(/\.(xlsx|xls)$/i) && !isProjection && (
-                                <Box sx={{ p: 1, borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end', bgcolor: '#f8fafc' }}>
-                                    <Button
-                                        size="small"
-                                        onClick={() => setUseNativeExcel(!useNativeExcel)}
-                                        startIcon={useNativeExcel ? <Web /> : <TableView />}
-                                        variant="outlined"
-                                        color="secondary"
-                                    >
-                                        {useNativeExcel ? "Vue Web (Google)" : "Vue Cellules (Bêta)"}
-                                    </Button>
-                                </Box>
-                            )}
+                    {isPdf && (
+                        <PdfRenderer url={activeAttachment.url} />
+                    )}
 
-                            {(activeAttachment.name.match(/\.(xlsx|xls)$/i) && useNativeExcel && excelHtml) ? (
+                    {isDocx && (
+                        <Box sx={{ width: '100%', maxWidth: '900px', bgcolor: 'white', p: 4, minHeight: '800px', boxShadow: 3, borderRadius: 1 }}>
+                            {docxLoading && <CircularProgress />}
+                            {docxError && <Typography color="error">{docxError}</Typography>}
+                            <div ref={docxContainerRef} className="docx-content" />
+                            <style>{`
+                                .docx-preview-wrapper { padding: 0 !important; background: white !important; }
+                                .docx-content { background: white !important; }
+                                .docx-content table { background: white !important; }
+                                .docx-content td, .docx-content th { background: inherit !important; }
+                                /* Track Changes styling */
+                                .docx-content ins { color: #059669 !important; text-decoration: underline !important; background: #ecfdf5 !important; }
+                                .docx-content del { color: #dc2626 !important; text-decoration: line-through !important; background: #fef2f2 !important; }
+                            `}</style>
+                        </Box>
+                    )}
+
+                    {isExcel && (
+                        <Box sx={{ width: '100%', height: '100%', bgcolor: 'white', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+                            <Box sx={{ p: 1, borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end', bgcolor: '#f8fafc' }}>
+                                <Button
+                                    size="small"
+                                    onClick={() => setUseNativeExcel(!useNativeExcel)}
+                                    startIcon={useNativeExcel ? <Web /> : <TableView />}
+                                    variant="outlined"
+                                    color="secondary"
+                                >
+                                    {useNativeExcel ? "Vue Simple" : "Vue Grille"}
+                                </Button>
+                            </Box>
+
+                            {excelHtml ? (
                                 <Box sx={{ flex: 1, overflow: 'auto', p: 4, bgcolor: 'white' }}>
                                     <style>
                                         {`
@@ -401,74 +404,60 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
                                     </style>
                                     <div dangerouslySetInnerHTML={{ __html: excelHtml }} />
                                 </Box>
-                            ) : activeAttachment.name.match(/\.(xlsx|xls|docx|doc|pptx|ppt|pdf)$/i) ? (
-                                // ALL Office + PDF: Use DocViewer for native rendering (enables scroll sync)
-                                <Box sx={{
-                                    flex: 1,
-                                    overflowY: 'scroll', // Force scrollbar presence
-                                    bgcolor: 'white',
-                                    '&::-webkit-scrollbar': { width: '10px' },
-                                    '&::-webkit-scrollbar-track': { bgcolor: '#f1f5f9' },
-                                    '&::-webkit-scrollbar-thumb': { bgcolor: '#94a3b8', borderRadius: '5px', '&:hover': { bgcolor: '#64748b' } }
-                                }}>
-                                    <DocViewer
-                                        documents={[{ uri: activeAttachment.url, fileName: activeAttachment.name }]}
-                                        pluginRenderers={DocViewerRenderers}
-                                        config={{
-                                            header: { disableHeader: true, disableFileName: true },
-                                            pdfZoom: { defaultZoom: 1, zoomJump: 0.2 },
-                                            pdfVerticalScrollByDefault: true
-                                        }}
-                                        style={{ width: '100%', height: '100%', minHeight: '500px' }}
-                                    />
-                                </Box>
                             ) : (
-                                <iframe
-                                    // Use a composite key that ONLY changes when we REALLY need a reload
-                                    // Using just ID or ID+Page might cause flashing.
-                                    // But PDF hash nav requires reload if it doesn't support pushState.
-                                    // Try using `key` only on ID change, and let hash do the work.
-                                    // If hash doesn't work, we revert to ID+Page key.
-                                    key={`${activeAttachment.id}${isProjection ? `-${currentPage}` : ''}`}
-                                    src={`${activeAttachment.url}#page=${currentPage}`}
-                                    style={{ width: '100%', height: '100%', border: 'none' }}
-                                    title={activeAttachment.name}
-                                />
-                            )}
-
-                            {/* Fallback/External Open Button for Office Docs */}
-                            {(activeAttachment.name.match(/\.(xlsx|xls|docx|doc|pptx|ppt)$/i) && !isProjection) && (
-                                <Box sx={{ position: 'absolute', bottom: 16, right: 16, zIndex: 15 }}>
-                                    <Button
-                                        variant="contained"
-                                        size="small"
-                                        onClick={() => window.open(activeAttachment.url, '_blank')}
-                                        sx={{ bgcolor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', '&:hover': { bgcolor: 'rgba(0,0,0,0.8)' } }}
-                                    >
-                                        Ouvrir l'original
-                                    </Button>
+                                <Box sx={{ p: 4, textAlign: 'center' }}>
+                                    <Typography>Chargement Excel...</Typography>
                                 </Box>
                             )}
                         </Box>
                     )}
+
+                    {/* Fallback for others */}
+                    {!isImage && !isPdf && !isDocx && !isExcel && (
+                        <Box sx={{ color: 'white', textAlign: 'center', mt: 10 }}>
+                            <Typography variant="h5" gutterBottom>Format non supporté pour l'aperçu rapide</Typography>
+                            <Button variant="contained" href={activeAttachment.url} target="_blank">Télécharger</Button>
+                        </Box>
+                    )}
                 </Box>
 
-                {enableDrawing && <canvas ref={canvasRef} style={{ position: 'absolute', inset: 0, zIndex: 30, pointerEvents: 'none' }} />}
-
-                {enableLaser && showLaser && (
+                {/* Drawing and Laser Overlay - Fixed over viewport, doesn't scroll */}
+                {(enableDrawing || enableLaser) && (
                     <Box
                         sx={{
-                            position: 'absolute', width: 16, height: 16, bgcolor: '#dc2626', borderRadius: '50%',
-                            boxShadow: '0 0 15px 4px rgba(220,38,38,0.8)', zIndex: 40, pointerEvents: 'none', mixBlendMode: 'screen',
-                            left: laserPos.x, top: laserPos.y, transform: 'translate(-50%, -50%)'
+                            position: 'absolute',
+                            inset: 0,
+                            zIndex: 50,
+                            pointerEvents: 'none' // Allow clicks to pass through to content
                         }}
                     >
-                        <Box sx={{ position: 'absolute', inset: 0, bgcolor: '#ef4444', borderRadius: '50%', animation: 'ping 1s cubic-bezier(0, 0, 0.2, 1) infinite', opacity: 0.5 }} />
+                        {enableDrawing && (
+                            <canvas
+                                ref={canvasRef}
+                                style={{
+                                    position: 'absolute',
+                                    inset: 0,
+                                    width: '100%',
+                                    height: '100%',
+                                    pointerEvents: 'none'
+                                }}
+                            />
+                        )}
+
+                        {enableLaser && showLaser && (
+                            <Box
+                                sx={{
+                                    position: 'absolute', width: 20, height: 20, bgcolor: '#dc2626', borderRadius: '50%',
+                                    boxShadow: '0 0 20px 6px rgba(220,38,38,0.9)', pointerEvents: 'none',
+                                    left: laserPos.x, top: laserPos.y, transform: 'translate(-50%, -50%)'
+                                }}
+                            >
+                                <Box sx={{ position: 'absolute', inset: 0, bgcolor: '#ef4444', borderRadius: '50%', animation: 'ping 1s cubic-bezier(0, 0, 0.2, 1) infinite', opacity: 0.6 }} />
+                            </Box>
+                        )}
                     </Box>
                 )}
             </Box>
-
-
         </Box>
     );
 };

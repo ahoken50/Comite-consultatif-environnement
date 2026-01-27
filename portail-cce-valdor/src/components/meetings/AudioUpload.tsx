@@ -56,15 +56,20 @@ const AudioUpload: React.FC<AudioUploadProps> = ({
     const [isTranscribing, setIsTranscribing] = useState(false);
     const audioRef = React.useRef<HTMLAudioElement | null>(null);
 
-    // Use audioRecordings array if available, otherwise fall back to legacy single recording
-    // Avoid mixing both to prevent duplicates and stale data issues
+    // Merge both audioRecordings array and legacy audioRecording field
+    // Avoid duplicates by checking storagePath
     const recordings: AudioRecording[] = (() => {
-        const arr = Array.isArray(audioRecordings) ? audioRecordings : [];
-        if (arr.length > 0) {
-            return arr;
+        const arr = Array.isArray(audioRecordings) ? [...audioRecordings] : [];
+
+        // Add legacy audioRecording if it exists and isn't already in the array
+        if (audioRecording) {
+            const isDuplicate = arr.some(rec => rec.storagePath === audioRecording.storagePath);
+            if (!isDuplicate) {
+                arr.push(audioRecording);
+            }
         }
-        // Fall back to legacy single recording only if array is empty
-        return audioRecording ? [audioRecording] : [];
+
+        return arr;
     })();
 
     const handleDragOver = useCallback((e: React.DragEvent) => {

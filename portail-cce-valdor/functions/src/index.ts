@@ -315,7 +315,7 @@ FORMAT EXACT:
 
         // 2. Update item in new array
         if (Array.isArray(currentData?.audioRecordings)) {
-            const recordings = currentData.audioRecordings;
+            const recordings = currentData!.audioRecordings;
             const index = recordings.findIndex((r: any) => r.storagePath === storagePath);
 
             if (index !== -1) {

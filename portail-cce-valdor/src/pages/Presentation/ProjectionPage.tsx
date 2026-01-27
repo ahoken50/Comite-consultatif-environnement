@@ -84,7 +84,7 @@ const ProjectionPage: React.FC = () => {
                     </Box>
 
                     {/* Document Content */}
-                    <Box sx={{ flex: 1, position: 'relative' }}>
+                    <Box sx={{ flex: 1, position: 'relative', height: '100%', overflow: 'hidden' }}>
                         <DocumentViewer
                             activeAttachment={state.activeAttachment}
                             allAttachments={currentItem.attachments}
