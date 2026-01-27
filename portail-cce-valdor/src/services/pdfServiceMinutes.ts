@@ -596,7 +596,7 @@ const generateHTMLDocument = (meeting: Meeting, _globalNotes?: string): string =
         @media print {
             @page {
                 size: legal portrait;
-                margin: 0.75in 0.5in 0.75in 0.67in;
+                margin: 0.75in 0.5in 0.75in 2cm;
             }
 
             body {
