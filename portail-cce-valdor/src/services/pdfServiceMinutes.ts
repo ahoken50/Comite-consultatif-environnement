@@ -219,7 +219,7 @@ const generateHTMLDocument = (meeting: Meeting, _globalNotes?: string): string =
 
     const formatName = (a: typeof presents[0]) => {
         const roleLabel = getRoleLabelPDF(a.role);
-        return roleLabel ? `${a.name}, ${roleLabel}` : a.name;
+        return roleLabel ? `${a.name} (${roleLabel})` : a.name;
     };
 
     // Get president and secretary for signatures
@@ -694,7 +694,7 @@ const generateHTMLDocument = (meeting: Meeting, _globalNotes?: string): string =
             ${absents.length > 0 ? `
             <div class="attendance-group">
                 <h3>Étaient absents</h3>
-                <div>${absents.map(a => a.name).join(', ')}.</div>
+                <div>${absents.map(formatName).join(', ')}.</div>
             </div>
             ` : ''}
         </section>
