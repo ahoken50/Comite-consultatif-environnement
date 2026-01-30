@@ -11,6 +11,7 @@ interface AgendaItemEditorProps {
     onAgendaItemChange: (itemId: string, field: keyof AgendaItem, value: any) => void;
     onMinuteEntryChange: (itemId: string, entryIndex: number, field: string, value: any) => void;
     onAddMinuteEntry: (itemId: string) => void;
+    onDeleteMinuteEntry: (itemId: string, entryIndex: number) => void;
     onDecisionChange: (itemId: string, value: string) => void;
     readOnly?: boolean;
     meetingId?: string;
@@ -28,6 +29,7 @@ const AgendaItemEditor: React.FC<AgendaItemEditorProps> = ({
     onAgendaItemChange,
     onMinuteEntryChange,
     onAddMinuteEntry,
+    onDeleteMinuteEntry,
     onDecisionChange,
     readOnly = false,
     meetingId,
@@ -61,6 +63,7 @@ const AgendaItemEditor: React.FC<AgendaItemEditorProps> = ({
                             entryIndex={entryIndex}
                             itemId={item.id}
                             onChange={onMinuteEntryChange}
+                            onDelete={() => onDeleteMinuteEntry(item.id, entryIndex)}
                             readOnly={readOnly}
                             itemTitle={item.title}
                             itemDescription={item.description || ''}

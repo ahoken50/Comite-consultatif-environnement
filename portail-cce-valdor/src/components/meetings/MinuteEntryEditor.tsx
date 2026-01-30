@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Box, Grid, TextField, MenuItem, IconButton, Tooltip, CircularProgress, InputAdornment, Typography, Dialog, DialogTitle, DialogContent, DialogActions, Button } from '@mui/material';
-import { AutoMode, Link, Shield, CheckCircle, Warning, HelpOutline, AutoAwesome } from '@mui/icons-material';
+import { AutoMode, Link, Shield, CheckCircle, Warning, HelpOutline, AutoAwesome, Delete } from '@mui/icons-material';
 import { useSelector } from 'react-redux';
 import type { RootState } from '../../store/rootReducer';
 import type { MinuteEntry } from '../../types/meeting.types';
@@ -14,6 +14,7 @@ interface MinuteEntryEditorProps {
     entryIndex: number;
     itemId: string;
     onChange: (itemId: string, entryIndex: number, field: string, value: any) => void;
+    onDelete?: () => void;
     readOnly?: boolean;
     itemTitle: string;
     itemDescription: string;
@@ -31,6 +32,7 @@ const MinuteEntryEditor: React.FC<MinuteEntryEditorProps> = ({
     entryIndex,
     itemId,
     onChange,
+    onDelete,
     readOnly = false,
     itemTitle,
     itemDescription,
@@ -220,10 +222,22 @@ const MinuteEntryEditor: React.FC<MinuteEntryEditorProps> = ({
                 bgcolor: 'grey.50',
                 borderRadius: 1,
                 border: '1px solid',
-                borderColor
+                borderColor,
+                position: 'relative'
             }}
         >
-            <Grid container spacing={2} sx={{ mb: 1 }}>
+            {!readOnly && onDelete && (
+                <IconButton
+                    size="small"
+                    onClick={onDelete}
+                    sx={{ position: 'absolute', top: 4, right: 4 }}
+                    color="error"
+                    title="Supprimer cette entrée"
+                >
+                    <Delete fontSize="small" />
+                </IconButton>
+            )}
+            <Grid container spacing={2} sx={{ mb: 1, pr: 4 }}>
                 <Grid size={{ xs: 12, sm: 4 }}>
                     <TextField
                         select

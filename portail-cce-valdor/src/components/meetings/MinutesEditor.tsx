@@ -866,6 +866,20 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate, readOn
                                 onAgendaItemChange={handleAgendaItemChange}
                                 onMinuteEntryChange={handleMinuteEntryChange}
                                 onAddMinuteEntry={handleAddMinuteEntry}
+                                onDeleteMinuteEntry={(itemId, entryIndex) => {
+                                    if (window.confirm("Voulez-vous vraiment supprimer cette entrée ?")) {
+                                        const newItems = localAgendaItems.map(i => {
+                                            if (i.id === itemId) {
+                                                const newEntries = [...(i.minuteEntries || [])];
+                                                newEntries.splice(entryIndex, 1);
+                                                return { ...i, minuteEntries: newEntries };
+                                            }
+                                            return i;
+                                        });
+                                        setLocalAgendaItems(newItems);
+                                        setHasUnsavedChanges(true);
+                                    }
+                                }}
                                 onDecisionChange={handleDecisionChange}
                                 meetingId={meeting.id}
                                 meetingDate={meeting.date}
