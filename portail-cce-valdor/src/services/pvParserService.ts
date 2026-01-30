@@ -137,10 +137,11 @@ const parseRawTextToPV = (text: string): ParsedPVData => {
     let currentEntry: ParsedSection['entries'][0] | null = null;
     let recentLines: string[] = []; // To capture titles that appeared before we realized (e.g. Resolution detected)
 
-    // Regex Definitions
-    const resolutionRegex = /^R[ÉE]SOLUTION\s*[\d\s]*(\d{2})[-–—.](\d+)/i;
+    // Improved Regex Definitions
+    // Handle optional bullet points, spaces, and diverse separators
+    const resolutionRegex = /^(?:[•-]\s*)?R[ÉE]SOLUTION[\s\.]*[\d\s]*(\d{2})[-–—.](\d+)/i;
     // Allow flexible spacing after Commentaire
-    const commentaireRegex = /^COMMENTAIRE\s*[\d\s]*(\d{2})[-–—.]?([A-Z])/i;
+    const commentaireRegex = /^(?:[•-]\s*)?COMMENTAIRE[\s\.]*[\d\s]*(\d{2})[-–—.]?([A-Z])/i;
 
     const proposerRegex = /(?:Propos[ée] par|Sur la proposition de)\s*[:\s](.*)/i;
     const seconderRegex = /(?:Appuy[ée] par|Et l['’]appui de)\s*[:\s](.*)/i;
@@ -156,9 +157,15 @@ const parseRawTextToPV = (text: string): ParsedPVData => {
         // Strong indicators
         if (/^(Adoption|Retour|Suivi|Présentation|Varia|Mot de bienvenue|Levée)/i.test(line)) return true;
 
+        // Numbered list item (e.g. "4.1 Some Title")
+        if (/^(\d+(\.\d+)*)\.?\s+[A-ZÀ-Ÿ]/.test(line)) return true;
+
         // Capitalized start but not a sentence ending with dot
-        if (/^[A-Z]/.test(line)) {
+        // Also reject lines that look like a person's name (M. something) - handled above
+        if (/^[A-ZÀ-Ÿ]/.test(line)) {
             if (line.endsWith('.')) return false;
+            // Reject if it looks like just a date
+            if (/^\d{1,2}\s+[a-zéû]+\s+\d{4}$/i.test(line)) return false;
             return true;
         }
 
@@ -184,13 +191,22 @@ const parseRawTextToPV = (text: string): ParsedPVData => {
 
     for (const line of lines) {
         // --- 1. DETECT RESOLUTION / COMMENT ---
-        const resMatch = line.match(resolutionRegex);
-        const comMatch = line.match(commentaireRegex);
+        // We trim start to ignore indentation
+        const cleanLine = line.trimStart();
+        const resMatch = cleanLine.match(resolutionRegex);
+        const comMatch = cleanLine.match(commentaireRegex);
 
         if (resMatch) {
             // If no current section, try to recover a title
             if (!currentSection) {
-                const fallbackTitle = recentLines.length > 0 ? recentLines[recentLines.length - 1] : 'Point sans titre';
+                // Look for the best title candidate in recent lines
+                // Prefer the line immediately preceding, unless it looks like noise
+                let fallbackTitle = 'Point sans titre';
+                if (recentLines.length > 0) {
+                    // Check matching item in recent lines
+                    const last = recentLines[recentLines.length - 1];
+                    if (isTitleCandidate(last)) fallbackTitle = last;
+                }
                 startNewSection(fallbackTitle);
             }
 
@@ -206,7 +222,11 @@ const parseRawTextToPV = (text: string): ParsedPVData => {
 
         if (comMatch) {
             if (!currentSection) {
-                const fallbackTitle = recentLines.length > 0 ? recentLines[recentLines.length - 1] : 'Point sans titre';
+                let fallbackTitle = 'Point sans titre';
+                if (recentLines.length > 0) {
+                    const last = recentLines[recentLines.length - 1];
+                    if (isTitleCandidate(last)) fallbackTitle = last;
+                }
                 startNewSection(fallbackTitle);
             }
 
@@ -232,11 +252,16 @@ const parseRawTextToPV = (text: string): ParsedPVData => {
         if (isTitleCandidate(line)) {
             const numberedTitleMatch = line.match(/^(\d+(?:\.\d+)*)\.?\s+(.*)/);
 
+            // Prioritize strong keywords
             const isStrongTitle = numberedTitleMatch ||
-                /^(Adoption|Retour|Présentation|Varia|Mot de bienvenue)/i.test(line);
+                /^(Adoption|Retour|Présentation|Varia|Mot de bienvenue|Correspondance|Dépôt)/i.test(line);
 
             if (isStrongTitle) {
-                startNewSection(line);
+                // Verify we aren't inside a resolution block (resolutions rarely have titles inside them)
+                // But sometimes a new point starts immediately. 
+                // We'll trust strong titles.
+                const titleText = numberedTitleMatch ? numberedTitleMatch[2] : line;
+                startNewSection(titleText);
                 recentLines = [];
                 continue;
             }
@@ -249,11 +274,11 @@ const parseRawTextToPV = (text: string): ParsedPVData => {
 
         if (propMatch && currentSection) {
             if (currentEntry) currentEntry.proposer = propMatch[1].trim();
-            continue;
+            // Don't continue, might contain other info
         }
         if (secMatch && currentSection) {
             if (currentEntry) currentEntry.seconder = secMatch[1].trim();
-            continue;
+            // Don't continue
         }
 
         // --- 5. CONTENT ---
@@ -262,15 +287,21 @@ const parseRawTextToPV = (text: string): ParsedPVData => {
             // Filter noise (page numbers)
             if (/^page \d+/i.test(line)) continue;
 
+            // Filter header repetition
+            if (/^PROCES-VERBAL/i.test(line)) continue;
+
             if (currentEntry) {
-                currentEntry.content.push(line);
+                // Clean up proposer/seconder lines from content if they were just extracted
+                if (!propMatch && !secMatch) {
+                    currentEntry.content.push(line);
+                }
             } else {
                 activeSection.content.push(line);
             }
         }
 
         recentLines.push(line);
-        if (recentLines.length > 3) recentLines.shift();
+        if (recentLines.length > 5) recentLines.shift(); // Keep a bit more history
     }
 
     closeCurrentSection();

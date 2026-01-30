@@ -215,8 +215,9 @@ export const parseAgendaDOCX = async (file: File): Promise<ParsedMeetingData> =>
 
 
     // Regex - Relaxed for better matching (handle NBSP, dashes, etc.)
-    const resolutionRegex = /^R[ÉE]SOLUTION[\s\u00A0]*(\d{2})?[-–—.]?(\d+)?/i; // Made numbers optional for detection purposes
-    const commentaireRegex = /^COMMENTAIRE[\s\u00A0]*(\d{2})?[-–—.]?([A-Z])?/i;
+    // Removed strict ^ anchor to allow for bullet points or slight indentation which might remain after trim
+    const resolutionRegex = /^(?:[•-]\s*)?R[ÉE]SOLUTION[\s\.]*[\d\s]*(\d{2})[-–—.](\d+)/i;
+    const commentaireRegex = /^(?:[•-]\s*)?COMMENTAIRE[\s\.]*[\d\s]*(\d{2})[-–—.]?([A-Z])/i;
     const formalLanguageRegex = /^(CONSID[ÉE]RANT|ATTENDU|RECONNAISSANT|IL EST R[ÉE]SOLU)/i;
     // Updated Blacklist: Now includes resolution keywords and table headers found in logs
     const titleBlacklistRegex = /^(PROCES-VERBAL|PROCÈS-VERBAL|ORDRE DU JOUR|COMITÉ CONSULTATIF|R[ÉE]SOLUTION|COMMENTAIRE|NOM|MANDAT|SIÈGE|DÉBUT DU|FIN DU)/i;
@@ -249,69 +250,88 @@ export const parseAgendaDOCX = async (file: File): Promise<ParsedMeetingData> =>
         // Check if element is inside a table (table content should NOT become titles)
         const isInsideTable = element.closest('table') !== null || element.tagName === 'TR';
 
-        // A. Detect Resolution/Comment (Highest Priority Anchor) - Works even in tables
-        const resMatch = text.match(resolutionRegex);
-        const comMatch = text.match(commentaireRegex);
+        // SPLITTING LOGIC: Check if text contains Resolution/Comment in the middle (complex documents)
+        // We look for patterns like "...text... RÉSOLUTION 05-01 ...text..."
+        // If found, we split into multiple blocks
 
-        if (resMatch) {
-            console.log(`[docxParser] RESOLUTION detected: "${text.substring(0, 40)}..." -> Number: ${resMatch[1] || resMatch[2]}`);
-            blocks.push({
-                type: 'RESOLUTION',
-                text: text,
-                metadata: { number: resMatch[1] || resMatch[2] || resMatch[0], type: 'resolution' }
-            });
-            continue;
-        }
+        // Relaxed Regex for detecting start of Resolution/Comment ANYWHERE in text
+        // Note: We use capturing groups to keep the delimiter
+        const splitRegex = /((?:R[ÉE]SOLUTION|COMMENTAIRE)[\s\.]*[\d\s]*\d{2}[-–—.]\d+(?:-[A-Z])?)/i;
 
-        if (comMatch) {
-            console.log(`[docxParser] COMMENT detected: "${text.substring(0, 40)}..." -> Number: ${comMatch[1] || comMatch[2]}`);
-            blocks.push({
-                type: 'COMMENT',
-                text: text,
-                metadata: { number: comMatch[1] || comMatch[2] || comMatch[0], type: 'comment' }
-            });
-            continue;
-        }
+        // Split by the regex
+        // Example: "Intro text. RÉSOLUTION 05-01 Content." -> ["Intro text. ", "RÉSOLUTION 05-01", " Content."]
+        const parts = text.split(splitRegex).filter(p => p.trim().length > 0);
 
-        // If inside a table, skip title detection - just add as content
-        if (isInsideTable) {
-            // Skip very short table cells (headers like "NOM", "MANDAT")
-            if (text.length > 20) {
-                blocks.push({ type: 'CONTENT', text: text });
+        // Process each part as a potential separate block
+        for (const part of parts) {
+            const partText = part.trim();
+
+            // A. Detect Resolution/Comment (Highest Priority Anchor)
+            const resMatch = partText.match(resolutionRegex);
+            const comMatch = partText.match(commentaireRegex);
+
+            if (resMatch) {
+                console.log(`[docxParser] RESOLUTION detected: "${partText.substring(0, 40)}..." -> Number: ${resMatch[1] || resMatch[2]}`);
+                blocks.push({
+                    type: 'RESOLUTION',
+                    text: partText,
+                    metadata: { number: resMatch[1] || resMatch[2] || resMatch[0], type: 'resolution' }
+                });
+                continue;
             }
-            continue;
+
+            if (comMatch) {
+                console.log(`[docxParser] COMMENT detected: "${partText.substring(0, 40)}..." -> Number: ${comMatch[1] || comMatch[2]}`);
+                blocks.push({
+                    type: 'COMMENT',
+                    text: partText,
+                    metadata: { number: comMatch[1] || comMatch[2] || comMatch[0], type: 'comment' }
+                });
+                continue;
+            }
+
+            // If inside a table, skip title detection - just add as content
+            if (isInsideTable) {
+                // Skip very short table cells (headers like "NOM", "MANDAT")
+                if (partText.length > 20) {
+                    blocks.push({ type: 'CONTENT', text: partText });
+                }
+                continue;
+            }
+
+            const tagName = element.tagName;
+
+            // B. Detect Titles (Only if it's the FULL text of the element, or a significant standalone part)
+            // If we split the text, subsequent parts are less likely to be titles unless they look like it
+
+            // B1. Keyword Start
+            const isKeywordTitle = titleKeywordsRegex.test(partText) && partText.length < 200;
+
+            // B2. Explicit H1 (Only if it's the original full text)
+            const isH1 = tagName === 'H1' && parts.length === 1;
+
+            // B3. Visual Bold Title
+            const isBoldParagraph = tagName === 'P' && (
+                element.querySelector('strong') !== null ||
+                element.querySelector('b') !== null
+            ) && partText.length < 150 && parts.length === 1;
+
+            // B4. All Caps Title
+            const isAllCaps = partText.length > 5 && partText === partText.toUpperCase() && partText.length < 100;
+
+            const isPotentialTitle = isH1 || isKeywordTitle || isBoldParagraph || isAllCaps;
+            const isBlacklisted = titleBlacklistRegex.test(partText) || /^\d+$/.test(partText);
+
+            // Additional check: A title shouldn't be too long
+            if (isPotentialTitle && !isBlacklisted && !formalLanguageRegex.test(partText) && partText.length < 150) {
+                console.log(`[docxParser] TITLE detected: "${partText.substring(0, 50)}..."`);
+                blocks.push({ type: 'TITLE', text: partText });
+                continue;
+            }
+
+            // C. Default: Content
+            blocks.push({ type: 'CONTENT', text: partText });
         }
-
-        const tagName = element.tagName;
-
-        // B. Detect Titles
-
-        // B1. Keyword Start
-        const isKeywordTitle = titleKeywordsRegex.test(text) && text.length < 200;
-
-        // B2. Explicit H1
-        const isH1 = tagName === 'H1';
-
-        // B3. Visual Bold Title
-        const isBoldParagraph = tagName === 'P' && (
-            element.querySelector('strong') !== null ||
-            element.querySelector('b') !== null
-        ) && text.length < 150;
-
-        // B4. All Caps Title
-        const isAllCaps = text.length > 5 && text === text.toUpperCase() && text.length < 100;
-
-        const isPotentialTitle = isH1 || isKeywordTitle || isBoldParagraph || isAllCaps;
-        const isBlacklisted = titleBlacklistRegex.test(text) || /^\d+$/.test(text);
-
-        if (isPotentialTitle && !isBlacklisted && !resolutionRegex.test(text) && !commentaireRegex.test(text) && !formalLanguageRegex.test(text)) {
-            console.log(`[docxParser] TITLE detected: "${text.substring(0, 50)}..." (H1:${isH1}, Keyword:${isKeywordTitle}, Bold:${isBoldParagraph}, Caps:${isAllCaps})`);
-            blocks.push({ type: 'TITLE', text: text });
-            continue;
-        }
-
-        // C. Default: Content
-        blocks.push({ type: 'CONTENT', text: text });
     }
 
     // ============================================================

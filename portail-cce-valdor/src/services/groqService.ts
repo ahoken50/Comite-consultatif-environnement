@@ -132,12 +132,6 @@ ${constraintSection}
 - C'est généralement en **gras** dans le document
 - Si pas de sous-titre explicite, laisse le champ "titre" vide pour la résolution
 
-📋 EXEMPLE CONCRET :
-Point ODJ #3 : "Renouvellement des mandats" (titre ODJ)
-  ├─ RÉSOLUTION 03-04 → sous-titre: "Reconduction des membres sortants"
-  ├─ COMMENTAIRE 03-A → sous-titre: "Discussion sur les absences"
-  └─ RÉSOLUTION 03-05 → sous-titre: "Élection d'une présidente"
-
 ### 4. UN POINT ODJ = PLUSIEURS RÉSOLUTIONS/COMMENTAIRES POSSIBLES
 - IMPORTANT: Un seul point de l'ordre du jour peut contenir PLUSIEURS résolutions ET commentaires.
 - Exemple: Le point "Renouvellement des mandats" peut contenir RÉSOLUTION 03-04, COMMENTAIRE 03-A, ET RÉSOLUTION 03-05.
@@ -150,16 +144,16 @@ Point ODJ #3 : "Renouvellement des mandats" (titre ODJ)
 - Utilise le titre en gras comme "resolutions[].titre".
 - NE FUSIONNE PAS tout le texte en un seul bloc. Sépare chaque sujet distinct.
 
-### 4. TABLEAUX
+### 5. TABLEAUX
 - Si une résolution contient un tableau (ex: liste de mandats), convertis-le en texte formaté.
 - Utilise le format: "| Colonne1 | Colonne2 |" ou une liste à puces.
 - Place le tableau dans le champ "tableaux" de la résolution.
 
-### 5. CONSIDÉRANTS ET DISPOSITIF
+### 6. CONSIDÉRANTS ET DISPOSITIF
 - Liste COMPLÈTE de tous les CONSIDÉRANT/ATTENDU.
 - Le dispositif complet après "IL EST RÉSOLU".
 
-### 6. ASSOCIATION COMMENTAIRE → POINT ODJ (TRÈS IMPORTANT)
+### 7. ASSOCIATION COMMENTAIRE → POINT ODJ (TRÈS IMPORTANT)
 
 ⚠️ Les COMMENTAIRES (ex: COMMENTAIRE 03-B) ne vont PAS dans Varia !
 Chaque commentaire appartient au point ODJ dont il DISCUTE le sujet.
@@ -169,27 +163,22 @@ Chaque commentaire appartient au point ODJ dont il DISCUTE le sujet.
 2. Identifie LE SUJET discuté (ex: politique environnementale, ruches, bouteilles d'eau)
 3. Associe au point ODJ qui traite CE SUJET
 
-📋 EXEMPLES CONCRETS :
-- COMMENTAIRE qui parle de "politique environnementale" → Point "Renouvellement de la politique environnementale"  
-- COMMENTAIRE qui parle de "bouteilles d'eau" ou "plastique" → Point "Adoption recommandation bouteilles d'eau"
-- COMMENTAIRE qui parle de "ruches" ou "abeilles" ou "apiculture" → Point "Projet ruches Goldex"
-- COMMENTAIRE qui parle de "stations de lavage" ou "embarcations" → Point "Stations de lavage embarcations"
+### 8. EXEMPLE DE STRUCTURE COMPLEXE (CE QUE TU DOIS PRODUIRE)
+Si le PV contient :
+Point 3: Suivi des dossiers
+  [Texte intro]
+  RÉSOLUTION 3.1: Achat de bacs
+  [Texte discussion]
+  COMMENTAIRE 3.A: Question sur les bacs
+  RÉSOLUTION 3.2: Camions
 
-🚫 NE METS PAS dans Varia :
-- Les discussions qui précèdent une résolution
-- Les commentaires clairement liés à un sujet ODJ spécifique
+ALORS tu dois produire UN SEUL objet dans "points_traites" (ID 3) contenant:
+- resolutions[0] (3.1)
+- resolutions[1] (3.A - type comment)
+- resolutions[2] (3.2)
+- discussion_verbatim: "[Texte intro] + [Texte discussion]"
 
-✅ METS dans Varia SEULEMENT :
-- Les sujets vraiment divers sans lien avec les autres points
-- Les annonces générales
-
-### 7. ORDRE DES RÉSOLUTIONS ET COMMENTAIRES (CRITIQUE)
-- Les résolutions et commentaires doivent apparaître dans leur ORDRE CHRONOLOGIQUE (par numéro de code).
-- 03-03 avant 03-04 avant 03-05, etc.
-- 03-A avant 03-B avant 03-C, etc.
-- Si un commentaire (03-A) apparaît entre deux résolutions (03-04 et 03-05), place-le dans l'ordre correct.
-
-### 8. TOUS LES POINTS ODJ DOIVENT AVOIR DU CONTENU
+### 9. TOUS LES POINTS ODJ DOIVENT AVOIR DU CONTENU
 - NE JAMAIS laisser un point ODJ vide (discussion_verbatim: "").
 - Si un point n'a pas de résolution formelle, copie quand même TOUT le texte de discussion.
 - Même "Mots de bienvenue" ou "Levée de l'assemblée" ont du contenu à extraire.
@@ -212,8 +201,7 @@ ${rawText}
       {"nom": "Patricia Boutin", "role": "présidente"},
       {"nom": "Donald Ratté", "role": "vice-président"},
       {"nom": "Michaël Ross", "role": "secrétaire"},
-      {"nom": "Benjamin Turcotte", "role": "conseiller responsable"},
-      {"nom": "Luc Bossé", "role": "membre"}
+      // ...
     ],
     "absents": []
   },
@@ -227,25 +215,25 @@ ${rawText}
           "code": "03-04",
           "titre": "Renouvellement des mandats des membres du CCE",
           "type": "resolution",
-          "considerants": ["CONSIDÉRANT que le comité consultatif en environnement n'a eu aucune assemblée en plus d'un an...(TEXTE COMPLET)"],
-          "dispositif": "IL EST RÉSOLU de recommander au Conseil de Ville...(TEXTE COMPLET)",
-          "tableaux": "| SIÈGE | NOM | DÉBUT MANDAT | FIN MANDAT |\\n| 1 | BOSSÉ, Luc | 2022-06-09 | 2024-06-09 |",
+          "considerants": ["CONSIDÉRANT que..."],
+          "dispositif": "IL EST RÉSOLU de...",
+          "tableaux": "| SIÈGE | NOM | ... |",
           "proposer": "",
           "seconder": "",
           "vote": ""
         },
         {
           "code": "03-A",
-          "titre": "Élection d'une présidente et d'un vice-président",
+          "titre": "Élection d'une présidente",
           "type": "comment",
-          "contenu": "[TEXTE COMPLET du commentaire - tous les paragraphes de M. Turcotte, Mme Larochelle, etc.]"
+          "contenu": "[TEXTE COMPLET du commentaire]"
         },
         {
           "code": "03-05",
-          "titre": "Élection d'une présidente et d'un vice-président",
+          "titre": "Élection d'une présidente",
           "type": "resolution",
-          "considerants": ["CONSIDÉRANT que...(TEXTE COMPLET)"],
-          "dispositif": "IL EST RÉSOLU d'élire madame Patricia Boutin...(TEXTE COMPLET)",
+          "considerants": ["..."],
+          "dispositif": "IL EST RÉSOLU...",
           "proposer": "",
           "seconder": "",
           "vote": ""
@@ -300,7 +288,8 @@ ${JSON.stringify(initialData, null, 2)}
 4. **FUSION ABUSIVE (Validation Granularité)** :
    - Vérifie si un commentaire contient en réalité PLUSIEURS sujets séparés par des titres.
    - SI OUI : DÉCOUPE-LE en plusieurs objets "comment" distincts.
-   - Exemple: Un long commentaire qui parle de "Sujet A" puis "Sujet B" avec des titres internes doit devenir 2 commentaires.
+   - **CRITIQUE**: Scanne le texte pour trouver des motifs "RÉSOLUTION XX-XX" ou "COMMENTAIRE XX-X" qui auraient été oubliés dans le texte.
+   - Si tu en trouves, EXTRAIS-LES en tant qu'objets distincts.
 
 ## INSTRUCTIONS :
 - Analyse le CONTENU sémantique de chaque résolution/commentaire.

@@ -174,27 +174,63 @@ describe('pvParserService', () => {
         });
     });
 
-    describe('Resolution regex patterns', () => {
-        it('should match standard resolution format', () => {
-            const resolutionRegex = /R[ÉE]SOLUTION\s+(\d{2}-\d+)/i;
+    describe('New Robust Regex Patterns', () => {
+        it('should handle bullet points before Resolution/Comment', async () => {
+            const mammoth = await import('mammoth');
+            const { parseMinutesDOCX } = await import('./pvParserService');
 
-            expect('RÉSOLUTION 24-01'.match(resolutionRegex)).toBeTruthy();
-            expect('RESOLUTION 23-100'.match(resolutionRegex)).toBeTruthy();
-            expect('résolution 24-15'.match(resolutionRegex)).toBeTruthy();
+            (mammoth.default.extractRawText as ReturnType<typeof vi.fn>).mockResolvedValue({
+                value: `6. Affaires nouvelles
+                • RÉSOLUTION 24-40
+                Décision prise.
+                - COMMENTAIRE 24-A
+                Discussion sur le point.`
+            });
+
+            const mockFile = createMockFile('', 'test.docx');
+            const result = await parseMinutesDOCX(mockFile);
+
+            expect(result.agendaItems).toHaveLength(1);
+            expect(result.agendaItems[0].minuteEntries).toHaveLength(2);
+            expect(result.agendaItems[0].minuteEntries![0].number).toBe('24-40');
+            expect(result.agendaItems[0].minuteEntries![1].type).toBe('comment');
+            expect(result.agendaItems[0].minuteEntries![1].number).toBe('24-A');
         });
 
-        it('should match proposer patterns', () => {
-            const proposerRegex = /(?:Propos[ée] par|Sur la proposition de)\s*[:\s](.*)/i;
+        it('should handle weird spacing in numbers (PDF artifacts)', async () => {
+            const mammoth = await import('mammoth');
+            const { parseMinutesDOCX } = await import('./pvParserService');
 
-            expect('Proposé par M. Dupont'.match(proposerRegex)?.[1]).toBe('M. Dupont');
-            expect('Sur la proposition de Mme Martin'.match(proposerRegex)?.[1]).toBe('Mme Martin');
+            // The parser has a pre-cleaning step for this
+            (mammoth.default.extractRawText as ReturnType<typeof vi.fn>).mockResolvedValue({
+                value: `7. Artifacts
+                RÉSOLUTION 2 4 - 4 1
+                Texte.`
+            });
+
+            const mockFile = createMockFile('', 'test.docx');
+            const result = await parseMinutesDOCX(mockFile);
+
+            expect(result.agendaItems[0].minuteEntries![0].number).toBe('24-41');
         });
 
-        it('should match seconder patterns', () => {
-            const seconderRegex = /(?:Appuy[ée] par|Et l['']appui de)\s*[:\s](.*)/i;
+        it('should be case insensitive', async () => {
+            const mammoth = await import('mammoth');
+            const { parseMinutesDOCX } = await import('./pvParserService');
 
-            expect('Appuyé par M. Dupont'.match(seconderRegex)?.[1]).toBe('M. Dupont');
-            expect("Et l'appui de Mme Martin".match(seconderRegex)?.[1]).toBe('Mme Martin');
+            (mammoth.default.extractRawText as ReturnType<typeof vi.fn>).mockResolvedValue({
+                value: `8. Case Test
+                résolution 24-50
+                Texte min.
+                commentaire 24-b
+                Texte maj.`
+            });
+
+            const mockFile = createMockFile('', 'test.docx');
+            const result = await parseMinutesDOCX(mockFile);
+
+            expect(result.agendaItems[0].minuteEntries![0].number).toBe('24-50');
+            expect(result.agendaItems[0].minuteEntries![1].number).toBe('24-B');
         });
     });
 });
