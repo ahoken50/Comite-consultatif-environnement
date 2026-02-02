@@ -185,7 +185,18 @@ Réponds UNIQUEMENT avec le JSON, sans markdown.`,
     });
 
     try {
-        const parsed = JSON.parse(rawResult.replace(/```json\n?|\n?```/g, ''));
+        // Clean response (remove <think> block and code fences)
+        let cleaned = rawResult.replace(/<think>[\s\S]*?<\/think>/g, '');
+        cleaned = cleaned.replace(/```(?:json)?/g, '').replace(/```/g, '');
+
+        // Find JSON object
+        const start = cleaned.indexOf('{');
+        const end = cleaned.lastIndexOf('}');
+        if (start !== -1 && end !== -1 && end > start) {
+            cleaned = cleaned.substring(start, end + 1);
+        }
+
+        const parsed = JSON.parse(cleaned);
 
         return {
             mappedItems: parsed.mappedItems.map((item: any) => ({

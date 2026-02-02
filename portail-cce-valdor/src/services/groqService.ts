@@ -337,7 +337,8 @@ ${JSON.stringify(initialData, null, 2)}
 
         // Parse with fail-safe
         try {
-            const correctedData = JSON.parse(content) as AIExtractedPV;
+            const cleanedRefinedContent = cleanJsonContent(content);
+            const correctedData = JSON.parse(cleanedRefinedContent) as AIExtractedPV;
             console.log('[groqService] 2nd pass successful - Data refined');
             return correctedData;
         } catch (e) {
@@ -355,6 +356,27 @@ ${JSON.stringify(initialData, null, 2)}
         console.warn('[groqService] Error during 2nd pass:', error);
         return initialData;
     }
+};
+
+/**
+ * Helper to clean the AI response before parsing (removes <think> blocks and markdown)
+ */
+const cleanJsonContent = (content: string): string => {
+    // 1. Remove <think> blocks
+    let cleaned = content.replace(/<think>[\s\S]*?<\/think>/g, '');
+
+    // 2. Remove markdown code fences
+    cleaned = cleaned.replace(/```(?:json)?/g, '').replace(/```/g, '');
+
+    // 3. Find the JSON object
+    const start = cleaned.indexOf('{');
+    const end = cleaned.lastIndexOf('}');
+
+    if (start !== -1 && end !== -1 && end > start) {
+        return cleaned.substring(start, end + 1);
+    }
+
+    return cleaned.trim();
 };
 
 /**
@@ -418,16 +440,19 @@ export const extractPVWithGroq = async (
 
         console.log('[groqService] Received response, parsing JSON...');
 
+        // Create a Cleaned Version
+        const cleanedContent = cleanJsonContent(content);
+
         // Parse the JSON response with fault-tolerant parsing
         let data: AIExtractedPV;
         try {
             // Try standard JSON.parse first (fastest)
-            data = JSON.parse(content) as AIExtractedPV;
+            data = JSON.parse(cleanedContent) as AIExtractedPV;
         } catch (parseError) {
             // Fallback to json5 for malformed JSON (trailing commas, unquoted keys, etc.)
             console.warn('[groqService] Standard JSON.parse failed, trying json5...');
             try {
-                data = JSON5.parse(content) as AIExtractedPV;
+                data = JSON5.parse(cleanedContent) as AIExtractedPV;
                 console.log('[groqService] json5 parsed successfully');
             } catch (json5Error) {
                 console.error('[groqService] Both JSON parsers failed');
