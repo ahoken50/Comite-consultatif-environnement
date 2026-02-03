@@ -116,7 +116,7 @@ export interface AgentConfig {
     audioFile?: File;
     existingTranscription?: string;
     onStepComplete?: (stepId: AgentStepId, result: unknown) => void;
-    onValidationRequired?: (stepId: AgentStepId, result: unknown) => Promise<boolean>;
+    onValidationRequired?: (stepId: AgentStepId, result: unknown) => Promise<boolean | unknown>;
     onError?: (stepId: AgentStepId, error: Error) => void;
 }
 

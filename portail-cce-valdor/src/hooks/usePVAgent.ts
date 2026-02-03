@@ -47,7 +47,7 @@ export const usePVAgent = (options: UsePVAgentOptions): UsePVAgentReturn => {
     const [isRunning, setIsRunning] = useState(false);
 
     // Validation promise resolver
-    const validationResolverRef = useRef<((approved: boolean) => void) | null>(null);
+    const validationResolverRef = useRef<((result: boolean | unknown) => void) | null>(null);
     const cancelledRef = useRef(false);
 
     const start = useCallback(async (
@@ -74,7 +74,7 @@ export const usePVAgent = (options: UsePVAgentOptions): UsePVAgentReturn => {
                 console.log(`Step ${stepId} completed:`, result);
             },
             onValidationRequired: (_stepId, _result) => {
-                return new Promise<boolean>((resolve) => {
+                return new Promise<boolean | unknown>((resolve) => {
                     validationResolverRef.current = resolve;
                 });
             },
@@ -103,9 +103,9 @@ export const usePVAgent = (options: UsePVAgentOptions): UsePVAgentReturn => {
         }
     }, [meeting, members, isRunning, onComplete, onError]);
 
-    const validateStep = useCallback((approved: boolean) => {
+    const validateStep = useCallback((result: boolean | unknown) => {
         if (validationResolverRef.current) {
-            validationResolverRef.current(approved);
+            validationResolverRef.current(result);
             validationResolverRef.current = null;
         }
     }, []);

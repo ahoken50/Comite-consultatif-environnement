@@ -408,8 +408,13 @@ export const runPVAgent = async (
 
         // Wait for validation (handled by UI)
         if (config.onValidationRequired) {
-            const approved = await config.onValidationRequired('transcription', transcription);
-            if (!approved) throw new Error('Étape annulée par l\'utilisateur');
+            const validationResult = await config.onValidationRequired('transcription', transcription);
+            if (validationResult === false) throw new Error('Étape annulée par l\'utilisateur');
+
+            // If user modified the result, update it
+            if (validationResult !== true && typeof validationResult === 'object') {
+                currentState = updateStepResult(currentState, 'transcription', validationResult, 'awaiting');
+            }
         }
 
         currentState = updateStepStatus(currentState, 'transcription', 'completed');
@@ -425,8 +430,13 @@ export const runPVAgent = async (
         onStateChange(currentState);
 
         if (config.onValidationRequired) {
-            const approved = await config.onValidationRequired('analysis', analysis);
-            if (!approved) throw new Error('Étape annulée par l\'utilisateur');
+            const validationResult = await config.onValidationRequired('analysis', analysis);
+            if (validationResult === false) throw new Error('Étape annulée par l\'utilisateur');
+
+            // If user modified the result, update it
+            if (validationResult !== true && typeof validationResult === 'object') {
+                currentState = updateStepResult(currentState, 'analysis', validationResult, 'awaiting');
+            }
         }
 
         currentState = updateStepStatus(currentState, 'analysis', 'completed');
@@ -442,8 +452,13 @@ export const runPVAgent = async (
         onStateChange(currentState);
 
         if (config.onValidationRequired) {
-            const approved = await config.onValidationRequired('extraction', extraction);
-            if (!approved) throw new Error('Étape annulée par l\'utilisateur');
+            const validationResult = await config.onValidationRequired('extraction', extraction);
+            if (validationResult === false) throw new Error('Étape annulée par l\'utilisateur');
+
+            // If user modified the result, update it
+            if (validationResult !== true && typeof validationResult === 'object') {
+                currentState = updateStepResult(currentState, 'extraction', validationResult, 'awaiting');
+            }
         }
 
         currentState = updateStepStatus(currentState, 'extraction', 'completed');
@@ -459,8 +474,13 @@ export const runPVAgent = async (
         onStateChange(currentState);
 
         if (config.onValidationRequired) {
-            const approved = await config.onValidationRequired('validation', validation);
-            if (!approved) throw new Error('Étape annulée par l\'utilisateur');
+            const validationResult = await config.onValidationRequired('validation', validation);
+            if (validationResult === false) throw new Error('Étape annulée par l\'utilisateur');
+
+            // If user modified the result, update it
+            if (validationResult !== true && typeof validationResult === 'object') {
+                currentState = updateStepResult(currentState, 'validation', validationResult, 'awaiting');
+            }
         }
 
         currentState = updateStepStatus(currentState, 'validation', 'completed');

@@ -41,7 +41,9 @@ import {
     Warning as WarningIcon,
     Info as InfoIcon,
 } from '@mui/icons-material';
-import type { AgentState, AgentStep, AgentStepId, ValidationResult } from '../../types/pvAgent.types';
+import type { AgentState, AgentStep, AgentStepId, ValidationResult, AnalysisResult } from '../../types/pvAgent.types';
+import AnalysisValidator from './PVAgentValidation/AnalysisValidator';
+import type { AgendaItem } from '../../types/meeting.types';
 
 interface PVAgentWizardProps {
     open: boolean;
@@ -50,6 +52,7 @@ interface PVAgentWizardProps {
     onValidate: (approved: boolean) => void;
     onCancel: () => void;
     onApply: () => void;
+    agendaItems?: AgendaItem[];
 }
 
 const getStepIcon = (status: AgentStep['status']) => {
@@ -74,8 +77,24 @@ const PVAgentWizard: React.FC<PVAgentWizardProps> = ({
     onValidate,
     onCancel,
     onApply,
+    agendaItems = [],
 }) => {
     const [expandedStep, setExpandedStep] = React.useState<AgentStepId | null>(null);
+    const [editedAnalysis, setEditedAnalysis] = React.useState<AnalysisResult | null>(null);
+
+    // Reset edited state when step changes or completes
+    React.useEffect(() => {
+        setEditedAnalysis(null);
+    }, [state?.currentStepIndex]);
+
+    const handleValidate = (approved: boolean) => {
+        if (approved && editedAnalysis && state?.steps.find(s => s.id === 'analysis')?.status === 'awaiting') {
+            // Pass back the modified data
+            onValidate(editedAnalysis as any);
+        } else {
+            onValidate(approved);
+        }
+    };
 
     if (!state) return null;
 
@@ -112,7 +131,19 @@ const PVAgentWizard: React.FC<PVAgentWizardProps> = ({
                 );
 
             case 'analysis':
-                const analysisResult = step.result as { mappedItems: any[]; unmappedSegments: string[] };
+                const analysisResult = step.result as AnalysisResult;
+                const isAwaitingValidation = step.status === 'awaiting';
+
+                if (isAwaitingValidation) {
+                    return (
+                        <AnalysisValidator
+                            analysis={editedAnalysis || analysisResult}
+                            agendaItems={agendaItems}
+                            onChange={setEditedAnalysis}
+                        />
+                    );
+                }
+
                 return (
                     <Box>
                         <Typography variant="body2" sx={{ mb: 1 }}>
@@ -280,7 +311,7 @@ const PVAgentWizard: React.FC<PVAgentWizardProps> = ({
                                                 <Button
                                                     size="small"
                                                     color="error"
-                                                    onClick={() => onValidate(false)}
+                                                    onClick={() => handleValidate(false)}
                                                 >
                                                     Rejeter
                                                 </Button>
@@ -288,7 +319,7 @@ const PVAgentWizard: React.FC<PVAgentWizardProps> = ({
                                                     size="small"
                                                     variant="contained"
                                                     color="success"
-                                                    onClick={() => onValidate(true)}
+                                                    onClick={() => handleValidate(true)}
                                                 >
                                                     Valider
                                                 </Button>

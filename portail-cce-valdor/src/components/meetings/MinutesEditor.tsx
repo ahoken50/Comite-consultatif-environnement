@@ -809,6 +809,7 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate, readOn
                     setIsAgentWizardOpen(false);
                     pvAgent.reset();
                 }}
+                agendaItems={localAgendaItems}
             />
 
             {/* Cross Validation Panel - Compare ODJ with PV */}
