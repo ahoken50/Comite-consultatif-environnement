@@ -485,14 +485,14 @@ RÉSOLUTION PROPOSÉE :`;
     }> {
         if (!this.isConfigured()) throw new Error('Gemini API key not configured');
 
-        // 1. Search for relevant regulations in Typesense (RAG)
-        const { searchRegulations } = await import('../../typesenseService');
-        const searchResults = await searchRegulations(resolutionText, {
-            perPage: 3,
-            filterBy: 'status:=[En vigueur]'
+        // Use Supabase Search for RAG
+        const { searchRegulations } = await import('../../supabaseSearchService');
+        const results = await searchRegulations(resolutionText, {
+            matchCount: 3,
+            matchThreshold: 0.5
         });
 
-        const relevantRegulations = searchResults.hits
+        const relevantRegulations = results.hits
             .map(h => `RÈGLEMENT: ${h.document.title}\nCONTENU:\n${h.document.content.substring(0, 1000)}...`)
             .join('\n\n');
 
@@ -566,17 +566,18 @@ FORMAT JSON ATTENDU :
         if (!this.isConfigured()) throw new Error('Gemini API key not configured');
 
         // 1. Search for potentially relevant regulations
-        const { searchRegulations } = await import('../../typesenseService');
+        // 1. Search for potentially relevant regulations
+        const { searchRegulations } = await import('../../../services/supabaseSearchService');
         const searchResults = await searchRegulations(projectDescription, {
-            perPage: 5,
-            filterBy: 'status:=[En vigueur]'
+            matchCount: 5,
+            // filterBy: 'status:=[En vigueur]' // Not supported in Supabase implementation yet
         });
 
         if (searchResults.hits.length === 0) {
             return { relevantRegulationIds: [], reasoning: "Aucun règlement pertinent trouvé dans la recherche initiale." };
         }
 
-        const candidates = searchResults.hits.map(h => ({
+        const candidates = searchResults.hits.map((h: any) => ({
             id: h.document.id,
             title: h.document.title,
             snippet: h.document.content.substring(0, 500)

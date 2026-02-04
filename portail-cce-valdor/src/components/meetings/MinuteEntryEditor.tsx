@@ -4,7 +4,7 @@ import { AutoMode, Link, Shield, CheckCircle, Warning, HelpOutline, AutoAwesome,
 import { useSelector } from 'react-redux';
 import type { RootState } from '../../store/rootReducer';
 import type { MinuteEntry } from '../../types/meeting.types';
-import typesenseService, { searchMeetings } from '../../services/typesenseService';
+import { searchMeetings, searchRegulations } from '../../services/supabaseSearchService';
 import { aiService } from '../../services/ai/UnifiedAIService';
 import { useNavigate } from 'react-router-dom';
 import JurisprudenceChatBox from '../search/JurisprudenceChatBox';
@@ -84,7 +84,7 @@ const MinuteEntryEditor: React.FC<MinuteEntryEditorProps> = ({
             // 1. Search for similar resolutions in Typesense
             // The service automatically handles vector embedding for queries > 3 chars
             const searchResults = await searchMeetings(itemTitle, {
-                perPage: 3,
+                matchCount: 3,
                 // We could filter by status if needed, e.g. filterBy: 'status:=Published'
             });
 
@@ -141,9 +141,9 @@ const MinuteEntryEditor: React.FC<MinuteEntryEditorProps> = ({
             for (const number of uniqueNumbers) {
                 // Search in Typesense
                 // We use relaxed search to find "2024-02" even if title is "Règlement 2024-02 de zonage"
-                const results = await typesenseService.searchRegulations(number, {
-                    perPage: 1,
-                    filterBy: 'status:=[En vigueur,Projet]' // Prioritize active ones
+                const results = await searchRegulations(number, {
+                    matchCount: 1,
+                    // filterBy: 'status:=[En vigueur,Projet]' // Prioritize active ones - Supabase implementation of hybrid search doesn't support complex filters currently, text search fallback does.
                 });
 
                 if (results.found > 0) {

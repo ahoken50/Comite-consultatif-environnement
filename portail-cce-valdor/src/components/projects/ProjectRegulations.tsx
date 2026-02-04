@@ -9,8 +9,7 @@ import {
 } from '@mui/icons-material';
 import { useDispatch } from 'react-redux';
 import type { Project } from '../../types/project.types';
-import type { SearchableRegulation } from '../../services/typesenseService';
-import typesenseService from '../../services/typesenseService';
+import { searchRegulations, getRegulationsByIds, type SearchableRegulation } from '../../services/supabaseSearchService';
 import { aiService } from '../../services/ai/UnifiedAIService';
 import { updateProject } from '../../features/projects/projectsSlice';
 import type { AppDispatch } from '../../store/store';
@@ -41,11 +40,9 @@ const ProjectRegulations: React.FC<ProjectRegulationsProps> = ({ project }) => {
                     // Let's filter by ID
                     const ids = project.linkedRegulationIds;
                     // Note: 'id' field must be in schema for filtering
-                    const results = await typesenseService.searchRegulations('*', {
-                        filterBy: `id:=[${ids.join(',')}]`,
-                        perPage: ids.length
-                    });
-                    setLinkedRegulations(results.hits.map(h => h.document));
+                    // Fetch via Supabase Helper
+                    const docs = await getRegulationsByIds(ids);
+                    setLinkedRegulations(docs);
                 } catch (error) {
                     console.error("Failed to load linked regulations", error);
                 } finally {
@@ -63,7 +60,7 @@ const ProjectRegulations: React.FC<ProjectRegulationsProps> = ({ project }) => {
         if (!searchQuery) return;
         setLoading(true);
         try {
-            const results = await typesenseService.searchRegulations(searchQuery, { perPage: 5 });
+            const results = await searchRegulations(searchQuery, { matchCount: 5 });
             setSearchResults(results.hits.map(h => h.document));
         } catch (error) {
             console.error("Search failed", error);
@@ -85,11 +82,9 @@ const ProjectRegulations: React.FC<ProjectRegulationsProps> = ({ project }) => {
 
             if (result.relevantRegulationIds.length > 0) {
                 // Fetch recommended regulations details to display them
-                const results = await typesenseService.searchRegulations('*', {
-                    filterBy: `id:=[${result.relevantRegulationIds.join(',')}]`,
-                    perPage: result.relevantRegulationIds.length
-                });
-                setSearchResults(results.hits.map(h => h.document));
+                // Fetch recommended regulations details to display them
+                const docs = await getRegulationsByIds(result.relevantRegulationIds);
+                setSearchResults(docs);
             } else {
                 setSearchResults([]);
             }

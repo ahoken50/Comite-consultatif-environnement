@@ -8,11 +8,10 @@ import {
     searchMeetings,
     searchProjects,
     searchAll,
-    getTypesenseStatus,
     type SearchableMeeting,
     type SearchableProject,
     type SearchResult
-} from '../services/typesenseService';
+} from '../services/supabaseSearchService';
 import { logger } from '../utils/logger';
 
 // ============================================
@@ -67,7 +66,8 @@ export const useSearch = (options: UseSearchOptions = {}): UseSearchReturn => {
     const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const abortControllerRef = useRef<AbortController | null>(null);
 
-    const { isConfigured } = getTypesenseStatus();
+    // Simple check based on Env Vars for now
+    const isConfigured = !!import.meta.env.VITE_SUPABASE_URL && !!import.meta.env.VITE_SUPABASE_ANON_KEY;
 
     // Perform the search
     const performSearch = useCallback(async (searchQuery: string) => {

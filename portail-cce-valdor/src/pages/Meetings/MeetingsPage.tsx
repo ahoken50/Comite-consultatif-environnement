@@ -13,7 +13,6 @@ import SmartPlanningDialog from '../../components/meetings/SmartPlanningDialog';
 import { MeetingStatus } from '../../types/meeting.types';
 import type { Meeting, AgendaItem } from '../../types/meeting.types';
 import { useToast } from '../../hooks/useToast';
-import { parseAnyDate } from '../../utils/dateUtils';
 import { AccessControl } from '../../components/auth/AccessControl';
 
 const MeetingsPage: React.FC = () => {
@@ -45,26 +44,13 @@ const MeetingsPage: React.FC = () => {
                 setIsSmartPlanningOpen(false);
                 showSuccess('Réunion créée avec succès !');
 
-                // Index the new meeting in Typesense
-                // We create a temporary object for indexing since we don't have the full object returned easily here
-                // Ideal implementation would wait for fetchMeetings or use the returned payload if available
+                // Indexing is now handled automatically by Cloud Functions (Supabase)
+                /*
                 const newMeetingId = resultAction.payload.id;
                 if (newMeetingId) {
-                    import('../../services/typesenseService').then(({ indexMeeting }) => {
-                        indexMeeting({
-                            id: newMeetingId,
-                            title: data.title || '',
-                            date: (parseAnyDate(data.date) || new Date()).toISOString(),
-                            dateTimestamp: Math.floor((parseAnyDate(data.date) || new Date()).getTime() / 1000),
-                            type: data.type || 'regular',
-                            status: data.status || 'scheduled',
-                            minutes: '',
-                            agendaItemTitles: data.agendaItems?.map((i) => i.title || '') || [],
-                            resolutions: [],
-                            attendeeNames: data.attendees?.map((a) => a.name || '') || []
-                        }).catch(err => console.error('Failed to index new meeting:', err));
-                    });
+                   // Trigger background sync if needed
                 }
+                */
             } else {
                 showError('Erreur lors de la création de la réunion');
             }

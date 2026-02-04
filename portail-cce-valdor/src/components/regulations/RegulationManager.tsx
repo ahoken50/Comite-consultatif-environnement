@@ -8,12 +8,11 @@ import {
 import {
     CloudUpload, Search, Delete, Add
 } from '@mui/icons-material';
-import typesenseService from '../../services/typesenseService';
-import type { SearchableRegulation } from '../../services/typesenseService';
+import { searchRegulations, type SearchableRegulation } from '../../services/supabaseSearchService';
 import { aiService } from '../../services/ai/UnifiedAIService';
 import { useToast } from '../../hooks/useToast';
 import { db } from '../../services/firebase';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, addDoc, deleteDoc, doc, serverTimestamp } from 'firebase/firestore';
 
 const CATEGORIES = [
     'Urbanisme', 'Zonage', 'Construction', 'Environnement', 'Lotissement', 'Permis', 'Autre'
@@ -46,7 +45,7 @@ const RegulationManager: React.FC = () => {
     const fetchRegulations = async () => {
         setLoading(true);
         try {
-            const results = await typesenseService.searchRegulations(searchQuery, { perPage: 20 });
+            const results = await searchRegulations(searchQuery, { matchCount: 20 });
             setRegulations(results.hits.map(h => h.document));
             setCollectionMissing(false);
         } catch (error) {
@@ -118,18 +117,19 @@ const RegulationManager: React.FC = () => {
                 updatedAt: serverTimestamp()
             };
 
-            const docRef = await addDoc(collection(db, 'regulations'), regulationData);
+            await addDoc(collection(db, 'regulations'), regulationData);
 
+            /*
             const newReg: SearchableRegulation = {
-                id: docRef.id, // Use Firestore ID
+                id: docRef.id,
                 title: formData.title,
                 content: content,
                 category: formData.category,
                 year: Number(formData.year),
                 status: formData.status
             };
-
-            await typesenseService.indexRegulation(newReg, true); // true = generate embedding
+            */
+            // await typesenseService.indexRegulation(newReg, true); // Handled by Cloud Function
 
             showToast('Règlement indexé avec succès !', 'success');
             setUploadMode(false);
@@ -149,7 +149,8 @@ const RegulationManager: React.FC = () => {
     const handleDelete = async (id: string) => {
         if (!confirm('Êtes-vous sûr de vouloir supprimer ce règlement ?')) return;
         try {
-            await typesenseService.deleteFromIndex('regulations', id); // Note: deleteFromIndex needs update to support 'regulations' type check if strictly typed, but it takes string usually.
+            await deleteDoc(doc(db, 'regulations', id));
+            // await typesenseService.deleteFromIndex('regulations', id); // Handled by Cloud Function
             // Wait a sec for propagation
             setTimeout(fetchRegulations, 500);
             showToast('Supprimé', 'success');
