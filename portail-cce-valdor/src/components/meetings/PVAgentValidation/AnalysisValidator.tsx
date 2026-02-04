@@ -5,20 +5,15 @@ import {
     Typography,
     Paper,
     List,
-    ListItem,
-    ListItemText,
     Chip,
     IconButton,
     TextField,
-    Divider,
-    Button,
-    Collapse
+    Button
 } from '@mui/material';
 import {
     Edit as EditIcon,
     Check as CheckIcon,
-    Close as CloseIcon,
-    DragIndicator as DragIcon
+    Close as CloseIcon
 } from '@mui/icons-material';
 import type { AgendaItem } from '../../../types/meeting.types';
 import type { AnalysisResult } from '../../../types/pvAgent.types';
@@ -58,26 +53,7 @@ const AnalysisValidator: React.FC<AnalysisValidatorProps> = ({
         setEditingId(null);
     };
 
-    const handleReassign = (mappingIndex: number, newOdjId: string, newTitle: string) => {
-        // Find if target item already has a mapping
-        const existingMappingIndex = analysis.mappedItems.findIndex(m => m.odjItemId === newOdjId);
 
-        // If we are moving content to an item that already has content, we might need to merge or ask
-        // For this MVP, we will just update the ID and Title of the current mapping item
-        // Note: This logic assumes 1-to-1 mapping which is the current Agent logic
-
-        const updatedMapped = [...analysis.mappedItems];
-        updatedMapped[mappingIndex] = {
-            ...updatedMapped[mappingIndex],
-            odjItemId: newOdjId,
-            odjTitle: newTitle
-        };
-
-        onChange({
-            ...analysis,
-            mappedItems: updatedMapped
-        });
-    };
 
     return (
         <Box>
