@@ -27,6 +27,50 @@ load_dotenv()
 # Initialize Firebase
 initialize_app()
 
+# =============================================================================
+# SINGLETON CLIENTS (Lazy Loading Pattern)
+# =============================================================================
+_clients = {
+    "openai": None,
+    "anthropic": None,
+    "resend_configured": False
+}
+
+def get_openai_client():
+    """Get or create OpenAI client (Singleton)"""
+    if _clients["openai"] is None:
+        import openai
+        api_key = os.environ.get("OPENAI_API_KEY")
+        if not api_key:
+            # Check safely to allow import even if env var missing (will fail at use time)
+            print("[System] Warning: OPENAI_API_KEY not found")
+        else:
+            _clients["openai"] = openai.OpenAI(api_key=api_key)
+            print("[System] OpenAI client initialized (Cold Start)")
+    return _clients["openai"]
+
+def get_anthropic_client():
+    """Get or create Anthropic client (Singleton)"""
+    if _clients["anthropic"] is None:
+        from anthropic import Anthropic
+        api_key = os.environ.get("ANTHROPIC_API_KEY")
+        if not api_key:
+             raise ValueError("ANTHROPIC_API_KEY not configured on server.")
+        _clients["anthropic"] = Anthropic(api_key=api_key)
+        print("[System] Anthropic client initialized (Cold Start)")
+    return _clients["anthropic"]
+
+def configure_resend():
+    """Configure Resend API key once (Singleton)"""
+    if not _clients["resend_configured"]:
+        import resend
+        api_key = os.environ.get("RESEND_API_KEY")
+        if not api_key:
+             raise ValueError("RESEND_API_KEY not configured")
+        resend.api_key = api_key
+        _clients["resend_configured"] = True
+        print("[System] Resend configured (Cold Start)")
+
 # Constants
 MAX_WHISPER_SIZE_MB = 25
 SEGMENT_DURATION_MINUTES = 10
@@ -226,7 +270,9 @@ def transcribe_with_whisper(
     Transcribe a single audio file using OpenAI Whisper API with timestamps.
     Returns formatted string with [MM:SS] timestamps adjusted by time_offset.
     """
-    client = openai.OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+    client = get_openai_client()
+    if not client:
+        raise ValueError("OpenAI client not initialized")
     
     with open(file_path, "rb") as audio_file:
         response = client.audio.transcriptions.create(
@@ -1764,9 +1810,8 @@ def generate_minutes_claude(req: https_fn.CallableRequest) -> dict:
         # Proceed even if members fetch fails
 
     try:
-        from anthropic import Anthropic
-        
-        client = Anthropic(api_key=api_key)
+        # Singleton access
+        client = get_anthropic_client()
         
         message = client.messages.create(
             model="claude-haiku-4-5-20251001",
@@ -1858,8 +1903,8 @@ def finalize_draft_claude(req: https_fn.CallableRequest) -> dict:
     print(f"[Claude] Finalizing draft for meeting {meeting_id}...")
 
     try:
-        from anthropic import Anthropic
-        client = Anthropic(api_key=api_key)
+        # Singleton access
+        client = get_anthropic_client()
         
         message = client.messages.create(
             model="claude-haiku-4-5-20251001",
@@ -1951,8 +1996,8 @@ def chat_claude(req: https_fn.CallableRequest) -> dict:
     print(f"[Claude] Generic chat request received...")
 
     try:
-        from anthropic import Anthropic
-        client = Anthropic(api_key=api_key)
+        # Singleton access
+        client = get_anthropic_client()
         
         # Use Claude 4.5 Haiku as explicitly requested by user (same as generate_minutes)
         message = client.messages.create(
@@ -2015,15 +2060,8 @@ def send_convocation(req: https_fn.CallableRequest):
         import resend
         import random
         
-        # Get Resend API key
-        resend_api_key = os.environ.get("RESEND_API_KEY")
-        if not resend_api_key:
-            raise https_fn.HttpsError(
-                code=https_fn.FunctionsErrorCode.FAILED_PRECONDITION,
-                message="RESEND_API_KEY non configurée"
-            )
-        
-        resend.api_key = resend_api_key
+        # Singleton configuration
+        configure_resend()
         
         # Extract data
         data = req.data
