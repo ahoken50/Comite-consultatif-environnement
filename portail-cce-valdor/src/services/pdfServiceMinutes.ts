@@ -226,9 +226,13 @@ const generateHTMLDocument = (meeting: Meeting, _globalNotes?: string): string =
     const president = meeting.attendees?.find(a =>
         a.role?.toLowerCase().includes('président') && !a.role?.toLowerCase().includes('vice')
     );
-    const secretary = meeting.attendees?.find(a => a.role?.toLowerCase().includes('secrétaire'));
+    const secretary = meeting.attendees?.find(a =>
+        a.role?.toLowerCase().includes('secrétaire') ||
+        a.role?.toLowerCase().includes('coordonnateur') ||
+        a.role?.toLowerCase() === 'coordinator'
+    );
     const presidentName = president ? president.name : 'Président(e)';
-    const secretaryName = secretary ? secretary.name : 'Secrétaire';
+    const secretaryName = secretary ? secretary.name : 'Secrétaire / Coordonnateur';
 
     // Build sections HTML with proper numbering
     let sectionsHTML = '';
@@ -723,14 +727,18 @@ const generateHTMLDocument = (meeting: Meeting, _globalNotes?: string): string =
             <div class="signature-block">
                 <div class="signature-line">
                      ${(() => {
-            const sig = meeting.approvalSignatures?.find(s => s.role === 'coordinator'); // Assuming coordinator signs as secretary for now, or validation
+            const sig = meeting.approvalSignatures?.find(s => s.role === 'coordinator');
+            // Coordinator acts as Secretary for administrative validation
             if (sig) {
                 return `<div class="digital-signature">Validé administrativement<br>${new Date(sig.signedAt).toLocaleDateString('fr-CA')}</div>`;
             }
             return '';
         })()}
                 </div>
-                <div class="signature-name">${secretaryName}</div>
+                <div class="signature-name">${(() => {
+            const sig = meeting.approvalSignatures?.find(s => s.role === 'coordinator');
+            return sig ? sig.signedByName : secretaryName;
+        })()}</div>
                 <div class="signature-role">Secrétaire / Coordonnateur</div>
             </div>
         </section>
