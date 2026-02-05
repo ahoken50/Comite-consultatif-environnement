@@ -123,13 +123,11 @@ export const searchMeetings = async (
             data = result.data;
             error = result.error;
         } else {
-            // Fallback: Text search only
-            // Using to_tsvector match on the 'meetings' table directly is harder without a specific function
-            // or just a simple ilike
+            // Fallback: Text search using the optimized 'fts' column (Title + Minutes + Resolutions)
             const result = await supabase
                 .from('meetings')
                 .select('*')
-                .textSearch('title', query, { type: 'websearch', config: 'french' })
+                .textSearch('fts', query, { type: 'websearch', config: 'french' })
                 .limit(matchCount);
             data = result.data;
             error = result.error;

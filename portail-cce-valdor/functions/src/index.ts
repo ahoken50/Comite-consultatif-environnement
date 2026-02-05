@@ -463,7 +463,12 @@ export const syncRegulationToSupabase = onDocumentWritten({
             const genAI = new GoogleGenerativeAI(apiKey);
             const model = genAI.getGenerativeModel({ model: "text-embedding-004" });
 
-            const textToEmbed = `${data.title || ''}\n${data.content || ''}`.trim().substring(0, 9000);
+            const resolutionsText = data.agendaItems?.flatMap((item: any) =>
+                item.minuteEntries?.map((entry: any) => entry.content) ||
+                (item.minuteContent ? [item.minuteContent] : [])
+            ).join('\n') || '';
+
+            const textToEmbed = `${data.title || ''}\n${data.minutes || ''}\n${resolutionsText}`.trim().substring(0, 9000);
             if (textToEmbed) {
                 const result = await model.embedContent(textToEmbed);
                 embedding = result.embedding.values;
