@@ -100,7 +100,8 @@ const MembersPage: React.FC = () => {
                 setNotification({ message: 'Membre mis à jour avec succès', type: 'success' });
             } else {
                 // Create new
-                const newId = crypto.randomUUID();
+                // Use ID from memberData if generated during dialog (e.g. for signature upload)
+                const newId = memberData.id || crypto.randomUUID();
                 const newMember = {
                     ...memberData,
                     id: newId,
