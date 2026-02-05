@@ -129,11 +129,17 @@ const MembersPage: React.FC = () => {
         setEnrollDialogOpen(true);
     }, []);
 
-    const handleSaveVoice = async (audioBlob: Blob) => {
+    const handleSaveVoice = async (audioBlobs: Blob[]) => {
         if (!memberToEnroll) return;
         try {
-            await enrollSpeaker(memberToEnroll.displayName, audioBlob);
-            setNotification({ message: 'Empreinte vocale enregistrée avec succès !', type: 'success' });
+            // Process all blobs in parallel
+            const promises = audioBlobs.map(blob => enrollSpeaker(memberToEnroll.displayName, blob));
+            await Promise.all(promises);
+
+            setNotification({
+                message: `${audioBlobs.length} empreinte(s) vocale(s) enregistrée(s) avec succès !`,
+                type: 'success'
+            });
             setEnrollDialogOpen(false);
         } catch (err: any) {
             console.error(err);

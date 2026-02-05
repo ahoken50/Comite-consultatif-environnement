@@ -10,16 +10,19 @@ import {
     Box,
     IconButton,
     LinearProgress,
-    Alert
+    Alert,
+    Tabs,
+    Tab,
+    Input
 } from '@mui/material';
-import { Mic, Stop, Save, Delete } from '@mui/icons-material';
+import { Mic, Stop, Save, Delete, CloudUpload } from '@mui/icons-material';
 import { keyframes } from '@emotion/react';
 
 interface VoiceEnrollmentDialogProps {
     open: boolean;
     memberName: string;
     onClose: () => void;
-    onSave: (audioBlob: Blob) => Promise<void>;
+    onSave: (audioBlobs: Blob[]) => Promise<void>;
 }
 
 const pulse = keyframes`
@@ -34,12 +37,15 @@ const VoiceEnrollmentDialog: React.FC<VoiceEnrollmentDialogProps> = ({
     onClose,
     onSave
 }) => {
+    const [tab, setTab] = useState(0);
     const [isRecording, setIsRecording] = useState(false);
     const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
     const [audioUrl, setAudioUrl] = useState<string | null>(null);
+    const [uploadFiles, setUploadFiles] = useState<File[]>([]);
     const [duration, setDuration] = useState(0);
     const [isSaving, setIsSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [progress, setProgress] = useState(0);
 
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
     const audioChunksRef = useRef<Blob[]>([]);
@@ -51,6 +57,12 @@ const VoiceEnrollmentDialog: React.FC<VoiceEnrollmentDialogProps> = ({
             if (audioUrl) URL.revokeObjectURL(audioUrl);
         };
     }, [audioUrl]);
+
+    const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+        if (event.target.files) {
+            setUploadFiles(Array.from(event.target.files));
+        }
+    };
 
     const startRecording = async () => {
         setError(null);
@@ -101,15 +113,26 @@ const VoiceEnrollmentDialog: React.FC<VoiceEnrollmentDialogProps> = ({
     const handleReset = () => {
         setAudioBlob(null);
         setAudioUrl(null);
+        setUploadFiles([]);
         setDuration(0);
         setError(null);
     };
 
     const handleSave = async () => {
-        if (!audioBlob) return;
+        const blobsToSave: Blob[] = [];
+
+        if (tab === 0 && audioBlob) {
+            blobsToSave.push(audioBlob);
+        } else if (tab === 1 && uploadFiles.length > 0) {
+            blobsToSave.push(...uploadFiles);
+        }
+
+        if (blobsToSave.length === 0) return;
+
         setIsSaving(true);
+        // We'll update parent to handle progress or just wait
         try {
-            await onSave(audioBlob);
+            await onSave(blobsToSave);
             onClose();
         } catch (err: any) {
             setError(err.message || "Erreur lors de l'enrôlement.");
@@ -128,56 +151,99 @@ const VoiceEnrollmentDialog: React.FC<VoiceEnrollmentDialogProps> = ({
         <Dialog open={open} onClose={!isSaving ? onClose : undefined} maxWidth="sm" fullWidth>
             <DialogTitle>Enrôlement Vocal : {memberName}</DialogTitle>
             <DialogContent>
+                <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 2, borderBottom: 1, borderColor: 'divider' }}>
+                    <Tab label="Enregistrement" />
+                    <Tab label="Téléversement" />
+                </Tabs>
+
                 <Box sx={{ my: 2 }}>
                     <Typography variant="body1" paragraph>
-                        Veuillez lire le texte ci-dessous pour créer votre empreinte vocale (environ 30 secondes).
+                        {tab === 0
+                            ? "Veuillez lire le texte ci-dessous pour créer votre empreinte vocale (environ 30 secondes)."
+                            : "Vous pouvez téléverser un ou plusieurs fichiers audio existants (MP3, WAV, M4A) contenant votre voix."}
                     </Typography>
 
-                    <Box sx={{
-                        p: 3,
-                        bgcolor: 'grey.100',
-                        borderRadius: 2,
-                        border: '1px solid',
-                        borderColor: 'grey.300',
-                        mb: 3,
-                        fontStyle: 'italic',
-                        lineHeight: 1.6
-                    }}>
-                        "Je m'appelle {memberName} et je suis membre du comité consultatif en environnement de Val-d'Or.
-                        Nous travaillons ensemble pour la protection de la biodiversité, la gestion des eaux et la lutte aux changements climatiques.
-                        Ceci est un échantillon de ma voix pour le système de transcription automatique."
-                    </Box>
+                    {tab === 0 && (
+                        <Box sx={{
+                            p: 3,
+                            bgcolor: 'grey.100',
+                            borderRadius: 2,
+                            border: '1px solid',
+                            borderColor: 'grey.300',
+                            mb: 3,
+                            fontStyle: 'italic',
+                            lineHeight: 1.6
+                        }}>
+                            "Je m'appelle {memberName} et je suis membre du comité consultatif en environnement de Val-d'Or.
+                            Nous travaillons ensemble pour la protection de la biodiversité, la gestion des eaux et la lutte aux changements climatiques.
+                            Ceci est un échantillon de ma voix pour le système de transcription automatique."
+                        </Box>
+                    )}
 
                     <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
                         {error && <Alert severity="error" sx={{ width: '100%' }}>{error}</Alert>}
 
-                        {!audioBlob ? (
-                            <IconButton
-                                onClick={isRecording ? stopRecording : startRecording}
-                                sx={{
-                                    width: 80,
-                                    height: 80,
-                                    bgcolor: isRecording ? 'error.main' : 'primary.main',
-                                    color: 'white',
-                                    '&:hover': { bgcolor: isRecording ? 'error.dark' : 'primary.dark' },
-                                    animation: isRecording ? `${pulse} 1.5s infinite` : 'none'
-                                }}
-                            >
-                                {isRecording ? <Stop fontSize="large" /> : <Mic fontSize="large" />}
-                            </IconButton>
-                        ) : (
-                            <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', width: '100%' }}>
-                                <audio src={audioUrl!} controls style={{ flex: 1 }} />
-                                <IconButton onClick={handleReset} color="error" title="Recommencer">
-                                    <Delete />
-                                </IconButton>
-                            </Box>
+                        {tab === 0 && (
+                            <>
+                                {!audioBlob ? (
+                                    <IconButton
+                                        onClick={isRecording ? stopRecording : startRecording}
+                                        sx={{
+                                            width: 80,
+                                            height: 80,
+                                            bgcolor: isRecording ? 'error.main' : 'primary.main',
+                                            color: 'white',
+                                            '&:hover': { bgcolor: isRecording ? 'error.dark' : 'primary.dark' },
+                                            animation: isRecording ? `${pulse} 1.5s infinite` : 'none'
+                                        }}
+                                    >
+                                        {isRecording ? <Stop fontSize="large" /> : <Mic fontSize="large" />}
+                                    </IconButton>
+                                ) : (
+                                    <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', width: '100%' }}>
+                                        <audio src={audioUrl!} controls style={{ flex: 1 }} />
+                                        <IconButton onClick={handleReset} color="error" title="Recommencer">
+                                            <Delete />
+                                        </IconButton>
+                                    </Box>
+                                )}
+
+                                {isRecording && (
+                                    <Typography variant="h6" color="error">
+                                        Enregistrement... {formatTime(duration)}
+                                    </Typography>
+                                )}
+                            </>
                         )}
 
-                        {isRecording && (
-                            <Typography variant="h6" color="error">
-                                Enregistrement... {formatTime(duration)}
-                            </Typography>
+                        {tab === 1 && (
+                            <Box sx={{ width: '100%', textAlign: 'center' }}>
+                                <Button
+                                    component="label"
+                                    variant="outlined"
+                                    startIcon={<CloudUpload />}
+                                    sx={{ mb: 2 }}
+                                >
+                                    Sélectionner des fichiers
+                                    <input
+                                        type="file"
+                                        hidden
+                                        multiple
+                                        accept="audio/*"
+                                        onChange={handleFileChange}
+                                    />
+                                </Button>
+                                {uploadFiles.length > 0 && (
+                                    <Box sx={{ textAlign: 'left', mt: 1 }}>
+                                        <Typography variant="subtitle2" gutterBottom>{uploadFiles.length} fichier(s) sélectionné(s) :</Typography>
+                                        <ul style={{ margin: 0, paddingLeft: 20 }}>
+                                            {uploadFiles.map((f, i) => (
+                                                <li key={i}>{f.name} ({(f.size / 1024 / 1024).toFixed(2)} MB)</li>
+                                            ))}
+                                        </ul>
+                                    </Box>
+                                )}
+                            </Box>
                         )}
 
                         {isSaving && <LinearProgress sx={{ width: '100%', mt: 2 }} />}
@@ -189,10 +255,10 @@ const VoiceEnrollmentDialog: React.FC<VoiceEnrollmentDialogProps> = ({
                 <Button
                     onClick={handleSave}
                     variant="contained"
-                    disabled={!audioBlob || isSaving}
+                    disabled={(!audioBlob && uploadFiles.length === 0) || isSaving}
                     startIcon={<Save />}
                 >
-                    {isSaving ? "Enregistrement..." : "Enrôler ma voix"}
+                    {isSaving ? "Enregistrement..." : "Enrôler"}
                 </Button>
             </DialogActions>
         </Dialog>
