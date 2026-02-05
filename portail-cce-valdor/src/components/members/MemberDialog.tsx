@@ -22,7 +22,7 @@ interface MemberDialogProps {
     open: boolean;
     member?: Member | null;
     onClose: () => void;
-    onSave: (memberData: Partial<Member>) => void;
+    onSave: (memberData: Partial<Member>) => void | Promise<void>;
     readOnlyAdminFields?: boolean;
 }
 
@@ -39,6 +39,8 @@ const MemberDialog: React.FC<MemberDialogProps> = ({ open, member, onClose, onSa
     const [formData, setFormData] = useState<Partial<Member>>(initialMember);
     const [errors, setErrors] = useState<Record<string, string>>({});
     const [uploading, setUploading] = useState(false);
+    const [pendingFile, setPendingFile] = useState<File | null>(null);
+    const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
     useEffect(() => {
         if (member) {
@@ -59,7 +61,23 @@ const MemberDialog: React.FC<MemberDialogProps> = ({ open, member, onClose, onSa
             setFormData(initialMember);
         }
         setErrors({});
+
+        // Reset local state
+        setPendingFile(null);
+        if (previewUrl) {
+            URL.revokeObjectURL(previewUrl);
+        }
+        setPreviewUrl(null);
     }, [member, open]);
+
+    // Cleanup preview URL on unmount
+    useEffect(() => {
+        return () => {
+            if (previewUrl) {
+                URL.revokeObjectURL(previewUrl);
+            }
+        };
+    }, [previewUrl]);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
         const { name, value } = e.target;
@@ -89,30 +107,54 @@ const MemberDialog: React.FC<MemberDialogProps> = ({ open, member, onClose, onSa
         return Object.keys(newErrors).length === 0;
     };
 
-    const handleSubmit = () => {
-        if (validate()) {
-            onSave(formData);
+    const handleSubmit = async () => {
+        if (!validate()) return;
+
+        setUploading(true);
+        try {
+            const currentData = { ...formData };
+            let finalId = member?.id || currentData.id;
+
+            // Generate ID if missing (for new members)
+            if (!finalId) {
+                finalId = crypto.randomUUID();
+                currentData.id = finalId;
+            }
+
+            // Upload pending signature if exists
+            if (pendingFile) {
+                const url = await uploadMemberSignature(pendingFile, finalId);
+                currentData.signatureUrl = url;
+            }
+
+            await onSave(currentData);
+        } catch (error) {
+            console.error('Error saving member:', error);
+            setErrors(prev => ({ ...prev, form: 'Erreur lors de l\'enregistrement' }));
+        } finally {
+            setUploading(false);
         }
     };
 
-    const handleSignatureUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleSignatureUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files[0]) {
-            setUploading(true);
-            try {
-                const memberId = member?.id || 'new_member';
-                const url = await uploadMemberSignature(e.target.files[0], memberId);
-                setFormData(prev => ({ ...prev, signatureUrl: url }));
-            } catch (error) {
-                console.error('Signature upload failed:', error);
-                setErrors(prev => ({ ...prev, signatureUrl: 'Échec du téléversement' }));
-            } finally {
-                setUploading(false);
-            }
+            const file = e.target.files[0];
+            setPendingFile(file);
+
+            // Create preview
+            if (previewUrl) URL.revokeObjectURL(previewUrl);
+            const url = URL.createObjectURL(file);
+            setPreviewUrl(url);
         }
     };
 
     const handleRemoveSignature = () => {
-        setFormData(prev => ({ ...prev, signatureUrl: null as any })); // Using null to indicate removal, though type is usually string | undefined
+        setPendingFile(null);
+        if (previewUrl) {
+            URL.revokeObjectURL(previewUrl);
+            setPreviewUrl(null);
+        }
+        setFormData(prev => ({ ...prev, signatureUrl: null as any }));
     };
 
     const formId = React.useId();
@@ -273,10 +315,10 @@ const MemberDialog: React.FC<MemberDialogProps> = ({ open, member, onClose, onSa
                         </Divider>
 
                         <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, p: 2, border: '1px dashed #ccc', borderRadius: 1 }}>
-                            {formData.signatureUrl ? (
+                            {(previewUrl || formData.signatureUrl) ? (
                                 <Box sx={{ position: 'relative', width: '100%', maxWidth: 300, textAlign: 'center' }}>
                                     <img
-                                        src={formData.signatureUrl}
+                                        src={previewUrl || formData.signatureUrl}
                                         alt="Signature"
                                         style={{ maxHeight: 100, maxWidth: '100%', objectFit: 'contain' }}
                                     />
@@ -301,7 +343,7 @@ const MemberDialog: React.FC<MemberDialogProps> = ({ open, member, onClose, onSa
                                         startIcon={<CloudUpload />}
                                         disabled={uploading}
                                     >
-                                        {uploading ? 'Téléversement...' : 'Ajouter une signature (Image)'}
+                                        {uploading ? 'Traitement...' : 'Ajouter une signature (Image)'}
                                         <input
                                             type="file"
                                             hidden
@@ -313,16 +355,21 @@ const MemberDialog: React.FC<MemberDialogProps> = ({ open, member, onClose, onSa
                             )}
                             {errors.signatureUrl && <Typography color="error" variant="caption">{errors.signatureUrl}</Typography>}
                             <Typography variant="caption" color="textSecondary">
-                                Cette signature pourra être utilisée pour approuver les procès-verbaux numériquement.
+                                La signature sera enregistrée lors de la validation du formulaire.
                             </Typography>
                         </Box>
                     </Grid>
                 </Grid>
             </DialogContent>
             <DialogActions>
-                <Button onClick={onClose}>Annuler</Button>
-                <Button onClick={handleSubmit} variant="contained" color="primary">
-                    {member ? 'Enregistrer' : 'Ajouter'}
+                <Button onClick={onClose} disabled={uploading}>Annuler</Button>
+                <Button
+                    onClick={handleSubmit}
+                    variant="contained"
+                    color="primary"
+                    disabled={uploading}
+                >
+                    {uploading ? 'Enregistrement...' : (member ? 'Enregistrer' : 'Ajouter')}
                 </Button>
             </DialogActions>
         </Dialog>
