@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Box, TextField, IconButton, InputAdornment, Typography, CircularProgress, Divider } from '@mui/material';
 import { Send, AutoAwesome } from '@mui/icons-material';
-import { searchMeetings } from '../../services/typesenseService';
+import { searchMeetings } from '../../services/supabaseSearchService';
 
 interface JurisprudenceChatBoxProps {
     initialContext?: string;
@@ -29,7 +29,7 @@ const JurisprudenceChatBox: React.FC<JurisprudenceChatBoxProps> = ({
         try {
             // 1. Search for context (limited to top 5 for context)
             const { aiService } = await import('../../services/ai/UnifiedAIService');
-            const searchResponse = await searchMeetings(userMessage, { perPage: 5 });
+            const searchResponse = await searchMeetings(userMessage, { matchCount: 5 });
 
             const fetchedContext = searchResponse.hits.map(h =>
                 `SOURCE: ${h.document.title} (${h.document.date})\nEXTRAIT: ${h.document.resolutions?.join('\n') || h.document.minutes || ''}`

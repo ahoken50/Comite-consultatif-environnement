@@ -17,9 +17,9 @@ import { Sync, Search, Info } from '@mui/icons-material';
 import { collection, getDocs, query } from 'firebase/firestore';
 import { db } from '../../services/firebase';
 import { parseAnyDate } from '../../utils/dateUtils';
-import { indexMeeting, indexProject, indexRegulation, resetCollection, getTypesenseStatus, checkTypesenseHealth, ensureCollectionsExist } from '../../services/typesenseService';
+import { checkSupabaseHealth } from '../../services/supabaseSearchService';
 import type { Meeting } from '../../types/meeting.types';
-import type { SearchableMeeting, SearchableProject, SearchableRegulation } from '../../services/typesenseService';
+import { updateDoc, doc, serverTimestamp } from 'firebase/firestore';
 
 const SearchIndexManager: React.FC = () => {
     const [loading, setLoading] = useState(false);
@@ -31,7 +31,11 @@ const SearchIndexManager: React.FC = () => {
     } | null>(null);
     const [stats, setStats] = useState({ meetings: 0, projects: 0 });
 
-    const { isConfigured } = getTypesenseStatus();
+    const [isConfigured, setIsConfigured] = useState(true);
+
+    React.useEffect(() => {
+        checkSupabaseHealth().then(h => setIsConfigured(h.configured));
+    }, []);
 
     const handleSync = async () => {
         setLoading(true);
@@ -41,17 +45,16 @@ const SearchIndexManager: React.FC = () => {
 
         try {
             // 1. Check connection
-            const health = await checkTypesenseHealth();
+            const health = await checkSupabaseHealth();
             if (!health.accessible) {
-                throw new Error(`Impossible de contacter Typesense: ${health.error || 'Erreur inconnue'}`);
+                throw new Error(`Impossible de contacter Supabase: ${health.error || 'Erreur inconnue'}`);
             }
 
             // 2. Ensure Collections Exist
-            setStatus({ type: 'info', message: 'Vérification des schémas de collection...' });
-            await ensureCollectionsExist();
+            setStatus({ type: 'info', message: 'Vérification de la santé...' });
 
-            // 3. Fetch all data
-            setStatus({ type: 'info', message: 'Lecture des données Firestore...' });
+            // 3. Trigger Sync via Firestore Update
+            setStatus({ type: 'info', message: 'Déclenchement de la réindexation (mise à jour Firestore)...' });
 
             const meetingsSnapshot = await getDocs(query(collection(db, 'meetings')));
             const projectsSnapshot = await getDocs(query(collection(db, 'projects')));
@@ -65,55 +68,23 @@ const SearchIndexManager: React.FC = () => {
                 return;
             }
 
-            // 3. Index Meetings
-            for (const doc of meetingsSnapshot.docs) {
-                const data = doc.data() as Meeting;
-
-                // Convert to SearchableMeeting format
-                const searchableMeeting: SearchableMeeting = {
-                    id: doc.id,
-                    title: data.title || 'Sans titre',
-                    // Use parseAnyDate to handle Firestore Timestamps, strings, or Date objects safely
-                    date: (parseAnyDate(data.date) || new Date()).toISOString(),
-                    dateTimestamp: Math.floor((parseAnyDate(data.date) || new Date()).getTime() / 1000),
-                    type: data.type,
-                    status: data.status,
-                    minutes: data.minutes || '',
-                    agendaItemTitles: data.agendaItems?.map(i => i.title) || [],
-                    resolutions: data.agendaItems?.flatMap(item =>
-                        // New structure: minuteEntries
-                        item.minuteEntries?.map(entry => entry.content) ||
-                        // Legacy: minuteContent if strictly resolution? Or just include it.
-                        (item.minuteContent ? [item.minuteContent] : [])
-                    ) || [],
-                    attendeeNames: data.attendees?.map(a => a.name) || []
-                };
-
-                await indexMeeting(searchableMeeting, generateEmbeddings);
+            // 3. Index Meetings (Trigger Update)
+            for (const docSnap of meetingsSnapshot.docs) {
+                // Updating a field triggers the Cloud Function 'syncMeetingToSupabase'
+                await updateDoc(doc(db, 'meetings', docSnap.id), {
+                    _forceSync: serverTimestamp()
+                } as any);
 
                 processed++;
                 setProgress((processed / totalDocs) * 100);
             }
-            setStats((prev: { meetings: number; projects: number }) => ({ ...prev, meetings: meetingsSnapshot.size }));
+            setStats((prev: any) => ({ ...prev, meetings: meetingsSnapshot.size }));
 
-            // 4. Index Projects
-            // Note: Assuming 'projects' collection exists and has similar structure
-            // Adjust type casting based on your actual Project type
-            for (const doc of projectsSnapshot.docs) {
-                const data = doc.data();
-
-                const searchableProject: SearchableProject = {
-                    id: doc.id,
-                    code: data.code || '',
-                    name: data.name || data.title || 'Sans nom',
-                    description: data.description || '',
-                    category: data.category || 'Général',
-                    status: data.status || 'Actif',
-                    priority: data.priority || 'Moyenne',
-                    notes: data.notes || ''
-                };
-
-                await indexProject(searchableProject);
+            // 4. Index Projects (Trigger Update)
+            for (const docSnap of projectsSnapshot.docs) {
+                await updateDoc(doc(db, 'projects', docSnap.id), {
+                    _forceSync: serverTimestamp()
+                } as any);
 
                 processed++;
                 setProgress((processed / totalDocs) * 100);
@@ -145,7 +116,8 @@ const SearchIndexManager: React.FC = () => {
 
         try {
             // 1. Reset Collection (Delete & Re-create Schema)
-            await resetCollection('regulations');
+            // await resetCollection('regulations'); // No longer needed for Supabase or handled via SQL
+            // For now, we just touch files to re-sync
 
             // 2. Fetch from Firestore
             setStatus({ type: 'info', message: 'Lecture des règlements dans Firebase...' });
@@ -160,22 +132,11 @@ const SearchIndexManager: React.FC = () => {
             const total = snapshot.size;
             let processed = 0;
 
-            // 3. Re-index with Embeddings
-            for (const doc of snapshot.docs) {
-                const data = doc.data();
-                const reg: SearchableRegulation = {
-                    id: doc.id,
-                    title: data.title || 'Sans titre',
-                    content: data.content || '',
-                    category: data.category || 'Général',
-                    year: Number(data.year) || new Date().getFullYear(),
-                    status: data.status || 'En vigueur'
-                };
-
-                setStatus({ type: 'info', message: `Indexation: ${reg.title} (${processed + 1}/${total})...` });
-
-                // FORCE embedding generation via Client-side AI
-                await indexRegulation(reg, true);
+            // 3. Re-index (Trigger Update)
+            for (const docSnap of snapshot.docs) {
+                await updateDoc(doc(db, 'regulations', docSnap.id), {
+                    _forceSync: serverTimestamp()
+                } as any);
 
                 processed++;
                 setProgress((processed / total) * 100);
@@ -201,7 +162,7 @@ const SearchIndexManager: React.FC = () => {
                     <Box sx={{ flex: 1 }}>
                         <Typography variant="h6">Indexation de la Recherche</Typography>
                         <Typography variant="body2" color="text.secondary">
-                            Synchronisez les données de Firestore vers Typesense Cloud pour activer la recherche full-text.
+                            Synchronisez les données de Firestore vers Supabase pour activer la recherche full-text.
                         </Typography>
                     </Box>
                     <Chip
@@ -214,7 +175,7 @@ const SearchIndexManager: React.FC = () => {
 
                 {!isConfigured && (
                     <Alert severity="warning" sx={{ mb: 3 }}>
-                        Typesense n'est pas configuré. Vérifiez les secrets GitHub (Production) ou .env.local (Local).
+                        Supabase n'est pas configuré. Vérifiez (.env.local).
                         Consultez le panneau de diagnostic ci-dessous.
                     </Alert>
                 )}
@@ -233,27 +194,9 @@ const SearchIndexManager: React.FC = () => {
                             />
                         </Stack>
                         <Stack direction="row" spacing={2} alignItems="center">
-                            <Typography variant="body2" sx={{ minWidth: 100 }}><strong>Host:</strong></Typography>
-                            <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>
-                                {import.meta.env.VITE_TYPESENSE_HOST ?
-                                    `${import.meta.env.VITE_TYPESENSE_HOST.substring(0, 5)}...` :
-                                    '(Non défini)'}
-                            </Typography>
-                        </Stack>
-                        <Stack direction="row" spacing={2} alignItems="center">
-                            <Typography variant="body2" sx={{ minWidth: 100 }}><strong>API Key:</strong></Typography>
-                            <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>
-                                {import.meta.env.VITE_TYPESENSE_API_KEY ?
-                                    (import.meta.env.VITE_TYPESENSE_API_KEY.length > 5 ? 'Présente (longueur OK)' : 'Trop courte') :
-                                    '(Non définie)'}
-                            </Typography>
-                        </Stack>
-                        <Stack direction="row" spacing={2} alignItems="center">
                             <Typography variant="body2" sx={{ minWidth: 100 }}><strong>Admin Key:</strong></Typography>
                             <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>
-                                {import.meta.env.VITE_TYPESENSE_ADMIN_KEY ?
-                                    'Présente (Cachée)' :
-                                    '(Non définie)'}
+                                (Managed via Backend)
                             </Typography>
                         </Stack>
                     </Stack>

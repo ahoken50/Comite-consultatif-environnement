@@ -15,7 +15,7 @@ import {
     Collapse
 } from '@mui/material';
 import { Search as SearchIcon, Gavel, Scale, History, Tune, AutoAwesome } from '@mui/icons-material';
-import { searchMeetings, type SearchableMeeting } from '../../services/typesenseService';
+import { searchMeetings, type SearchableMeeting } from '../../services/supabaseSearchService';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import JurisprudenceChatBox from './JurisprudenceChatBox';
@@ -38,8 +38,8 @@ const JurisprudenceSearch: React.FC = () => {
         setLoading(true);
         try {
             const response = await searchMeetings(query, {
-                perPage: 15,
-                highlightFields: ['resolutions', 'minutes', 'agendaItemTitles']
+                matchCount: 15,
+                // highlightFields: ['resolutions', 'minutes', 'agendaItemTitles'] // Not supported in first version of Supabase implementation
             });
 
             // Map results to documents
