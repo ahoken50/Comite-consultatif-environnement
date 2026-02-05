@@ -16,7 +16,8 @@ import {
     ListItemIcon,
     Tooltip,
     Chip,
-    Stack
+    Stack,
+    CircularProgress
 } from '@mui/material';
 import {
     Search as SearchIcon,
@@ -177,18 +178,25 @@ const GlobalSearch: React.FC = () => {
         return () => document.removeEventListener('keydown', handleKeyDown);
     }, []);
 
-    // Filter results
-    const results: SearchResult[] = useMemo(() => {
-        if (!debouncedQuery.trim()) return [];
+    const [localResults, setLocalResults] = useState<SearchResult[]>([]);
+    const [supabaseResults, setSupabaseResults] = useState<SearchResult[]>([]);
+    const [isSearching, setIsSearching] = useState(false);
+
+    // 1. Local Search (Fast, Synchronous)
+    useEffect(() => {
+        if (!debouncedQuery.trim()) {
+            setLocalResults([]);
+            return;
+        }
 
         const lowerQuery = debouncedQuery.toLowerCase();
-        const searchResults: SearchResult[] = [];
+        const results: SearchResult[] = [];
 
         // Projects
         if (categoryFilter === 'all' || categoryFilter === 'project') {
             projects.forEach(p => {
                 if (p.name.toLowerCase().includes(lowerQuery) || p.code.toLowerCase().includes(lowerQuery)) {
-                    searchResults.push({
+                    results.push({
                         id: p.id,
                         type: 'project',
                         title: p.name,
@@ -200,84 +208,20 @@ const GlobalSearch: React.FC = () => {
             });
         }
 
-        // Meetings
+        // Meetings (Local Filtering)
         if (categoryFilter === 'all' || categoryFilter === 'meeting') {
             meetings.forEach(m => {
-                let matchType = '';
-                let matchSnippet = '';
-
-                // 1. Check title/location (Standard)
                 if (m.title.toLowerCase().includes(lowerQuery) || (m.location && m.location.toLowerCase().includes(lowerQuery))) {
-                    matchType = 'title';
-                }
-                // 2. Deep Search: Agenda Items & Minutes
-                else {
-                    // Check Agenda Items
-                    if (m.agendaItems) {
-                        for (const item of m.agendaItems) {
-                            // Title & Description
-                            if (item.title.toLowerCase().includes(lowerQuery)) {
-                                matchType = 'Agenda: ' + item.title;
-                                break;
-                            }
-                            if (item.description && item.description.toLowerCase().includes(lowerQuery)) {
-                                matchType = 'Agenda: ' + item.title;
-                                matchSnippet = '... ' + item.description.substring(Math.max(0, item.description.toLowerCase().indexOf(lowerQuery) - 20), item.description.toLowerCase().indexOf(lowerQuery) + 40) + ' ...';
-                                break;
-                            }
-                            // Minute Entries (Resolutions/Comments)
-                            if (item.minuteEntries) {
-                                const entry = item.minuteEntries.find(e => e.content.toLowerCase().includes(lowerQuery));
-                                if (entry) {
-                                    matchType = `Résolution ${entry.number}`;
-                                    matchSnippet = '... ' + entry.content.substring(Math.max(0, entry.content.toLowerCase().indexOf(lowerQuery) - 20), entry.content.toLowerCase().indexOf(lowerQuery) + 40) + ' ...';
-                                    break;
-                                }
-                            }
-                            // Legacy minute content
-                            if (item.minuteContent && item.minuteContent.toLowerCase().includes(lowerQuery)) {
-                                matchType = 'Contenu PV';
-                                matchSnippet = '... ' + item.minuteContent.substring(Math.max(0, item.minuteContent.toLowerCase().indexOf(lowerQuery) - 20), item.minuteContent.toLowerCase().indexOf(lowerQuery) + 40) + ' ...';
-                                break;
-                            }
-                        }
-                    }
-
-                    // Check raw HTML minutes (if no other match found yet)
-                    if (!matchType && m.minutes && m.minutes.toLowerCase().includes(lowerQuery)) {
-                        // Strip HTML tags for cleaner snippet
-                        const plainText = m.minutes.replace(/<[^>]+>/g, ' ');
-                        if (plainText.toLowerCase().includes(lowerQuery)) {
-                            matchType = 'Contenu PV';
-                            const index = plainText.toLowerCase().indexOf(lowerQuery);
-                            matchSnippet = '... ' + plainText.substring(Math.max(0, index - 20), index + 40) + ' ...';
-                        }
-                    }
-                }
-
-                if (matchType) {
-                    let link = `/meetings/${m.id}`;
-                    if (matchType.startsWith('Agenda') || matchType.startsWith('Résolution')) {
-                        // Find the item ID for deep linking
-                        const itemId = m.agendaItems?.find(i =>
-                            i.title.toLowerCase().includes(lowerQuery) ||
-                            (i.description && i.description.toLowerCase().includes(lowerQuery)) ||
-                            (i.minuteEntries && i.minuteEntries.some(e => e.content.toLowerCase().includes(lowerQuery)))
-                        )?.id;
-                        if (itemId) link += `#item-${itemId}`;
-                    } else if (matchType === 'Contenu PV') {
-                        link += '#minutes-content';
-                    }
-
-                    searchResults.push({
+                    results.push({
                         id: m.id,
                         type: 'meeting',
                         title: m.title,
-                        subtitle: matchSnippet || (matchType === 'title' ? (m.type === 'regular' ? 'Régulière' : 'Spéciale') : matchType),
-                        link: link,
+                        subtitle: m.type === 'regular' ? 'Régulière' : 'Spéciale',
+                        link: `/meetings/${m.id}`,
                         date: m.date
                     });
                 }
+                // Note: We deliberately skip deep local search for minutes here because Supabase does it better/fuzzy
             });
         }
 
@@ -285,7 +229,7 @@ const GlobalSearch: React.FC = () => {
         if (categoryFilter === 'all' || categoryFilter === 'document') {
             documents.forEach(d => {
                 if (d.name.toLowerCase().includes(lowerQuery)) {
-                    searchResults.push({
+                    results.push({
                         id: d.id,
                         type: 'document',
                         title: d.name,
@@ -301,7 +245,7 @@ const GlobalSearch: React.FC = () => {
         if (categoryFilter === 'all' || categoryFilter === 'member') {
             members.forEach(m => {
                 if (m.displayName.toLowerCase().includes(lowerQuery) || m.email.toLowerCase().includes(lowerQuery)) {
-                    searchResults.push({
+                    results.push({
                         id: m.id,
                         type: 'member',
                         title: m.displayName,
@@ -312,8 +256,52 @@ const GlobalSearch: React.FC = () => {
             });
         }
 
-        return searchResults.slice(0, 10);
+        setLocalResults(results);
+
     }, [debouncedQuery, projects, meetings, documents, members, categoryFilter]);
+
+    // 2. Supabase Search (Async, optimized for Resolutions & Content)
+    useEffect(() => {
+        const fetchSupabaseResults = async () => {
+            if (!debouncedQuery.trim()) {
+                setSupabaseResults([]);
+                return;
+            }
+
+            setIsSearching(true);
+            try {
+                const { searchResolutions } = await import('../../services/supabaseSearchService');
+                const response = await searchResolutions(debouncedQuery, { matchCount: 5 });
+
+                const mapped: SearchResult[] = response.hits.map(h => ({
+                    id: h.document.id, // ID is synthetic meetingId-index
+                    type: 'meeting', // We use 'meeting' icon but subtitle clarifies
+                    title: h.document.number !== 'N/A' ? `Résolution ${h.document.number}` : h.document.topicTitle,
+                    subtitle: `...${h.document.content.substring(0, 60)}...`,
+                    link: `/meetings/${h.document.meetingId}#resolution-${h.document.id.split('-').slice(1).join('-')}`,
+                    date: h.document.date
+                }));
+
+                setSupabaseResults(mapped);
+
+            } catch (err) {
+                console.error("Global search error:", err);
+            } finally {
+                setIsSearching(false);
+            }
+        };
+
+        const timer = setTimeout(fetchSupabaseResults, 300); // Debounce API call slightly
+        return () => clearTimeout(timer);
+    }, [debouncedQuery]);
+
+    // Merge results
+    const results = useMemo(() => {
+        const combined = [...localResults, ...supabaseResults];
+        // Deduplicate by ID if necessary (though types usually differ)
+        // Sort by relevance or date could be added here
+        return combined.slice(0, 15);
+    }, [localResults, supabaseResults]);
 
     // Save to recent searches
     const saveToRecent = useCallback((searchTerm: string) => {
@@ -418,7 +406,7 @@ const GlobalSearch: React.FC = () => {
             <Box>
                 <Search>
                     <SearchIconWrapper>
-                        <SearchIcon />
+                        {isSearching ? <CircularProgress size={20} color="inherit" /> : <SearchIcon />}
                     </SearchIconWrapper>
                     <StyledInputBase
                         inputRef={inputRef}

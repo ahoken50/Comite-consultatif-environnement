@@ -77,6 +77,118 @@ SEGMENT_DURATION_MINUTES = 10
 SUPPORTED_FORMATS = ['mp3', 'mp4', 'm4a', 'wav', 'webm', 'mpeg', 'mpga', 'oga', 'ogg']
 
 
+def get_pyannote_model():
+    """Get or create Pyannote embedding model (Singleton)"""
+    # Note: Pyannote requires torch, which is heavy. Ensure sufficient memory.
+    try:
+        from pyannote.audio import Model
+        import torch
+    except ImportError:
+        print("[System] Pyannote or Torch not found. Speaker ID will fail.")
+        return None
+
+    auth_token = os.environ.get("HF_TOKEN")
+    if not auth_token:
+        print("[System] HF_TOKEN not found. Cannot load Pyannote.")
+        return None
+
+    print("[System] Loading Pyannote embedding model...")
+    # Use the official pyannote/embedding model
+    model = Model.from_pretrained("pyannote/embedding", use_auth_token=auth_token)
+    return model
+
+
+@https_fn.on_request(timeout_sec=300, memory_options=options.MemoryOption.GB_4)
+def enroll_speaker(req: https_fn.Request) -> https_fn.Response:
+    """
+    Enroll a new speaker by generating a voice embedding from an audio sample.
+    Query Params: name (str)
+    Body: Audio file (binary) or JSON with 'url'
+    """
+    # 1. Validation
+    name = req.args.get('name')
+    if not name:
+        return https_fn.Response("Missing 'name' query parameter", status=400)
+
+    # 2. Get Audio Content
+    temp_path = None
+    try:
+        content_type = req.headers.get('content-type', '')
+        
+        if 'application/json' in content_type:
+            data = req.get_json()
+            url = data.get('url')
+            if not url:
+                return https_fn.Response("JSON body must contain 'url'", status=400)
+            
+            # Download file
+            resp = requests.get(url, stream=True)
+            if not resp.ok:
+                return https_fn.Response(f"Failed to download audio: {resp.status_code}", status=400)
+            
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
+                for chunk in resp.iter_content(chunk_size=8192):
+                    tmp.write(chunk)
+                temp_path = tmp.name
+
+        elif 'multipart/form-data' in content_type:
+             # Handle file upload directly
+             file_data = req.files.get('file')
+             if not file_data:
+                 return https_fn.Response("No file provided in multipart form", status=400)
+             
+             with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
+                file_data.save(tmp)
+                temp_path = tmp.name
+        else:
+             # Assume raw binary body
+             with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
+                tmp.write(req.data)
+                temp_path = tmp.name
+
+        # 3. Generate Embedding using Pyannote
+        model = get_pyannote_model()
+        if not model:
+            return https_fn.Response("Speaker recognition system not configured (HF_TOKEN missing)", status=500)
+
+        from pyannote.audio import Inference
+        inference = Inference(model, window="whole")
+        
+        print(f"[Enroll] Generating embedding for {name} from {temp_path}")
+        embedding = inference(temp_path)
+        
+        # 4. Save to Supabase
+        from supabase import create_client, Client
+        
+        url: str = os.environ.get("SUPABASE_URL")
+        key: str = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+        
+        if not url or not key:
+             return https_fn.Response("Supabase credentials missing", status=500)
+             
+        supabase: Client = create_client(url, key)
+        
+        # Insert into 'speakers' table (vector column)
+        data = {
+            "name": name,
+            "embedding": embedding.tolist() # Convert numpy array to list
+        }
+        
+        res = supabase.table("speakers").insert(data).execute()
+        
+        return https_fn.Response(json.dumps({"success": True, "speaker_id": res.data[0]['id']}), 
+                                 mimetype='application/json')
+                                 
+    except Exception as e:
+        print(f"[Enroll] Error: {e}")
+        return https_fn.Response(f"Enrollment failed: {str(e)}", status=500)
+        
+    finally:
+        # Cleanup
+        if temp_path and os.path.exists(temp_path):
+            os.remove(temp_path)
+
+
 def get_audio_format(mime_type: str) -> str:
     """Extract audio format from MIME type."""
     format_map = {
