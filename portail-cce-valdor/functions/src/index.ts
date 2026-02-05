@@ -30,9 +30,9 @@ function cleanRepetitions(text: string): string {
 
 import { onCall, HttpsError, CallableRequest } from "firebase-functions/v2/https";
 import { setGlobalOptions } from "firebase-functions/v2";
-import { defineString } from "firebase-functions/params";
+import { defineSecret } from "firebase-functions/params";
 
-const googleApiKey = defineString("GEMINI_BRIEFING_KEY");
+const googleApiKey = defineSecret("GEMINI_BRIEFING_KEY");
 
 // Global options for Gen 2
 setGlobalOptions({ maxInstances: 10 });
@@ -40,7 +40,7 @@ setGlobalOptions({ maxInstances: 10 });
 export const transcribeAudioV2 = onCall({
     timeoutSeconds: 3600, // 1 hour timeout (Gen 2 supports up to 60m)
     memory: "4GiB",       // Increases memory to 4GB
-    // secrets: [googleApiKey], // REMOVED: Using defineString (Env Var)
+    secrets: [googleApiKey],
 }, async (request: CallableRequest<TranscriptionRequest>) => {
     const data = request.data as TranscriptionRequest;
     console.log('[V5-V2] Start:', JSON.stringify(data));
