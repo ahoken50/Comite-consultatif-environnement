@@ -12,7 +12,7 @@ import {
     LinearProgress,
     Alert
 } from '@mui/material';
-import { Mic, Stop, PlayArrow, Save, Delete } from '@mui/icons-material';
+import { Mic, Stop, Save, Delete } from '@mui/icons-material';
 import { keyframes } from '@emotion/react';
 
 interface VoiceEnrollmentDialogProps {
@@ -43,7 +43,7 @@ const VoiceEnrollmentDialog: React.FC<VoiceEnrollmentDialogProps> = ({
 
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
     const audioChunksRef = useRef<Blob[]>([]);
-    const timerRef = useRef<NodeJS.Timeout | null>(null);
+    const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
     // Cleanup URL on unmount
     useEffect(() => {

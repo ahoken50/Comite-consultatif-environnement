@@ -1,6 +1,6 @@
 
-import { httpsCallable } from 'firebase/functions';
-import { functions } from '../firebase';
+// import { httpsCallable } from 'firebase/functions';
+// import { functions } from './firebase'; // Not used in this version but path was wrong
 
 export interface EnrollmentResponse {
     success: boolean;
