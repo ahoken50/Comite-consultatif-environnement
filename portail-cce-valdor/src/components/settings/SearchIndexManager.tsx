@@ -16,9 +16,7 @@ import {
 import { Sync, Search, Info } from '@mui/icons-material';
 import { collection, getDocs, query } from 'firebase/firestore';
 import { db } from '../../services/firebase';
-import { parseAnyDate } from '../../utils/dateUtils';
 import { checkSupabaseHealth } from '../../services/supabaseSearchService';
-import type { Meeting } from '../../types/meeting.types';
 import { updateDoc, doc, serverTimestamp } from 'firebase/firestore';
 
 const SearchIndexManager: React.FC = () => {
