@@ -40,6 +40,10 @@
         ],
         "rewrites": [
             {
+                "source": "/api/enroll_speaker",
+                "function": "enroll_speaker"
+            },
+            {
                 "source": "**",
                 "destination": "/index.html"
             }

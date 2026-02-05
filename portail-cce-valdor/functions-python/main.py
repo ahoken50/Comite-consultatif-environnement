@@ -105,10 +105,23 @@ def enroll_speaker(req: https_fn.Request) -> https_fn.Response:
     Query Params: name (str)
     Body: Audio file (binary) or JSON with 'url'
     """
+    # 0. CORS Handling
+    if req.method == 'OPTIONS':
+        headers = {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type',
+            'Access-Control-Max-Age': '3600'
+        }
+        return https_fn.Response('', status=204, headers=headers)
+
+    # Set default CORS headers for all responses
+    cors_headers = {'Access-Control-Allow-Origin': '*'}
+
     # 1. Validation
     name = req.args.get('name')
     if not name:
-        return https_fn.Response("Missing 'name' query parameter", status=400)
+        return https_fn.Response("Missing 'name' query parameter", status=400, headers=cors_headers)
 
     # 2. Get Audio Content
     temp_path = None
@@ -119,12 +132,12 @@ def enroll_speaker(req: https_fn.Request) -> https_fn.Response:
             data = req.get_json()
             url = data.get('url')
             if not url:
-                return https_fn.Response("JSON body must contain 'url'", status=400)
+                return https_fn.Response("JSON body must contain 'url'", status=400, headers=cors_headers)
             
             # Download file
             resp = requests.get(url, stream=True)
             if not resp.ok:
-                return https_fn.Response(f"Failed to download audio: {resp.status_code}", status=400)
+                return https_fn.Response(f"Failed to download audio: {resp.status_code}", status=400, headers=cors_headers)
             
             with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
                 for chunk in resp.iter_content(chunk_size=8192):
@@ -135,7 +148,7 @@ def enroll_speaker(req: https_fn.Request) -> https_fn.Response:
              # Handle file upload directly
              file_data = req.files.get('file')
              if not file_data:
-                 return https_fn.Response("No file provided in multipart form", status=400)
+                 return https_fn.Response("No file provided in multipart form", status=400, headers=cors_headers)
              
              with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
                 file_data.save(tmp)
@@ -149,7 +162,7 @@ def enroll_speaker(req: https_fn.Request) -> https_fn.Response:
         # 3. Generate Embedding using Pyannote
         model = get_pyannote_model()
         if not model:
-            return https_fn.Response("Speaker recognition system not configured (HF_TOKEN missing)", status=500)
+            return https_fn.Response("Speaker recognition system not configured (HF_TOKEN missing)", status=500, headers=cors_headers)
 
         from pyannote.audio import Inference
         inference = Inference(model, window="whole")
@@ -164,7 +177,7 @@ def enroll_speaker(req: https_fn.Request) -> https_fn.Response:
         key: str = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
         
         if not url or not key:
-             return https_fn.Response("Supabase credentials missing", status=500)
+             return https_fn.Response("Supabase credentials missing", status=500, headers=cors_headers)
              
         supabase: Client = create_client(url, key)
         
@@ -177,11 +190,11 @@ def enroll_speaker(req: https_fn.Request) -> https_fn.Response:
         res = supabase.table("speakers").insert(data).execute()
         
         return https_fn.Response(json.dumps({"success": True, "speaker_id": res.data[0]['id']}), 
-                                 mimetype='application/json')
+                                 mimetype='application/json', headers=cors_headers)
                                  
     except Exception as e:
         print(f"[Enroll] Error: {e}")
-        return https_fn.Response(f"Enrollment failed: {str(e)}", status=500)
+        return https_fn.Response(f"Enrollment failed: {str(e)}", status=500, headers=cors_headers)
         
     finally:
         # Cleanup

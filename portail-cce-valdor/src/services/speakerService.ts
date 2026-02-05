@@ -35,11 +35,14 @@ export const enrollSpeaker = async (name: string, audioBlob: Blob): Promise<Enro
         const region = 'us-central1';
         const functionName = 'enroll_speaker';
 
-        // Local emulator fallback?
         const isLocal = window.location.hostname === 'localhost';
+
+        // Use the rewrite URL in production to avoid CORS and simplify config
+        // In local, we can target the emulator directly or use the rewrite if hosting emulator is running.
+        // For simplicity and safety against CORS in prod:
         const url = isLocal
             ? `http://127.0.0.1:5001/${projectId}/${region}/${functionName}`
-            : `https://${region}-${projectId}.cloudfunctions.net/${functionName}`;
+            : `/api/${functionName}`;
 
         const formData = new FormData();
         formData.append('file', audioBlob, 'enrollment.wav');
