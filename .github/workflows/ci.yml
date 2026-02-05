@@ -75,7 +75,11 @@ jobs:
 
     - name: Create Functions .env
       working-directory: portail-cce-valdor/functions
-      run: echo "GOOGLE_API_KEY=${{ secrets.GOOGLE_AI_API }}" > .env
+      run: |
+        echo "GOOGLE_API_KEY=${{ secrets.GOOGLE_AI_API }}" > .env
+        echo "GEMINI_BRIEFING_KEY=${{ secrets.GOOGLE_AI_API }}" >> .env
+        echo "SUPABASE_URL=${{ secrets.VITE_SUPABASE_URL }}" >> .env
+        echo "SUPABASE_SERVICE_ROLE_KEY=${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" >> .env
 
     - name: Create Python Functions .env
       working-directory: portail-cce-valdor/functions-python
