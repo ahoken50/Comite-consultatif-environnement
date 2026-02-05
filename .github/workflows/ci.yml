@@ -141,6 +141,17 @@ jobs:
            echo "${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" | firebase functions:secrets:set SUPABASE_SERVICE_ROLE_KEY --project "$PROJECT_ID" --force
         fi
     
+    - name: Delete Conflicting Functions (Temporary Fix)
+      if: github.ref == 'refs/heads/main'
+      working-directory: portail-cce-valdor
+      env:
+        GOOGLE_APPLICATION_CREDENTIALS: ../service-account-key.json
+        PROJECT_ID: ${{ secrets.VITE_FIREBASE_PROJECT_ID }}
+      run: |
+        echo "Attempting to delete conflicting functions..."
+        firebase functions:delete syncMeetingToSupabase syncProjectToSupabase syncRegulationToSupabase --region us-central1 --force --project "$PROJECT_ID" || true
+        echo "Deletion command finished (ignored errors if functions didn't exist)."
+
     - name: Deploy to Firebase (Hosting, Functions, Rules & Indexes)
       if: github.ref == 'refs/heads/main'
       working-directory: portail-cce-valdor
