@@ -17,7 +17,8 @@ import {
     FormControl,
     InputLabel,
     Select,
-    MenuItem
+    MenuItem,
+    CircularProgress
 } from '@mui/material';
 import { Search, Gavel, Assignment } from '@mui/icons-material';
 import { useDispatch, useSelector } from 'react-redux';
@@ -227,6 +228,11 @@ const ResolutionsPage: React.FC = () => {
                                     <Search color="action" />
                                 </InputAdornment>
                             ),
+                            endAdornment: isSearching ? (
+                                <InputAdornment position="end">
+                                    <CircularProgress size={20} />
+                                </InputAdornment>
+                            ) : null
                         }}
                     />
                     <FormControl sx={{ minWidth: 200 }}>
