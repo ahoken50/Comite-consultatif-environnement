@@ -123,11 +123,9 @@ export const transcribeAudio = async (
         console.log(`[Transcription] Job submitted: ${submitData.jobId}`);
         console.log('[Transcription] Starting polling for completion...');
 
-        // Start background polling - don't await (fire and forget)
-        // The polling will update Firestore when complete
-        pollTranscriptionStatus(meetingId, storagePath).catch(err => {
-            console.error('[Transcription] Polling error:', err);
-        });
+        // Polling removed for FinOps optimization. 
+        // The Speechmatics webhook will update Firestore automatically.
+        console.log('[Transcription] Job submitted. Waiting for webhook update...');
 
         // Return success immediately
         return {
@@ -151,49 +149,7 @@ export const transcribeAudio = async (
  * Poll transcription status until complete or timeout
  * Polls every 30 seconds for up to 30 minutes
  */
-const pollTranscriptionStatus = async (meetingId: string, storagePath?: string): Promise<void> => {
-    const checkFunction = httpsCallable(functions, 'check_transcription', { timeout: 180000 });
-    const maxAttempts = 60; // 30 minutes at 30-second intervals
-    const intervalMs = 30000; // 30 seconds
-
-    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-        try {
-            console.log(`[Transcription Poll] Attempt ${attempt}/${maxAttempts} for meeting ${meetingId}${storagePath ? ` (${storagePath})` : ''}`);
-
-            const result = await checkFunction({
-                meetingId,
-                storagePath  // Pass storagePath to identify recording in array
-            });
-            const data = result.data as { status: string; message?: string; error?: string };
-
-            console.log(`[Transcription Poll] Status: ${data.status}`);
-
-            if (data.status === 'completed') {
-                console.log('[Transcription Poll] ✅ Transcription completed!');
-                return; // Firestore already updated by check_transcription
-            }
-
-            if (data.status === 'failed') {
-                console.error('[Transcription Poll] ❌ Transcription failed:', data.error);
-                return; // Firestore already updated with error
-            }
-
-            if (data.status === 'not_started') {
-                console.warn('[Transcription Poll] Job not started, waiting...');
-            }
-
-            // Still processing, wait and retry
-            await new Promise(resolve => setTimeout(resolve, intervalMs));
-
-        } catch (err) {
-            console.error(`[Transcription Poll] Check error (attempt ${attempt}):`, err);
-            // Continue polling despite errors
-            await new Promise(resolve => setTimeout(resolve, intervalMs));
-        }
-    }
-
-    console.warn('[Transcription Poll] Timeout after 30 minutes of polling');
-};
+// Polling function removed (FinOps)
 
 
 
