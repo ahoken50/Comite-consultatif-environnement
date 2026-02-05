@@ -110,7 +110,7 @@ const SearchIndexManager: React.FC = () => {
     };
 
     const handleRepairRegulations = async () => {
-        if (!confirm("ATTENTION: Cette action va supprimer l'index des Règlements dans Typesense et le recréer à partir de Firebase.\n\nAssurez-vous que vos règlements sont bien sauvegardés dans la base de données Firebase (les uploads récents le sont).\n\nVoulez-vous continuer ?")) return;
+        if (!confirm("ATTENTION: Cette action va régénérer l'index des Règlements dans Supabase à partir de Firebase.\n\nAssurez-vous que vos règlements sont bien sauvegardés dans la base de données Firebase.\n\nVoulez-vous continuer ?")) return;
 
         setLoading(true);
         setStatus({ type: 'info', message: 'Réinitialisation de la collection...' });
