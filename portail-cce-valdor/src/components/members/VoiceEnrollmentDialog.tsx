@@ -12,8 +12,7 @@ import {
     LinearProgress,
     Alert,
     Tabs,
-    Tab,
-    Input
+    Tab
 } from '@mui/material';
 import { Mic, Stop, Save, Delete, CloudUpload } from '@mui/icons-material';
 import { keyframes } from '@emotion/react';
@@ -45,7 +44,7 @@ const VoiceEnrollmentDialog: React.FC<VoiceEnrollmentDialogProps> = ({
     const [duration, setDuration] = useState(0);
     const [isSaving, setIsSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const [progress, setProgress] = useState(0);
+
 
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
     const audioChunksRef = useRef<Blob[]>([]);
