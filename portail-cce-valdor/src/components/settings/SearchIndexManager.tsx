@@ -73,6 +73,9 @@ const SearchIndexManager: React.FC = () => {
                     _forceSync: serverTimestamp()
                 } as any);
 
+                // Add small delay to prevent browser network saturation (Firestore Write Channel issues)
+                await new Promise(resolve => setTimeout(resolve, 50));
+
                 processed++;
                 setProgress((processed / totalDocs) * 100);
             }
@@ -83,6 +86,7 @@ const SearchIndexManager: React.FC = () => {
                 await updateDoc(doc(db, 'projects', docSnap.id), {
                     _forceSync: serverTimestamp()
                 } as any);
+                await new Promise(resolve => setTimeout(resolve, 50));
 
                 processed++;
                 setProgress((processed / totalDocs) * 100);
@@ -135,6 +139,7 @@ const SearchIndexManager: React.FC = () => {
                 await updateDoc(doc(db, 'regulations', docSnap.id), {
                     _forceSync: serverTimestamp()
                 } as any);
+                await new Promise(resolve => setTimeout(resolve, 50));
 
                 processed++;
                 setProgress((processed / total) * 100);

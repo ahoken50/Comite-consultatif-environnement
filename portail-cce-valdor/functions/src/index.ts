@@ -366,7 +366,7 @@ import * as supabaseC from "./supabaseClient";
 
 export const syncMeetingToSupabase = onDocumentWritten({
     document: "meetings/{meetingId}",
-    // secrets removed
+    secrets: [supabaseC.supabaseKeyParam],
 }, async (event) => {
     const meetingId = event.params.meetingId;
     const change = event.data;
@@ -405,7 +405,7 @@ export const syncMeetingToSupabase = onDocumentWritten({
 
 export const syncProjectToSupabase = onDocumentWritten({
     document: "projects/{projectId}",
-    // secrets removed
+    secrets: [supabaseC.supabaseKeyParam],
 }, async (event) => {
     const projectId = event.params.projectId;
     const change = event.data;
@@ -436,7 +436,7 @@ export const syncProjectToSupabase = onDocumentWritten({
 
 export const syncRegulationToSupabase = onDocumentWritten({
     document: "regulations/{regulationId}",
-    // secrets removed, googleApiKey is global defineString
+    secrets: [supabaseC.supabaseKeyParam, googleApiKey],
 }, async (event) => {
     const regulationId = event.params.regulationId;
     const change = event.data;

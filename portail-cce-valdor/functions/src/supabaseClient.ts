@@ -1,10 +1,10 @@
-
 import { createClient } from '@supabase/supabase-js';
-import { defineString } from 'firebase-functions/params';
+import { defineString, defineSecret } from 'firebase-functions/params';
 
 // Define configuration parameters
 const supabaseUrlParam = defineString('SUPABASE_URL');
-const supabaseKeyParam = defineString('SUPABASE_SERVICE_ROLE_KEY');
+// Export the secret so it can be used in function triggers
+export const supabaseKeyParam = defineSecret('SUPABASE_SERVICE_ROLE_KEY');
 
 // Initialize Supabase Client lazily or on demand
 // We use a helper to get the client ensures we capture the latest config values
