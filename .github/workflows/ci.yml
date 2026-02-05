@@ -62,6 +62,8 @@ jobs:
         VITE_TYPESENSE_ADMIN_KEY: ${{ secrets.VITE_TYPESENSE_ADMIN_KEY }}
         VITE_SENTRY_DSN: ${{ secrets.VITE_SENTRY_DSN }}
         VITE_GROQ_API_KEY: ${{ secrets.VITE_GROQ_API_KEY }}
+        VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+        VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
 
     - name: Install Functions dependencies
       working-directory: portail-cce-valdor/functions
@@ -107,6 +109,8 @@ jobs:
         TYPESENSE_HOST: ${{ secrets.VITE_TYPESENSE_HOST }}
         GEMINI_BRIEFING_KEY: ${{ secrets.GOOGLE_AI_API }}
         PROJECT_ID: ${{ secrets.VITE_FIREBASE_PROJECT_ID }}
+        SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+        SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
       run: |
         if [ -n "$TYPESENSE_ADMIN_KEY" ]; then
            echo "Syncing TYPESENSE_ADMIN_KEY..."
@@ -121,6 +125,16 @@ jobs:
         if [ -n "$GEMINI_BRIEFING_KEY" ]; then
            echo "Syncing GEMINI_BRIEFING_KEY..."
            echo "$GEMINI_BRIEFING_KEY" | firebase functions:secrets:set GEMINI_BRIEFING_KEY --project "$PROJECT_ID" --force
+        fi
+
+        if [ -n "${{ secrets.VITE_SUPABASE_URL }}" ]; then
+           echo "Syncing SUPABASE_URL..."
+           echo "${{ secrets.VITE_SUPABASE_URL }}" | firebase functions:secrets:set SUPABASE_URL --project "$PROJECT_ID" --force
+        fi
+
+        if [ -n "${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" ]; then
+           echo "Syncing SUPABASE_SERVICE_ROLE_KEY..."
+           echo "${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" | firebase functions:secrets:set SUPABASE_SERVICE_ROLE_KEY --project "$PROJECT_ID" --force
         fi
     
     - name: Deploy to Firebase (Hosting, Functions, Rules & Indexes)
