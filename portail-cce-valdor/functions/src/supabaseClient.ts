@@ -14,6 +14,7 @@ const getSupabase = () => {
 
     if (!supabaseUrl || !supabaseKey) {
         console.error("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY");
+        console.error(`URL: ${supabaseUrl ? 'Set' : 'Missing'}, Key: ${supabaseKey ? 'Set' : 'Missing'}`);
         throw new Error("Supabase configuration missing");
     }
 
@@ -79,10 +80,15 @@ export const indexMeeting = async (meeting: SearchableMeeting) => {
         };
 
         const { error } = await supabase.from('meetings').upsert(row);
-        if (error) throw error;
-        console.log(`[Supabase] Indexed meeting ${meeting.id}`);
+        if (error) {
+            console.error(`[Supabase Error] Upsert failed for meeting ${meeting.id}:`, JSON.stringify(error));
+            throw error;
+        }
+        console.log(`[Supabase] Successfully indexed meeting ${meeting.id}`);
     } catch (error) {
-        console.error(`[Supabase] Failed to index meeting ${meeting.id}`, error);
+        console.error(`[Supabase] Critical failure in logical indexMeeting for ${meeting.id}`, error);
+        // Rethrow so Cloud Functions knows it failed
+        throw error;
     }
 };
 
