@@ -13,6 +13,8 @@ import type { Member } from '../../types/member.types';
 
 import MandateList from '../../components/members/MandateList';
 import { AccessControl } from '../../components/auth/AccessControl';
+import VoiceEnrollmentDialog from '../../components/members/VoiceEnrollmentDialog';
+import { enrollSpeaker } from '../../services/speakerService';
 
 const MembersPage: React.FC = () => {
     const dispatch = useDispatch<AppDispatch>();
@@ -118,6 +120,29 @@ const MembersPage: React.FC = () => {
         }
     };
 
+    // Voice Enrollment Logic
+    const [enrollDialogOpen, setEnrollDialogOpen] = useState(false);
+    const [memberToEnroll, setMemberToEnroll] = useState<Member | null>(null);
+
+    const handleEnroll = useCallback((member: Member) => {
+        setMemberToEnroll(member);
+        setEnrollDialogOpen(true);
+    }, []);
+
+    const handleSaveVoice = async (audioBlob: Blob) => {
+        if (!memberToEnroll) return;
+        try {
+            await enrollSpeaker(memberToEnroll.displayName, audioBlob);
+            setNotification({ message: 'Empreinte vocale enregistrée avec succès !', type: 'success' });
+            setEnrollDialogOpen(false);
+        } catch (err: any) {
+            console.error(err);
+            setNotification({ message: `Erreur : ${err.message}`, type: 'error' });
+            // Keep dialog open to retry
+            throw err;
+        }
+    };
+
     // Filter members based on tab
     const displayedMembers = members.filter(m => tabValue === 0 ? m.isActive : !m.isActive);
 
@@ -166,6 +191,7 @@ const MembersPage: React.FC = () => {
                             projectCount={projectCounts[member.id] || 0}
                             onEdit={(user?.role === 'coordinator' || member.id === user?.memberId) ? handleEdit : undefined}
                             onDelete={user?.role === 'coordinator' ? handleDelete : undefined}
+                            onEnroll={handleEnroll}
                         />
                     </Grid>
                 ))}
@@ -184,6 +210,13 @@ const MembersPage: React.FC = () => {
                 onClose={handleCloseDialog}
                 onSave={handleSave}
                 readOnlyAdminFields={user?.role !== 'coordinator'}
+            />
+
+            <VoiceEnrollmentDialog
+                open={enrollDialogOpen}
+                memberName={memberToEnroll?.displayName || ''}
+                onClose={() => setEnrollDialogOpen(false)}
+                onSave={handleSaveVoice}
             />
 
             <Snackbar

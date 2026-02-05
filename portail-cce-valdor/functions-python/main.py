@@ -98,7 +98,7 @@ def get_pyannote_model():
     return model
 
 
-@https_fn.on_request(timeout_sec=300, memory_options=options.MemoryOption.GB_4)
+@https_fn.on_request(timeout_sec=300, memory=options.MemoryOption.GB_4)
 def enroll_speaker(req: https_fn.Request) -> https_fn.Response:
     """
     Enroll a new speaker by generating a voice embedding from an audio sample.

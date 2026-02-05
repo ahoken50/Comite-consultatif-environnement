@@ -22,9 +22,10 @@ interface MemberCardProps {
     projectCount?: number;
     onEdit?: (member: Member) => void;
     onDelete?: (id: string) => void;
+    onEnroll?: (member: Member) => void;
 }
 
-const MemberCard: React.FC<MemberCardProps> = memo(({ member, projectCount = 0, onEdit, onDelete }) => {
+const MemberCard: React.FC<MemberCardProps> = memo(({ member, projectCount = 0, onEdit, onDelete, onEnroll }) => {
     const [anchorEl, setAnchorEl] = React.useState<null | HTMLElement>(null);
 
     const handleMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
@@ -43,6 +44,11 @@ const MemberCard: React.FC<MemberCardProps> = memo(({ member, projectCount = 0, 
     const handleDelete = () => {
         handleMenuClose();
         if (onDelete) onDelete(member.id);
+    };
+
+    const handleEnroll = () => {
+        handleMenuClose();
+        if (onEnroll) onEnroll(member);
     };
 
     const getRoleColor = (role: string) => {
@@ -131,10 +137,12 @@ const MemberCard: React.FC<MemberCardProps> = memo(({ member, projectCount = 0, 
                 onClose={handleMenuClose}
             >
                 <MenuItem onClick={handleEdit}>Modifier</MenuItem>
+                <MenuItem onClick={handleEnroll}>🎙️ Enrôlement vocal</MenuItem>
                 <MenuItem onClick={handleDelete} sx={{ color: 'error.main' }}>Supprimer</MenuItem>
             </Menu>
         </Card>
     );
 });
+
 
 export default MemberCard;
