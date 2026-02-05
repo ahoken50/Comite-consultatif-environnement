@@ -120,19 +120,63 @@ const ResolutionsPage: React.FC = () => {
         return Array.from(statuses).sort();
     }, [resolutions]);
 
+    // [MODIFIED] Supabase Search Integration
+    const [searchResults, setSearchResults] = useState<ResolutionRow[]>([]);
+    const [isSearching, setIsSearching] = useState(false);
+    const [searchMode, setSearchMode] = useState(false); // true if using Supabase results
+
+    // Debounce search
+    useEffect(() => {
+        const performSearch = async () => {
+            if (!searchTerm.trim()) {
+                setSearchMode(false);
+                return;
+            }
+
+            setIsSearching(true);
+            setSearchMode(true);
+
+            try {
+                // Import dynamically to avoid circular deps if any, or just use imported service
+                // Assuming searchResolutions is available in supabaseSearchService
+                const { searchResolutions } = await import('../../services/supabaseSearchService');
+
+                const results = await searchResolutions(searchTerm, { matchCount: 50 });
+
+                // Map to ResolutionRow
+                const mapped: ResolutionRow[] = results.hits.map(h => ({
+                    id: h.document.id,
+                    number: h.document.number,
+                    content: h.document.content,
+                    date: h.document.date,
+                    meetingId: h.document.meetingId,
+                    meetingTitle: h.document.meetingTitle,
+                    topicTitle: h.document.topicTitle,
+                    status: 'Inconnu' // Search index might not have live project status
+                }));
+
+                setSearchResults(mapped);
+            } catch (error) {
+                console.error("Search failed", error);
+            } finally {
+                setIsSearching(false);
+            }
+        };
+
+        const timer = setTimeout(performSearch, 500);
+        return () => clearTimeout(timer);
+    }, [searchTerm]);
+
     const filteredResolutions = useMemo(() => {
+        // If in Supabase Search Mode, use API results
+        if (searchMode) return searchResults;
+
+        // Otherwise, use local Redux filtering (Default view)
         return resolutions.filter(r => {
-            const matchesSearch =
-                r.number.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                r.content.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                r.topicTitle.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                (r.projectCode && r.projectCode.toLowerCase().includes(searchTerm.toLowerCase()));
-
             const matchesStatus = statusFilter === 'all' || r.status === statusFilter;
-
-            return matchesSearch && matchesStatus;
+            return matchesStatus; // Only status filter applies here since search text triggers Search Mode
         });
-    }, [resolutions, searchTerm, statusFilter]);
+    }, [resolutions, searchResults, searchMode, statusFilter]);
 
     // [NEW] Helper for status colors
     const getStatusColor = (status?: string) => {

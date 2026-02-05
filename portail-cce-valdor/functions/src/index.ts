@@ -457,14 +457,18 @@ export const syncRegulationToSupabase = onDocumentWritten({
 
     // Generate Embedding using Gemini
     let embedding: number[] | undefined;
-    try {
-        const apiKey = googleApiKey.value();
-        if (apiKey && (data.title || data.content)) {
+    if (googleApiKey.value()) {
+        try {
+            const apiKey = googleApiKey.value();
+            const { GoogleGenerativeAI } = require("@google/generative-ai");
             const genAI = new GoogleGenerativeAI(apiKey);
             const model = genAI.getGenerativeModel({ model: "text-embedding-004" });
 
             const resolutionsText = data.agendaItems?.flatMap((item: any) =>
-                item.minuteEntries?.map((entry: any) => entry.content) ||
+                item.minuteEntries?.map((entry: any) => {
+                    const text = entry.content || "";
+                    return entry.number ? `${entry.number} ${text}` : text;
+                }) ||
                 (item.minuteContent ? [item.minuteContent] : [])
             ).join('\n') || '';
 
@@ -474,9 +478,9 @@ export const syncRegulationToSupabase = onDocumentWritten({
                 embedding = result.embedding.values;
                 console.log(`[Supabase] Generated embedding for regulation ${regulationId}`);
             }
+        } catch (error) {
+            console.error(`[Supabase] Failed to generate embedding for ${regulationId}`, error);
         }
-    } catch (error) {
-        console.error(`[Supabase] Failed to generate embedding for ${regulationId}`, error);
     }
 
     const searchableRegulation: supabaseC.SearchableRegulation = {

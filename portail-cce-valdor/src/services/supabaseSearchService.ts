@@ -167,6 +167,69 @@ export const searchMeetings = async (
 };
 
 /**
+ * Search specifically for Resolutions (by searching meetings and filtering)
+ * Returns a format compatible with the ResolutionsPage
+ */
+export const searchResolutions = async (
+    query: string,
+    options: SearchOptions = {}
+): Promise<SearchResult<{
+    id: string;
+    meetingId: string;
+    meetingTitle: string;
+    date: string;
+    number: string;
+    content: string;
+    topicTitle: string;
+}>> => {
+    // 1. Find meetings containing the text/meaning
+    const meetingResults = await searchMeetings(query, options);
+
+    // 2. Extract relevant resolutions from the hits
+    // Since Supabase FTS matches the whole meeting, we need to find which resolution matched.
+    // For semantic search (vector), it's harder to pinpoint without Per-Resolution Embeddings.
+    // GUIDANCE: We will perform client-side filtering on the returned meetings to find the best matching resolutions.
+
+    const hits: any[] = [];
+    const lowerQuery = query.toLowerCase();
+
+    for (const hit of meetingResults.hits) {
+        const m = hit.document;
+
+        // Check legacy array of strings structure (if we only have raw strings)
+        // OR check structured data if available (we might need to fetch full object if search result is partial)
+        // Currently 'searchMeetings' returns 'resolutions: string[]'
+
+        if (m.resolutions && m.resolutions.length > 0) {
+            m.resolutions.forEach((resContent, idx) => {
+                // Simple Matcher: specific keywords or fuzzy
+                if (resContent.toLowerCase().includes(lowerQuery)) {
+                    hits.push({
+                        document: {
+                            id: `${m.id}-${idx}`, // Synthetic ID
+                            meetingId: m.id,
+                            meetingTitle: m.title,
+                            date: m.date,
+                            number: 'N/A', // We might lose the number in the string-only array. Ideally specific resolution objects should be indexed.
+                            content: resContent,
+                            topicTitle: "Résolution trouvée"
+                        },
+                        textMatch: hit.textMatch,
+                        vectorDistance: hit.vectorDistance
+                    });
+                }
+            });
+        }
+    }
+
+    return {
+        hits,
+        found: hits.length,
+        searchTimeMs: meetingResults.searchTimeMs
+    };
+};
+
+/**
  * Text Search for Projects
  * Projects table doesn't have an RPC in our setup yet, so we use standard PostgREST FTS.
  */
