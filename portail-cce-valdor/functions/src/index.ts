@@ -381,11 +381,15 @@ export const syncMeetingToSupabase = onDocumentWritten({
     const data = change.after.data();
     if (!data) return;
 
+    // Fix: Handle invalid dates safely to prevent crash
+    const parsedDate = data.date ? new Date(data.date) : new Date();
+    const safeDate = isNaN(parsedDate.getTime()) ? new Date() : parsedDate;
+
     const searchableMeeting: supabaseC.SearchableMeeting = {
         id: meetingId,
         title: data.title || "Sans titre",
-        date: data.date ? new Date(data.date).toISOString() : new Date().toISOString(),
-        dateTimestamp: data.date ? Math.floor(new Date(data.date).getTime() / 1000) : 0,
+        date: safeDate.toISOString(),
+        dateTimestamp: Math.floor(safeDate.getTime() / 1000),
         type: data.type || "regular",
         status: data.status || "scheduled",
         minutes: data.minutes || "",
