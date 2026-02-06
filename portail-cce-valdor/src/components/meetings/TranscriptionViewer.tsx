@@ -18,11 +18,15 @@ import {
     ArrowRightAlt,
     ContentCopy,
     People,
-    Refresh
+    Refresh,
+    SmartToy
 } from '@mui/icons-material';
+import {
+    Dialog, DialogTitle, DialogContent, DialogActions
+} from '@mui/material';
 import { useSelector } from 'react-redux';
 import type { Meeting, MinutesDraft } from '../../types/meeting.types';
-import { buildHistoricalContext, formatHistoricalContextForPrompt } from '../../services/geminiService';
+import { buildHistoricalContext, formatHistoricalContextForPrompt, reinforceSpeaker } from '../../services/geminiService';
 import { generateMinutesDraftClaude, finalizeDraftClaude, isClaudeConfigured } from '../../services/claudeService';
 import { selectAllMeetings } from '../../features/meetings/meetingsSlice';
 
@@ -32,6 +36,10 @@ interface TranscriptionViewerProps {
     onApplyToMinutes?: (content: string) => void;
     onTranscriptionUpdate?: (newTranscription: string) => void;
 }
+
+// Add RootState import if missing (checked via view_file, needs explicit import)
+import type { RootState } from '../../store/rootReducer';
+import { useToast } from '../../hooks/useToast';
 
 const TranscriptionViewer: React.FC<TranscriptionViewerProps> = ({
     meeting,
@@ -44,13 +52,22 @@ const TranscriptionViewer: React.FC<TranscriptionViewerProps> = ({
     const [error, setError] = useState<string | null>(null);
     const [feedback, setFeedback] = useState('');
     const [showFeedbackForm, setShowFeedbackForm] = useState(false);
+    const { showToast } = useToast();
 
     // Speaker Identification State
     const [showSpeakerMap, setShowSpeakerMap] = useState(false);
     const [speakerMap, setSpeakerMap] = useState<Record<string, string>>({});
+    const [learningMap, setLearningMap] = useState<Record<string, boolean>>({}); // Toggle for active learning
 
-    // Get past meetings for historical context
+    // Candidates State
+    const [candidates, setCandidates] = useState<Array<any>>([]);
+    const [candidateMemberId, setCandidateMemberId] = useState<string>('');
+    const [candidateSpeakerLabel, setCandidateSpeakerLabel] = useState<string>('');
+    const [showCandidatesDialog, setShowCandidatesDialog] = useState(false);
+
+    // Get past meetings and members
     const allMeetings = useSelector(selectAllMeetings);
+    const { items: members } = useSelector((state: RootState) => state.members);
     const pastMeetings = allMeetings.filter(m => m.id !== meeting.id && m.date < meeting.date);
 
     const transcription = meeting.audioRecording?.transcription;
@@ -148,26 +165,79 @@ const TranscriptionViewer: React.FC<TranscriptionViewerProps> = ({
     const handleApplySpeakerNames = async () => {
         if (Object.keys(speakerMap).length === 0) return;
 
+        // 1. Trigger Reinforcement Learning (Active Learning)
+        const learningPromises: Promise<any>[] = [];
+
+        Object.entries(speakerMap).forEach(([speakerLabel, newName]) => {
+            if (learningMap[speakerLabel]) {
+                // Find member ID from name
+                const member = members.find(m => m.displayName === newName);
+                if (member) {
+                    showToast?.(`Entraînement de la voix pour ${newName}...`, 'info');
+                    learningPromises.push(
+                        reinforceSpeaker(meeting.id, speakerLabel, member.id)
+                            .then(res => {
+                                if (res.success) {
+                                    if (res.candidates && res.candidates.length > 0) {
+                                        setCandidates(res.candidates);
+                                        setCandidateMemberId(member.id);
+                                        setCandidateSpeakerLabel(speakerLabel);
+                                        setShowCandidatesDialog(true);
+                                        showToast?.(`⚠️ Profil incomplet. ${res.candidates.length} suggestions trouvées.`, 'warning');
+                                    } else if (res.needMore) {
+                                        showToast?.(`⚠️ Profil incomplet (${res.samples}/3). Entraînez encore cette personne !`, 'warning');
+                                    } else {
+                                        showToast?.(`✅ ${res.message}`, 'success');
+                                    }
+                                } else {
+                                    showToast?.(`❌ Erreur: ${res.error}`, 'error');
+                                }
+                            })
+                    );
+                }
+            }
+        });
+
+        // 2. Apply Renaming in Transcript
         let newTranscription = transcription;
         Object.entries(speakerMap).forEach(([oldName, newName]) => {
             if (newName.trim()) {
                 // Strategy 1: Replace [OldName] -> [NewName]
-                // Escape regex special chars in oldName just in case
                 const escapedOldName = oldName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
-                // Replace bracketed version: [S1] -> [New Name]
                 const bracketPattern = new RegExp(`\\[${escapedOldName}\\]`, 'g');
                 newTranscription = newTranscription.replace(bracketPattern, `[${newName}]`);
 
-                // Strategy 2: Replace **OldName**: -> **NewName**: (Legacy)
+                // Strategy 2: Replace **OldName**: (Legacy)
                 const boldPattern = new RegExp(`\\*\\*${escapedOldName}\\*\\*:?`, 'g');
                 newTranscription = newTranscription.replace(boldPattern, `**${newName}**:`);
             }
         });
 
         onTranscriptionUpdate?.(newTranscription);
+
+        // Wait for learning to complete (background)
+        if (learningPromises.length > 0) {
+            await Promise.all(learningPromises);
+        }
+
         setSpeakerMap({});
+        setLearningMap({});
         setShowSpeakerMap(false);
+    };
+
+    const handleAcceptCandidates = async () => {
+        if (!candidateMemberId || candidates.length === 0) return;
+
+        showToast?.(`Ajout de ${candidates.length} segments supplémentaires...`, 'info');
+        setShowCandidatesDialog(false);
+
+        const promises = candidates.map(cand =>
+            reinforceSpeaker(meeting.id, candidateSpeakerLabel, candidateMemberId, cand.startTime, cand.endTime)
+        );
+
+        await Promise.all(promises);
+        showToast?.(`✅ ${candidates.length} segments ajoutés avec succès !`, 'success');
+        setCandidates([]);
     };
 
     const getStatusChip = () => {
@@ -185,6 +255,37 @@ const TranscriptionViewer: React.FC<TranscriptionViewerProps> = ({
 
     return (
         <Box sx={{ mt: 3 }}>
+            {/* Candidates Dialog */}
+            <Dialog open={showCandidatesDialog} onClose={() => setShowCandidatesDialog(false)} maxWidth="sm" fullWidth>
+                <DialogTitle>Suggestions d'entraînement</DialogTitle>
+                <DialogContent>
+                    <Typography gutterBottom>
+                        Le profil vocal est encore faible. L'IA a trouvé {candidates.length} autres segments pour <strong>{candidateSpeakerLabel}</strong>.
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                        Voulez-vous les ajouter pour renforcer le profil immédiatement ?
+                    </Typography>
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                        {candidates.map((c, i) => (
+                            <Paper key={i} variant="outlined" sx={{ p: 1, bgcolor: '#f5f5f5' }}>
+                                <Typography variant="caption" display="block">
+                                    Segment {i + 1} : {Math.round(c.startTime)}s - {Math.round(c.endTime)}s ({Math.round(c.duration)}s)
+                                </Typography>
+                                <Typography variant="body2" sx={{ fontStyle: 'italic' }}>
+                                    "{c.preview}"
+                                </Typography>
+                            </Paper>
+                        ))}
+                    </Box>
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={() => setShowCandidatesDialog(false)}>Ignorer</Button>
+                    <Button onClick={handleAcceptCandidates} variant="contained" color="success" startIcon={<SmartToy />}>
+                        Ajouter tout ({candidates.length})
+                    </Button>
+                </DialogActions>
+            </Dialog>
+
             {error && (
                 <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>
                     {error}
@@ -246,14 +347,41 @@ const TranscriptionViewer: React.FC<TranscriptionViewerProps> = ({
                                     <Grid size={1} sx={{ textAlign: 'center' }}>
                                         <ArrowRightAlt />
                                     </Grid>
-                                    <Grid size={6}>
+                                    <Grid size={4}>
                                         <TextField
                                             size="small"
                                             fullWidth
-                                            placeholder="Nom réel (ex: Mme Lamoureux)"
+                                            select
+                                            SelectProps={{ native: true }}
                                             value={speakerMap[speaker] || ''}
                                             onChange={(e) => setSpeakerMap(prev => ({ ...prev, [speaker]: e.target.value }))}
-                                        />
+                                        >
+                                            <option value="">Sélectionner...</option>
+                                            {members.map(m => (
+                                                <option key={m.id} value={m.displayName}>{m.displayName}</option>
+                                            ))}
+                                            <option value="custom">Autre (Texte libre)</option>
+                                        </TextField>
+                                        {speakerMap[speaker] === 'custom' && (
+                                            <TextField
+                                                size="small"
+                                                fullWidth
+                                                placeholder="Nom manuel"
+                                                onChange={(e) => setSpeakerMap(prev => ({ ...prev, [speaker]: e.target.value }))}
+                                                sx={{ mt: 1 }}
+                                            />
+                                        )}
+                                    </Grid>
+                                    <Grid size={2}>
+                                        <Button
+                                            size="small"
+                                            color={learningMap[speaker] ? "success" : "inherit"}
+                                            variant={learningMap[speaker] ? "contained" : "outlined"}
+                                            onClick={() => setLearningMap(prev => ({ ...prev, [speaker]: !prev[speaker] }))}
+                                            title="Utiliser cette voix pour améliorer le modèle (Machine Learning)"
+                                        >
+                                            {learningMap[speaker] ? "Apprendre" : "Ignorer"}
+                                        </Button>
                                     </Grid>
                                 </React.Fragment>
                             ))}
@@ -265,7 +393,7 @@ const TranscriptionViewer: React.FC<TranscriptionViewerProps> = ({
                                 onClick={handleApplySpeakerNames}
                                 disabled={Object.keys(speakerMap).length === 0}
                             >
-                                Appliquer les noms
+                                Appliquer et Entraîner
                             </Button>
                         </Box>
                     </Paper>

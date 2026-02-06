@@ -209,6 +209,56 @@ export const resetSpeakers = async (
 };
 
 /**
+ * Reinforce speaker voice profile (Active Learning)
+ */
+export const reinforceSpeaker = async (
+    meetingId: string,
+    speakerLabel: string,
+    memberId: string,
+    startTime?: number,
+    endTime?: number
+): Promise<{
+    success: boolean;
+    message?: string;
+    samples?: number;
+    error?: string;
+    needMore?: boolean;
+    candidates?: Array<{ startTime: number, endTime: number, duration: number, preview: string }>
+}> => {
+    try {
+        console.log(`[ActiveLearning] Reinforcing ${speakerLabel} -> ${memberId} ${startTime ? `(${startTime}s)` : ''}`);
+
+        const reinforceFunction = httpsCallable(functions, 'reinforce_speaker_voice', { timeout: 300000 });
+
+        const result = await reinforceFunction({
+            meetingId,
+            speakerLabel,
+            memberId,
+            startTime,
+            endTime
+        });
+
+        const data = result.data as any;
+
+        if (!data.success) {
+            return { success: false, error: data.error || 'Training failed' };
+        }
+
+        return {
+            success: true,
+            message: data.message,
+            samples: data.samples,
+            needMore: data.needMore,
+            candidates: data.candidates
+        };
+
+    } catch (error) {
+        console.error('Reinforcement error:', error);
+        return { success: false, error: (error as Error).message };
+    }
+};
+
+/**
  * Poll transcription status until complete or timeout
  * Polls every 30 seconds for up to 30 minutes
  */

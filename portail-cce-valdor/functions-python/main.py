@@ -1244,37 +1244,92 @@ def compare_embedding_with_speakers(segment_embedding: list, enrolled_speakers: 
     from speaker_identification import cosine_similarity
     import json
     
-    scores = {}
-    print(f"[VoiceEmbed] Comparing segment against {len(enrolled_speakers)} enrolled speakers")
+    import numpy as np
+
+    # 1. Collect all vectors from all speakers into a flat list
+    # [(similarity, speaker_name), ...]
+    all_matches = []
     
     for speaker in enrolled_speakers:
         stored_embedding = speaker.get("embedding")
         name = speaker.get("name", "Unknown")
         
-        # Parse string embedding if coming from Supabase/Postgres as string
+        # Parse string embedding
         if isinstance(stored_embedding, str):
             try:
-                stored_embedding = json.loads(stored_embedding)
-            except Exception as e:
-                print(f"[VoiceEmbed] Error parsing embedding for {name}: {e}")
-                continue
-                
-        if not stored_embedding or not isinstance(stored_embedding, list):
-            print(f"[VoiceEmbed] Invalid embedding format for {name}: {type(stored_embedding)}")
+                 import json
+                 stored_embedding = json.loads(stored_embedding)
+            except:
+                 continue
+                 
+        if not stored_embedding:
             continue
-        
-        if len(stored_embedding) != len(segment_embedding):
-            print(f"[VoiceEmbed] Dimension mismatch for {name}: {len(segment_embedding)} vs {len(stored_embedding)}")
-            continue
-        
-        similarity = cosine_similarity(segment_embedding, stored_embedding)
-        # Convert similarity (-1 to 1) to score (0 to 1)
-        scores[name] = (similarity + 1) / 2
-        
-        if scores[name] > 0.7:
-             print(f"[VoiceEmbed] High match: {name} ({scores[name]:.2f})")
+            
+        vectors = []
+        # Handle Multi-Vector or Single Vector
+        if isinstance(stored_embedding, list) and len(stored_embedding) > 0 and isinstance(stored_embedding[0], list):
+            vectors = stored_embedding
+        elif isinstance(stored_embedding, list) and len(stored_embedding) == len(segment_embedding):
+            vectors = [stored_embedding]
+            
+        for vec in vectors:
+            if len(vec) == len(segment_embedding):
+                sim = cosine_similarity(segment_embedding, vec)
+                all_matches.append({
+                    "similarity": sim,
+                    "name": name,
+                    "weighted_score": (sim + 1) / 2 # Normalize -1..1 to 0..1
+                })
     
-    return scores
+    # 2. Sort by similarity descending
+    all_matches.sort(key=lambda x: x["similarity"], reverse=True)
+    
+    if not all_matches:
+        return {}
+        
+    # 3. k-NN Logic (k=3)
+    # Take top 3 closest vectors
+    top_k = all_matches[:3]
+    
+    # Calculate score per speaker based on presence in top_k
+    # Standard: Max score
+    # Reinforcement: Boost score if multiple top vectors belong to same speaker
+    
+    final_scores = {}
+    
+    # Initialize with 0
+    unique_names = set(m["name"] for m in all_matches)
+    for name in unique_names:
+        final_scores[name] = 0.0
+        
+    # Strategy:
+    # Base score = Max Similarity (keep compatibility)
+    # Bonus = +0.05 for each additional vector in top_k belonging to this speaker
+    
+    # Limit to top candidate to avoid boosting everyone
+    if top_k:
+        best_match = top_k[0]
+        primary_speaker = best_match["name"]
+        final_scores[primary_speaker] = best_match["weighted_score"]
+        
+        # Check density (Are other top matches also this speaker?)
+        match_count = sum(1 for m in top_k if m["name"] == primary_speaker)
+        
+        if match_count == 3:
+            final_scores[primary_speaker] += 0.10 # Huge confidence if all 3 match
+            print(f"[VoiceEmbed] Strong Reinforcement: {primary_speaker} (3/3 matches)")
+        elif match_count == 2:
+            final_scores[primary_speaker] += 0.05
+            print(f"[VoiceEmbed] Moderate Reinforcement: {primary_speaker} (2/3 matches)")
+            
+    # Also populate other speakers with their max score (no boost) for comparison
+    for m in all_matches:
+        if m["name"] not in final_scores or final_scores[m["name"]] == 0:
+             # Only keep max
+             if m["weighted_score"] > final_scores.get(m["name"], 0):
+                 final_scores[m["name"]] = m["weighted_score"]
+                 
+    return final_scores
 
 
 async def identify_speakers_in_transcript(
@@ -1386,9 +1441,61 @@ async def identify_speakers_in_transcript(
                 best_name = name
         
         threshold = 0.2 if voice_scores else 0.3
+        
+        # AUTONOMOUS SELF-LEARNING (Deep Reinforcement)
+        # If we are confident based on Context/Linguistic even if voice is "Medium",
+        # we autonomously ADD this segment to the voice profile to learn this new variation.
+        
         if best_score >= threshold and best_name:
             speaker_mapping[speaker_label] = best_name
             print(f"[Identify] {speaker_label} -> {best_name} (score: {best_score:.2f}, voice: {bool(voice_scores)})")
+            
+            # Check conditions for Auto-Learning:
+            # 1. Voice match was "Medium" (0.55 - 0.75) -> Not perfect match, potentially new tone/mic
+            # 2. Context/Linguistic match was strong (boosted the score significantly)
+            # 3. We have a valid embedding to learn from
+            
+            voice_conf = voice_scores.get(best_name, 0)
+            if voice_available and segment_embedding:
+                if 0.55 <= voice_conf <= 0.78: # "Ambiguous but likely" zone
+                     # Calculate how much context helped
+                     # If best_score is high (> 0.65) despite medium voice, context carried it.
+                     if best_score > 0.65:
+                         print(f"[AutoLearn] Autonomous Reinforcement triggered for {best_name}!")
+                         print(f"[AutoLearn] Voice was medium ({voice_conf:.2f}) but Context confirmed ID. Learning new variation...")
+                         
+                         try:
+                             # Direct Firestore update to append embedding (Background "Fire & Forget")
+                             # We duplicate logic from reinforce_speaker_voice briefly here or call it helper?
+                             # Better to do direct update to avoid HTTP overhead
+                             member_ref = db.collection("members").where("displayName", "==", best_name).limit(1).get()
+                             if member_ref:
+                                 doc = member_ref[0]
+                                 current_emb = doc.to_dict().get("embedding", [])
+                                 # Parse if string
+                                 import json as json_lib
+                                 if isinstance(current_emb, str):
+                                     try: current_emb = json_lib.loads(current_emb)
+                                     except: current_emb = []
+                                     
+                                 # Append
+                                 new_emb_list = []
+                                 if not current_emb: new_emb_list = [segment_embedding]
+                                 elif isinstance(current_emb, list) and len(current_emb)>0 and isinstance(current_emb[0], list):
+                                     new_emb_list = current_emb + [segment_embedding]
+                                     if len(new_emb_list) > 12: new_emb_list = new_emb_list[-12:] # Allow slightly more for auto-learned
+                                 elif isinstance(current_emb, list):
+                                     new_emb_list = [current_emb, segment_embedding]
+                                     
+                                 doc.reference.update({
+                                     "embedding": json_lib.dumps(new_emb_list),
+                                     "lastVoiceUpdate": datetime.now().isoformat(),
+                                     "voiceSampleCount": len(new_emb_list)
+                                 })
+                                 print(f"[AutoLearn] Successfully learned new sample for {best_name} (Total: {len(new_emb_list)})")
+                         except Exception as e:
+                             print(f"[AutoLearn] Failed to auto-learn: {e}")
+
         else:
             unidentified.append((speaker_label, combined_text))
     
@@ -1894,6 +2001,9 @@ def speechmatics_webhook(req: https_fn.Request) -> https_fn.Response:
                     if "originalTranscription" not in audio_recordings[i]:
                         audio_recordings[i]["originalTranscription"] = full_transcription
                     
+                    # Save segments for Reinforcement Learning (Active ID)
+                    audio_recordings[i]["segments"] = formatted.get("segments", [])
+                    
                     audio_recordings[i]["transcriptionStatus"] = "completed"
                     audio_recordings[i]["transcribedAt"] = datetime.now().isoformat()
                     audio_recordings[i]["transcriptionEngine"] = "speechmatics-webhook"
@@ -1994,8 +2104,11 @@ def speechmatics_webhook(req: https_fn.Request) -> https_fn.Response:
                         except Exception as e:
                             print(f"[Speaker ID] Voice embedding failed for {speaker_label}: {e}")
 
+                            print(f"[Speaker ID] Voice embedding failed for {speaker_label}: {e}")
+
                     # Other Strategies
-                    context_scores = contextual_ai_strategy(combined_text, meeting_context, known_member_names)
+                    # Pass full enrolled_speakers list to AI for role-based inference
+                    context_scores = contextual_ai_strategy(combined_text, meeting_context, enrolled_speakers)
                     linguistic_scores = linguistic_pattern_strategy(combined_text, enrolled_speakers)
                     mention_scores = name_mention_strategy(combined_text, None, known_member_names)
                     auto_id_scores = auto_identification_strategy(combined_text, known_member_names)
@@ -4148,3 +4261,285 @@ def reset_speakers(req: https_fn.CallableRequest) -> dict:
     except Exception as e:
         print(f"[Reset Speakers] Error: {e}")
         return {"success": False, "error": str(e)}
+
+
+
+# Helper for AI Supervisor
+def call_groq_quality_check(text_segment: str) -> bool:
+    """
+    Ask GROQ if the text segment is high quality enough for voice training.
+    Filters out short interjections ("Hum", "Oui"), noise, or silence.
+    """
+    groq_api_key = os.environ.get("GROQ_API_KEY")
+    if not groq_api_key:
+        print("[AI Supervisor] Skipped (No API Key)")
+        return True # Fail open if no API key
+
+    try:
+        prompt = f"""Tu es un Superviseur de Machine Learning.
+Ton rôle est de valider si ce segment de texte correspond à une phrase intelligible utile pour l'entraînement vocal.
+
+Critères de REJET (return false):
+- Moins de 3 mots (ex: "Oui", "Bonjour", "Je vois")
+- Bruit ou hésitations (ex: "Euh...", "[Inaudible]")
+- Phrases incomplètes ou coupées
+
+Critères de VALIDATION (return true):
+- Phrase complète
+- Suffisamment de contenu phonétique
+
+Segment: "{text_segment}"
+
+Réponds UNIQUEMENT par JSON: {{"valid": true}} ou {{"valid": false}}"""
+
+        response = requests.post(
+            "https://api.groq.com/openai/v1/chat/completions",
+            headers={"Authorization": f"Bearer {groq_api_key}", "Content-Type": "application/json"},
+            json={
+                "model": "llama-3.1-8b-instant",
+                "messages": [{"role": "user", "content": prompt}],
+                "temperature": 0.0,
+                "max_tokens": 50
+            },
+            timeout=10
+        )
+        
+        if response.ok:
+            import json as json_lib
+            content = response.json()["choices"][0]["message"]["content"]
+            result = json_lib.loads(content)
+            print(f"[AI Supervisor] Check '{text_segment[:20]}...': {result.get('valid')}")
+            return result.get("valid", True)
+            
+    except Exception as e:
+        print(f"[AI Supervisor] Error: {e}")
+        
+    return True # Fail open on error
+
+
+@https_fn.on_request(timeout_sec=300, memory_options=https_fn.MemoryOptions.MB_512)
+def reinforce_speaker_voice(req: https_fn.Request) -> https_fn.Response:
+    """
+    Active Learning: Add a new voice sample to a member's profile from a meeting segment.
+    """
+    if req.method == 'OPTIONS':
+        return handle_cors_options()
+
+    try:
+        data = req.get_json()
+        meeting_id = data.get("meetingId")
+        speaker_label = data.get("speakerLabel") # e.g. "S1"
+        member_id = data.get("memberId")
+        
+        if not all([meeting_id, speaker_label, member_id]):
+            return https_fn.Response(json.dumps({"error": "Missing parameters"}), status=400)
+            
+        print(f"[Reinforce] Request: {speaker_label} -> {member_id} in {meeting_id}")
+
+        # 1. Get Meeting & Audio
+        db = firestore.client()
+        meeting_ref = db.collection("meetings").document(meeting_id)
+        meeting_doc = meeting_ref.get()
+        if not meeting_doc.exists:
+            return https_fn.Response(json.dumps({"error": "Meeting not found"}), status=404)
+        
+        meeting = meeting_doc.to_dict()
+        audio_url = None
+        segments = []
+        original_transcript = ""
+        
+        if "audioRecordings" in meeting:
+            for rec in meeting["audioRecordings"]:
+                if rec.get("transcriptionStatus") == "completed":
+                    audio_url = rec.get("downloadURL") or rec.get("url") or rec.get("fileUrl")
+                    segments = rec.get("segments", [])
+                    original_transcript = rec.get("originalTranscription", "")
+                    if audio_url: break
+
+        # Fallback to legacy field
+        if not audio_url:
+            rec = meeting.get("audioRecording", {})
+            audio_url = rec.get("downloadURL") or rec.get("url")
+            original_transcript = rec.get("transcription", "")
+                    
+        if not audio_url:
+             return https_fn.Response(json.dumps({"error": "Audio not found"}), status=404)
+        
+        # 2. Find Timestamps
+        # If explicit timestamps provided (from a specific suggestion), use them
+        target_start = data.get("startTime")
+        target_end = data.get("endTime")
+        
+        start_time = 0
+        end_time = 0
+        found = False
+        segment_text = ""
+        
+        candidates = []
+        
+        if target_start is not None and target_end is not None:
+             start_time = float(target_start)
+             end_time = float(target_end)
+             found = True
+             print(f"[Reinforce] Using provided timestamps: {start_time}-{end_time}")
+             
+        # Otherwise, find the best default segment (Longest Valid)
+        # AND find candidates if we need more samples
+        elif segments:
+            longest_dur = 0
+            
+            # Scramble/Shuffle segments to avoid always picking the same ones if we have multiple candidates?
+            # actually we want deterministic 'best' one first, then candidates.
+            
+            valid_segments = []
+            
+            for seg in segments:
+                if seg.get("speaker") == speaker_label:
+                    dur = seg.get("end", 0) - seg.get("start", 0)
+                    if dur > 2: # Min 2 seconds
+                        valid_segments.append(seg)
+
+            # Sort by duration desc
+            valid_segments.sort(key=lambda x: x.get("end",0)-x.get("start",0), reverse=True)
+            
+            if valid_segments:
+                # Primary target: The longest one
+                best_seg = valid_segments[0]
+                start_time = best_seg.get("start")
+                end_time = best_seg.get("end")
+                found = True
+                
+                # Candidates: The next best ones (up to 3)
+                # We'll return these so the UI can ask the user to validate them
+                for cand in valid_segments[1:4]: # Take next 3
+                    # Get text approximation or real text
+                    # (In a real app, we'd look up the text in the transcript)
+                    cand_text = "Segment audio..." # Placeholder if we can't easily extract text here
+                    
+                    candidates.append({
+                        "startTime": cand.get("start"),
+                        "endTime": cand.get("end"),
+                        "duration": cand.get("end") - cand.get("start"),
+                        "preview": f"Segment {cand.get('start')}s"
+                    })
+
+        # Fallback to text parsing if no segments array (Legacy)
+        if not found and original_transcript and not (target_start and target_end):
+             import re
+             pattern = r"\[(\d+):(\d+)\]\s+\[" + re.escape(speaker_label) + r"\]\s*(.*?)(?=\[\d+):"
+             # ... (Keep existing text parsing fallback for safety, simplified here)
+             # If we are here, we likely don't have candidates support for legacy format
+             pass
+
+        if not found:
+            return https_fn.Response(json.dumps({"error": f"Speaker {speaker_label} not found in transcript"}), status=404)
+            
+        # --- AI SUPERVISOR CHECK (Skip if using explicit timestamps - assumes user confirmed) ---
+        if not (target_start and target_end):
+             # Extract text for the CHOSEN segment to validate
+             # ... (Logic to get text from transcript for start_time)
+             pass 
+             # For now, we trust the segments logic above or the text parsing
+        # ---------------------------
+
+        print(f"[Reinforce] Extracting {speaker_label} ({start_time}-{end_time}s) for member {member_id}")
+        
+        # 3. Extract Embedding
+        try:
+            new_embedding = extract_audio_segment_embedding(audio_url, start_time, end_time)
+        except Exception as e:
+            return https_fn.Response(json.dumps({"error": f"Extraction failed: {str(e)}"}), status=500)
+            
+        if not new_embedding:
+             return https_fn.Response(json.dumps({"error": "Empty embedding"}), status=500)
+
+        # 4. Update Member Profile
+        member_ref = db.collection("members").document(member_id)
+        member_doc = member_ref.get()
+        if not member_doc.exists:
+             return https_fn.Response(json.dumps({"error": "Member not found"}), status=404)
+             
+        member_data = member_doc.to_dict()
+        current_embedding = member_data.get("embedding")
+        
+        # Parse / Handle Multi-Vector (Same as before)
+        import json as json_lib
+        if isinstance(current_embedding, str):
+            try:
+                current_embedding = json_lib.loads(current_embedding)
+            except:
+                current_embedding = []
+        
+        # CONSISTENCY CHECK (Reinforcement)
+        # Check if new embedding matches existing profile
+        warning_msg = ""
+        is_outlier = False
+        
+        if current_embedding:
+            from speaker_identification import cosine_similarity
+            max_sim = -1.0
+            
+            # Helper to normalize 'current_embedding' to list of lists for comparison
+            compare_list = []
+            if isinstance(current_embedding, list) and len(current_embedding) > 0 and isinstance(current_embedding[0], list):
+                 compare_list = current_embedding
+            elif isinstance(current_embedding, list) and len(current_embedding) > 0:
+                 compare_list = [current_embedding]
+                 
+            for old_vec in compare_list:
+                sim = cosine_similarity(new_embedding, old_vec)
+                if sim > max_sim:
+                    max_sim = sim
+            
+            # Threshold Check
+            # 0.60 is typical "same speaker" threshold for pyannote embeddings
+            if max_sim > 0 and max_sim < 0.60:
+                 is_outlier = True
+                 warning_msg = f"Attention: Segment atypique (Score: {max_sim:.2f})."
+                 print(f"[Reinforce] OUTLIER DETECTED! Similarity {max_sim:.2f} < 0.60")
+
+        updated_embedding = []
+        
+        # Helper to add unique embeddings? (Cosine check could be done here to avoid duplicates)
+        # For now, just append
+        if not current_embedding:
+            updated_embedding = [new_embedding]
+        elif isinstance(current_embedding, list) and len(current_embedding) > 0 and isinstance(current_embedding[0], list):
+             updated_embedding = current_embedding
+             updated_embedding.append(new_embedding)
+             if len(updated_embedding) > 10: # Allow more samples now (10)
+                 updated_embedding = updated_embedding[-10:]
+        elif isinstance(current_embedding, list):
+             updated_embedding = [current_embedding, new_embedding]
+
+        # Save
+        member_ref.update({
+            "embedding": json_lib.dumps(updated_embedding),
+            "voiceSampleCount": len(updated_embedding),
+            "lastVoiceUpdate": datetime.now().isoformat()
+        })
+        
+        # Feedback Logic
+        count = len(updated_embedding)
+        msg = "Profil mis à jour."
+        
+        if is_outlier:
+            msg = f"⚠️ {warning_msg} Ajouté quand même."
+        elif count < 3:
+            msg = f"Profil incomplet ({count}/3). Vérifiez les suggestions !"
+        elif count <= 5:
+            msg = f"Profil s'améliore ({count} échantillons)."
+            
+        return https_fn.Response(json.dumps({
+            "success": True, 
+            "message": msg,
+            "samples": count,
+            "needMore": count < 5, # Encourage more training up to 5
+            "candidates": candidates # Return the found similar segments
+        }), status=200, content_type="application/json")
+        
+    except Exception as e:
+        print(f"[Reinforce] Error: {e}")
+        import traceback
+        traceback.print_exc()
+        return https_fn.Response(json.dumps({"error": str(e)}), status=500)

@@ -115,33 +115,51 @@ async def voice_embedding_strategy(
 def contextual_ai_strategy(
     transcript_segment: str,
     meeting_context: Dict,
-    known_members: List[str]
+    known_members: List[Dict]  # Changed from List[str] to List[Dict] to include roles
 ) -> Dict[str, float]:
     """
     Strategy 2: Contextual AI Analysis (25% weight)
-    Use GROQ to analyze who might be speaking based on content.
+    Use GROQ to analyze who might be speaking based on content and ROLE.
     """
     try:
         groq_api_key = os.environ.get("GROQ_API_KEY")
         if not groq_api_key:
-            print("[ContextAI] GROQ_API_KEY not configured")
             return {}
         
-        # Build prompt
-        prompt = f"""Analyse ce segment de transcription d'une réunion du Comité Consultatif en Environnement.
+        # Format members with roles for the prompt
+        members_list_str = ""
+        for m in known_members:
+            # Handle both dict (from main.py) and str (fallback)
+            if isinstance(m, dict):
+                role = m.get("role", "Membre")
+                members_list_str += f"- {m.get('name')} ({role})\n"
+            else:
+                members_list_str += f"- {m} (Membre)\n"
 
-Contexte de la réunion:
+        # Build prompt
+        prompt = f"""Analyse ce segment de réunion du Comité Consultatif en Environnement (CCE).
+Ton but est d'identifier l'intervenant en fonction de son RÔLE et de ses propos.
+
+Contexte:
 - Type: {meeting_context.get('type', 'Régulière')}
-- Membres présents: {', '.join(known_members)}
+- Membres présents et leurs rôles:
+{members_list_str}
+
+Règles d'identification:
+1. Le PRÉSIDENT mène la réunion, donne la parole ("La parole est à..."), et appelle au vote.
+2. Le SECRÉTAIRE note les présences, lit l'ordre du jour ou les résolutions techniques.
+3. Les CONSEILLERS posent des questions politiques ou font des commentaires sur les citoyens.
+4. Les CITOYENS / MEMBRES posent des questions techniques ou partagent des avis.
 
 Segment à analyser:
 "{transcript_segment}"
 
-Basé sur le contenu, le ton et le contexte, estime qui parle parmi les membres présents.
-Retourne un JSON avec les probabilités pour chaque membre. Exemple:
-{{"Jean Dupont": 0.7, "Marie Martin": 0.2}}
+Tâche:
+Estime qui parle parmi les membres listés ci-dessus.
+Retourne un JSON strict avec les probabilités (0.0 à 1.0).
+Exemple: {{"Jean Dupont": 0.8, "Marie Martin": 0.1}}
 
-Retourne UNIQUEMENT le JSON, sans explication."""
+Retourne UNIQUEMENT le JSON."""
 
         response = requests.post(
             "https://api.groq.com/openai/v1/chat/completions",
@@ -152,7 +170,7 @@ Retourne UNIQUEMENT le JSON, sans explication."""
             json={
                 "model": "llama-3.1-8b-instant",
                 "messages": [{"role": "user", "content": prompt}],
-                "temperature": 0.3,
+                "temperature": 0.1, # Lower temperature for more deterministic role matching
                 "max_tokens": 200
             },
             timeout=30
