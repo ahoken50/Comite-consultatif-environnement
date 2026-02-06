@@ -22,48 +22,55 @@ import os
 app = modal.App("pyannote-embeddings")
 
 # Define the container image with all dependencies
+
+def download_model():
+    """Download model during image build to avoid cold starts."""
+    import os
+    from pyannote.audio import Model
+    print("Downloading Pyannote model to image cache...")
+    # This will cache the model in ~/.cache/huggingface
+    Model.from_pretrained("pyannote/embedding", use_auth_token=os.environ["HF_TOKEN"])
+
 image = (
-    modal.Image.debian_slim(python_version="3.10")
-    .apt_install("ffmpeg", "libsndfile1")
+    modal.Image.debian_slim()
+    # Install system dependencies (git for pip install git+..., ffmpeg for audio processing)
+    .apt_install("git", "ffmpeg")
+    # Install Python dependencies
     .pip_install(
-        "torch==2.2.0",
-        "torchaudio==2.2.0", 
-        "numpy==1.26.4",
-        "huggingface_hub==0.19.4",  # Last version supporting 'use_auth_token'
-        "pyannote.audio==3.3.1",
+        "pyannote.audio",
+        "torch",
+        "torchaudio",
+        "numpy",
         "requests",
-        "fastapi[standard]",  # Required for web endpoints
+        "scipy",
+        "huggingface_hub", # Keep huggingface_hub for token handling
+        "fastapi[standard]" # Keep fastapi for web endpoints
     )
+    # Cache the model in the image
+    .run_function(download_model, secrets=[modal.Secret.from_name("huggingface")])
 )
 
-# Create a volume to cache the model (saves download time on cold starts)
-model_cache = modal.Volume.from_name("pyannote-model-cache", create_if_missing=True)
 
 @app.cls(
     image=image,
     gpu="T4",  # Use NVIDIA T4 GPU ($0.000164/sec = ~$0.59/hr)
     secrets=[modal.Secret.from_name("huggingface")],  # HF_TOKEN secret
-    volumes={"/cache": model_cache},
-    timeout=300,  # 5 minute timeout
+    timeout=900,  # 15 minute timeout to handle everything
 )
 class EmbeddingService:
+    model: "Model" = None
+
     @modal.enter()
     def load_model(self):
         """Load the model once when the container starts."""
+        import os
         from pyannote.audio import Model, Inference
-        import torch
         
-        # Use cached model if available
-        cache_dir = "/cache/models"
-        os.makedirs(cache_dir, exist_ok=True)
-        os.environ["HF_HOME"] = cache_dir
-        
-        token = os.environ.get("HF_TOKEN")
         print(f"Loading pyannote/embedding model...")
-        
+        # Uses built-in cache from image
         self.model = Model.from_pretrained(
             "pyannote/embedding", 
-            use_auth_token=token  # huggingface_hub 0.19.4 uses this
+            use_auth_token=os.environ["HF_TOKEN"]
         )
         self.inference = Inference(self.model, window="whole")
         print("Model loaded successfully!")
@@ -112,7 +119,7 @@ class EmbeddingService:
 
 
 # HTTP endpoint for external calls (from Cloud Functions)
-@app.function(image=image, gpu="T4", secrets=[modal.Secret.from_name("huggingface")])
+@app.function(image=image, gpu="T4", secrets=[modal.Secret.from_name("huggingface")], timeout=900)
 @modal.fastapi_endpoint(method="POST")
 def embed(data: dict) -> list:
     """
