@@ -1106,6 +1106,176 @@ def format_speechmatics_output(result: dict) -> dict:
 
 
 # =============================================================================
+# SPEAKER IDENTIFICATION - Multi-Strategy System
+# =============================================================================
+
+def get_enrolled_speakers() -> list:
+    """
+    Fetch all enrolled speakers from Supabase with their embeddings.
+    """
+    try:
+        from supabase import create_client
+        
+        supabase_url = os.environ.get("SUPABASE_URL")
+        supabase_key = os.environ.get("SUPABASE_KEY")
+        
+        if not supabase_url or not supabase_key:
+            print("[Speakers] Supabase config missing")
+            return []
+        
+        supabase = create_client(supabase_url, supabase_key)
+        result = supabase.table("speakers").select("id, name, embedding, role").execute()
+        
+        return result.data if result.data else []
+        
+    except Exception as e:
+        print(f"[Speakers] Error fetching speakers: {e}")
+        return []
+
+
+def get_meeting_attendees(meeting_id: str) -> list:
+    """
+    Fetch attendees for a specific meeting from Firestore.
+    """
+    try:
+        db = firestore.client()
+        meeting_ref = db.collection("meetings").document(meeting_id)
+        meeting = meeting_ref.get()
+        
+        if meeting.exists:
+            data = meeting.to_dict()
+            return data.get("attendees", [])
+        
+        return []
+        
+    except Exception as e:
+        print(f"[Meeting] Error fetching attendees: {e}")
+        return []
+
+
+async def identify_speakers_in_transcript(
+    formatted_output: dict,
+    meeting_id: str,
+    audio_url: str = None
+) -> dict:
+    """
+    Apply multi-strategy speaker identification to a formatted transcript.
+    
+    Uses 5 strategies:
+    1. Voice Embedding (50%) - Compare with enrolled speakers via Modal
+    2. Contextual AI (25%) - GROQ analysis of content
+    3. Linguistic Patterns (10%) - Role-based keywords
+    4. Name Mentions (10%) - "Merci Michaël" detection
+    5. Auto-Identification (5%) - "Je suis X" detection
+    
+    Returns the same structure but with speaker labels replaced by names.
+    """
+    from speaker_identification import (
+        fuse_scores,
+        voice_embedding_strategy,
+        contextual_ai_strategy,
+        linguistic_pattern_strategy,
+        name_mention_strategy,
+        auto_identification_strategy
+    )
+    
+    # Get enrolled speakers with embeddings
+    enrolled_speakers = get_enrolled_speakers()
+    if not enrolled_speakers:
+        print("[Identify] No enrolled speakers found, keeping original labels")
+        return formatted_output
+    
+    # Get meeting attendees for context
+    attendees = get_meeting_attendees(meeting_id)
+    known_member_names = [s["name"] for s in enrolled_speakers]
+    
+    # Build speaker mapping
+    segments = formatted_output.get("segments", [])
+    speaker_mapping = {}  # {"S0": "Michaël Ross", ...}
+    
+    modal_endpoint = os.environ.get("MODAL_ENDPOINT_URL", "")
+    
+    meeting_context = {
+        "type": "Régulière",
+        "attendees": attendees
+    }
+    
+    for segment in segments:
+        speaker_label = segment.get("speaker", "S0")
+        
+        # Skip if already identified
+        if speaker_label in speaker_mapping:
+            continue
+        
+        transcript_segment = segment.get("text", "")
+        
+        # Run strategies (voice embedding only if audio URL provided)
+        voice_scores = {}
+        if audio_url and modal_endpoint:
+            # Note: Would need to extract specific segment from audio
+            # For now, we skip voice embedding for individual segments
+            pass
+        
+        context_scores = contextual_ai_strategy(
+            transcript_segment, meeting_context, known_member_names
+        )
+        
+        linguistic_scores = linguistic_pattern_strategy(
+            transcript_segment, enrolled_speakers
+        )
+        
+        mention_scores = name_mention_strategy(
+            transcript_segment,
+            speaker_mapping.get(speaker_label),
+            known_member_names
+        )
+        
+        auto_id_scores = auto_identification_strategy(
+            transcript_segment, known_member_names
+        )
+        
+        # Fuse scores
+        identified_name, confidence = fuse_scores(
+            voice_scores,
+            context_scores,
+            linguistic_scores,
+            mention_scores,
+            auto_id_scores,
+            confidence_threshold=0.6
+        )
+        
+        if identified_name:
+            speaker_mapping[speaker_label] = identified_name
+            print(f"[Identify] {speaker_label} -> {identified_name} (confidence: {confidence:.2f})")
+    
+    # Apply mapping to segments
+    identified_segments = []
+    for segment in segments:
+        new_segment = segment.copy()
+        original_speaker = segment.get("speaker", "S0")
+        new_segment["speaker"] = speaker_mapping.get(original_speaker, original_speaker)
+        new_segment["original_speaker"] = original_speaker
+        identified_segments.append(new_segment)
+    
+    # Rebuild text with identified names
+    full_text_parts = []
+    for seg in identified_segments:
+        start_seconds = seg['start']
+        m = int(start_seconds // 60)
+        s = int(start_seconds % 60)
+        timestamp = f"[{m:02d}:{s:02d}]"
+        
+        speaker_label = f"[{seg['speaker']}]"
+        full_text_parts.append(f"{timestamp} {speaker_label} {seg['text']}")
+    
+    return {
+        "text": "\n\n".join(full_text_parts),
+        "segments": identified_segments,
+        "duration_seconds": formatted_output.get("duration_seconds", 0),
+        "speaker_mapping": speaker_mapping
+    }
+
+# =============================================================================
 # SALAD CLOUD INTEGRATION (Disabled - kept for reference)
 # =============================================================================
 
