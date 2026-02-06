@@ -663,19 +663,33 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate, readOn
                         }}
                         onDelete={(rec?: AudioRecording) => {
                             if (rec) {
+                                console.log('[AudioDelete] Deleting recording:', rec.storagePath);
+                                console.log('[AudioDelete] Current audioRecordings:', meeting.audioRecordings);
+                                console.log('[AudioDelete] Current audioRecording (legacy):', meeting.audioRecording?.storagePath);
+
                                 // Manual filter to ensure deletion by path (arrayRemove requires exact object match)
                                 const current = Array.isArray(meeting.audioRecordings) ? meeting.audioRecordings : [];
                                 const updated = current.filter(r => r.storagePath !== rec.storagePath);
 
+                                // Also check if the legacy field matches (compare paths)
+                                const legacyPath = meeting.audioRecording?.storagePath;
+                                const shouldClearLegacy = legacyPath === rec.storagePath ||
+                                    // Also clear if paths partially match (handle encoding issues)
+                                    (legacyPath && rec.storagePath && legacyPath.includes(rec.fileName || '___no_match___'));
+
+                                console.log('[AudioDelete] Should clear legacy?', shouldClearLegacy);
+                                console.log('[AudioDelete] Updated array length:', updated.length);
+
                                 onUpdate({
                                     audioRecordings: updated,
-                                    // If we deleted the "primary" (legacy) one
-                                    audioRecording: meeting.audioRecording?.storagePath === rec.storagePath
-                                        ? undefined as any // Force undefined
+                                    // Clear legacy field if it matches OR if we're down to 0 recordings
+                                    audioRecording: shouldClearLegacy || updated.length === 0
+                                        ? undefined as any
                                         : meeting.audioRecording
                                 });
                             } else {
-                                // Clear all (legacy behavior?)
+                                // Clear all (explicit user action)
+                                console.log('[AudioDelete] Clearing ALL audio recordings');
                                 onUpdate({ audioRecording: undefined as any, audioRecordings: [] });
                             }
                         }}
