@@ -92,6 +92,8 @@ jobs:
         echo "MODAL_ENDPOINT_URL=${{ secrets.MODAL_ENDPOINT_URL }}" >> .env
         echo "SUPABASE_URL=${{ secrets.VITE_SUPABASE_URL }}" >> .env
         echo "SUPABASE_KEY=${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" >> .env
+        echo "GEMINI_BRIEFING_KEY=${{ secrets.GOOGLE_AI_API }}" >> .env
+        echo "GROQ_API_KEY=${{ secrets.VITE_GROQ_API_KEY }}" >> .env
         # Ensure .env is included in deployment
         echo "!.env" > .gitignore
 
@@ -108,51 +110,8 @@ jobs:
     - name: Create Service Account Key JSON
       run: echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT_COMITE_CCE }}' > service-account-key.json
 
-    # Secret Sync disabled to prevent creating new versions on every build ($0.06/mo per version).
-    # Use 'firebase functions:secrets:set' manually when needed.
-    # Smart Secret Sync: Only create secrets if they are MISSING in Google Cloud.
-    # This prevents:
-    # 1. Overwriting manual changes (like your correct Service Role Key).
-    # 2. Creating new versions on every build (saving costs).
-    # 3. Re-creating deleted secrets if they are removed from here.
-    - name: Smart Sync Secrets to Firebase
-      working-directory: portail-cce-valdor
-      env:
-        GOOGLE_APPLICATION_CREDENTIALS: ../service-account-key.json
-        PROJECT_ID: ${{ secrets.VITE_FIREBASE_PROJECT_ID }}
-        
-        # Secrets to Manage
-        GEMINI_BRIEFING_KEY: ${{ secrets.GOOGLE_AI_API }}
-        SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
-        SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-        
-      run: |
-        echo "Starting Smart Secret Sync..."
-
-        # Helper function to sync only if missing
-        sync_if_missing() {
-          local NAME=$1
-          local VALUE=$2
-          
-          if [ -z "$VALUE" ]; then
-            echo "⚠️  Skipping $NAME (Value empty in GitHub Secrets)"
-            return
-          fi
-
-          if gcloud secrets describe "$NAME" --project "$PROJECT_ID" > /dev/null 2>&1; then
-            echo "✅ $NAME exists in Cloud. Skipping sync to preserve manual version."
-          else
-            echo "🆕 $NAME missing in Cloud. Creating from GitHub..."
-            echo "$VALUE" | firebase functions:secrets:set "$NAME" --project "$PROJECT_ID" --force
-          fi
-        }
-
-        # Apply Smart Sync
-        sync_if_missing "GEMINI_BRIEFING_KEY" "$GEMINI_BRIEFING_KEY"
-        sync_if_missing "SUPABASE_URL" "$SUPABASE_URL"
-        sync_if_missing "SUPABASE_SERVICE_ROLE_KEY" "$SUPABASE_SERVICE_ROLE_KEY"
-        
-        echo "Smart Sync Complete."
+    # Secrets are now injected via .env files from GitHub Secrets
+    # No longer using Google Secret Manager API to save costs
     
     - name: Delete Conflicting Functions (Temporary Fix)
       if: github.ref == 'refs/heads/main'
