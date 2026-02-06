@@ -1209,7 +1209,7 @@ def extract_audio_segment_embedding(audio_url: str, start_sec: float, end_sec: f
         modal_response = requests.post(
             modal_endpoint,
             json={"audio_base64": audio_b64},
-            timeout=180
+            timeout=600  # Increased to 10m to handle Modal cold start
         )
         
         if not modal_response.ok:
@@ -1217,7 +1217,12 @@ def extract_audio_segment_embedding(audio_url: str, start_sec: float, end_sec: f
             return []
         
         result = modal_response.json()
-        embedding = result.get("embedding", [])
+        
+        # Handle both list (direct) and dict (wrapped) responses
+        if isinstance(result, list):
+            embedding = result
+        else:
+            embedding = result.get("embedding", [])
         print(f"[VoiceEmbed] Got embedding with {len(embedding)} dimensions")
         return embedding
         
@@ -1763,7 +1768,7 @@ def transcribe_whisper_legacy_local(
 # =============================================================================
 
 @https_fn.on_request(
-    timeout_sec=540,
+    timeout_sec=3600,
     memory=options.MemoryOption.GB_1,
     cors=options.CorsOptions(cors_origins="*", cors_methods=["POST", "GET"])
 )
@@ -2046,7 +2051,7 @@ def speechmatics_webhook(req: https_fn.Request) -> https_fn.Response:
 # MANUAL SPEAKER IDENTIFICATION (Callable)
 # =============================================================================
 
-@https_fn.on_call(timeout_sec=540, memory=options.MemoryOption.GB_1)
+@https_fn.on_call(timeout_sec=3600, memory=options.MemoryOption.GB_1)
 def identify_speakers(req: https_fn.CallableRequest) -> dict:
     """
     Manually trigger speaker identification on an existing transcription.
