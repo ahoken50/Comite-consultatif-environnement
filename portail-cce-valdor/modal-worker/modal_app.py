@@ -108,7 +108,7 @@ class EmbeddingService:
 
 # HTTP endpoint for external calls (from Cloud Functions)
 @app.function(image=image, gpu="T4", secrets=[modal.Secret.from_name("huggingface")])
-@modal.web_endpoint(method="POST")
+@modal.fastapi_endpoint(method="POST")
 def embed(data: dict) -> list:
     """
     Web endpoint for generating embeddings.

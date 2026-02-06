@@ -22,6 +22,15 @@ jobs:
       - name: Install Modal
         run: pip install modal
       
+      - name: Create Modal Secret (huggingface)
+        env:
+          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          # Create or update the huggingface secret in Modal
+          modal secret create huggingface HF_TOKEN="$HF_TOKEN" --force || true
+      
       - name: Deploy to Modal
         env:
           MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
