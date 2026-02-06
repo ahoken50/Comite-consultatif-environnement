@@ -23,13 +23,25 @@ app = modal.App("pyannote-embeddings")
 
 # Define the container image with all dependencies
 
+
 def download_model():
     """Download model during image build to avoid cold starts."""
     import os
     from pyannote.audio import Model
+    from huggingface_hub import login
+
     print("Downloading Pyannote model to image cache...")
-    # This will cache the model in ~/.cache/huggingface
-    Model.from_pretrained("pyannote/embedding", use_auth_token=os.environ["HF_TOKEN"])
+    
+    token = os.environ.get("HF_TOKEN")
+    if token:
+        print(f"Logging in to Hugging Face (token length: {len(token)})...")
+        login(token=token)
+    else:
+        raise ValueError("HF_TOKEN environment variable not found during build.")
+
+    # use_auth_token=True will use the token from login()
+    Model.from_pretrained("pyannote/embedding", use_auth_token=True)
+
 
 image = (
     modal.Image.debian_slim()
