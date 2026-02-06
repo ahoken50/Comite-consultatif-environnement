@@ -315,6 +315,34 @@ const AudioUpload: React.FC<AudioUploadProps> = ({
                     >
                         {isIdentifying ? 'ID...' : 'Identifier'}
                     </Button>
+                    <Button
+                        variant="outlined"
+                        color="error" // Red just for visual distinction, or warning
+                        sx={{ flex: 0.5, minWidth: '40px' }}
+                        onClick={async () => {
+                            if (!window.confirm('Voulez-vous réinitialiser les noms vers S1, S2, etc. ?')) return;
+
+                            setIsIdentifying(true); // Reuse loading state or add new one
+                            setError(null);
+                            try {
+                                const { resetSpeakers } = await import('../../services/geminiService');
+                                const result = await resetSpeakers(meetingId);
+                                if (result.success) {
+                                    console.log('Reset success');
+                                    // Optional: trigger reload or feedback
+                                } else {
+                                    setError(result.error || 'Reset failed');
+                                }
+                            } catch (err) {
+                                setError(err instanceof Error ? err.message : 'Erreur');
+                            }
+                            setIsIdentifying(false);
+                        }}
+                        disabled={isTranscribing || isIdentifying}
+                        title="Réinitialiser les noms (S1, S2...)"
+                    >
+                        RàZ
+                    </Button>
                 </Box>
 
                 {error && (

@@ -178,6 +178,37 @@ export const identifySpeakers = async (
 };
 
 /**
+ * Reset speaker identification to original S# labels
+ */
+export const resetSpeakers = async (
+    meetingId: string,
+    storagePath?: string
+): Promise<{ success: boolean; message?: string; error?: string }> => {
+    try {
+        console.log(`[Speaker ID] Resetting for meeting ${meetingId}`);
+
+        const resetFunction = httpsCallable(functions, 'reset_speakers', { timeout: 60000 });
+
+        const result = await resetFunction({
+            meetingId,
+            storagePath
+        });
+
+        const data = result.data as { success: boolean; message?: string; error?: string };
+
+        if (!data.success) {
+            return { success: false, error: data.error || 'Reset failed' };
+        }
+
+        return { success: true, message: data.message };
+
+    } catch (error) {
+        console.error('Speaker reset error:', error);
+        return { success: false, error: (error as Error).message };
+    }
+};
+
+/**
  * Poll transcription status until complete or timeout
  * Polls every 30 seconds for up to 30 minutes
  */

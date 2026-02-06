@@ -1216,16 +1216,18 @@ def extract_audio_segment_embedding(audio_url: str, start_sec: float, end_sec: f
         )
         
         if not modal_response.ok:
-            print(f"[VoiceEmbed] Modal error: {modal_response.status_code}")
+            print(f"[VoiceEmbed] Modal error: {modal_response.status_code} - {modal_response.text}")
             return []
         
         result = modal_response.json()
+        print(f"[VoiceEmbed] Raw result type: {type(result)}")
         
         # Handle both list (direct) and dict (wrapped) responses
         if isinstance(result, list):
             embedding = result
         else:
             embedding = result.get("embedding", [])
+            
         print(f"[VoiceEmbed] Got embedding with {len(embedding)} dimensions")
         return embedding
         
@@ -1240,21 +1242,37 @@ def compare_embedding_with_speakers(segment_embedding: list, enrolled_speakers: 
     Returns dict of {name: similarity_score}
     """
     from speaker_identification import cosine_similarity
+    import json
     
     scores = {}
+    print(f"[VoiceEmbed] Comparing segment against {len(enrolled_speakers)} enrolled speakers")
     
     for speaker in enrolled_speakers:
         stored_embedding = speaker.get("embedding")
+        name = speaker.get("name", "Unknown")
+        
+        # Parse string embedding if coming from Supabase/Postgres as string
+        if isinstance(stored_embedding, str):
+            try:
+                stored_embedding = json.loads(stored_embedding)
+            except Exception as e:
+                print(f"[VoiceEmbed] Error parsing embedding for {name}: {e}")
+                continue
+                
         if not stored_embedding or not isinstance(stored_embedding, list):
+            print(f"[VoiceEmbed] Invalid embedding format for {name}: {type(stored_embedding)}")
             continue
         
         if len(stored_embedding) != len(segment_embedding):
-            print(f"[VoiceEmbed] Dimension mismatch: {len(segment_embedding)} vs {len(stored_embedding)}")
+            print(f"[VoiceEmbed] Dimension mismatch for {name}: {len(segment_embedding)} vs {len(stored_embedding)}")
             continue
         
         similarity = cosine_similarity(segment_embedding, stored_embedding)
         # Convert similarity (-1 to 1) to score (0 to 1)
-        scores[speaker["name"]] = (similarity + 1) / 2
+        scores[name] = (similarity + 1) / 2
+        
+        if scores[name] > 0.7:
+             print(f"[VoiceEmbed] High match: {name} ({scores[name]:.2f})")
     
     return scores
 
@@ -1872,6 +1890,10 @@ def speechmatics_webhook(req: https_fn.Request) -> https_fn.Response:
             for i, rec in enumerate(audio_recordings):
                 if rec.get("speechmaticsJobId") == job_id:
                     audio_recordings[i]["transcription"] = full_transcription
+                    # Save original transcription (with S# labels) for reset/re-id
+                    if "originalTranscription" not in audio_recordings[i]:
+                        audio_recordings[i]["originalTranscription"] = full_transcription
+                    
                     audio_recordings[i]["transcriptionStatus"] = "completed"
                     audio_recordings[i]["transcribedAt"] = datetime.now().isoformat()
                     audio_recordings[i]["transcriptionEngine"] = "speechmatics-webhook"
@@ -2117,7 +2139,8 @@ def identify_speakers(req: https_fn.CallableRequest) -> dict:
             # Find specific recording
             for i, rec in enumerate(audio_recordings):
                 if rec.get("storagePath") == storage_path:
-                    transcription_text = rec.get("transcription", "")
+                    # Prefer original transcription with S# labels for re-identification
+                    transcription_text = rec.get("originalTranscription") or rec.get("transcription", "")
                     audio_url = rec.get("downloadURL") or rec.get("url")
                     target_index = i
                     break
@@ -2125,7 +2148,8 @@ def identify_speakers(req: https_fn.CallableRequest) -> dict:
             # Use first recording with transcription
             for i, rec in enumerate(audio_recordings):
                 if rec.get("transcription"):
-                    transcription_text = rec["transcription"]
+                    # Prefer original transcription with S# labels for re-identification
+                    transcription_text = rec.get("originalTranscription") or rec["transcription"]
                     audio_url = rec.get("downloadURL") or rec.get("url")
                     target_index = i
                     break
@@ -4044,4 +4068,71 @@ def admin_speechmatics_cleanup(req: https_fn.CallableRequest) -> Any:
     
     except Exception as e:
         print(f"[Speechmatics Admin] Error: {str(e)}")
+        return {"success": False, "error": str(e)}
+
+
+# =============================================================================
+# RESET SPEAKER IDENTIFICATION (Callable)
+# =============================================================================
+
+@https_fn.on_call(timeout_sec=540, memory=options.MemoryOption.GB_1)
+def reset_speakers(req: https_fn.CallableRequest) -> dict:
+    """
+    Reset speaker identification to original S# labels.
+    """
+    if not req.auth:
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.UNAUTHENTICATED,
+            message="Authentication required."
+        )
+    
+    data = req.data
+    meeting_id = data.get("meetingId")
+    storage_path = data.get("storagePath")
+    
+    if not meeting_id:
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT,
+            message="Missing meetingId."
+        )
+        
+    print(f"[Reset Speakers] Starting for meeting {meeting_id}")
+    
+    try:
+        db = firestore.client()
+        meeting_ref = db.collection("meetings").document(meeting_id)
+        meeting_doc = meeting_ref.get()
+        
+        if not meeting_doc.exists:
+            return {"success": False, "error": "Meeting not found"}
+            
+        meeting_data = meeting_doc.to_dict()
+        audio_recordings = meeting_data.get("audioRecordings", [])
+        updated = False
+        
+        if audio_recordings:
+            for i, rec in enumerate(audio_recordings):
+                # Filter by path if provided
+                if storage_path and rec.get("storagePath") != storage_path:
+                    continue
+                    
+                if rec.get("originalTranscription"):
+                    print(f"[Reset Speakers] Resetting recording {i}")
+                    audio_recordings[i]["transcription"] = rec["originalTranscription"]
+                    audio_recordings[i]["speakerMapping"] = {}
+                    updated = True
+                else:
+                    print(f"[Reset Speakers] No original transcription for rec {i}")
+        
+        if updated:
+            meeting_ref.update({
+                "audioRecordings": audio_recordings,
+                "dateUpdated": datetime.now().isoformat()
+            })
+            return {"success": True, "message": "Speakers reset successfully"}
+        else:
+             return {"success": False, "message": "Nothing to reset (original transcription missing)"}
+             
+    except Exception as e:
+        print(f"[Reset Speakers] Error: {e}")
         return {"success": False, "error": str(e)}
