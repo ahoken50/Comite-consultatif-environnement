@@ -62,7 +62,7 @@ class EmbeddingService:
         
         self.model = Model.from_pretrained(
             "pyannote/embedding", 
-            use_auth_token=token
+            token=token  # 'use_auth_token' is deprecated
         )
         self.inference = Inference(self.model, window="whole")
         print("Model loaded successfully!")

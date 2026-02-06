@@ -83,7 +83,7 @@ SUPPORTED_FORMATS = ['mp3', 'mp4', 'm4a', 'wav', 'webm', 'mpeg', 'mpga', 'oga', 
 
 
 @https_fn.on_request(
-    timeout_sec=300,  # 5 minutes for external call
+    timeout_sec=540,  # 9 minutes for Modal cold start + processing
     memory=options.MemoryOption.MB_512,  # Reduced memory as work is offloaded
     cors=options.CorsOptions(cors_origins="*", cors_methods=["GET", "POST", "OPTIONS"])
 )
