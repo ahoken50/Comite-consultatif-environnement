@@ -154,9 +154,11 @@ def enroll_speaker(req: https_fn.Request) -> https_fn.Response:
 
         print(f"[Enroll] Saved temp file: {temp_path}")
 
-        # 3. Upload to Firebase Storage
+        # 3. Upload to Firebase Storage (with timestamp to prevent conflicts)
+        import time
+        timestamp = int(time.time())
         bucket = storage.bucket()
-        blob_path = f"speaker_enrollments/{name}/{filename}"
+        blob_path = f"speaker_enrollments/{name}/enrollment_{timestamp}.wav"
         blob = bucket.blob(blob_path)
         blob.upload_from_filename(temp_path)
         

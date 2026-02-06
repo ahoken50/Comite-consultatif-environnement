@@ -112,7 +112,7 @@ jobs:
     # This prevents:
     # 1. Overwriting manual changes (like your correct Service Role Key).
     # 2. Creating new versions on every build (saving costs).
-    # 3. Re-creating deleted secrets (like Typesense) if they are removed from here.
+    # 3. Re-creating deleted secrets if they are removed from here.
     - name: Smart Sync Secrets to Firebase
       working-directory: portail-cce-valdor
       env:
