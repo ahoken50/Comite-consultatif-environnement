@@ -2087,7 +2087,7 @@ def finalize_draft_claude(req: https_fn.CallableRequest) -> dict:
 
 @https_fn.on_call(
     timeout_sec=540,  # 9 minutes timeout to match client
-    memory=options.MemoryOption.GB_1
+    memory=options.MemoryOption.GB_2
 )
 def chat_claude(req: https_fn.CallableRequest) -> dict:
     """
@@ -2165,7 +2165,7 @@ def chat_claude(req: https_fn.CallableRequest) -> dict:
 # =============================================================================
 
 @https_fn.on_call(
-    memory=options.MemoryOption.MB_256,
+    memory=options.MemoryOption.GB_1,
     timeout_sec=300,  # Increased timeout for rate limiting (e.g. 50 emails * 1.5s = 75s)
     region="us-central1"
 )
@@ -3081,7 +3081,7 @@ def delete_speechmatics_job(job_id: str) -> bool:
 
 
 @https_fn.on_call(
-    memory=options.MemoryOption.MB_256,
+    memory=options.MemoryOption.GB_1,
     timeout_sec=60,
     region="us-central1"
 )
