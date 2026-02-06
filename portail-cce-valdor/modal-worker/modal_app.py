@@ -69,30 +69,33 @@ class EmbeddingService:
         print("Model loaded successfully!")
 
     @modal.method()
-    def generate_embedding(self, audio_url: str) -> list:
+    def generate_embedding(self, audio_url: str = None, audio_base64: str = None) -> list:
         """
-        Generate speaker embedding from audio URL.
-        
-        Args:
-            audio_url: Public URL to an audio file (wav, mp3, etc.)
-            
-        Returns:
-            List of floats representing the 512-dimensional embedding
+        Generate speaker embedding from audio URL or Base64 string.
         """
         import requests
         import tempfile
-        
-        print(f"Downloading audio from: {audio_url}")
-        
-        # Download the audio file
-        response = requests.get(audio_url, stream=True, timeout=60)
-        if not response.ok:
-            raise Exception(f"Failed to download audio: {response.status_code}")
+        import base64
         
         # Save to temp file
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
-            for chunk in response.iter_content(chunk_size=8192):
-                tmp.write(chunk)
+            if audio_url:
+                print(f"Downloading audio from: {audio_url}")
+                response = requests.get(audio_url, stream=True, timeout=60)
+                if not response.ok:
+                    raise Exception(f"Failed to download audio: {response.status_code}")
+                for chunk in response.iter_content(chunk_size=8192):
+                    tmp.write(chunk)
+            elif audio_base64:
+                print(f"Decoding base64 audio segment...")
+                try:
+                    audio_bytes = base64.b64decode(audio_base64)
+                    tmp.write(audio_bytes)
+                except Exception as e:
+                    raise Exception(f"Failed to decode base64: {e}")
+            else:
+                raise Exception("No audio source provided (url or audio_base64)")
+            
             tmp_path = tmp.name
         
         try:
@@ -115,15 +118,22 @@ def embed(data: dict) -> list:
     """
     Web endpoint for generating embeddings.
     
-    Request body: {"url": "https://example.com/audio.wav"}
+    Request body: 
+    - {"url": "https://example.com/audio.wav"}
+    - OR {"audio_base64": "..."}
+    
     Response: [0.123, -0.456, ...] (512 floats)
     """
     url = data.get("url") or data.get("inputs")
-    if not url:
-        return {"error": "Missing 'url' in request body"}
+    audio_base64 = data.get("audio_base64")
+    
+    if not url and not audio_base64:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail="Missing 'url' or 'audio_base64' in request body")
     
     service = EmbeddingService()
-    return service.generate_embedding.remote(url)
+    # Call with named arguments to match signature
+    return service.generate_embedding.remote(audio_url=url, audio_base64=audio_base64)
 
 
 # Local testing
