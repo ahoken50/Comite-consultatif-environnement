@@ -57,7 +57,7 @@ class EmbeddingService:
     def load_model(self):
         """Load the model once when the container starts."""
         import os
-        from pyannote.audio import Model
+        from pyannote.audio import Model, Inference
         from huggingface_hub import login
         
         print(f"Loading pyannote/embedding model (Runtime)...")
