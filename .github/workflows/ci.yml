@@ -90,6 +90,8 @@ jobs:
         echo "HF_TOKEN=${{ secrets.HF_TOKEN }}" >> .env
         echo "HF_ENDPOINT_URL=${{ secrets.HF_ENDPOINT_URL }}" >> .env
         echo "MODAL_ENDPOINT_URL=${{ secrets.MODAL_ENDPOINT_URL }}" >> .env
+        echo "SUPABASE_URL=${{ secrets.VITE_SUPABASE_URL }}" >> .env
+        echo "SUPABASE_KEY=${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" >> .env
         # Ensure .env is included in deployment
         echo "!.env" > .gitignore
 
