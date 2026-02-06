@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { arrayUnion } from 'firebase/firestore';
+import { arrayUnion, deleteField } from 'firebase/firestore';
 import {
     Box,
     Typography,
@@ -679,18 +679,20 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate, readOn
 
                                 console.log('[AudioDelete] Should clear legacy?', shouldClearLegacy);
                                 console.log('[AudioDelete] Updated array length:', updated.length);
+                                console.log('[AudioDelete] Using deleteField() to remove audioRecording from Firestore');
 
                                 onUpdate({
                                     audioRecordings: updated,
-                                    // Clear legacy field if it matches OR if we're down to 0 recordings
+                                    // Use deleteField() to actually DELETE the field from Firestore
+                                    // undefined gets stripped by sanitizeForFirestore and field remains!
                                     audioRecording: shouldClearLegacy || updated.length === 0
-                                        ? undefined as any
+                                        ? deleteField() as any
                                         : meeting.audioRecording
                                 });
                             } else {
                                 // Clear all (explicit user action)
-                                console.log('[AudioDelete] Clearing ALL audio recordings');
-                                onUpdate({ audioRecording: undefined as any, audioRecordings: [] });
+                                console.log('[AudioDelete] Clearing ALL audio recordings with deleteField()');
+                                onUpdate({ audioRecording: deleteField() as any, audioRecordings: [] });
                             }
                         }}
                         onTranscriptionComplete={(text) => {
