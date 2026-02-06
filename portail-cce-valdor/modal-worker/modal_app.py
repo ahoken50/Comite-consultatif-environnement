@@ -26,8 +26,8 @@ image = (
     modal.Image.debian_slim(python_version="3.10")
     .apt_install("ffmpeg", "libsndfile1")
     .pip_install(
-        "torch==2.1.2",
-        "torchaudio==2.1.2", 
+        "torch==2.2.0",
+        "torchaudio==2.2.0", 
         "numpy==1.26.4",
         "huggingface_hub>=0.20.0",  # Uses 'token' instead of 'use_auth_token'
         "pyannote.audio==3.3.1",    # Compatible with new huggingface_hub
