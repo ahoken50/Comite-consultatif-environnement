@@ -77,34 +77,24 @@ SEGMENT_DURATION_MINUTES = 10
 SUPPORTED_FORMATS = ['mp3', 'mp4', 'm4a', 'wav', 'webm', 'mpeg', 'mpga', 'oga', 'ogg']
 
 
-def get_pyannote_model():
-    """Get or create Pyannote embedding model (Singleton)"""
-    # Note: Pyannote requires torch, which is heavy. Ensure sufficient memory.
-    try:
-        from pyannote.audio import Model
-        import torch
-    except ImportError:
-        print("[System] Pyannote or Torch not found. Speaker ID will fail.")
-        return None
 
-    auth_token = os.environ.get("HF_TOKEN")
-    if not auth_token:
-        print("[System] HF_TOKEN not found. Cannot load Pyannote.")
-        return None
-
-    print("[System] Loading Pyannote embedding model...")
-    # Use the official pyannote/embedding model
-    model = Model.from_pretrained("pyannote/embedding", use_auth_token=auth_token)
-    return model
+# Pyannote model loading removed (offloaded to Hugging Face Endpoint)
 
 
-@https_fn.on_request(timeout_sec=300, memory=options.MemoryOption.GB_4)
+
+@https_fn.on_request(
+    timeout_sec=300,  # 5 minutes for external call
+    memory=options.MemoryOption.MB_512,  # Reduced memory as work is offloaded
+    cors=options.CorsOptions(cors_origins="*", cors_methods=["GET", "POST", "OPTIONS"])
+)
 def enroll_speaker(req: https_fn.Request) -> https_fn.Response:
     """
-    Enroll a new speaker by generating a voice embedding from an audio sample.
-    Query Params: name (str)
-    Body: Audio file (binary) or JSON with 'url'
+    Enroll a speaker using Hugging Face Endpoint for embedding generation.
     """
+    from werkzeug.utils import secure_filename
+    from firebase_admin import storage, firestore
+    from supabase import create_client, Client
+
     # 0. CORS Handling
     if req.method == 'OPTIONS':
         headers = {
@@ -115,19 +105,20 @@ def enroll_speaker(req: https_fn.Request) -> https_fn.Response:
         }
         return https_fn.Response('', status=204, headers=headers)
 
-    # Set default CORS headers for all responses
     cors_headers = {'Access-Control-Allow-Origin': '*'}
 
-    # 1. Validation
-    name = req.args.get('name')
-    if not name:
-        return https_fn.Response("Missing 'name' query parameter", status=400, headers=cors_headers)
-
-    # 2. Get Audio Content
-    temp_path = None
     try:
+        # 1. Validation
+        name = req.args.get('name')
+        if not name:
+            return https_fn.Response("Missing 'name' query parameter", status=400, headers=cors_headers)
+
+        # 2. Get Audio Content (JSON URL or Multipart File)
+        temp_path = None
+        
         content_type = req.headers.get('content-type', '')
         
+        # Determine how to get the file
         if 'application/json' in content_type:
             data = req.get_json()
             url = data.get('url')
@@ -139,65 +130,119 @@ def enroll_speaker(req: https_fn.Request) -> https_fn.Response:
             if not resp.ok:
                 return https_fn.Response(f"Failed to download audio: {resp.status_code}", status=400, headers=cors_headers)
             
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
+            filename = secure_filename(f"{name}_enrollment.wav")
+            temp_path = f"/tmp/{filename}"
+            with open(temp_path, 'wb') as f:
                 for chunk in resp.iter_content(chunk_size=8192):
-                    tmp.write(chunk)
-                temp_path = tmp.name
+                    f.write(chunk)
 
         elif 'multipart/form-data' in content_type:
-             # Handle file upload directly
-             file_data = req.files.get('file')
-             if not file_data:
-                 return https_fn.Response("No file provided in multipart form", status=400, headers=cors_headers)
+             if 'file' not in req.files:
+                 return https_fn.Response("No file uploaded", status=400, headers=cors_headers)
              
-             with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
-                file_data.save(tmp)
-                temp_path = tmp.name
+             file_data = req.files['file']
+             filename = secure_filename(file_data.filename)
+             temp_path = f"/tmp/{filename}"
+             file_data.save(temp_path)
+             
         else:
-             # Assume raw binary body
-             with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
-                tmp.write(req.data)
-                temp_path = tmp.name
+             # Binary body fallback
+             filename = secure_filename(f"{name}_enrollment.wav")
+             temp_path = f"/tmp/{filename}"
+             with open(temp_path, 'wb') as f:
+                 f.write(req.data)
 
-        # 3. Generate Embedding using Pyannote
-        model = get_pyannote_model()
-        if not model:
-            return https_fn.Response("Speaker recognition system not configured (HF_TOKEN missing)", status=500, headers=cors_headers)
+        print(f"[Enroll] Saved temp file: {temp_path}")
 
-        from pyannote.audio import Inference
-        inference = Inference(model, window="whole")
+        # 3. Upload to Firebase Storage
+        bucket = storage.bucket()
+        blob_path = f"speaker_enrollments/{name}/{filename}"
+        blob = bucket.blob(blob_path)
+        blob.upload_from_filename(temp_path)
         
-        print(f"[Enroll] Generating embedding for {name} from {temp_path}")
-        embedding = inference(temp_path)
+        # Make public so HF Endpoint can access it
+        blob.make_public()
+        public_url = blob.public_url
+        print(f"[Enroll] Uploaded to Storage: {public_url}")
+
+        # 4. Call Modal/HF Endpoint for embedding generation
+        # Supports both HF_ENDPOINT_URL and MODAL_ENDPOINT_URL
+        endpoint_url = os.environ.get("MODAL_ENDPOINT_URL") or os.environ.get("HF_ENDPOINT_URL")
+        hf_token = os.environ.get("HF_TOKEN")
         
-        # 4. Save to Supabase
-        from supabase import create_client, Client
+        if not endpoint_url:
+            print("[Enroll] MODAL_ENDPOINT_URL or HF_ENDPOINT_URL not configured")
+            return https_fn.Response("Server configuration error: AI Endpoint missing", status=500, headers=cors_headers)
+
+        print(f"[Enroll] Calling Endpoint: {endpoint_url}")
         
-        url: str = os.environ.get("SUPABASE_URL")
-        key: str = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+        try:
+            headers = {
+                "Content-Type": "application/json"
+            }
+            # Add auth header if HF_TOKEN is present (for HF Endpoints)
+            if hf_token:
+                headers["Authorization"] = f"Bearer {hf_token}"
+            
+            # Modal uses "url", HF uses "inputs" - send both for compatibility
+            payload = {"url": public_url, "inputs": public_url}
+            
+            response = requests.post(endpoint_url, headers=headers, json=payload, timeout=120)
+            
+            if not response.ok:
+                print(f"[Enroll] Endpoint Error {response.status_code}: {response.text}")
+                return https_fn.Response(f"AI Provider Error: {response.text}", status=502, headers=cors_headers)
+                
+            embedding_data = response.json()
+            
+            # Use the raw list as the embedding
+            if isinstance(embedding_data, list):
+                embedding = embedding_data
+            else:
+                print(f"[Enroll] Unexpected HF response format: {str(embedding_data)[:100]}")
+                return https_fn.Response("Invalid AI response format", status=502, headers=cors_headers)
+
+        except Exception as hf_error:
+            print(f"[Enroll] HF Request Failed: {str(hf_error)}")
+            return https_fn.Response(f"AI Request Failed: {str(hf_error)}", status=502, headers=cors_headers)
+
+        # 5. Save to Supabase
+        supabase_url = os.environ.get("SUPABASE_URL")
+        supabase_key = os.environ.get("SUPABASE_KEY")
         
-        if not url or not key:
-             return https_fn.Response("Supabase credentials missing", status=500, headers=cors_headers)
-             
-        supabase: Client = create_client(url, key)
+        if not supabase_url or not supabase_key:
+             return https_fn.Response("Supabase config missing", status=500, headers=cors_headers)
+
+        supabase: Client = create_client(supabase_url, supabase_key)
         
-        # Insert into 'speakers' table (vector column)
         data = {
             "name": name,
-            "embedding": embedding.tolist() # Convert numpy array to list
+            "embedding": embedding,
+            "created_at": datetime.now().isoformat(),
+            "sample_url": public_url
         }
         
         res = supabase.table("speakers").insert(data).execute()
         
-        return https_fn.Response(json.dumps({"success": True, "speaker_id": res.data[0]['id']}), 
-                                 mimetype='application/json', headers=cors_headers)
-                                 
-    except Exception as e:
-        print(f"[Enroll] Error: {e}")
-        return https_fn.Response(f"Enrollment failed: {str(e)}", status=500, headers=cors_headers)
-        
-    finally:
         # Cleanup
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+
+        return https_fn.Response(
+            json.dumps({"success": True, "name": name, "id": res.data[0]['id'] if res.data else "unknown"}),
+            status=200,
+            headers=cors_headers,
+            content_type="application/json"
+        )
+
+    except Exception as e:
+        print(f"[Enroll] Error: {str(e)}")
+        # Cleanup on error
+        if temp_path and os.path.exists(temp_path):
+            os.remove(temp_path)
+        return https_fn.Response(f"Internal Error: {str(e)}", status=500, headers=cors_headers)
+    finally:
+         pass
         if temp_path and os.path.exists(temp_path):
             os.remove(temp_path)
 

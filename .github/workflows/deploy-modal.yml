@@ -1,0 +1,40 @@
+name: Deploy Modal
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'portail-cce-valdor/modal-worker/**'
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  deploy-modal:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      
+      - name: Install Modal
+        run: pip install modal
+      
+      - name: Deploy to Modal
+        env:
+          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+        run: |
+          cd portail-cce-valdor/modal-worker
+          modal deploy modal_app.py
+          
+      - name: Get Endpoint URL
+        run: |
+          echo "✅ Modal deployment complete!"
+          echo "📋 Your endpoint URL format is:"
+          echo "https://YOUR-USERNAME--pyannote-embeddings-embed.modal.run"
+          echo ""
+          echo "⚠️ IMPORTANT: Go to modal.com dashboard to find the exact URL"
+          echo "Then add it as MODAL_ENDPOINT_URL in your GitHub secrets"

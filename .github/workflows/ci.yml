@@ -88,6 +88,8 @@ jobs:
         echo "SALAD_API_KEY=${{ secrets.SALAD_API_KEY }}" >> .env
         echo "SPEECHMATICS_API_KEY=${{ secrets.SPEECHMATICS_API_KEY }}" >> .env
         echo "HF_TOKEN=${{ secrets.HF_TOKEN }}" >> .env
+        echo "HF_ENDPOINT_URL=${{ secrets.HF_ENDPOINT_URL }}" >> .env
+        echo "MODAL_ENDPOINT_URL=${{ secrets.MODAL_ENDPOINT_URL }}" >> .env
         # Ensure .env is included in deployment
         echo "!.env" > .gitignore
 
