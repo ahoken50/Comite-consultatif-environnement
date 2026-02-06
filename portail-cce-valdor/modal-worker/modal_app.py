@@ -37,7 +37,9 @@ image = (
         "requests",
         "scipy",
         "huggingface_hub", # Keep huggingface_hub for token handling
-        "fastapi[standard]" # Keep fastapi for web endpoints
+        "fastapi[standard]", # Keep fastapi for web endpoints
+        "omegaconf", # Required for loading pyannote model checkpoints
+        "hydra-core" 
     )
 )
 
@@ -60,8 +62,12 @@ class EmbeddingService:
         
         print(f"Loading pyannote/embedding model (Runtime)...")
         
-        # Try multiple variable names
-        token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACE_TOKEN") or os.environ.get("HUGGING_FACE_TOKEN")
+        # Try multiple variable names (including lowercase)
+        token = (os.environ.get("HF_TOKEN") or 
+                 os.environ.get("HUGGINGFACE_TOKEN") or 
+                 os.environ.get("HUGGING_FACE_TOKEN") or
+                 os.environ.get("hf_token") or
+                 os.environ.get("huggingface_token"))
         
         if token:
             print(f"Found HF token (ends with ...{token[-4:] if len(token) > 4 else '???'})")
