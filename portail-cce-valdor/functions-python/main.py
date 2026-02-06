@@ -2045,7 +2045,7 @@ def speechmatics_webhook(req: https_fn.Request) -> https_fn.Response:
 # MANUAL SPEAKER IDENTIFICATION (Callable)
 # =============================================================================
 
-@https_fn.on_call(timeout_sec=540, memory_mb=512)
+@https_fn.on_call(timeout_sec=540, memory=options.MemoryOption.MB_512)
 def identify_speakers(req: https_fn.CallableRequest) -> dict:
     """
     Manually trigger speaker identification on an existing transcription.
