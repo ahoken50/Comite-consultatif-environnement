@@ -55,25 +55,31 @@ class EmbeddingService:
     def load_model(self):
         """Load the model once when the container starts."""
         import os
-        from pyannote.audio import Model, Inference
+        from pyannote.audio import Model
         from huggingface_hub import login
         
         print(f"Loading pyannote/embedding model (Runtime)...")
-        token = os.environ.get("HF_TOKEN")
+        
+        # Try multiple variable names
+        token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACE_TOKEN") or os.environ.get("HUGGING_FACE_TOKEN")
         
         if token:
+            print(f"Found HF token (ends with ...{token[-4:] if len(token) > 4 else '???'})")
             print(f"Logging in to Hugging Face...")
             login(token=token)
+            
+            # Use specific token directly to be sure
+            self.model = Model.from_pretrained(
+                "pyannote/embedding", 
+                use_auth_token=token
+            )
+            self.inference = Inference(self.model, window="whole")
+            print("Model loaded successfully!")
         else:
-            print("WARNING: HF_TOKEN not found in environment secrets!")
+            print("CRITICAL ERROR: No HuggingFace token found in environment secrets!")
+            print(f"Available environment keys: {list(os.environ.keys())}")
+            raise ValueError("You must configure the 'huggingface' secret in Modal with 'HF_TOKEN' or 'HUGGINGFACE_TOKEN'.")
 
-        # Uses ~/.cache/huggingface (runtime volume)
-        self.model = Model.from_pretrained(
-            "pyannote/embedding", 
-            use_auth_token=True
-        )
-        self.inference = Inference(self.model, window="whole")
-        print("Model loaded successfully!")
 
     @modal.method()
     def generate_embedding(self, audio_url: str = None, audio_base64: str = None) -> list:
