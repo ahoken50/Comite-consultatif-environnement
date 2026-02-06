@@ -24,25 +24,6 @@ app = modal.App("pyannote-embeddings")
 # Define the container image with all dependencies
 
 
-def download_model():
-    """Download model during image build to avoid cold starts."""
-    import os
-    from pyannote.audio import Model
-    from huggingface_hub import login
-
-    print("Downloading Pyannote model to image cache...")
-    
-    token = os.environ.get("HF_TOKEN")
-    if token:
-        print(f"Logging in to Hugging Face (token length: {len(token)})...")
-        login(token=token)
-    else:
-        raise ValueError("HF_TOKEN environment variable not found during build.")
-
-    # use_auth_token=True will use the token from login()
-    Model.from_pretrained("pyannote/embedding", use_auth_token=True)
-
-
 image = (
     modal.Image.debian_slim()
     # Install system dependencies (git for pip install git+..., ffmpeg for audio processing)
@@ -58,8 +39,6 @@ image = (
         "huggingface_hub", # Keep huggingface_hub for token handling
         "fastapi[standard]" # Keep fastapi for web endpoints
     )
-    # Cache the model in the image
-    .run_function(download_model, secrets=[modal.Secret.from_name("huggingface")])
 )
 
 
@@ -77,12 +56,21 @@ class EmbeddingService:
         """Load the model once when the container starts."""
         import os
         from pyannote.audio import Model, Inference
+        from huggingface_hub import login
         
-        print(f"Loading pyannote/embedding model...")
-        # Uses built-in cache from image
+        print(f"Loading pyannote/embedding model (Runtime)...")
+        token = os.environ.get("HF_TOKEN")
+        
+        if token:
+            print(f"Logging in to Hugging Face...")
+            login(token=token)
+        else:
+            print("WARNING: HF_TOKEN not found in environment secrets!")
+
+        # Uses ~/.cache/huggingface (runtime volume)
         self.model = Model.from_pretrained(
             "pyannote/embedding", 
-            use_auth_token=os.environ["HF_TOKEN"]
+            use_auth_token=True
         )
         self.inference = Inference(self.model, window="whole")
         print("Model loaded successfully!")
