@@ -29,7 +29,8 @@ image = (
         "torch==2.1.2",
         "torchaudio==2.1.2", 
         "numpy==1.26.4",
-        "pyannote.audio==3.1.1",
+        "huggingface_hub>=0.20.0",  # Uses 'token' instead of 'use_auth_token'
+        "pyannote.audio==3.3.1",    # Compatible with new huggingface_hub
         "requests",
         "fastapi[standard]",  # Required for web endpoints
     )
