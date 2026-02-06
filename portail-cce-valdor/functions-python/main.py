@@ -1165,18 +1165,21 @@ def extract_audio_segment_embedding(audio_url: str, start_sec: float, end_sec: f
             print("[VoiceEmbed] MODAL_ENDPOINT_URL not configured")
             return []
         
-        # Download audio file
+        # Download audio file (Streamed to avoid RAM spike)
         print(f"[VoiceEmbed] Downloading audio from {audio_url[:50]}...")
-        audio_response = requests.get(audio_url, timeout=60)
-        if not audio_response.ok:
-            print(f"[VoiceEmbed] Failed to download audio: {audio_response.status_code}")
-            return []
         
         # Save to temp file
         import tempfile
-        with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp_in:
-            tmp_in.write(audio_response.content)
-            input_path = tmp_in.name
+        import shutil
+        
+        with requests.get(audio_url, stream=True, timeout=60) as r:
+            if not r.ok:
+                print(f"[VoiceEmbed] Failed to download audio: {r.status_code}")
+                return []
+                
+            with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp_in:
+                shutil.copyfileobj(r.raw, tmp_in)
+                input_path = tmp_in.name
         
         # Extract segment with ffmpeg
         output_path = input_path.replace(".mp3", "_segment.wav")
@@ -1769,7 +1772,7 @@ def transcribe_whisper_legacy_local(
 
 @https_fn.on_request(
     timeout_sec=3600,
-    memory=options.MemoryOption.GB_1,
+    memory=options.MemoryOption.GB_2,
     cors=options.CorsOptions(cors_origins="*", cors_methods=["POST", "GET"])
 )
 def speechmatics_webhook(req: https_fn.Request) -> https_fn.Response:
@@ -2051,7 +2054,7 @@ def speechmatics_webhook(req: https_fn.Request) -> https_fn.Response:
 # MANUAL SPEAKER IDENTIFICATION (Callable)
 # =============================================================================
 
-@https_fn.on_call(timeout_sec=3600, memory=options.MemoryOption.GB_1)
+@https_fn.on_call(timeout_sec=3600, memory=options.MemoryOption.GB_2)
 def identify_speakers(req: https_fn.CallableRequest) -> dict:
     """
     Manually trigger speaker identification on an existing transcription.
