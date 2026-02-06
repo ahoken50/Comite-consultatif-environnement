@@ -19,10 +19,11 @@ import {
     ContentCopy,
     People,
     Refresh,
-    SmartToy
+    SmartToy,
+    WarningAmber
 } from '@mui/icons-material';
 import {
-    Dialog, DialogTitle, DialogContent, DialogActions
+    Dialog, DialogTitle, DialogContent, DialogActions, Tooltip
 } from '@mui/material';
 import { useSelector } from 'react-redux';
 import type { Meeting, MinutesDraft } from '../../types/meeting.types';
@@ -64,6 +65,8 @@ const TranscriptionViewer: React.FC<TranscriptionViewerProps> = ({
     const [candidateMemberId, setCandidateMemberId] = useState<string>('');
     const [candidateSpeakerLabel, setCandidateSpeakerLabel] = useState<string>('');
     const [showCandidatesDialog, setShowCandidatesDialog] = useState(false);
+    const [aiWarnings, setAiWarnings] = useState<Record<string, string>>({});
+    const [isIdentifying, setIsIdentifying] = useState(false);
 
     // Get past meetings and members
     const allMeetings = useSelector(selectAllMeetings);
@@ -150,6 +153,40 @@ const TranscriptionViewer: React.FC<TranscriptionViewerProps> = ({
         }
 
         setIsFinalizing(false);
+    };
+
+    // New AI Handler
+    const handleIdentifySpeakers = async () => {
+        setIsIdentifying(true);
+        try {
+            const { getFunctions, httpsCallable } = await import('firebase/functions');
+            const functions = getFunctions();
+            const identifyFn = httpsCallable(functions, 'identify_speakers');
+
+            showToast?.('Analyse AI en cours...', 'info');
+            const result = await identifyFn({ meetingId: meeting.id });
+            const res = result.data as any;
+
+            if (res.success && res.speakers) {
+                setSpeakerMap(res.speakers);
+                if (res.warnings) {
+                    setAiWarnings(res.warnings);
+                    const count = Object.keys(res.warnings).length;
+                    if (count > 0) {
+                        showToast?.(`⚠️ ${count} identifications ambiguës.`, 'warning');
+                    }
+                }
+                setShowSpeakerMap(true);
+                showToast?.(`Identification terminée : ${Object.keys(res.speakers).length} détectés.`, 'success');
+            } else {
+                showToast?.('Aucun locuteur identifié.', 'info');
+            }
+        } catch (err) {
+            console.error(err);
+            showToast?.('Erreur lors de l\'identification.', 'error');
+        } finally {
+            setIsIdentifying(false);
+        }
     };
 
     const handleApplyToMinutes = () => {
@@ -326,11 +363,12 @@ const TranscriptionViewer: React.FC<TranscriptionViewerProps> = ({
             <Box sx={{ mb: 3 }}>
                 <Button
                     variant="outlined"
-                    startIcon={<People />}
-                    onClick={() => setShowSpeakerMap(!showSpeakerMap)}
+                    startIcon={isIdentifying ? <CircularProgress size={20} /> : <People />}
+                    onClick={handleIdentifySpeakers} // Changed trigger
+                    disabled={isIdentifying}
                     sx={{ mb: 2 }}
                 >
-                    Identifier les intervenants
+                    {isIdentifying ? 'Analyse en cours...' : 'Lancer l\'identification AI'}
                 </Button>
 
                 {showSpeakerMap && (
@@ -341,8 +379,22 @@ const TranscriptionViewer: React.FC<TranscriptionViewerProps> = ({
                         <Grid container spacing={2} alignItems="center">
                             {detectedSpeakers.map((speaker) => (
                                 <React.Fragment key={speaker}>
-                                    <Grid size={5}>
+                                    <Grid size={5} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                                         <Typography variant="body2" sx={{ fontWeight: 'bold' }}>{speaker}</Typography>
+
+                                        {/* AI WARNING INDICATOR */}
+                                        {aiWarnings[speaker] && (
+                                            <Tooltip title={`IA: ${aiWarnings[speaker]}`} arrow>
+                                                <Chip
+                                                    icon={<WarningAmber sx={{ fontSize: 16 }} />}
+                                                    label="À vérifier"
+                                                    color="warning"
+                                                    size="small"
+                                                    variant="outlined"
+                                                    sx={{ height: 20, fontSize: '0.7rem' }}
+                                                />
+                                            </Tooltip>
+                                        )}
                                     </Grid>
                                     <Grid size={1} sx={{ textAlign: 'center' }}>
                                         <ArrowRightAlt />
@@ -355,6 +407,7 @@ const TranscriptionViewer: React.FC<TranscriptionViewerProps> = ({
                                             SelectProps={{ native: true }}
                                             value={speakerMap[speaker] || ''}
                                             onChange={(e) => setSpeakerMap(prev => ({ ...prev, [speaker]: e.target.value }))}
+                                            error={!!aiWarnings[speaker]} // Highlight field if ambiguous
                                         >
                                             <option value="">Sélectionner...</option>
                                             {members.map(m => (
@@ -373,12 +426,13 @@ const TranscriptionViewer: React.FC<TranscriptionViewerProps> = ({
                                         )}
                                     </Grid>
                                     <Grid size={2}>
+                                        {/* ... (Learning button) ... */}
                                         <Button
                                             size="small"
                                             color={learningMap[speaker] ? "success" : "inherit"}
                                             variant={learningMap[speaker] ? "contained" : "outlined"}
                                             onClick={() => setLearningMap(prev => ({ ...prev, [speaker]: !prev[speaker] }))}
-                                            title="Utiliser cette voix pour améliorer le modèle (Machine Learning)"
+                                            title="Utiliser cette voix pour améliorer le modèle"
                                         >
                                             {learningMap[speaker] ? "Apprendre" : "Ignorer"}
                                         </Button>

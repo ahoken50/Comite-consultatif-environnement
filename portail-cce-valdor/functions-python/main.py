@@ -2253,8 +2253,15 @@ def speechmatics_webhook(req: https_fn.Request) -> https_fn.Response:
             import traceback
             traceback.print_exc()
         
+        # Prepare Response
         return https_fn.Response(
-            json.dumps({"success": True, "meetingId": meeting_id, "chars": len(full_transcription), "arrayUpdated": updated_array}),
+            json.dumps({
+                "success": True, 
+                "meetingId": meeting_id, 
+                "speakers": speaker_mapping,
+                "warnings": warnings, # New field for UI
+                "unidentifiedCount": len(unidentified)
+            }),
             status=200,
             content_type="application/json"
         )
@@ -2439,6 +2446,8 @@ def identify_speakers(req: https_fn.CallableRequest) -> dict:
         print(f"[Manual Speaker ID] MODAL_ENDPOINT_URL: {'SET' if modal_endpoint else 'NOT SET'}")
         print(f"[Manual Speaker ID] Voice embedding available: {voice_available}")
         
+        warnings = {} # Collect AI feedback here
+        
         for speaker_label, texts in unique_speakers.items():
             combined_text = " ".join(texts[:3])  # Use first 3 segments max
             
@@ -2501,14 +2510,63 @@ def identify_speakers(req: https_fn.CallableRequest) -> dict:
                     best_score = score
                     best_name = name
             
-            # Dynamic threshold: If voice was used, we expect higher confidence
-            threshold = 0.60 if voice_scores else 0.15
+            # ---------------------------------------------------------
+            # ROBUST DECISION LOGIC (User Request)
+            # ---------------------------------------------------------
             
+            rejection_reason = None
+            ai_warning = None
+            
+            if best_score >= threshold and best_name:
+                 # 1. MARGIN CHECK (Top 2 Comparison)
+                 if voice_scores:
+                     sorted_voice = sorted(voice_scores.items(), key=lambda x: x[1], reverse=True)
+                     if len(sorted_voice) >= 2:
+                         winner = sorted_voice[0]
+                         runner_up = sorted_voice[1]
+                         margin = winner[1] - runner_up[1]
+                         
+                         context_support_winner = linguistic_scores.get(winner[0], 0) + auto_id_scores.get(winner[0], 0)
+                         context_support_runner = linguistic_scores.get(runner_up[0], 0) + auto_id_scores.get(runner_up[0], 0)
+                         
+                         if margin < 0.05 and context_support_winner <= context_support_runner:
+                             print(f"[Manual Speaker ID] AMBIGUITY: {winner[0]} vs {runner_up[0]} (Margin {margin:.3f}).")
+                             best_name = None 
+                             rejection_reason = "Ambiguïté (Scores trop proches)"
+                             ai_warning = f"Ambiguïté entre {winner[0]} ({winner[1]:.2f}) et {runner_up[0]} ({runner_up[1]:.2f})"
+
+                 # 2. GENDER / ROLE GUARD
+                 if best_name:
+                     is_female_candidate = "Mme" in best_name or "Madame" in best_name or "Conseillère" in best_name
+                     is_male_candidate = "M." in best_name or "Monsieur" in best_name or "Conseiller " in best_name # Space to avoid matching Conseillère
+                     
+                     text_female_cues = ["madame", "mme", "présidente", "conseillère", "mairesse"]
+                     text_male_cues = ["monsieur", "m.", "président", "conseiller", "maire"]
+                     
+                     found_female = any(cue in combined_text.lower() for cue in text_female_cues)
+                     found_male = any(cue in combined_text.lower() for cue in text_male_cues)
+                     
+                     if is_male_candidate and found_female and not found_male:
+                         print(f"[Manual Speaker ID] GENDER GUARD: Rejecting {best_name} (M) because text context implies Female.")
+                         best_name = None
+                         rejection_reason = "Incohérence de Genre (H vs F)"
+                         ai_warning = f"Rejeté: Le profil est Homme mais le contexte est Femme."
+                     elif is_female_candidate and found_male and not found_female:
+                         print(f"[Manual Speaker ID] GENDER GUARD: Rejecting {best_name} (F) because text context implies Male.")
+                         best_name = None
+                         rejection_reason = "Incohérence de Genre (F vs H)"
+                         ai_warning = f"Rejeté: Le profil est Femme mais le contexte est Homme."
+
             if best_score >= threshold and best_name:
                 speaker_mapping[speaker_label] = best_name
                 print(f"[Manual Speaker ID] {speaker_label} -> {best_name} (score: {best_score:.2f}, voice_max: {max_voice_score:.2f})")
             else:
                 unidentified.append((speaker_label, combined_text))
+                # Store warning for frontend
+                if ai_warning:
+                     warnings[speaker_label] = ai_warning
+                     print(f"[Manual Speaker ID] Added warning for {speaker_label}: {ai_warning}")
+
         
         print(f"[Manual Speaker ID] Fast strategies identified {len(speaker_mapping)}/{len(unique_speakers)} speakers")
         print(f"[Manual Speaker ID] Unidentified speakers to process via GROQ: {len(unidentified)}")
