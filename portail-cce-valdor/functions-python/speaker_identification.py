@@ -12,8 +12,8 @@ Combines 5 strategies to identify speakers in transcriptions:
 import os
 import re
 import requests
+import math
 from typing import Dict, List, Optional, Tuple
-import numpy as np
 
 # Linguistic patterns for role detection
 # NOTE: "J'ouvre la séance" = Secrétaire (not Président)
@@ -60,10 +60,18 @@ AUTO_ID_PATTERNS = [
 
 
 def cosine_similarity(a: List[float], b: List[float]) -> float:
-    """Calculate cosine similarity between two vectors."""
-    a = np.array(a)
-    b = np.array(b)
-    return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b)))
+    """Calculate cosine similarity between two vectors (pure Python, no numpy)."""
+    if len(a) != len(b):
+        return 0.0
+    
+    dot_product = sum(x * y for x, y in zip(a, b))
+    norm_a = math.sqrt(sum(x * x for x in a))
+    norm_b = math.sqrt(sum(y * y for y in b))
+    
+    if norm_a == 0 or norm_b == 0:
+        return 0.0
+    
+    return dot_product / (norm_a * norm_b)
 
 
 async def voice_embedding_strategy(
