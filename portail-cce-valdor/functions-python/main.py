@@ -2151,8 +2151,11 @@ def identify_speakers(req: https_fn.CallableRequest) -> dict:
         # Run identification with voice embedding (if audio_url available)
         speaker_mapping = {}
         unidentified = []
-        voice_available = bool(audio_url and os.environ.get("MODAL_ENDPOINT_URL"))
+        modal_endpoint = os.environ.get("MODAL_ENDPOINT_URL")
+        voice_available = bool(audio_url and modal_endpoint)
         
+        print(f"[Manual Speaker ID] Audio URL: {audio_url[:100] if audio_url else 'NOT FOUND'}")
+        print(f"[Manual Speaker ID] MODAL_ENDPOINT_URL: {'SET' if modal_endpoint else 'NOT SET'}")
         print(f"[Manual Speaker ID] Voice embedding available: {voice_available}")
         
         for speaker_label, texts in unique_speakers.items():
@@ -2207,30 +2210,43 @@ def identify_speakers(req: https_fn.CallableRequest) -> dict:
                     best_score = score
                     best_name = name
             
-            threshold = 0.2 if voice_scores else 0.3
+            threshold = 0.15 if voice_scores else 0.1  # Lowered threshold - fast strategies often return 0
             if best_score >= threshold and best_name:
                 speaker_mapping[speaker_label] = best_name
                 print(f"[Manual Speaker ID] {speaker_label} -> {best_name} (score: {best_score:.2f}, voice: {bool(voice_scores)})")
             else:
                 unidentified.append((speaker_label, combined_text))
         
-        # For remaining unidentified, make ONE batch GROQ call
-        if unidentified and len(unidentified) <= 5:  # Limit to avoid timeout
+        print(f"[Manual Speaker ID] Fast strategies identified {len(speaker_mapping)}/{len(unique_speakers)} speakers")
+        print(f"[Manual Speaker ID] Unidentified speakers to process via GROQ: {len(unidentified)}")
+        
+        # For remaining unidentified, make GROQ batch calls
+        groq_api_key = os.environ.get("GROQ_API_KEY")
+        if not groq_api_key:
+            print("[Manual Speaker ID] WARNING: GROQ_API_KEY not set! Cannot identify remaining speakers via AI.")
+        
+        if unidentified and groq_api_key:
             try:
                 import json as json_lib
-                groq_api_key = os.environ.get("GROQ_API_KEY")
-                if groq_api_key:
+                
+                # Process in batches of 10 to avoid token limits
+                batch_size = 10
+                for batch_start in range(0, len(unidentified), batch_size):
+                    batch = unidentified[batch_start:batch_start + batch_size]
+                    print(f"[Manual Speaker ID] Processing GROQ batch {batch_start // batch_size + 1} ({len(batch)} speakers)")
+                    
                     batch_prompt = f"""Analyse ces segments de transcription d'une réunion CCE.
 Membres présents: {', '.join(known_member_names)}
 
-Pour chaque intervenant, identifie qui parle:
+Pour chaque intervenant, identifie qui parle basé sur le contenu, le style de parole, et les indices contextuels:
 """
-                    for label, text in unidentified:
-                        batch_prompt += f"\n{label}: \"{text[:200]}...\""
+                    for label, text in batch:
+                        batch_prompt += f"\n{label}: \"{text[:300]}...\""
                     
                     batch_prompt += """
 
 Retourne un JSON simple avec le mapping: {"S0": "Nom Complet", "S1": "Autre Nom"}
+Si tu ne peux pas identifier un intervenant, ne l'inclus pas dans le JSON.
 UNIQUEMENT le JSON, sans explication."""
                     
                     response = requests.post(
@@ -2243,7 +2259,7 @@ UNIQUEMENT le JSON, sans explication."""
                             "model": "llama-3.1-8b-instant",
                             "messages": [{"role": "user", "content": batch_prompt}],
                             "temperature": 0.3,
-                            "max_tokens": 200
+                            "max_tokens": 500
                         },
                         timeout=30
                     )
@@ -2251,12 +2267,19 @@ UNIQUEMENT le JSON, sans explication."""
                     if response.ok:
                         result = response.json()
                         content = result["choices"][0]["message"]["content"]
-                        groq_mapping = json_lib.loads(content)
+                        # Extract JSON from response (may have markdown code blocks)
+                        if "```json" in content:
+                            content = content.split("```json")[1].split("```")[0]
+                        elif "```" in content:
+                            content = content.split("```")[1].split("```")[0]
+                        groq_mapping = json_lib.loads(content.strip())
                         
                         for label, name in groq_mapping.items():
                             if name in known_member_names and label not in speaker_mapping:
                                 speaker_mapping[label] = name
                                 print(f"[Manual Speaker ID] {label} -> {name} (GROQ batch)")
+                    else:
+                        print(f"[Manual Speaker ID] GROQ request failed: {response.status_code} - {response.text[:200]}")
             except Exception as groq_err:
                 print(f"[Manual Speaker ID] GROQ batch failed: {groq_err}")
         

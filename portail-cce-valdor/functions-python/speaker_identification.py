@@ -251,7 +251,7 @@ def fuse_scores(
     linguistic_scores: Dict[str, float],
     mention_scores: Dict[str, float],
     auto_id_scores: Dict[str, float],
-    confidence_threshold: float = 0.6
+    confidence_threshold: float = 0.2  # Lowered from 0.6 - weighted scores rarely exceed 0.5
 ) -> Tuple[Optional[str], float]:
     """
     Fuse all strategy scores with weighted combination.
