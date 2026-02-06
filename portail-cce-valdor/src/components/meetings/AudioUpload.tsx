@@ -131,12 +131,23 @@ const AudioUpload: React.FC<AudioUploadProps> = ({
     const handleDelete = async (rec: AudioRecording) => {
         if (rec.storagePath) {
             const success = await deleteAudioFile(rec.storagePath);
+            // Always call onDelete to remove Firestore reference
+            // deleteAudioFile returns true even for 404 (file already deleted)
             if (success) {
                 onDelete?.(rec);
             } else {
-                setError('Erreur lors de la suppression');
+                // Even on error, offer to remove the orphaned reference
+                const forceDelete = window.confirm(
+                    'Erreur lors de la suppression du fichier. Voulez-vous supprimer la référence de toute façon?'
+                );
+                if (forceDelete) {
+                    onDelete?.(rec);
+                } else {
+                    setError('Erreur lors de la suppression');
+                }
             }
         } else {
+            // No storage path, just remove Firestore reference
             onDelete?.(rec);
         }
     };
