@@ -1165,21 +1165,28 @@ def extract_audio_segment_embedding(audio_url: str, start_sec: float, end_sec: f
             print("[VoiceEmbed] MODAL_ENDPOINT_URL not configured")
             return []
         
-        # Download audio file (Streamed to avoid RAM spike)
-        print(f"[VoiceEmbed] Downloading audio from {audio_url[:50]}...")
-        
-        # Save to temp file
-        import tempfile
-        import shutil
-        
-        with requests.get(audio_url, stream=True, timeout=60) as r:
-            if not r.ok:
-                print(f"[VoiceEmbed] Failed to download audio: {r.status_code}")
-                return []
-                
-            with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp_in:
-                shutil.copyfileobj(r.raw, tmp_in)
-                input_path = tmp_in.name
+        if os.path.exists(audio_url):
+            # Use local file directly
+            print(f"[VoiceEmbed] Using local file: {audio_url}")
+            input_path = audio_url
+            is_local = True
+        else:    
+            # Download audio file (Streamed to avoid RAM spike)
+            print(f"[VoiceEmbed] Downloading audio from {audio_url[:50]}...")
+            is_local = False
+            
+            # Save to temp file
+            import tempfile
+            import shutil
+            
+            with requests.get(audio_url, stream=True, timeout=60) as r:
+                if not r.ok:
+                    print(f"[VoiceEmbed] Failed to download audio: {r.status_code}")
+                    return []
+                    
+                with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp_in:
+                    shutil.copyfileobj(r.raw, tmp_in)
+                    input_path = tmp_in.name
         
         # Extract segment with ffmpeg
         output_path = input_path.replace(".mp3", "_segment.wav")
@@ -1200,7 +1207,8 @@ def extract_audio_segment_embedding(audio_url: str, start_sec: float, end_sec: f
             segment_data = f.read()
         
         # Clean up temp files
-        os.unlink(input_path)
+        if not is_local:
+            os.unlink(input_path)
         os.unlink(output_path)
         
         # Base64 encode for Modal
@@ -2429,12 +2437,19 @@ def identify_speakers(req: https_fn.CallableRequest) -> dict:
         speaker_timestamps = {}  # {"S0": {"start": 0, "end": 30}, ...}
         for segment in segments:
             label = segment["speaker"]
-            if re.match(r'^S\d+$', label) and label not in speaker_timestamps:
-                # Use first occurrence (typically longest/clearest)
-                speaker_timestamps[label] = {
-                    "start": segment["start"],
-                    "end": segment["start"] + 30  # 30 seconds max
-                }
+            label = segment["speaker"]
+            if re.match(r'^S\d+$', label):
+                # Calculate duration of this segment
+                start = segment.get("start", 0)
+                end = segment.get("end", start + 5) # Default to 5s if end missing
+                duration = end - start
+                
+                # Check if this is the best sample so far for this speaker
+                if label not in speaker_timestamps:
+                    speaker_timestamps[label] = {"start": start, "end": end, "duration": duration}
+                elif duration > speaker_timestamps[label]["duration"]:
+                    # Found a longer sample
+                    speaker_timestamps[label] = {"start": start, "end": end, "duration": duration}
         
         # Run identification with voice embedding (if audio_url available)
         speaker_mapping = {}
@@ -2448,6 +2463,23 @@ def identify_speakers(req: https_fn.CallableRequest) -> dict:
         
         warnings = {} # Collect AI feedback here
         
+        # OPTIMIZATION: Download audio ONCE if voice ID is available
+        # This prevents downloading 100MB+ file for EVERY speaker segment (which caused timeouts)
+        local_audio_path = None
+        if voice_available and len(unique_speakers) > 0:
+            try:
+                import tempfile
+                import shutil
+                print(f"[Manual Speaker ID] Pre-downloading audio for optimization...")
+                with requests.get(audio_url, stream=True, timeout=120) as r:
+                    if r.ok:
+                        with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp:
+                            shutil.copyfileobj(r.raw, tmp)
+                            local_audio_path = tmp.name
+                            print(f"[Manual Speaker ID] Audio downloaded to {local_audio_path}")
+            except Exception as e:
+                print(f"[Manual Speaker ID] Pre-download failed, falling back to per-segment download: {e}")
+        
         for speaker_label, texts in unique_speakers.items():
             combined_text = " ".join(texts[:3])  # Use first 3 segments max
             
@@ -2458,7 +2490,9 @@ def identify_speakers(req: https_fn.CallableRequest) -> dict:
             if voice_available and speaker_label in speaker_timestamps:
                 ts = speaker_timestamps[speaker_label]
                 print(f"[Manual Speaker ID] Getting voice embedding for {speaker_label} ({ts['start']:.0f}s-{ts['end']:.0f}s)")
-                segment_embedding = extract_audio_segment_embedding(audio_url, ts["start"], ts["end"])
+                # Use local path if downloaded, else fallback to URL
+                source_audio = local_audio_path if local_audio_path else audio_url
+                segment_embedding = extract_audio_segment_embedding(source_audio, ts["start"], ts["end"])
                 if segment_embedding:
                     voice_scores = compare_embedding_with_speakers(segment_embedding, enrolled_speakers)
                     print(f"[Manual Speaker ID] Voice scores: {voice_scores}")
@@ -2638,6 +2672,8 @@ UNIQUEMENT le JSON, sans explication."""
                 print(f"[Manual Speaker ID] GROQ batch failed: {groq_err}")
         
         if not speaker_mapping:
+            if local_audio_path and os.path.exists(local_audio_path):
+                os.unlink(local_audio_path)
             return {"success": True, "message": "No speakers could be identified", "mapping": {}}
         
         # Rebuild transcript with identified names
@@ -2668,6 +2704,9 @@ UNIQUEMENT le JSON, sans explication."""
         })
         
         print(f"[Manual Speaker ID] SUCCESS! Identified {len(speaker_mapping)} speakers")
+        
+        if local_audio_path and os.path.exists(local_audio_path):
+            os.unlink(local_audio_path)
         
         return {
             "success": True,
