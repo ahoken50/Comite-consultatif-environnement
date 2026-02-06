@@ -769,7 +769,8 @@ def submit_speechmatics_job(file_url: str, meeting_id: str, language_code: str =
     # We prioritize the env var, and fall back to the known URL for 'comite-cce'.
     
     known_urls = {
-        "comite-cce": "https://speechmatics-webhook-bubhsf2gpa-uc.a.run.app"
+        # "comite-cce": "https://speechmatics-webhook-bubhsf2gpa-uc.a.run.app" 
+        # COMMENTED OUT: Use standard URL or env var to avoid stale hardcoded URLs
     }
     
     project_id = os.environ.get("GCLOUD_PROJECT", "comite-cce")
@@ -2045,7 +2046,7 @@ def speechmatics_webhook(req: https_fn.Request) -> https_fn.Response:
 # MANUAL SPEAKER IDENTIFICATION (Callable)
 # =============================================================================
 
-@https_fn.on_call(timeout_sec=540, memory=options.MemoryOption.MB_512)
+@https_fn.on_call(timeout_sec=540, memory=options.MemoryOption.GB_1)
 def identify_speakers(req: https_fn.CallableRequest) -> dict:
     """
     Manually trigger speaker identification on an existing transcription.
