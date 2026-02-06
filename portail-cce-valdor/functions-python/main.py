@@ -2514,6 +2514,9 @@ def identify_speakers(req: https_fn.CallableRequest) -> dict:
             # ROBUST DECISION LOGIC (User Request)
             # ---------------------------------------------------------
             
+            # Dynamic threshold: If voice was used, we expect higher confidence
+            threshold = 0.60 if voice_scores else 0.15
+            
             rejection_reason = None
             ai_warning = None
             
