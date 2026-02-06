@@ -31,6 +31,7 @@ image = (
         "numpy==1.26.4",
         "pyannote.audio==3.1.1",
         "requests",
+        "fastapi[standard]",  # Required for web endpoints
     )
 )
 
