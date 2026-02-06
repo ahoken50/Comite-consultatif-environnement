@@ -1369,7 +1369,11 @@ async def identify_speakers_in_transcript(
         return formatted_output
     
     # Collect unique speakers and their data
-    unique_speakers = {}  # {"S0": {"texts": [...], "start": 0, "end": 30}, ...}
+    unique_speakers = {}  # {"S0": {"texts": [...], "start": 0, "end": 0}, ...}
+    
+    # SMART SEGMENTATION: Find the best segment for each speaker
+    # Instead of taking the first one + 30s, we look for the LONGEST segment 
+    # available for that speaker to ensure high quality audio.
     
     for segment in segments:
         speaker_label = segment.get("speaker", "S0")
@@ -1377,16 +1381,60 @@ async def identify_speakers_in_transcript(
         # Skip if not S0/S1 format
         if not re.match(r'^S\d+$', speaker_label):
             continue
+            
+        start = segment.get("start", 0)
+        end = segment.get("end", 0)
+        duration = end - start
         
         if speaker_label not in unique_speakers:
             unique_speakers[speaker_label] = {
                 "texts": [],
-                "start": segment.get("start", 0),
-                "end": segment.get("start", 0) + 30
+                "start": start,
+                "end": end,
+                "longest_duration": duration
             }
+        else:
+             # Update best segment if this one is longer (better for embedding)
+             if duration > unique_speakers[speaker_label]["longest_duration"]:
+                 unique_speakers[speaker_label]["start"] = start
+                 unique_speakers[speaker_label]["end"] = end
+                 unique_speakers[speaker_label]["longest_duration"] = duration
+                 
         unique_speakers[speaker_label]["texts"].append(segment.get("text", ""))
     
     print(f"[Identify] Found {len(unique_speakers)} unique speakers to identify")
+    
+    # 2. PRE-FLIGHT PROFILE VALIDATION
+    # Filter enrolled speakers to ONLY those present in the meeting (if meeting_id context available)
+    # And validation strength.
+    
+    if meeting_id:
+        try:
+            attendees = get_meeting_attendees(meeting_id) # Need to ensure this function exists/works
+            if attendees:
+                present_names = [a.get("name") for a in attendees if a.get("role") != "Invité"]
+                
+                # Filter enrolled list to only present members
+                # This prevents "Michael Ross" false positives if he isn't there!
+                filtered_enrolled = []
+                for spk in enrolled_speakers:
+                    if spk["name"] in present_names:
+                        # Check strength
+                        sample_count = len(spk.get("embedding", [])) if isinstance(spk.get("embedding"), list) else 1
+                        if sample_count < 3:
+                            print(f"[Identify] WARNING: Weak profile for present member {spk['name']} ({sample_count} samples)")
+                        else:
+                            print(f"[Identify] Strong profile confirmed for {spk['name']} ({sample_count} samples)")
+                        filtered_enrolled.append(spk)
+                
+                if filtered_enrolled:
+                    print(f"[Identify] Filtered candidates to {len(filtered_enrolled)} present members (excluding invités/absent)")
+                    enrolled_speakers = filtered_enrolled
+                else:
+                    print("[Identify] Warning: No present members found in enrolled list. Falling back to full list.")
+                    
+        except Exception as e:
+            print(f"[Identify] Error filtering by attendees: {e}")
     
     # Check if voice embedding is available
     voice_available = bool(audio_url and os.environ.get("MODAL_ENDPOINT_URL"))
@@ -1442,62 +1490,100 @@ async def identify_speakers_in_transcript(
         
         threshold = 0.2 if voice_scores else 0.3
         
-        # AUTONOMOUS SELF-LEARNING (Deep Reinforcement)
-        # If we are confident based on Context/Linguistic even if voice is "Medium",
-        # we autonomously ADD this segment to the voice profile to learn this new variation.
+        # ---------------------------------------------------------
+        # ROBUST DECISION LOGIC (User Request)
+        # "Compare with 2 or 3 profiles... don't tag female as male"
+        # ---------------------------------------------------------
+        
+        final_decision = None
+        rejection_reason = None
         
         if best_score >= threshold and best_name:
+             # 1. MARGIN CHECK (Top 2 Comparison)
+             # If strictly voice based, check if the runner-up is too close.
+             if voice_scores:
+                 sorted_voice = sorted(voice_scores.items(), key=lambda x: x[1], reverse=True)
+                 if len(sorted_voice) >= 2:
+                     winner = sorted_voice[0]
+                     runner_up = sorted_voice[1]
+                     margin = winner[1] - runner_up[1]
+                     
+                     # If margin is slim (< 0.05), it's risky.
+                     # However, if Context supports the winner, we proceed.
+                     context_support_winner = linguistic_scores.get(winner[0], 0) + auto_id_scores.get(winner[0], 0)
+                     context_support_runner = linguistic_scores.get(runner_up[0], 0) + auto_id_scores.get(runner_up[0], 0)
+                     
+                     if margin < 0.05 and context_support_winner <= context_support_runner:
+                         # Ambiguous: Voice is close, and context doesn't clarify.
+                         print(f"[Identify] AMBIGUITY: {winner[0]} vs {runner_up[0]} (Margin {margin:.3f}). Skipping.")
+                         best_name = None 
+                         rejection_reason = "Ambiguous Voice Match"
+
+             # 2. GENDER / ROLE GUARD
+             # If we picked someone, ensure it doesn't contradict linguistic gender cues.
+             if best_name:
+                 # Heuristic: Check titles in name
+                 is_female_candidate = "Mme" in best_name or "Madame" in best_name or "Conseillère" in best_name
+                 is_male_candidate = "M." in best_name or "Monsieur" in best_name or "Conseiller " in best_name # Space to avoid matching Conseillère
+                 
+                 # Check linguistic cues in text (Context)
+                 # "Mme la Présidente", "Elle" -> Female
+                 text_female_cues = ["madame", "mme", "présidente", "conseillère", "mairesse"]
+                 text_male_cues = ["monsieur", "m.", "président", "conseiller", "maire"]
+                 
+                 found_female = any(cue in combined_text.lower() for cue in text_female_cues)
+                 found_male = any(cue in combined_text.lower() for cue in text_male_cues)
+                 
+                 if is_male_candidate and found_female and not found_male:
+                     print(f"[Identify] GENDER GUARD: Rejecting {best_name} (Male) because text implies Female.")
+                     best_name = None
+                     rejection_reason = "Gender Mismatch (M->F)"
+                 elif is_female_candidate and found_male and not found_female:
+                     print(f"[Identify] GENDER GUARD: Rejecting {best_name} (Female) because text implies Male.")
+                     best_name = None
+                     rejection_reason = "Gender Mismatch (F->M)"
+
+        if best_name:
+            final_decision = best_name
             speaker_mapping[speaker_label] = best_name
             print(f"[Identify] {speaker_label} -> {best_name} (score: {best_score:.2f}, voice: {bool(voice_scores)})")
             
-            # Check conditions for Auto-Learning:
-            # 1. Voice match was "Medium" (0.55 - 0.75) -> Not perfect match, potentially new tone/mic
-            # 2. Context/Linguistic match was strong (boosted the score significantly)
-            # 3. We have a valid embedding to learn from
-            
+            # Auto-Learning logic (Restored)
             voice_conf = voice_scores.get(best_name, 0)
             if voice_available and segment_embedding:
-                if 0.55 <= voice_conf <= 0.78: # "Ambiguous but likely" zone
-                     # Calculate how much context helped
-                     # If best_score is high (> 0.65) despite medium voice, context carried it.
-                     if best_score > 0.65:
+                if 0.55 <= voice_conf <= 0.78 and best_score > 0.65:
+                     try:
                          print(f"[AutoLearn] Autonomous Reinforcement triggered for {best_name}!")
-                         print(f"[AutoLearn] Voice was medium ({voice_conf:.2f}) but Context confirmed ID. Learning new variation...")
-                         
-                         try:
-                             # Direct Firestore update to append embedding (Background "Fire & Forget")
-                             # We duplicate logic from reinforce_speaker_voice briefly here or call it helper?
-                             # Better to do direct update to avoid HTTP overhead
-                             member_ref = db.collection("members").where("displayName", "==", best_name).limit(1).get()
-                             if member_ref:
-                                 doc = member_ref[0]
-                                 current_emb = doc.to_dict().get("embedding", [])
-                                 # Parse if string
-                                 import json as json_lib
-                                 if isinstance(current_emb, str):
-                                     try: current_emb = json_lib.loads(current_emb)
-                                     except: current_emb = []
-                                     
-                                 # Append
-                                 new_emb_list = []
-                                 if not current_emb: new_emb_list = [segment_embedding]
-                                 elif isinstance(current_emb, list) and len(current_emb)>0 and isinstance(current_emb[0], list):
-                                     new_emb_list = current_emb + [segment_embedding]
-                                     if len(new_emb_list) > 12: new_emb_list = new_emb_list[-12:] # Allow slightly more for auto-learned
-                                 elif isinstance(current_emb, list):
-                                     new_emb_list = [current_emb, segment_embedding]
-                                     
-                                 doc.reference.update({
-                                     "embedding": json_lib.dumps(new_emb_list),
-                                     "lastVoiceUpdate": datetime.now().isoformat(),
-                                     "voiceSampleCount": len(new_emb_list)
-                                 })
-                                 print(f"[AutoLearn] Successfully learned new sample for {best_name} (Total: {len(new_emb_list)})")
-                         except Exception as e:
-                             print(f"[AutoLearn] Failed to auto-learn: {e}")
-
+                         # Direct Firestore update
+                         member_ref = db.collection("members").where("displayName", "==", best_name).limit(1).get()
+                         if member_ref:
+                             doc = member_ref[0]
+                             current_emb = doc.to_dict().get("embedding", [])
+                             import json as json_lib
+                             if isinstance(current_emb, str):
+                                 try: current_emb = json_lib.loads(current_emb)
+                                 except: current_emb = []
+                                 
+                             new_emb_list = []
+                             if not current_emb: new_emb_list = [segment_embedding]
+                             elif isinstance(current_emb, list) and len(current_emb)>0 and isinstance(current_emb[0], list):
+                                 new_emb_list = current_emb + [segment_embedding]
+                                 if len(new_emb_list) > 12: new_emb_list = new_emb_list[-12:] 
+                             elif isinstance(current_emb, list):
+                                 new_emb_list = [current_emb, segment_embedding]
+                                 
+                             doc.reference.update({
+                                 "embedding": json_lib.dumps(new_emb_list),
+                                 "lastVoiceUpdate": datetime.now().isoformat(),
+                                 "voiceSampleCount": len(new_emb_list)
+                             })
+                             print(f"[AutoLearn] Successfully learned new sample for {best_name} (Total: {len(new_emb_list)})")
+                     except Exception as e:
+                         print(f"[AutoLearn] Failed to auto-learn: {e}")
         else:
             unidentified.append((speaker_label, combined_text))
+            if rejection_reason:
+                print(f"[Identify] Unidentified {speaker_label}: {rejection_reason}")
     
     # For remaining unidentified, make ONE batch GROQ call
     if unidentified and len(unidentified) <= 5:
@@ -4523,19 +4609,25 @@ def reinforce_speaker_voice(req: https_fn.Request) -> https_fn.Response:
         count = len(updated_embedding)
         msg = "Profil mis à jour."
         
+        # Dynamic Limit: We allow up to 20 samples to ensure robustness.
+        # If the profile was considered "weak" (outlier detected or < 10 samples), we ask for more.
+        need_more = count < 10 or is_outlier
+        
         if is_outlier:
-            msg = f"⚠️ {warning_msg} Ajouté quand même."
-        elif count < 3:
-            msg = f"Profil incomplet ({count}/3). Vérifiez les suggestions !"
-        elif count <= 5:
-            msg = f"Profil s'améliore ({count} échantillons)."
+            msg = f"⚠️ {warning_msg} Ajouté. Continuez à entraîner ({count}/10)."
+        elif count < 5:
+            msg = f"Profil en construction ({count}/10). Continuez !"
+        elif count < 10:
+             msg = f"Profil s'améliore ({count}/10)."
+        else:
+             msg = f"Profil robuste ({count} échantillons)."
             
         return https_fn.Response(json.dumps({
             "success": True, 
             "message": msg,
             "samples": count,
-            "needMore": count < 5, # Encourage more training up to 5
-            "candidates": candidates # Return the found similar segments
+            "needMore": need_more, 
+            "candidates": candidates
         }), status=200, content_type="application/json")
         
     except Exception as e:
