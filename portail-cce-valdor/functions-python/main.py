@@ -1845,6 +1845,203 @@ def speechmatics_webhook(req: https_fn.Request) -> https_fn.Response:
 
 
 # =============================================================================
+# MANUAL SPEAKER IDENTIFICATION (Callable)
+# =============================================================================
+
+@https_fn.on_call(
+    timeout_sec=180,  # 3 minutes
+    memory=options.MemoryOption.GB_1
+)
+def identify_speakers(req: https_fn.CallableRequest) -> dict:
+    """
+    Manually trigger speaker identification on an existing transcription.
+    Called from the UI when user wants to re-identify speakers.
+    """
+    if not req.auth:
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.UNAUTHENTICATED,
+            message="Authentication required."
+        )
+    
+    data = req.data
+    meeting_id = data.get("meetingId")
+    storage_path = data.get("storagePath")  # Optional: specific recording
+    
+    if not meeting_id:
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT,
+            message="Missing meetingId."
+        )
+    
+    print(f"[Manual Speaker ID] Starting for meeting {meeting_id}")
+    
+    try:
+        from speaker_identification import (
+            fuse_scores,
+            contextual_ai_strategy,
+            linguistic_pattern_strategy,
+            name_mention_strategy,
+            auto_identification_strategy
+        )
+        
+        db = firestore.client()
+        meeting_ref = db.collection("meetings").document(meeting_id)
+        meeting_doc = meeting_ref.get()
+        
+        if not meeting_doc.exists:
+            raise https_fn.HttpsError(
+                code=https_fn.FunctionsErrorCode.NOT_FOUND,
+                message="Meeting not found."
+            )
+        
+        meeting_data = meeting_doc.to_dict()
+        
+        # Get enrolled speakers
+        enrolled_speakers = get_enrolled_speakers()
+        if not enrolled_speakers:
+            return {"success": False, "error": "No enrolled speakers found"}
+        
+        known_member_names = [s["name"] for s in enrolled_speakers]
+        meeting_context = {"type": "Régulière"}
+        
+        # Find transcription to process
+        transcription_text = None
+        audio_recordings = meeting_data.get("audioRecordings", [])
+        target_index = -1
+        
+        if storage_path and audio_recordings:
+            # Find specific recording
+            for i, rec in enumerate(audio_recordings):
+                if rec.get("storagePath") == storage_path:
+                    transcription_text = rec.get("transcription", "")
+                    target_index = i
+                    break
+        elif audio_recordings:
+            # Use first recording with transcription
+            for i, rec in enumerate(audio_recordings):
+                if rec.get("transcription"):
+                    transcription_text = rec["transcription"]
+                    target_index = i
+                    break
+        
+        # Fallback to legacy field
+        if not transcription_text:
+            transcription_text = meeting_data.get("audioRecording", {}).get("transcription", "")
+        
+        if not transcription_text:
+            return {"success": False, "error": "No transcription found"}
+        
+        # Parse transcription into segments
+        # Format: [MM:SS] [Speaker] Text
+        import re
+        lines = transcription_text.split("\n\n")
+        segments = []
+        
+        for line in lines:
+            match = re.match(r'\[(\d+:\d+)\]\s*\[([^\]]+)\]\s*(.*)', line, re.DOTALL)
+            if match:
+                timestamp, speaker, text = match.groups()
+                mins, secs = map(int, timestamp.split(":"))
+                segments.append({
+                    "start": mins * 60 + secs,
+                    "speaker": speaker,
+                    "text": text.strip()
+                })
+        
+        if not segments:
+            return {"success": False, "error": "Could not parse transcription segments"}
+        
+        print(f"[Manual Speaker ID] Processing {len(segments)} segments")
+        
+        # Run identification
+        speaker_mapping = {}
+        
+        for segment in segments:
+            speaker_label = segment["speaker"]
+            
+            # Skip if already a name (not S0/S1 format)
+            if not re.match(r'^S\d+$', speaker_label):
+                continue
+            
+            if speaker_label in speaker_mapping:
+                continue
+            
+            transcript_segment = segment["text"]
+            
+            context_scores = contextual_ai_strategy(
+                transcript_segment, meeting_context, known_member_names
+            )
+            linguistic_scores = linguistic_pattern_strategy(
+                transcript_segment, enrolled_speakers
+            )
+            mention_scores = name_mention_strategy(
+                transcript_segment, None, known_member_names
+            )
+            auto_id_scores = auto_identification_strategy(
+                transcript_segment, known_member_names
+            )
+            
+            identified_name, confidence = fuse_scores(
+                {},
+                context_scores,
+                linguistic_scores,
+                mention_scores,
+                auto_id_scores
+            )
+            
+            if identified_name:
+                speaker_mapping[speaker_label] = identified_name
+                print(f"[Manual Speaker ID] {speaker_label} -> {identified_name} ({confidence:.2f})")
+        
+        if not speaker_mapping:
+            return {"success": True, "message": "No speakers could be identified", "mapping": {}}
+        
+        # Rebuild transcript with identified names
+        identified_parts = []
+        for seg in segments:
+            m = int(seg["start"] // 60)
+            s = int(seg["start"] % 60)
+            timestamp = f"[{m:02d}:{s:02d}]"
+            original = seg["speaker"]
+            name = speaker_mapping.get(original, original)
+            identified_parts.append(f"{timestamp} [{name}] {seg['text']}")
+        
+        identified_transcription = "\n\n".join(identified_parts)
+        
+        # Save
+        if target_index >= 0 and audio_recordings:
+            audio_recordings[target_index]["transcription"] = identified_transcription
+            audio_recordings[target_index]["speakerMapping"] = speaker_mapping
+            meeting_ref.update({
+                "audioRecordings": audio_recordings,
+                "dateUpdated": datetime.now().isoformat()
+            })
+        
+        meeting_ref.update({
+            "audioRecording.transcription": identified_transcription,
+            "audioRecording.speakerMapping": speaker_mapping,
+            "dateUpdated": datetime.now().isoformat()
+        })
+        
+        print(f"[Manual Speaker ID] SUCCESS! Identified {len(speaker_mapping)} speakers")
+        
+        return {
+            "success": True,
+            "identifiedCount": len(speaker_mapping),
+            "mapping": speaker_mapping
+        }
+        
+    except Exception as e:
+        print(f"[Manual Speaker ID] ERROR: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.INTERNAL,
+            message=str(e)
+        )
+
+
+# =============================================================================
 # ASYNC TRANSCRIPTION ENDPOINTS (No timeout limit)
 # =============================================================================
 

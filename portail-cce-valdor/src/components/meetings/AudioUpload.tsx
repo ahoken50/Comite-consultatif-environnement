@@ -17,7 +17,8 @@ import {
     PlayArrow,
     Pause,
     Merge,
-    QueueMusic
+    QueueMusic,
+    RecordVoiceOver
 } from '@mui/icons-material';
 // import { aiService } from '../../services/ai/UnifiedAIService'; // Removed unused import
 
@@ -30,7 +31,7 @@ import {
     formatFileSize,
     formatDuration
 } from '../../services/audioStorageService';
-import { isGeminiConfigured, transcribeAudio } from '../../services/geminiService';
+import { isGeminiConfigured, transcribeAudio, identifySpeakers } from '../../services/geminiService';
 
 interface AudioUploadProps {
     meetingId: string;
@@ -54,6 +55,7 @@ const AudioUpload: React.FC<AudioUploadProps> = ({
     const [error, setError] = useState<string | null>(null);
     const [playingUrl, setPlayingUrl] = useState<string | null>(null); // Track which file is playing
     const [isTranscribing, setIsTranscribing] = useState(false);
+    const [isIdentifying, setIsIdentifying] = useState(false);
     const audioRef = React.useRef<HTMLAudioElement | null>(null);
 
     // Merge both audioRecordings array and legacy audioRecording field
@@ -256,16 +258,42 @@ const AudioUpload: React.FC<AudioUploadProps> = ({
                 ))}
 
                 {/* Merge Transcription Button */}
-                <Box sx={{ mt: 2 }}>
+                <Box sx={{ mt: 2, display: 'flex', gap: 1 }}>
                     <Button
                         variant="contained"
                         color="secondary"
-                        fullWidth
+                        sx={{ flex: 2 }}
                         startIcon={isTranscribing ? <CircularProgress size={20} color="inherit" /> : <Merge />}
                         onClick={handleMergeAndTranscribe}
-                        disabled={isTranscribing}
+                        disabled={isTranscribing || isIdentifying}
                     >
-                        {isTranscribing ? 'Démarrage des transcriptions...' : 'Lancer la Transcription (Tout)'}
+                        {isTranscribing ? 'Transcription...' : 'Transcrire'}
+                    </Button>
+                    <Button
+                        variant="outlined"
+                        color="primary"
+                        sx={{ flex: 1 }}
+                        startIcon={isIdentifying ? <CircularProgress size={20} color="inherit" /> : <RecordVoiceOver />}
+                        onClick={async () => {
+                            setIsIdentifying(true);
+                            setError(null);
+                            try {
+                                const result = await identifySpeakers(meetingId);
+                                if (!result.success) {
+                                    setError(result.error || 'Identification failed');
+                                } else if (result.mapping && Object.keys(result.mapping).length > 0) {
+                                    onTranscriptionComplete?.(`Identification terminée: ${Object.keys(result.mapping).length} intervenants identifiés`);
+                                } else {
+                                    setError('Aucun intervenant identifié');
+                                }
+                            } catch (err) {
+                                setError(err instanceof Error ? err.message : 'Erreur');
+                            }
+                            setIsIdentifying(false);
+                        }}
+                        disabled={isTranscribing || isIdentifying || !recordings.some(r => r.transcriptionStatus === 'completed')}
+                    >
+                        {isIdentifying ? 'ID...' : 'Identifier'}
                     </Button>
                 </Box>
 

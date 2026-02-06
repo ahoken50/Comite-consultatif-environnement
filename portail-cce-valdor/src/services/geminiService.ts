@@ -146,6 +146,38 @@ export const transcribeAudio = async (
 };
 
 /**
+ * Manually trigger speaker identification on an existing transcription
+ */
+export const identifySpeakers = async (
+    meetingId: string,
+    storagePath?: string
+): Promise<{ success: boolean; mapping?: Record<string, string>; error?: string }> => {
+    try {
+        console.log(`[Speaker ID] Manually triggering for meeting ${meetingId}`);
+
+        const identifyFunction = httpsCallable(functions, 'identify_speakers', { timeout: 180000 });
+
+        const result = await identifyFunction({
+            meetingId,
+            storagePath
+        });
+
+        const data = result.data as { success: boolean; mapping?: Record<string, string>; identifiedCount?: number; error?: string };
+
+        if (!data.success) {
+            return { success: false, error: data.error || 'Identification failed' };
+        }
+
+        console.log(`[Speaker ID] Identified ${data.identifiedCount} speakers`);
+        return { success: true, mapping: data.mapping };
+
+    } catch (error) {
+        console.error('Speaker identification error:', error);
+        return { success: false, error: (error as Error).message };
+    }
+};
+
+/**
  * Poll transcription status until complete or timeout
  * Polls every 30 seconds for up to 30 minutes
  */
