@@ -1153,6 +1153,103 @@ def get_meeting_attendees(meeting_id: str) -> list:
         return []
 
 
+def extract_audio_segment_embedding(audio_url: str, start_sec: float, end_sec: float) -> list:
+    """
+    Extract audio segment and get embedding via Modal.
+    Returns embedding vector or empty list on failure.
+    """
+    try:
+        modal_endpoint = os.environ.get("MODAL_ENDPOINT_URL")
+        if not modal_endpoint:
+            print("[VoiceEmbed] MODAL_ENDPOINT_URL not configured")
+            return []
+        
+        # Download audio file
+        print(f"[VoiceEmbed] Downloading audio from {audio_url[:50]}...")
+        audio_response = requests.get(audio_url, timeout=30)
+        if not audio_response.ok:
+            print(f"[VoiceEmbed] Failed to download audio: {audio_response.status_code}")
+            return []
+        
+        # Save to temp file
+        import tempfile
+        with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp_in:
+            tmp_in.write(audio_response.content)
+            input_path = tmp_in.name
+        
+        # Extract segment with ffmpeg
+        output_path = input_path.replace(".mp3", "_segment.wav")
+        duration = min(end_sec - start_sec, 30)  # Max 30 seconds
+        
+        cmd = [
+            "ffmpeg", "-y", "-i", input_path,
+            "-ss", str(start_sec),
+            "-t", str(duration),
+            "-ar", "16000", "-ac", "1",
+            output_path
+        ]
+        
+        subprocess.run(cmd, capture_output=True, check=True)
+        
+        # Read segment and send to Modal
+        with open(output_path, "rb") as f:
+            segment_data = f.read()
+        
+        # Clean up temp files
+        os.unlink(input_path)
+        os.unlink(output_path)
+        
+        # Base64 encode for Modal
+        import base64
+        audio_b64 = base64.b64encode(segment_data).decode()
+        
+        # Call Modal endpoint
+        print(f"[VoiceEmbed] Sending segment to Modal ({duration:.1f}s)")
+        modal_response = requests.post(
+            modal_endpoint,
+            json={"audio_base64": audio_b64},
+            timeout=60
+        )
+        
+        if not modal_response.ok:
+            print(f"[VoiceEmbed] Modal error: {modal_response.status_code}")
+            return []
+        
+        result = modal_response.json()
+        embedding = result.get("embedding", [])
+        print(f"[VoiceEmbed] Got embedding with {len(embedding)} dimensions")
+        return embedding
+        
+    except Exception as e:
+        print(f"[VoiceEmbed] Error: {e}")
+        return []
+
+
+def compare_embedding_with_speakers(segment_embedding: list, enrolled_speakers: list) -> dict:
+    """
+    Compare a segment embedding with all enrolled speaker embeddings.
+    Returns dict of {name: similarity_score}
+    """
+    from speaker_identification import cosine_similarity
+    
+    scores = {}
+    
+    for speaker in enrolled_speakers:
+        stored_embedding = speaker.get("embedding")
+        if not stored_embedding or not isinstance(stored_embedding, list):
+            continue
+        
+        if len(stored_embedding) != len(segment_embedding):
+            print(f"[VoiceEmbed] Dimension mismatch: {len(segment_embedding)} vs {len(stored_embedding)}")
+            continue
+        
+        similarity = cosine_similarity(segment_embedding, stored_embedding)
+        # Convert similarity (-1 to 1) to score (0 to 1)
+        scores[speaker["name"]] = (similarity + 1) / 2
+    
+    return scores
+
+
 async def identify_speakers_in_transcript(
     formatted_output: dict,
     meeting_id: str,
@@ -1161,19 +1258,17 @@ async def identify_speakers_in_transcript(
     """
     Apply multi-strategy speaker identification to a formatted transcript.
     
-    Uses 5 strategies:
+    Uses 5 strategies with optimized performance:
     1. Voice Embedding (50%) - Compare with enrolled speakers via Modal
-    2. Contextual AI (25%) - GROQ analysis of content
+    2. Contextual AI (25%) - GROQ batch analysis
     3. Linguistic Patterns (10%) - Role-based keywords
     4. Name Mentions (10%) - "Merci Michaël" detection
     5. Auto-Identification (5%) - "Je suis X" detection
     
     Returns the same structure but with speaker labels replaced by names.
     """
+    import re
     from speaker_identification import (
-        fuse_scores,
-        voice_embedding_strategy,
-        contextual_ai_strategy,
         linguistic_pattern_strategy,
         name_mention_strategy,
         auto_identification_strategy
@@ -1185,68 +1280,138 @@ async def identify_speakers_in_transcript(
         print("[Identify] No enrolled speakers found, keeping original labels")
         return formatted_output
     
-    # Get meeting attendees for context
-    attendees = get_meeting_attendees(meeting_id)
     known_member_names = [s["name"] for s in enrolled_speakers]
-    
-    # Build speaker mapping
     segments = formatted_output.get("segments", [])
-    speaker_mapping = {}  # {"S0": "Michaël Ross", ...}
     
-    modal_endpoint = os.environ.get("MODAL_ENDPOINT_URL", "")
+    if not segments:
+        return formatted_output
     
-    meeting_context = {
-        "type": "Régulière",
-        "attendees": attendees
-    }
+    # Collect unique speakers and their data
+    unique_speakers = {}  # {"S0": {"texts": [...], "start": 0, "end": 30}, ...}
     
     for segment in segments:
         speaker_label = segment.get("speaker", "S0")
         
-        # Skip if already identified
-        if speaker_label in speaker_mapping:
+        # Skip if not S0/S1 format
+        if not re.match(r'^S\d+$', speaker_label):
             continue
         
-        transcript_segment = segment.get("text", "")
+        if speaker_label not in unique_speakers:
+            unique_speakers[speaker_label] = {
+                "texts": [],
+                "start": segment.get("start", 0),
+                "end": segment.get("start", 0) + 30
+            }
+        unique_speakers[speaker_label]["texts"].append(segment.get("text", ""))
+    
+    print(f"[Identify] Found {len(unique_speakers)} unique speakers to identify")
+    
+    # Check if voice embedding is available
+    voice_available = bool(audio_url and os.environ.get("MODAL_ENDPOINT_URL"))
+    print(f"[Identify] Voice embedding available: {voice_available}")
+    
+    # Run identification
+    speaker_mapping = {}
+    unidentified = []
+    
+    for speaker_label, data in unique_speakers.items():
+        combined_text = " ".join(data["texts"][:3])  # First 3 segments
         
-        # Run strategies (voice embedding only if audio URL provided)
+        # Initialize scores
         voice_scores = {}
-        if audio_url and modal_endpoint:
-            # Note: Would need to extract specific segment from audio
-            # For now, we skip voice embedding for individual segments
-            pass
         
-        context_scores = contextual_ai_strategy(
-            transcript_segment, meeting_context, known_member_names
-        )
+        # Try voice embedding if available (50% weight)
+        if voice_available:
+            print(f"[Identify] Getting voice embedding for {speaker_label} ({data['start']:.0f}s-{data['end']:.0f}s)")
+            segment_embedding = extract_audio_segment_embedding(audio_url, data["start"], data["end"])
+            if segment_embedding:
+                voice_scores = compare_embedding_with_speakers(segment_embedding, enrolled_speakers)
+                print(f"[Identify] Voice scores for {speaker_label}: {voice_scores}")
         
-        linguistic_scores = linguistic_pattern_strategy(
-            transcript_segment, enrolled_speakers
-        )
+        # Fast pattern strategies
+        linguistic_scores = linguistic_pattern_strategy(combined_text, enrolled_speakers)
+        mention_scores = name_mention_strategy(combined_text, None, known_member_names)
+        auto_id_scores = auto_identification_strategy(combined_text, known_member_names)
         
-        mention_scores = name_mention_strategy(
-            transcript_segment,
-            speaker_mapping.get(speaker_label),
-            known_member_names
-        )
+        # Fuse with proper weighting
+        best_score = 0
+        best_name = None
         
-        auto_id_scores = auto_identification_strategy(
-            transcript_segment, known_member_names
-        )
+        for name in known_member_names:
+            if voice_scores:
+                # Full weighting with voice
+                score = (
+                    voice_scores.get(name, 0) * 0.50 +
+                    linguistic_scores.get(name, 0) * 0.10 +
+                    mention_scores.get(name, 0) * 0.10 +
+                    auto_id_scores.get(name, 0) * 0.05
+                )
+            else:
+                # Without voice, rebalance
+                score = (
+                    linguistic_scores.get(name, 0) * 0.4 +
+                    mention_scores.get(name, 0) * 0.3 +
+                    auto_id_scores.get(name, 0) * 0.3
+                )
+            
+            if score > best_score:
+                best_score = score
+                best_name = name
         
-        # Fuse scores
-        identified_name, confidence = fuse_scores(
-            voice_scores,
-            context_scores,
-            linguistic_scores,
-            mention_scores,
-            auto_id_scores,
-            confidence_threshold=0.6
-        )
-        
-        if identified_name:
-            speaker_mapping[speaker_label] = identified_name
-            print(f"[Identify] {speaker_label} -> {identified_name} (confidence: {confidence:.2f})")
+        threshold = 0.2 if voice_scores else 0.3
+        if best_score >= threshold and best_name:
+            speaker_mapping[speaker_label] = best_name
+            print(f"[Identify] {speaker_label} -> {best_name} (score: {best_score:.2f}, voice: {bool(voice_scores)})")
+        else:
+            unidentified.append((speaker_label, combined_text))
+    
+    # For remaining unidentified, make ONE batch GROQ call
+    if unidentified and len(unidentified) <= 5:
+        try:
+            import json as json_lib
+            groq_api_key = os.environ.get("GROQ_API_KEY")
+            if groq_api_key:
+                batch_prompt = f"""Analyse ces segments de transcription d'une réunion CCE.
+Membres présents: {', '.join(known_member_names)}
+
+Pour chaque intervenant, identifie qui parle:
+"""
+                for label, text in unidentified:
+                    batch_prompt += f"\n{label}: \"{text[:200]}...\""
+                
+                batch_prompt += """
+
+Retourne un JSON simple avec le mapping: {"S0": "Nom Complet", "S1": "Autre Nom"}
+UNIQUEMENT le JSON, sans explication."""
+                
+                response = requests.post(
+                    "https://api.groq.com/openai/v1/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {groq_api_key}",
+                        "Content-Type": "application/json"
+                    },
+                    json={
+                        "model": "llama-3.1-8b-instant",
+                        "messages": [{"role": "user", "content": batch_prompt}],
+                        "temperature": 0.3,
+                        "max_tokens": 200
+                    },
+                    timeout=30
+                )
+                
+                if response.ok:
+                    result = response.json()
+                    content = result["choices"][0]["message"]["content"]
+                    groq_mapping = json_lib.loads(content)
+                    
+                    for label, name in groq_mapping.items():
+                        if name in known_member_names and label not in speaker_mapping:
+                            speaker_mapping[label] = name
+                            print(f"[Identify] {label} -> {name} (GROQ batch)")
+        except Exception as groq_err:
+            print(f"[Identify] GROQ batch failed: {groq_err}")
+    
+    print(f"[Identify] Identified {len(speaker_mapping)} speakers")
     
     # Apply mapping to segments
     identified_segments = []
@@ -1904,8 +2069,9 @@ def identify_speakers(req: https_fn.CallableRequest) -> dict:
         known_member_names = [s["name"] for s in enrolled_speakers]
         meeting_context = {"type": "Régulière"}
         
-        # Find transcription to process
+        # Find transcription and audio URL to process
         transcription_text = None
+        audio_url = None
         audio_recordings = meeting_data.get("audioRecordings", [])
         target_index = -1
         
@@ -1914,6 +2080,7 @@ def identify_speakers(req: https_fn.CallableRequest) -> dict:
             for i, rec in enumerate(audio_recordings):
                 if rec.get("storagePath") == storage_path:
                     transcription_text = rec.get("transcription", "")
+                    audio_url = rec.get("downloadURL") or rec.get("url")
                     target_index = i
                     break
         elif audio_recordings:
@@ -1921,6 +2088,7 @@ def identify_speakers(req: https_fn.CallableRequest) -> dict:
             for i, rec in enumerate(audio_recordings):
                 if rec.get("transcription"):
                     transcription_text = rec["transcription"]
+                    audio_url = rec.get("downloadURL") or rec.get("url")
                     target_index = i
                     break
         
@@ -1953,8 +2121,8 @@ def identify_speakers(req: https_fn.CallableRequest) -> dict:
         
         print(f"[Manual Speaker ID] Processing {len(segments)} segments")
         
-        # Run identification
-        speaker_mapping = {}
+        # Collect unique speakers and their sample texts
+        unique_speakers = {}  # {"S0": ["text1", "text2"], ...}
         
         for segment in segments:
             speaker_label = segment["speaker"]
@@ -1963,35 +2131,134 @@ def identify_speakers(req: https_fn.CallableRequest) -> dict:
             if not re.match(r'^S\d+$', speaker_label):
                 continue
             
-            if speaker_label in speaker_mapping:
-                continue
+            if speaker_label not in unique_speakers:
+                unique_speakers[speaker_label] = []
+            unique_speakers[speaker_label].append(segment["text"])
+        
+        print(f"[Manual Speaker ID] Found {len(unique_speakers)} unique speakers")
+        
+        # Collect timestamps for each unique speaker
+        speaker_timestamps = {}  # {"S0": {"start": 0, "end": 30}, ...}
+        for segment in segments:
+            label = segment["speaker"]
+            if re.match(r'^S\d+$', label) and label not in speaker_timestamps:
+                # Use first occurrence (typically longest/clearest)
+                speaker_timestamps[label] = {
+                    "start": segment["start"],
+                    "end": segment["start"] + 30  # 30 seconds max
+                }
+        
+        # Run identification with voice embedding (if audio_url available)
+        speaker_mapping = {}
+        unidentified = []
+        voice_available = bool(audio_url and os.environ.get("MODAL_ENDPOINT_URL"))
+        
+        print(f"[Manual Speaker ID] Voice embedding available: {voice_available}")
+        
+        for speaker_label, texts in unique_speakers.items():
+            combined_text = " ".join(texts[:3])  # Use first 3 segments max
             
-            transcript_segment = segment["text"]
+            # Initialize scores dict
+            voice_scores = {}
             
-            context_scores = contextual_ai_strategy(
-                transcript_segment, meeting_context, known_member_names
-            )
+            # Try voice embedding if available (50% weight)
+            if voice_available and speaker_label in speaker_timestamps:
+                ts = speaker_timestamps[speaker_label]
+                print(f"[Manual Speaker ID] Getting voice embedding for {speaker_label} ({ts['start']:.0f}s-{ts['end']:.0f}s)")
+                segment_embedding = extract_audio_segment_embedding(audio_url, ts["start"], ts["end"])
+                if segment_embedding:
+                    voice_scores = compare_embedding_with_speakers(segment_embedding, enrolled_speakers)
+                    print(f"[Manual Speaker ID] Voice scores: {voice_scores}")
+            
+            # Fast pattern strategies
             linguistic_scores = linguistic_pattern_strategy(
-                transcript_segment, enrolled_speakers
+                combined_text, enrolled_speakers
             )
             mention_scores = name_mention_strategy(
-                transcript_segment, None, known_member_names
+                combined_text, None, known_member_names
             )
             auto_id_scores = auto_identification_strategy(
-                transcript_segment, known_member_names
+                combined_text, known_member_names
             )
             
-            identified_name, confidence = fuse_scores(
-                {},
-                context_scores,
-                linguistic_scores,
-                mention_scores,
-                auto_id_scores
-            )
+            # Fuse with proper weighting
+            best_score = 0
+            best_name = None
             
-            if identified_name:
-                speaker_mapping[speaker_label] = identified_name
-                print(f"[Manual Speaker ID] {speaker_label} -> {identified_name} ({confidence:.2f})")
+            for name in known_member_names:
+                if voice_scores:
+                    # Full weighting with voice (5 strategies)
+                    score = (
+                        voice_scores.get(name, 0) * 0.50 +
+                        linguistic_scores.get(name, 0) * 0.10 +
+                        mention_scores.get(name, 0) * 0.10 +
+                        auto_id_scores.get(name, 0) * 0.05 +
+                        0.25 * 0  # Reserve for GROQ later if needed
+                    )
+                else:
+                    # Without voice, rebalance weights
+                    score = (
+                        linguistic_scores.get(name, 0) * 0.4 +
+                        mention_scores.get(name, 0) * 0.3 +
+                        auto_id_scores.get(name, 0) * 0.3
+                    )
+                
+                if score > best_score:
+                    best_score = score
+                    best_name = name
+            
+            threshold = 0.2 if voice_scores else 0.3
+            if best_score >= threshold and best_name:
+                speaker_mapping[speaker_label] = best_name
+                print(f"[Manual Speaker ID] {speaker_label} -> {best_name} (score: {best_score:.2f}, voice: {bool(voice_scores)})")
+            else:
+                unidentified.append((speaker_label, combined_text))
+        
+        # For remaining unidentified, make ONE batch GROQ call
+        if unidentified and len(unidentified) <= 5:  # Limit to avoid timeout
+            try:
+                import json as json_lib
+                groq_api_key = os.environ.get("GROQ_API_KEY")
+                if groq_api_key:
+                    batch_prompt = f"""Analyse ces segments de transcription d'une réunion CCE.
+Membres présents: {', '.join(known_member_names)}
+
+Pour chaque intervenant, identifie qui parle:
+"""
+                    for label, text in unidentified:
+                        batch_prompt += f"\n{label}: \"{text[:200]}...\""
+                    
+                    batch_prompt += """
+
+Retourne un JSON simple avec le mapping: {"S0": "Nom Complet", "S1": "Autre Nom"}
+UNIQUEMENT le JSON, sans explication."""
+                    
+                    response = requests.post(
+                        "https://api.groq.com/openai/v1/chat/completions",
+                        headers={
+                            "Authorization": f"Bearer {groq_api_key}",
+                            "Content-Type": "application/json"
+                        },
+                        json={
+                            "model": "llama-3.1-8b-instant",
+                            "messages": [{"role": "user", "content": batch_prompt}],
+                            "temperature": 0.3,
+                            "max_tokens": 200
+                        },
+                        timeout=30
+                    )
+                    
+                    if response.ok:
+                        result = response.json()
+                        content = result["choices"][0]["message"]["content"]
+                        groq_mapping = json_lib.loads(content)
+                        
+                        for label, name in groq_mapping.items():
+                            if name in known_member_names and label not in speaker_mapping:
+                                speaker_mapping[label] = name
+                                print(f"[Manual Speaker ID] {label} -> {name} (GROQ batch)")
+            except Exception as groq_err:
+                print(f"[Manual Speaker ID] GROQ batch failed: {groq_err}")
         
         if not speaker_mapping:
             return {"success": True, "message": "No speakers could be identified", "mapping": {}}
