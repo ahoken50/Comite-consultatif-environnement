@@ -4317,7 +4317,7 @@ Réponds UNIQUEMENT par JSON: {{"valid": true}} ou {{"valid": false}}"""
     return True # Fail open on error
 
 
-@https_fn.on_request(timeout_sec=300, memory_options=https_fn.MemoryOptions.MB_512)
+@https_fn.on_request(timeout_sec=300, memory=512)
 def reinforce_speaker_voice(req: https_fn.Request) -> https_fn.Response:
     """
     Active Learning: Add a new voice sample to a member's profile from a meeting segment.
