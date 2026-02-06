@@ -2098,6 +2098,26 @@ def identify_speakers(req: https_fn.CallableRequest) -> dict:
         
         if not transcription_text:
             return {"success": False, "error": "No transcription found"}
+            
+        print(f"[Manual Speaker ID] Found transcription ({len(transcription_text)} chars)")
+        print(f"[Manual Speaker ID] Target index: {target_index}")
+        if target_index >= 0:
+            rec = audio_recordings[target_index]
+            print(f"[Manual Speaker ID] Recording data: keys={list(rec.keys())}")
+            print(f"[Manual Speaker ID] storagePath: {rec.get('storagePath')}")
+            print(f"[Manual Speaker ID] downloadURL: {rec.get('downloadURL') and 'SET'}")
+            print(f"[Manual Speaker ID] fileUrl: {rec.get('fileUrl') and 'SET'}")
+            print(f"[Manual Speaker ID] url: {rec.get('url') and 'SET'}")
+            
+            # Ensure we get the URL (try all possible fields)
+            if not audio_url:
+                audio_url = rec.get("fileUrl") or rec.get("url") or rec.get("downloadURL")
+        
+        if not audio_url:
+            # Try legacy field
+            legacy = meeting_data.get("audioRecording", {})
+            audio_url = legacy.get("downloadURL") or legacy.get("fileUrl") or legacy.get("url")
+            print(f"[Manual Speaker ID] Checked legacy audioRecording. found URL? {bool(audio_url)}")
         
         # Parse transcription into segments
         # Format: [MM:SS] [Speaker] Text
@@ -2210,7 +2230,7 @@ def identify_speakers(req: https_fn.CallableRequest) -> dict:
                     best_score = score
                     best_name = name
             
-            threshold = 0.15 if voice_scores else 0.1  # Lowered threshold - fast strategies often return 0
+            threshold = 0.15 if voice_scores else 0.1  # Lowered threshold - fast strategies often return 0 - FIX DEPLOY
             if best_score >= threshold and best_name:
                 speaker_mapping[speaker_label] = best_name
                 print(f"[Manual Speaker ID] {speaker_label} -> {best_name} (score: {best_score:.2f}, voice: {bool(voice_scores)})")

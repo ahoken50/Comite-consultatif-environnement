@@ -293,7 +293,16 @@ const AudioUpload: React.FC<AudioUploadProps> = ({
                                 if (!result.success) {
                                     setError(result.error || 'Identification failed');
                                 } else if (result.mapping && Object.keys(result.mapping).length > 0) {
-                                    onTranscriptionComplete?.(`Identification terminée: ${Object.keys(result.mapping).length} intervenants identifiés`);
+                                    // Success! Do NOT overwrite transcription with status text
+                                    // onTranscriptionComplete?.(`Identification terminée...`);
+
+                                    // Just clear error and let user know via temporary success state or console
+                                    console.log(`Identification success: ${Object.keys(result.mapping).length} speakers`);
+                                    setError(null);
+
+                                    // Trigger a reload of meeting data if possible? 
+                                    // The parent (MinutesEditor) listens to Firestore updates, so if backend updated Firestore,
+                                    // the new transcription should arrive automatically.
                                 } else {
                                     setError('Aucun intervenant identifié');
                                 }
