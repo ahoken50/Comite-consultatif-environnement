@@ -263,11 +263,12 @@ def fuse_scores(
     - Name Mentions: 10%
     - Auto-ID: 5%
     """
+    # Weights (Updated: Voice priority 70%)
     weights = {
-        "voice": 0.50,
-        "context": 0.25,
-        "linguistic": 0.10,
-        "mention": 0.10,
+        "voice": 0.70,        # Increased from 0.50
+        "context": 0.15,      # Decreased from 0.25
+        "linguistic": 0.05,   # Decreased from 0.10
+        "mention": 0.05,      # Decreased from 0.10
         "auto_id": 0.05
     }
     

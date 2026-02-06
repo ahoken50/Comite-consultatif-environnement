@@ -1166,7 +1166,7 @@ def extract_audio_segment_embedding(audio_url: str, start_sec: float, end_sec: f
         
         # Download audio file
         print(f"[VoiceEmbed] Downloading audio from {audio_url[:50]}...")
-        audio_response = requests.get(audio_url, timeout=30)
+        audio_response = requests.get(audio_url, timeout=60)
         if not audio_response.ok:
             print(f"[VoiceEmbed] Failed to download audio: {audio_response.status_code}")
             return []
@@ -1208,7 +1208,7 @@ def extract_audio_segment_embedding(audio_url: str, start_sec: float, end_sec: f
         modal_response = requests.post(
             modal_endpoint,
             json={"audio_base64": audio_b64},
-            timeout=60
+            timeout=180
         )
         
         if not modal_response.ok:
@@ -1762,7 +1762,7 @@ def transcribe_whisper_legacy_local(
 # =============================================================================
 
 @https_fn.on_request(
-    timeout_sec=120,
+    timeout_sec=540,
     memory=options.MemoryOption.GB_1,
     cors=options.CorsOptions(cors_origins="*", cors_methods=["POST", "GET"])
 )
@@ -1909,43 +1909,75 @@ def speechmatics_webhook(req: https_fn.Request) -> https_fn.Response:
                 segments = formatted.get("segments", [])
                 known_member_names = [s["name"] for s in enrolled_speakers]
                 speaker_mapping = {}  # {"S0": "Michaël Ross", ...}
-                
                 meeting_context = {"type": "Régulière"}
+                
+                # === NEW ROBUST IDENTIFICATION LOGIC ===
+                
+                # 1. Find audio URL for voice embedding
+                audio_url = None
+                if isinstance(audio_recordings, list):
+                    for rec in audio_recordings:
+                        if rec.get("speechmaticsJobId") == job_id:
+                            audio_url = rec.get("downloadURL") or rec.get("url") or rec.get("fileUrl")
+                            break
+                            
+                modal_endpoint = os.environ.get("MODAL_ENDPOINT_URL")
+                voice_available = bool(audio_url and modal_endpoint)
+                print(f"[Speaker ID] Auto-ID starting. Voice available: {voice_available}, URL found: {bool(audio_url)}")
+
+                # 2. Collect unique speakers and timestamps
+                unique_speakers = {}
+                speaker_timestamps = {}
+                import re
                 
                 for segment in segments:
                     speaker_label = segment.get("speaker", "S0")
+                    text = segment.get("text", "")
                     
-                    if speaker_label in speaker_mapping:
+                    if not re.match(r'^S\d+$', speaker_label):
                         continue
+                        
+                    if speaker_label not in unique_speakers:
+                        unique_speakers[speaker_label] = []
+                    unique_speakers[speaker_label].append(text)
                     
-                    transcript_segment = segment.get("text", "")
+                    if speaker_label not in speaker_timestamps:
+                        speaker_timestamps[speaker_label] = {
+                            "start": segment.get("start", 0),
+                            "end": segment.get("start", 0) + 30
+                        }
+
+                # 3. Identify each unique speaker
+                for speaker_label, texts in unique_speakers.items():
+                    combined_text = " ".join(texts[:5])
                     
-                    # Run identification strategies (no voice embedding for now)
-                    context_scores = contextual_ai_strategy(
-                        transcript_segment, meeting_context, known_member_names
-                    )
-                    linguistic_scores = linguistic_pattern_strategy(
-                        transcript_segment, enrolled_speakers
-                    )
-                    mention_scores = name_mention_strategy(
-                        transcript_segment, None, known_member_names
-                    )
-                    auto_id_scores = auto_identification_strategy(
-                        transcript_segment, known_member_names
-                    )
+                    # Voice Embedding Strategy
+                    voice_scores = {}
+                    if voice_available and speaker_label in speaker_timestamps:
+                        ts = speaker_timestamps[speaker_label]
+                        try:
+                            # Use global function from main.py
+                            segment_embedding = extract_audio_segment_embedding(audio_url, ts["start"], ts["end"])
+                            if segment_embedding:
+                                voice_scores = compare_embedding_with_speakers(segment_embedding, enrolled_speakers)
+                        except Exception as e:
+                            print(f"[Speaker ID] Voice embedding failed for {speaker_label}: {e}")
+
+                    # Other Strategies
+                    context_scores = contextual_ai_strategy(combined_text, meeting_context, known_member_names)
+                    linguistic_scores = linguistic_pattern_strategy(combined_text, enrolled_speakers)
+                    mention_scores = name_mention_strategy(combined_text, None, known_member_names)
+                    auto_id_scores = auto_identification_strategy(combined_text, known_member_names)
                     
-                    # Fuse scores
+                    # Fuse
                     identified_name, confidence = fuse_scores(
-                        {},  # No voice embedding for now
-                        context_scores,
-                        linguistic_scores,
-                        mention_scores,
-                        auto_id_scores
+                        voice_scores, context_scores, linguistic_scores, mention_scores, auto_id_scores,
+                        confidence_threshold=0.2
                     )
                     
                     if identified_name:
                         speaker_mapping[speaker_label] = identified_name
-                        print(f"[Speaker ID] {speaker_label} -> {identified_name} ({confidence:.2f})")
+                        print(f"[Speaker ID] Identified {speaker_label} -> {identified_name} ({confidence:.2f})")
                 
                 # If we identified any speakers, update the transcript with names
                 if speaker_mapping:
@@ -2013,10 +2045,7 @@ def speechmatics_webhook(req: https_fn.Request) -> https_fn.Response:
 # MANUAL SPEAKER IDENTIFICATION (Callable)
 # =============================================================================
 
-@https_fn.on_call(
-    timeout_sec=180,  # 3 minutes
-    memory=options.MemoryOption.GB_1
-)
+@https_fn.on_call(timeout_sec=540, memory_mb=512)
 def identify_speakers(req: https_fn.CallableRequest) -> dict:
     """
     Manually trigger speaker identification on an existing transcription.
