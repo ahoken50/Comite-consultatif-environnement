@@ -1679,7 +1679,39 @@ def speechmatics_webhook(req: https_fn.Request) -> https_fn.Response:
         # Save to Firestore
         db = firestore.client()
         meeting_ref = db.collection("meetings").document(meeting_id)
+        meeting_doc = meeting_ref.get()
         
+        if not meeting_doc.exists:
+            print(f"[Speechmatics Webhook] ERROR: Meeting {meeting_id} not found")
+            return https_fn.Response(
+                json.dumps({"error": "Meeting not found"}),
+                status=200,
+                content_type="application/json"
+            )
+        
+        meeting_data = meeting_doc.to_dict()
+        audio_recordings = meeting_data.get("audioRecordings", [])
+        
+        # Check if we have audioRecordings array with matching job
+        updated_array = False
+        if isinstance(audio_recordings, list) and len(audio_recordings) > 0:
+            for i, rec in enumerate(audio_recordings):
+                if rec.get("speechmaticsJobId") == job_id:
+                    audio_recordings[i]["transcription"] = full_transcription
+                    audio_recordings[i]["transcriptionStatus"] = "completed"
+                    audio_recordings[i]["transcribedAt"] = datetime.now().isoformat()
+                    audio_recordings[i]["transcriptionEngine"] = "speechmatics-webhook"
+                    updated_array = True
+                    print(f"[Speechmatics Webhook] Updated audioRecordings[{i}] for job {job_id}")
+                    break
+            
+            if updated_array:
+                meeting_ref.update({
+                    "audioRecordings": audio_recordings,
+                    "dateUpdated": datetime.now().isoformat()
+                })
+        
+        # Always update legacy audioRecording field too (backward compatibility)
         meeting_ref.update({
             "audioRecording.transcription": full_transcription,
             "audioRecording.transcriptionStatus": "completed",
@@ -1689,10 +1721,113 @@ def speechmatics_webhook(req: https_fn.Request) -> https_fn.Response:
             "dateUpdated": datetime.now().isoformat()
         })
         
-        print(f"[Speechmatics Webhook] SUCCESS! Transcript saved for meeting {meeting_id}")
+        print(f"[Speechmatics Webhook] SUCCESS! Transcript saved for meeting {meeting_id} (array={updated_array})")
+        
+        # =====================================================================
+        # SPEAKER IDENTIFICATION - Multi-Strategy (runs after transcription)
+        # =====================================================================
+        try:
+            print(f"[Speaker ID] Starting identification for meeting {meeting_id}")
+            
+            from speaker_identification import (
+                fuse_scores,
+                contextual_ai_strategy,
+                linguistic_pattern_strategy,
+                name_mention_strategy,
+                auto_identification_strategy
+            )
+            
+            # Get enrolled speakers
+            enrolled_speakers = get_enrolled_speakers()
+            
+            if enrolled_speakers and len(enrolled_speakers) > 0:
+                segments = formatted.get("segments", [])
+                known_member_names = [s["name"] for s in enrolled_speakers]
+                speaker_mapping = {}  # {"S0": "Michaël Ross", ...}
+                
+                meeting_context = {"type": "Régulière"}
+                
+                for segment in segments:
+                    speaker_label = segment.get("speaker", "S0")
+                    
+                    if speaker_label in speaker_mapping:
+                        continue
+                    
+                    transcript_segment = segment.get("text", "")
+                    
+                    # Run identification strategies (no voice embedding for now)
+                    context_scores = contextual_ai_strategy(
+                        transcript_segment, meeting_context, known_member_names
+                    )
+                    linguistic_scores = linguistic_pattern_strategy(
+                        transcript_segment, enrolled_speakers
+                    )
+                    mention_scores = name_mention_strategy(
+                        transcript_segment, None, known_member_names
+                    )
+                    auto_id_scores = auto_identification_strategy(
+                        transcript_segment, known_member_names
+                    )
+                    
+                    # Fuse scores
+                    identified_name, confidence = fuse_scores(
+                        {},  # No voice embedding for now
+                        context_scores,
+                        linguistic_scores,
+                        mention_scores,
+                        auto_id_scores
+                    )
+                    
+                    if identified_name:
+                        speaker_mapping[speaker_label] = identified_name
+                        print(f"[Speaker ID] {speaker_label} -> {identified_name} ({confidence:.2f})")
+                
+                # If we identified any speakers, update the transcript with names
+                if speaker_mapping:
+                    # Rebuild transcript with identified names
+                    identified_parts = []
+                    for seg in segments:
+                        start = seg.get('start', 0)
+                        m = int(start // 60)
+                        s = int(start % 60)
+                        timestamp = f"[{m:02d}:{s:02d}]"
+                        
+                        original = seg.get("speaker", "S0")
+                        name = speaker_mapping.get(original, original)
+                        identified_parts.append(f"{timestamp} [{name}] {seg.get('text', '')}")
+                    
+                    identified_transcription = "\n\n".join(identified_parts)
+                    
+                    # Save identified transcript
+                    if updated_array and audio_recordings:
+                        for i, rec in enumerate(audio_recordings):
+                            if rec.get("speechmaticsJobId") == job_id:
+                                audio_recordings[i]["transcription"] = identified_transcription
+                                audio_recordings[i]["speakerMapping"] = speaker_mapping
+                                break
+                        meeting_ref.update({
+                            "audioRecordings": audio_recordings,
+                            "dateUpdated": datetime.now().isoformat()
+                        })
+                    
+                    meeting_ref.update({
+                        "audioRecording.transcription": identified_transcription,
+                        "audioRecording.speakerMapping": speaker_mapping,
+                        "dateUpdated": datetime.now().isoformat()
+                    })
+                    
+                    print(f"[Speaker ID] Updated transcript with {len(speaker_mapping)} identified speakers")
+                    full_transcription = identified_transcription
+            else:
+                print("[Speaker ID] No enrolled speakers, skipping identification")
+                
+        except Exception as id_err:
+            print(f"[Speaker ID] Warning: Identification failed ({str(id_err)}), using original")
+            import traceback
+            traceback.print_exc()
         
         return https_fn.Response(
-            json.dumps({"success": True, "meetingId": meeting_id, "chars": len(full_transcription)}),
+            json.dumps({"success": True, "meetingId": meeting_id, "chars": len(full_transcription), "arrayUpdated": updated_array}),
             status=200,
             content_type="application/json"
         )
