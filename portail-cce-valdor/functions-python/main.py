@@ -2266,22 +2266,32 @@ def identify_speakers(req: https_fn.CallableRequest) -> dict:
                 combined_text, known_member_names
             )
             
-            # Fuse with proper weighting
+            # Fuse with proper weighting - ADJUSTED FOR ACCURACY
             best_score = 0
             best_name = None
             
+            # Find the max voice score to see if we have a strong candidate
+            max_voice_score = 0
+            if voice_scores:
+                max_voice_score = max(voice_scores.values())
+            
             for name in known_member_names:
                 if voice_scores:
-                    # Full weighting with voice (5 strategies)
+                    # Voice carries 70% weight now to be decisive
+                    v_score = voice_scores.get(name, 0)
+                    
+                    # Bonus: If this person is the clear winner in voice (top 1), give extra boost
+                    # This helps break ties against "average" profiles like Michaël seems to be
+                    voice_bonus = 0.05 if v_score == max_voice_score and v_score > 0.75 else 0
+                    
                     score = (
-                        voice_scores.get(name, 0) * 0.50 +
+                        (v_score + voice_bonus) * 0.70 +
                         linguistic_scores.get(name, 0) * 0.10 +
                         mention_scores.get(name, 0) * 0.10 +
-                        auto_id_scores.get(name, 0) * 0.05 +
-                        0.25 * 0  # Reserve for GROQ later if needed
+                        auto_id_scores.get(name, 0) * 0.10
                     )
                 else:
-                    # Without voice, rebalance weights
+                    # Without voice, rely on patterns
                     score = (
                         linguistic_scores.get(name, 0) * 0.4 +
                         mention_scores.get(name, 0) * 0.3 +
@@ -2292,10 +2302,12 @@ def identify_speakers(req: https_fn.CallableRequest) -> dict:
                     best_score = score
                     best_name = name
             
-            threshold = 0.15 if voice_scores else 0.1  # Lowered threshold - fast strategies often return 0 - FIX DEPLOY
+            # Dynamic threshold: If voice was used, we expect higher confidence
+            threshold = 0.60 if voice_scores else 0.15
+            
             if best_score >= threshold and best_name:
                 speaker_mapping[speaker_label] = best_name
-                print(f"[Manual Speaker ID] {speaker_label} -> {best_name} (score: {best_score:.2f}, voice: {bool(voice_scores)})")
+                print(f"[Manual Speaker ID] {speaker_label} -> {best_name} (score: {best_score:.2f}, voice_max: {max_voice_score:.2f})")
             else:
                 unidentified.append((speaker_label, combined_text))
         
