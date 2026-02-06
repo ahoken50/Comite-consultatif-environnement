@@ -242,9 +242,7 @@ def enroll_speaker(req: https_fn.Request) -> https_fn.Response:
             os.remove(temp_path)
         return https_fn.Response(f"Internal Error: {str(e)}", status=500, headers=cors_headers)
     finally:
-         pass
-        if temp_path and os.path.exists(temp_path):
-            os.remove(temp_path)
+        pass
 
 
 def get_audio_format(mime_type: str) -> str:
