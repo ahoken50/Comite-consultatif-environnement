@@ -29,8 +29,8 @@ image = (
         "torch==2.2.0",
         "torchaudio==2.2.0", 
         "numpy==1.26.4",
-        "huggingface_hub>=0.20.0",  # Uses 'token' instead of 'use_auth_token'
-        "pyannote.audio==3.3.1",    # Compatible with new huggingface_hub
+        "huggingface_hub==0.19.4",  # Last version supporting 'use_auth_token'
+        "pyannote.audio==3.3.1",
         "requests",
         "fastapi[standard]",  # Required for web endpoints
     )
@@ -63,7 +63,7 @@ class EmbeddingService:
         
         self.model = Model.from_pretrained(
             "pyannote/embedding", 
-            token=token  # 'use_auth_token' is deprecated
+            use_auth_token=token  # huggingface_hub 0.19.4 uses this
         )
         self.inference = Inference(self.model, window="whole")
         print("Model loaded successfully!")
