@@ -2471,6 +2471,9 @@ def identify_speakers(req: https_fn.CallableRequest) -> dict:
                     # Found a longer sample
                     speaker_timestamps[label] = {"start": start, "end": end, "duration": duration}
         
+        # Initialize speaker_stats before using it
+        speaker_stats = {}  # {speaker_label: {"segments": 3, "total_time": 120, "avg_duration": 40}}
+        
         # Calculate speaker time statistics (who spoke most, average duration)
         for segment in segments:
             label = segment.get("speaker", "")
@@ -2506,7 +2509,6 @@ def identify_speakers(req: https_fn.CallableRequest) -> dict:
         
         warnings = {} # Collect AI feedback here
         confidence_scores = {}  # {speaker_label: {"score": 0.85, "method": "voice+context"}}
-        speaker_stats = {}  # {speaker_label: {"segments": 3, "total_time": 120, "avg_duration": 40}}
         profile_strength = {}  # {member_name: {"samples": 5, "quality": "robust", "variance": 0.15}}
         interruptions = []  # [{speaker: "S1", interrupted: "S2", time: 120, context: "..."}]
         
