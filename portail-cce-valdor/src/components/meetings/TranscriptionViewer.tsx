@@ -66,7 +66,24 @@ const TranscriptionViewer: React.FC<TranscriptionViewerProps> = ({
     const [candidateSpeakerLabel, setCandidateSpeakerLabel] = useState<string>('');
     const [showCandidatesDialog, setShowCandidatesDialog] = useState(false);
     const [aiWarnings, setAiWarnings] = useState<Record<string, string>>({});
+    const [aiAnalytics, setAiAnalytics] = useState<{
+        confidence?: Record<string, any>;
+        speakerStats?: Record<string, any>;
+        profileStrength?: Record<string, any>;
+        topSpeaker?: string;
+        autoLearnedCount?: number;
+        totalSpeakers?: number;
+    } | null>(null);
     const [isIdentifying, setIsIdentifying] = useState(false);
+
+    // AI Suggestions State
+    const [aiSuggestions, setAiSuggestions] = useState<Array<any>>([]);
+    const [showAiSuggestions, setShowAiSuggestions] = useState(false);
+    const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
+
+    // Verification Queue State
+    const [verificationQueue, setVerificationQueue] = useState<Array<any>>([]);
+    const [showVerificationQueue, setShowVerificationQueue] = useState(false);
 
     // Get past meetings and members
     const allMeetings = useSelector(selectAllMeetings);
@@ -161,7 +178,8 @@ const TranscriptionViewer: React.FC<TranscriptionViewerProps> = ({
         try {
             const { getFunctions, httpsCallable } = await import('firebase/functions');
             const functions = getFunctions();
-            const identifyFn = httpsCallable(functions, 'identify_speakers');
+            // Increase client timeout to 5 minutes (300s) to match backend heavy processing
+            const identifyFn = httpsCallable(functions, 'identify_speakers', { timeout: 300000 });
 
             showToast?.('Analyse AI en cours...', 'info');
             const result = await identifyFn({ meetingId: meeting.id });
@@ -174,6 +192,13 @@ const TranscriptionViewer: React.FC<TranscriptionViewerProps> = ({
                     const count = Object.keys(res.warnings).length;
                     if (count > 0) {
                         showToast?.(`⚠️ ${count} identifications ambiguës.`, 'warning');
+                    }
+                }
+                // Capture AI analytics for visual display
+                if (res.analytics) {
+                    setAiAnalytics(res.analytics);
+                    if (res.analytics.autoLearnedCount > 0) {
+                        showToast?.(`🧠 ${res.analytics.autoLearnedCount} profil(s) auto-renforcé(s)!`, 'info');
                     }
                 }
                 setShowSpeakerMap(true);
@@ -192,6 +217,100 @@ const TranscriptionViewer: React.FC<TranscriptionViewerProps> = ({
     const handleApplyToMinutes = () => {
         if (draft?.content) {
             onApplyToMinutes?.(draft.content);
+        }
+    };
+
+    // Load AI Suggestions
+    const handleLoadAiSuggestions = async () => {
+        setIsLoadingSuggestions(true);
+        try {
+            const response = await fetch(
+                `https://us-central1-portail-cce-valdor.cloudfunctions.net/suggest_profile_improvements`,
+                { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ limit: 5 }) }
+            );
+            const data = await response.json();
+            if (data.success && data.suggestions) {
+                setAiSuggestions(data.suggestions);
+                setShowAiSuggestions(true);
+                showToast?.(data.aiMessage || `${data.suggestions.length} suggestions trouvées`, 'info');
+            }
+        } catch (err) {
+            console.error(err);
+            showToast?.('Erreur lors du chargement des suggestions', 'error');
+        } finally {
+            setIsLoadingSuggestions(false);
+        }
+    };
+
+    // Load Verification Queue
+    const handleLoadVerificationQueue = async () => {
+        try {
+            const response = await fetch(
+                `https://us-central1-portail-cce-valdor.cloudfunctions.net/human_verification_queue`,
+                { method: 'GET' }
+            );
+            const data = await response.json();
+            if (data.success && data.items) {
+                setVerificationQueue(data.items);
+                setShowVerificationQueue(true);
+            }
+        } catch (err) {
+            console.error(err);
+            showToast?.('Erreur lors du chargement de la file', 'error');
+        }
+    };
+
+    // Apply AI Suggestion
+    const handleApplyAiSuggestion = async (suggestion: any, segment: any) => {
+        try {
+            const response = await fetch(
+                `https://us-central1-portail-cce-valdor.cloudfunctions.net/apply_ai_suggestion`,
+                {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        memberId: suggestion.memberId,
+                        memberName: suggestion.memberName,
+                        audioUrl: segment.audioUrl,
+                        start: segment.start,
+                        end: segment.end
+                    })
+                }
+            );
+            const data = await response.json();
+            if (data.success) {
+                showToast?.(data.message || `✅ ${suggestion.memberName} amélioré!`, 'success');
+                // Remove applied suggestion
+                setAiSuggestions(prev => prev.filter(s => s.memberId !== suggestion.memberId));
+            }
+        } catch (err) {
+            console.error(err);
+            showToast?.('Erreur lors de l\'application', 'error');
+        }
+    };
+
+    // Confirm verification item
+    const handleConfirmVerification = async (item: any, correctedName: string) => {
+        try {
+            const response = await fetch(
+                `https://us-central1-portail-cce-valdor.cloudfunctions.net/human_verification_queue`,
+                {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        action: 'confirm',
+                        itemId: item.id,
+                        confirmedName: correctedName
+                    })
+                }
+            );
+            const data = await response.json();
+            if (data.success) {
+                showToast?.(`✅ ${correctedName} confirmé!`, 'success');
+                setVerificationQueue(prev => prev.filter(i => i.id !== item.id));
+            }
+        } catch (err) {
+            console.error(err);
         }
     };
 
@@ -370,6 +489,234 @@ const TranscriptionViewer: React.FC<TranscriptionViewerProps> = ({
                 >
                     {isIdentifying ? 'Analyse en cours...' : 'Lancer l\'identification AI'}
                 </Button>
+
+                {/* AI FEEDBACK PANEL - Shows warnings, missing speakers, learning suggestions */}
+                {showSpeakerMap && Object.keys(aiWarnings).length > 0 && (
+                    <Alert
+                        severity="warning"
+                        sx={{ mb: 2 }}
+                        icon={<SmartToy />}
+                    >
+                        <Typography variant="subtitle2" fontWeight={600} gutterBottom>
+                            🤖 Feedback de l'IA
+                        </Typography>
+                        {aiWarnings['_missing'] && (
+                            <Typography variant="body2" color="error.main" sx={{ mb: 1 }}>
+                                ⚠️ {aiWarnings['_missing']}
+                            </Typography>
+                        )}
+                        {Object.entries(aiWarnings)
+                            .filter(([k]) => k !== '_missing')
+                            .map(([speaker, warning]) => (
+                                <Typography key={speaker} variant="body2" sx={{ mb: 0.5 }}>
+                                    • <strong>{speaker}</strong>: {warning}
+                                </Typography>
+                            ))}
+                        <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+                            💡 Astuce: Corrigez manuellement les identifications ambiguës puis cliquez "Appliquer et Entraîner" pour améliorer l'IA.
+                        </Typography>
+                    </Alert>
+                )}
+
+                {/* AI LEARNING METRICS PANEL - Visual feedback on ML performance */}
+                {showSpeakerMap && aiAnalytics && (
+                    <Paper sx={{ p: 2, mb: 2, bgcolor: 'primary.50', border: '1px solid', borderColor: 'primary.200' }}>
+                        <Typography variant="subtitle2" fontWeight={600} sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
+                            🧠 Métriques d'Apprentissage IA
+                        </Typography>
+                        <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+                            {/* Auto-learned count */}
+                            <Box sx={{ flex: '1 1 45%', minWidth: 100 }}>
+                                <Box sx={{ textAlign: 'center', p: 1, bgcolor: 'background.paper', borderRadius: 1 }}>
+                                    <Typography variant="h4" color="primary.main" fontWeight={700}>
+                                        {aiAnalytics.autoLearnedCount || 0}
+                                    </Typography>
+                                    <Typography variant="caption" color="text.secondary">
+                                        Auto-renforcés
+                                    </Typography>
+                                </Box>
+                            </Box>
+                            {/* Top speaker */}
+                            <Box sx={{ flex: '1 1 45%', minWidth: 100 }}>
+                                <Box sx={{ textAlign: 'center', p: 1, bgcolor: 'background.paper', borderRadius: 1 }}>
+                                    <Typography variant="h6" color="secondary.main" fontWeight={600}>
+                                        {aiAnalytics.topSpeaker || '-'}
+                                    </Typography>
+                                    <Typography variant="caption" color="text.secondary">
+                                        Plus de parole
+                                    </Typography>
+                                </Box>
+                            </Box>
+                            {/* Total speakers */}
+                            <Box sx={{ flex: '1 1 45%', minWidth: 100 }}>
+                                <Box sx={{ textAlign: 'center', p: 1, bgcolor: 'background.paper', borderRadius: 1 }}>
+                                    <Typography variant="h4" color="success.main" fontWeight={700}>
+                                        {aiAnalytics.totalSpeakers || Object.keys(speakerMap).length}
+                                    </Typography>
+                                    <Typography variant="caption" color="text.secondary">
+                                        Locuteurs
+                                    </Typography>
+                                </Box>
+                            </Box>
+                            {/* Confidence breakdown */}
+                            <Box sx={{ flex: '1 1 45%', minWidth: 100 }}>
+                                <Box sx={{ textAlign: 'center', p: 1, bgcolor: 'background.paper', borderRadius: 1 }}>
+                                    <Typography variant="h4" color="warning.main" fontWeight={700}>
+                                        {aiAnalytics.confidence ? Object.values(aiAnalytics.confidence).filter((c: any) => c.method === 'voice_high').length : 0}
+                                    </Typography>
+                                    <Typography variant="caption" color="text.secondary">
+                                        Haute confiance
+                                    </Typography>
+                                </Box>
+                            </Box>
+                        </Box>
+                        {/* Profile strength summary */}
+                        {aiAnalytics.profileStrength && (
+                            <Box sx={{ mt: 2 }}>
+                                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                                    Force des profils:
+                                </Typography>
+                                <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                                    {Object.entries(aiAnalytics.profileStrength).slice(0, 6).map(([name, data]: [string, any]) => (
+                                        <Chip
+                                            key={name}
+                                            label={`${name.split(' ')[0]}: ${data.quality}`}
+                                            size="small"
+                                            color={data.quality === 'robuste' ? 'success' : data.quality === 'acceptable' ? 'warning' : 'error'}
+                                            variant="outlined"
+                                        />
+                                    ))}
+                                </Box>
+                            </Box>
+                        )}
+                    </Paper>
+                )}
+
+                {/* ML CONTROL BUTTONS */}
+                {showSpeakerMap && (
+                    <Box sx={{ display: 'flex', gap: 1, mb: 2, flexWrap: 'wrap' }}>
+                        <Button
+                            variant="outlined"
+                            size="small"
+                            startIcon={<SmartToy />}
+                            onClick={handleLoadAiSuggestions}
+                            disabled={isLoadingSuggestions}
+                        >
+                            {isLoadingSuggestions ? 'Chargement...' : '🧠 Suggestions IA'}
+                        </Button>
+                        <Button
+                            variant="outlined"
+                            size="small"
+                            onClick={handleLoadVerificationQueue}
+                        >
+                            📋 File de vérification
+                        </Button>
+                    </Box>
+                )}
+
+                {/* AI SUGGESTIONS PANEL */}
+                {showAiSuggestions && aiSuggestions.length > 0 && (
+                    <Paper sx={{ p: 2, mb: 2, bgcolor: 'success.50', border: '1px solid', borderColor: 'success.200' }}>
+                        <Typography variant="subtitle2" fontWeight={600} sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
+                            🧠 Suggestions d'Amélioration IA
+                            <Chip label={`${aiSuggestions.length} profil(s)`} size="small" color="success" />
+                        </Typography>
+                        {aiSuggestions.map((suggestion: any, idx: number) => (
+                            <Paper key={idx} variant="outlined" sx={{ p: 1.5, mb: 1 }}>
+                                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                                    <Typography variant="body2" fontWeight={600}>
+                                        {suggestion.memberName}
+                                        <Chip
+                                            label={`${suggestion.currentSamples}/10 samples`}
+                                            size="small"
+                                            sx={{ ml: 1 }}
+                                            color={suggestion.currentSamples < 3 ? 'error' : 'warning'}
+                                        />
+                                    </Typography>
+                                    <Typography variant="caption" color="success.main" fontWeight={600}>
+                                        {suggestion.improvement}
+                                    </Typography>
+                                </Box>
+                                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+                                    {suggestion.aiMessage}
+                                </Typography>
+                                <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
+                                    {suggestion.segments?.map((seg: any, segIdx: number) => (
+                                        <Button
+                                            key={segIdx}
+                                            size="small"
+                                            variant="contained"
+                                            color="success"
+                                            onClick={() => handleApplyAiSuggestion(suggestion, seg)}
+                                            sx={{ fontSize: '0.7rem' }}
+                                        >
+                                            ✓ Appliquer ({seg.duration}s)
+                                        </Button>
+                                    ))}
+                                </Box>
+                            </Paper>
+                        ))}
+                        <Button
+                            size="small"
+                            onClick={() => setShowAiSuggestions(false)}
+                            sx={{ mt: 1 }}
+                        >
+                            Fermer
+                        </Button>
+                    </Paper>
+                )}
+
+                {/* VERIFICATION QUEUE PANEL */}
+                {showVerificationQueue && verificationQueue.length > 0 && (
+                    <Paper sx={{ p: 2, mb: 2, bgcolor: 'warning.50', border: '1px solid', borderColor: 'warning.200' }}>
+                        <Typography variant="subtitle2" fontWeight={600} sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
+                            📋 File de Vérification Humaine
+                            <Chip label={`${verificationQueue.length} en attente`} size="small" color="warning" />
+                        </Typography>
+                        {verificationQueue.slice(0, 5).map((item: any, idx: number) => (
+                            <Paper key={idx} variant="outlined" sx={{ p: 1.5, mb: 1 }}>
+                                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 0.5 }}>
+                                    <Typography variant="body2">
+                                        <strong>{item.speakerLabel}</strong> → {item.suggestedName}?
+                                    </Typography>
+                                    <Chip
+                                        label={`${Math.round((item.confidence || 0) * 100)}%`}
+                                        size="small"
+                                        color={item.confidence > 0.6 ? 'warning' : 'error'}
+                                    />
+                                </Box>
+                                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+                                    "{item.textSample?.substring(0, 60)}..."
+                                </Typography>
+                                <Box sx={{ display: 'flex', gap: 0.5 }}>
+                                    <Button
+                                        size="small"
+                                        variant="contained"
+                                        color="success"
+                                        onClick={() => handleConfirmVerification(item, item.suggestedName)}
+                                    >
+                                        ✓ Confirmer
+                                    </Button>
+                                    <Button
+                                        size="small"
+                                        variant="outlined"
+                                        color="error"
+                                        onClick={() => setVerificationQueue(prev => prev.filter(i => i.id !== item.id))}
+                                    >
+                                        ✗ Rejeter
+                                    </Button>
+                                </Box>
+                            </Paper>
+                        ))}
+                        <Button
+                            size="small"
+                            onClick={() => setShowVerificationQueue(false)}
+                            sx={{ mt: 1 }}
+                        >
+                            Fermer
+                        </Button>
+                    </Paper>
+                )}
 
                 {showSpeakerMap && (
                     <Paper variant="outlined" sx={{ p: 2, bgcolor: 'background.default' }}>

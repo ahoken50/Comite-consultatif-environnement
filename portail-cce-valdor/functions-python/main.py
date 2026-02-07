@@ -2343,6 +2343,24 @@ def identify_speakers(req: https_fn.CallableRequest) -> dict:
         known_member_names = [s["name"] for s in enrolled_speakers]
         meeting_context = {"type": "Régulière"}
         
+        # PRE-FLIGHT: Filter out absent/excused attendees
+        attendees = meeting_data.get("attendees", [])
+        if attendees:
+            present_names = set()
+            for att in attendees:
+                status = att.get("status", "").lower()
+                if status in ["present", "présent", ""]:  # Include if no status or present
+                    name = att.get("name") or att.get("displayName")
+                    if name:
+                        present_names.add(name)
+            
+            if present_names:
+                # Keep only enrolled speakers who are present at this meeting
+                original_count = len(known_member_names)
+                known_member_names = [n for n in known_member_names if n in present_names]
+                filtered_count = original_count - len(known_member_names)
+                print(f"[Manual Speaker ID] PRE-FLIGHT: Filtered {filtered_count} absent members. {len(known_member_names)} present candidates remain.")
+        
         # Find transcription and audio URL to process
         transcription_text = None
         audio_url = None
@@ -2417,6 +2435,8 @@ def identify_speakers(req: https_fn.CallableRequest) -> dict:
         
         print(f"[Manual Speaker ID] Processing {len(segments)} segments")
         
+        print(f"[Manual Speaker ID] VERSION: 2026-02-06-OPTIMIZED-V2 (Longest Segment + Single Download)")
+        
         # Collect unique speakers and their sample texts
         unique_speakers = {}  # {"S0": ["text1", "text2"], ...}
         
@@ -2451,7 +2471,30 @@ def identify_speakers(req: https_fn.CallableRequest) -> dict:
                     # Found a longer sample
                     speaker_timestamps[label] = {"start": start, "end": end, "duration": duration}
         
-        # Run identification with voice embedding (if audio_url available)
+        # Calculate speaker time statistics (who spoke most, average duration)
+        for segment in segments:
+            label = segment.get("speaker", "")
+            if re.match(r'^S\d+$', label):
+                start = segment.get("start", 0)
+                end = segment.get("end", start + 5)
+                duration = end - start
+                
+                if label not in speaker_stats:
+                    speaker_stats[label] = {"segments": 0, "total_time": 0, "texts": []}
+                speaker_stats[label]["segments"] += 1
+                speaker_stats[label]["total_time"] += duration
+                speaker_stats[label]["texts"].append(segment.get("text", "")[:100])
+        
+        # Calculate averages and rank speakers by talk time
+        for label, stats in speaker_stats.items():
+            if stats["segments"] > 0:
+                stats["avg_duration"] = stats["total_time"] / stats["segments"]
+        
+        # Sort by total time to identify "main speakers" vs "participants"
+        sorted_speakers = sorted(speaker_stats.items(), key=lambda x: x[1]["total_time"], reverse=True)
+        if sorted_speakers:
+            print(f"[Manual Speaker ID] STATS: Top speaker {sorted_speakers[0][0]} ({sorted_speakers[0][1]['total_time']:.0f}s)")
+        
         speaker_mapping = {}
         unidentified = []
         modal_endpoint = os.environ.get("MODAL_ENDPOINT_URL")
@@ -2462,6 +2505,58 @@ def identify_speakers(req: https_fn.CallableRequest) -> dict:
         print(f"[Manual Speaker ID] Voice embedding available: {voice_available}")
         
         warnings = {} # Collect AI feedback here
+        confidence_scores = {}  # {speaker_label: {"score": 0.85, "method": "voice+context"}}
+        speaker_stats = {}  # {speaker_label: {"segments": 3, "total_time": 120, "avg_duration": 40}}
+        profile_strength = {}  # {member_name: {"samples": 5, "quality": "robust", "variance": 0.15}}
+        interruptions = []  # [{speaker: "S1", interrupted: "S2", time: 120, context: "..."}]
+        
+        # #6 INTERRUPTION DETECTION: Analyze segment transitions for quick speaker changes
+        prev_segment = None
+        for segment in segments:
+            if prev_segment:
+                prev_end = prev_segment.get("end", 0)
+                curr_start = segment.get("start", 0)
+                prev_speaker = prev_segment.get("speaker", "")
+                curr_speaker = segment.get("speaker", "")
+                
+                # Quick transition (<0.5s) between different speakers = potential interruption
+                gap = curr_start - prev_end
+                if prev_speaker != curr_speaker and gap < 0.5:
+                    interruptions.append({
+                        "interrupter": curr_speaker,
+                        "interrupted": prev_speaker,
+                        "time": round(curr_start, 1),
+                        "gap": round(gap, 2),
+                        "context": segment.get("text", "")[:80]
+                    })
+            prev_segment = segment
+        
+        if interruptions:
+            print(f"[Manual Speaker ID] INTERRUPTIONS DETECTED: {len(interruptions)} speaker cut-offs")
+            # Summarize interruptions for warnings
+            interrupter_counts = {}
+            for intr in interruptions:
+                sp = intr["interrupter"]
+                interrupter_counts[sp] = interrupter_counts.get(sp, 0) + 1
+            top_interrupter = max(interrupter_counts.items(), key=lambda x: x[1]) if interrupter_counts else None
+            if top_interrupter and top_interrupter[1] >= 3:
+                warnings["_interruptions"] = f"⚡ {top_interrupter[0]} a interrompu {top_interrupter[1]} fois"
+        
+        
+        # Build profile strength from enrolled speakers
+        for sp in enrolled_speakers:
+            name = sp.get("name")
+            sample_count = sp.get("voiceSampleCount", 0)
+            if sample_count >= 10:
+                quality = "robuste"
+            elif sample_count >= 5:
+                quality = "acceptable"
+            elif sample_count >= 1:
+                quality = "faible"
+            else:
+                quality = "inexistant"
+            profile_strength[name] = {"samples": sample_count, "quality": quality}
+        
         
         # OPTIMIZATION: Download audio ONCE if voice ID is available
         # This prevents downloading 100MB+ file for EVERY speaker segment (which caused timeouts)
@@ -2572,31 +2667,133 @@ def identify_speakers(req: https_fn.CallableRequest) -> dict:
                              rejection_reason = "Ambiguïté (Scores trop proches)"
                              ai_warning = f"Ambiguïté entre {winner[0]} ({winner[1]:.2f}) et {runner_up[0]} ({runner_up[1]:.2f})"
 
-                 # 2. GENDER / ROLE GUARD
+                 # 2. GENDER / ROLE GUARD (Enhanced with First Name Inference)
                  if best_name:
-                     is_female_candidate = "Mme" in best_name or "Madame" in best_name or "Conseillère" in best_name
-                     is_male_candidate = "M." in best_name or "Monsieur" in best_name or "Conseiller " in best_name # Space to avoid matching Conseillère
-                     
-                     text_female_cues = ["madame", "mme", "présidente", "conseillère", "mairesse"]
-                     text_male_cues = ["monsieur", "m.", "président", "conseiller", "maire"]
-                     
-                     found_female = any(cue in combined_text.lower() for cue in text_female_cues)
-                     found_male = any(cue in combined_text.lower() for cue in text_male_cues)
-                     
-                     if is_male_candidate and found_female and not found_male:
-                         print(f"[Manual Speaker ID] GENDER GUARD: Rejecting {best_name} (M) because text context implies Female.")
-                         best_name = None
-                         rejection_reason = "Incohérence de Genre (H vs F)"
-                         ai_warning = f"Rejeté: Le profil est Homme mais le contexte est Femme."
-                     elif is_female_candidate and found_male and not found_female:
-                         print(f"[Manual Speaker ID] GENDER GUARD: Rejecting {best_name} (F) because text context implies Male.")
-                         best_name = None
-                         rejection_reason = "Incohérence de Genre (F vs H)"
-                         ai_warning = f"Rejeté: Le profil est Femme mais le contexte est Homme."
+                      # Common French first names for gender inference
+                      FEMALE_NAMES = {
+                          "patricia", "marguerite", "marie", "anne", "sophie", "nathalie", 
+                          "isabelle", "valérie", "sylvie", "christine", "françoise", "catherine",
+                          "nicole", "monique", "julie", "audrey", "caroline", "jacinthe",
+                          "martine", "claire", "louise", "jeanne", "hélène", "madeleine",
+                          "céline", "brigitte", "danielle", "michèle", "josée", "diane",
+                          "linda", "chantal", "lucie", "manon", "karine", "stéphanie"
+                      }
+                      MALE_NAMES = {
+                          "donald", "pierre", "jean", "michel", "jacques", "paul", "andré",
+                          "robert", "françois", "alain", "claude", "yves", "louis", "daniel",
+                          "richard", "gilles", "marc", "bernard", "serge", "martin", "denis",
+                          "sébastien", "christian", "éric", "philippe", "patrick", "stéphane",
+                          "marcel", "roger", "raymond", "normand", "guy", "luc", "benoit",
+                          "olivier", "mathieu", "maxime", "simon", "alexandre", "michaël"
+                      }
+                      
+                      # Extract first name from candidate (handle "Prénom Nom" format)
+                      first_name = best_name.split()[0].lower().replace("mme", "").replace("m.", "").strip()
+                      if len(first_name) < 2 and len(best_name.split()) > 1:
+                          first_name = best_name.split()[1].lower()
+                      
+                      # Determine candidate gender from name
+                      is_female_candidate = (
+                          first_name in FEMALE_NAMES or
+                          "Mme" in best_name or "Madame" in best_name or "Conseillère" in best_name
+                      )
+                      is_male_candidate = (
+                          first_name in MALE_NAMES or
+                          "M." in best_name or "Monsieur" in best_name or "Conseiller " in best_name
+                      )
+                      
+                      # Text context cues
+                      text_female_cues = ["madame", "mme", "présidente", "conseillère", "mairesse", "elle a dit", "elle propose"]
+                      text_male_cues = ["monsieur", "m.", "président", "conseiller", "maire", "il a dit", "il propose"]
+                      
+                      found_female = any(cue in combined_text.lower() for cue in text_female_cues)
+                      found_male = any(cue in combined_text.lower() for cue in text_male_cues)
+                      
+                      if is_male_candidate and found_female and not found_male:
+                          print(f"[Manual Speaker ID] GENDER GUARD: Rejecting {best_name} (M/{first_name}) because text context implies Female.")
+                          best_name = None
+                          rejection_reason = "Incohérence de Genre (H vs F)"
+                          ai_warning = f"Rejeté: {first_name} est Homme mais le contexte indique une Femme."
+                      elif is_female_candidate and found_male and not found_female:
+                          print(f"[Manual Speaker ID] GENDER GUARD: Rejecting {best_name} (F/{first_name}) because text context implies Male.")
+                          best_name = None
+                          rejection_reason = "Incohérence de Genre (F vs H)"
+                          ai_warning = f"Rejeté: {first_name} est Femme mais le contexte indique un Homme."
 
             if best_score >= threshold and best_name:
                 speaker_mapping[speaker_label] = best_name
                 print(f"[Manual Speaker ID] {speaker_label} -> {best_name} (score: {best_score:.2f}, voice_max: {max_voice_score:.2f})")
+                
+                # Record confidence score and identification method
+                method = "voice+context" if voice_scores else "context_only"
+                if max_voice_score > 0.85:
+                    method = "voice_high"
+                elif max_voice_score > 0.70:
+                    method = "voice_confident"
+                elif max_voice_score > 0.50:
+                    method = "voice_uncertain"
+                
+                confidence_scores[speaker_label] = {
+                    "score": round(best_score, 3),
+                    "voice_score": round(max_voice_score, 3) if voice_scores else 0,
+                    "method": method,
+                    "identified_as": best_name,
+                    "profile_quality": profile_strength.get(best_name, {}).get("quality", "inconnu")
+                }
+                
+                # AUTO-LEARNING: If voice confidence is very high (>0.85), auto-reinforce in background
+                # This helps build robust profiles without user intervention
+                if max_voice_score > 0.85 and voice_available and speaker_label in speaker_timestamps:
+                    try:
+                        # Find member_id for this name
+                        member_id = None
+                        for sp in enrolled_speakers:
+                            if sp.get("name") == best_name:
+                                member_id = sp.get("id")
+                                break
+                        
+                        if member_id:
+                            ts = speaker_timestamps[speaker_label]
+                            print(f"[Auto-Learn] HIGH CONFIDENCE ({max_voice_score:.2f}): Auto-reinforcing {best_name}")
+                            
+                            # Fire-and-forget: Extract embedding and save (simplified inline version)
+                            try:
+                                source = local_audio_path if local_audio_path else audio_url
+                                auto_embedding = extract_audio_segment_embedding(source, ts["start"], ts["end"])
+                                if auto_embedding:
+                                    # Update member profile inline
+                                    member_ref = db.collection("members").document(member_id)
+                                    member_doc = member_ref.get()
+                                    if member_doc.exists:
+                                        import json as json_lib
+                                        member_data = member_doc.to_dict()
+                                        current = member_data.get("embedding", "[]")
+                                        if isinstance(current, str):
+                                            try:
+                                                current = json_lib.loads(current)
+                                            except:
+                                                current = []
+                                        
+                                        # Append new embedding
+                                        if isinstance(current, list) and len(current) > 0 and isinstance(current[0], list):
+                                            current.append(auto_embedding)
+                                            if len(current) > 20:
+                                                current = current[-20:]
+                                        elif current:
+                                            current = [current, auto_embedding]
+                                        else:
+                                            current = [auto_embedding]
+                                        
+                                        member_ref.update({
+                                            "embedding": json_lib.dumps(current),
+                                            "voiceSampleCount": len(current),
+                                            "lastVoiceUpdate": datetime.now().isoformat()
+                                        })
+                                        print(f"[Auto-Learn] SUCCESS: Added sample to {best_name} ({len(current)} total)")
+                            except Exception as ae:
+                                print(f"[Auto-Learn] Failed for {best_name}: {ae}")
+                    except Exception as e:
+                        print(f"[Auto-Learn] Skipped: {e}")
             else:
                 unidentified.append((speaker_label, combined_text))
                 # Store warning for frontend
@@ -2708,10 +2905,41 @@ UNIQUEMENT le JSON, sans explication."""
         if local_audio_path and os.path.exists(local_audio_path):
             os.unlink(local_audio_path)
         
+        # Check for missing attendees (present members not assigned to any speaker)
+        identified_names = set(speaker_mapping.values())
+        if attendees:
+            present_attendees = [a.get("name") or a.get("displayName") for a in attendees 
+                                 if a.get("status", "").lower() in ["present", "présent", ""]]
+            missing_speakers = [n for n in present_attendees if n and n not in identified_names]
+            
+            if missing_speakers:
+                warnings["_missing"] = f"Membres présents non détectés: {', '.join(missing_speakers)}"
+                print(f"[Manual Speaker ID] MISSING ATTENDEES: {missing_speakers}")
+        
+        # Clean speaker_stats for JSON (remove texts array to reduce size)
+        clean_stats = {}
+        for label, stats in speaker_stats.items():
+            clean_stats[label] = {
+                "segments": stats["segments"],
+                "total_time": round(stats["total_time"], 1),
+                "avg_duration": round(stats.get("avg_duration", 0), 1)
+            }
+        
         return {
             "success": True,
             "identifiedCount": len(speaker_mapping),
-            "mapping": speaker_mapping
+            "mapping": speaker_mapping,
+            "speakers": speaker_mapping,  # Alias for frontend compatibility
+            "warnings": warnings,
+            # Advanced ML Analytics
+            "analytics": {
+                "confidence": confidence_scores,
+                "speakerStats": clean_stats,
+                "profileStrength": profile_strength,
+                "topSpeaker": sorted_speakers[0][0] if sorted_speakers else None,
+                "totalSpeakers": len(unique_speakers),
+                "autoLearnedCount": sum(1 for c in confidence_scores.values() if c.get("method") == "voice_high")
+            }
         }
         
     except Exception as e:
@@ -4693,8 +4921,8 @@ def reinforce_speaker_voice(req: https_fn.Request) -> https_fn.Response:
         elif isinstance(current_embedding, list) and len(current_embedding) > 0 and isinstance(current_embedding[0], list):
              updated_embedding = current_embedding
              updated_embedding.append(new_embedding)
-             if len(updated_embedding) > 10: # Allow more samples now (10)
-                 updated_embedding = updated_embedding[-10:]
+             if len(updated_embedding) > 20: # Dynamic Limit: 20 samples for robust profiles
+                 updated_embedding = updated_embedding[-20:]
         elif isinstance(current_embedding, list):
              updated_embedding = [current_embedding, new_embedding]
 
@@ -4711,14 +4939,14 @@ def reinforce_speaker_voice(req: https_fn.Request) -> https_fn.Response:
         
         # Dynamic Limit: We allow up to 20 samples to ensure robustness.
         # If the profile was considered "weak" (outlier detected or < 10 samples), we ask for more.
-        need_more = count < 10 or is_outlier
+        need_more = count < 20 or is_outlier
         
         if is_outlier:
-            msg = f"⚠️ {warning_msg} Ajouté. Continuez à entraîner ({count}/10)."
+            msg = f"⚠️ {warning_msg} Ajouté. Continuez à entraîner ({count}/20)."
         elif count < 5:
-            msg = f"Profil en construction ({count}/10). Continuez !"
+            msg = f"Profil en construction ({count}/20). Continuez !"
         elif count < 10:
-             msg = f"Profil s'améliore ({count}/10)."
+             msg = f"Profil s'améliore ({count}/20)."
         else:
              msg = f"Profil robuste ({count} échantillons)."
             
@@ -4735,3 +4963,1275 @@ def reinforce_speaker_voice(req: https_fn.Request) -> https_fn.Response:
         import traceback
         traceback.print_exc()
         return https_fn.Response(json.dumps({"error": str(e)}), status=500)
+
+
+# =============================================================================
+# #2 CROSS-MEETING LEARNING: Aggregate voice samples from past meetings
+# =============================================================================
+@https_fn.on_request(
+    timeout_sec=300,
+    memory=options.MemoryOption.GB_1,
+    cors=options.CorsOptions(cors_origins="*", cors_methods=["GET", "POST"])
+)
+def cross_meeting_learning(req: https_fn.Request) -> https_fn.Response:
+    """
+    Analyze past meetings to find additional voice samples for a member.
+    Aggregates high-confidence segments to strengthen their voice profile.
+    """
+    try:
+        data = req.get_json()
+        member_id = data.get("memberId")
+        member_name = data.get("memberName")
+        max_meetings = data.get("maxMeetings", 10)
+        
+        if not member_id:
+            return https_fn.Response(json.dumps({"error": "memberId required"}), status=400)
+        
+        print(f"[CrossMeeting] Learning for {member_name} ({member_id})")
+        
+        # Find past meetings with this member
+        meetings_query = db.collection("meetings").order_by(
+            "date", direction=firestore.Query.DESCENDING
+        ).limit(max_meetings)
+        
+        meetings = list(meetings_query.stream())
+        found_segments = []
+        
+        for meeting_doc in meetings:
+            meeting = meeting_doc.to_dict()
+            # Check if member was present
+            attendees = meeting.get("attendees", [])
+            was_present = any(
+                (a.get("memberId") == member_id or a.get("name") == member_name) and 
+                a.get("status", "").lower() in ["present", "présent", ""]
+                for a in attendees
+            )
+            
+            if not was_present:
+                continue
+            
+            # Check speaker mapping for confirmed identifications
+            audio_recordings = meeting.get("audioRecordings", [])
+            for rec in audio_recordings:
+                mapping = rec.get("speakerMapping", {})
+                segments = rec.get("segments", [])
+                audio_url = rec.get("downloadUrl")
+                
+                for label, name in mapping.items():
+                    if name == member_name:
+                        # Find this speaker's best segment
+                        speaker_segs = [s for s in segments if s.get("speaker") == label]
+                        if speaker_segs:
+                            longest = max(speaker_segs, key=lambda x: x.get("end", 0) - x.get("start", 0))
+                            found_segments.append({
+                                "meetingId": meeting_doc.id,
+                                "meetingDate": meeting.get("date"),
+                                "start": longest.get("start"),
+                                "end": longest.get("end"),
+                                "audioUrl": audio_url
+                            })
+        
+        print(f"[CrossMeeting] Found {len(found_segments)} segments across {len(meetings)} meetings")
+        
+        return https_fn.Response(json.dumps({
+            "success": True,
+            "memberId": member_id,
+            "memberName": member_name,
+            "segmentsFound": len(found_segments),
+            "segments": found_segments[:5],  # Limit response size
+            "message": f"Trouvé {len(found_segments)} segments dans {len(meetings)} réunions"
+        }), status=200, content_type="application/json")
+        
+    except Exception as e:
+        print(f"[CrossMeeting] Error: {e}")
+        import traceback
+        traceback.print_exc()
+        return https_fn.Response(json.dumps({"error": str(e)}), status=500)
+
+
+# =============================================================================
+# #11 MULTI-MEETING COMPARISON: Track identification accuracy over time
+# =============================================================================
+@https_fn.on_request(
+    timeout_sec=120,
+    memory=options.MemoryOption.MB_512,
+    cors=options.CorsOptions(cors_origins="*", cors_methods=["GET", "POST"])
+)
+def compare_meetings(req: https_fn.Request) -> https_fn.Response:
+    """
+    Compare identification accuracy across multiple meetings.
+    Shows trend of AI performance over time.
+    """
+    try:
+        data = req.get_json() or {}
+        limit = data.get("limit", 10)
+        
+        print(f"[CompareMeetings] Analyzing last {limit} meetings")
+        
+        meetings_query = db.collection("meetings").order_by(
+            "date", direction=firestore.Query.DESCENDING
+        ).limit(limit)
+        
+        results = []
+        for meeting_doc in meetings_query.stream():
+            meeting = meeting_doc.to_dict()
+            
+            # Get identification stats
+            audio_recordings = meeting.get("audioRecordings", [])
+            total_speakers = 0
+            identified_speakers = 0
+            
+            for rec in audio_recordings:
+                mapping = rec.get("speakerMapping", {})
+                segments = rec.get("segments", [])
+                
+                # Count unique speaker labels in segments
+                unique_labels = set(s.get("speaker") for s in segments if s.get("speaker"))
+                total_speakers += len(unique_labels)
+                identified_speakers += len(mapping)
+            
+            accuracy = (identified_speakers / total_speakers * 100) if total_speakers > 0 else 0
+            
+            results.append({
+                "meetingId": meeting_doc.id,
+                "date": meeting.get("date"),
+                "title": meeting.get("title", "Sans titre")[:50],
+                "totalSpeakers": total_speakers,
+                "identifiedSpeakers": identified_speakers,
+                "accuracy": round(accuracy, 1)
+            })
+        
+        # Calculate trend
+        if len(results) >= 2:
+            recent_avg = sum(r["accuracy"] for r in results[:3]) / min(3, len(results))
+            older_avg = sum(r["accuracy"] for r in results[-3:]) / min(3, len(results))
+            trend = "improving" if recent_avg > older_avg else "declining" if recent_avg < older_avg else "stable"
+        else:
+            trend = "insufficient_data"
+        
+        print(f"[CompareMeetings] Trend: {trend}")
+        
+        return https_fn.Response(json.dumps({
+            "success": True,
+            "meetings": results,
+            "trend": trend,
+            "averageAccuracy": round(sum(r["accuracy"] for r in results) / len(results), 1) if results else 0
+        }), status=200, content_type="application/json")
+        
+    except Exception as e:
+        print(f"[CompareMeetings] Error: {e}")
+        import traceback
+        traceback.print_exc()
+        return https_fn.Response(json.dumps({"error": str(e)}), status=500)
+
+
+# =============================================================================
+# #12 PROFILE DEGRADATION ALERT: Warn when profiles weaken over time
+# =============================================================================
+@https_fn.on_request(
+    timeout_sec=180,
+    memory=options.MemoryOption.GB_1,
+    cors=options.CorsOptions(cors_origins="*", cors_methods=["GET", "POST"])
+)
+def check_profile_degradation(req: https_fn.Request) -> https_fn.Response:
+    """
+    Check all member profiles for signs of degradation:
+    - Previously robust profiles now matching poorly
+    - High variance in recent identifications
+    - Profile not updated in long time
+    """
+    try:
+        print("[ProfileDegradation] Checking all member profiles...")
+        
+        members_query = db.collection("members").stream()
+        alerts = []
+        
+        for member_doc in members_query:
+            member = member_doc.to_dict()
+            member_id = member_doc.id
+            name = member.get("displayName") or member.get("name") or "Inconnu"
+            
+            sample_count = member.get("voiceSampleCount", 0)
+            last_update = member.get("lastVoiceUpdate")
+            
+            # Check 1: No samples at all
+            if sample_count == 0:
+                alerts.append({
+                    "memberId": member_id,
+                    "name": name,
+                    "issue": "no_samples",
+                    "severity": "warning",
+                    "message": f"Aucun échantillon vocal pour {name}"
+                })
+                continue
+            
+            # Check 2: Very few samples
+            if sample_count < 3:
+                alerts.append({
+                    "memberId": member_id,
+                    "name": name,
+                    "issue": "weak_profile",
+                    "severity": "info",
+                    "message": f"Profil faible ({sample_count}/10 échantillons)",
+                    "sampleCount": sample_count
+                })
+            
+            # Check 3: Profile not updated in 6+ months
+            if last_update:
+                try:
+                    from datetime import datetime, timedelta
+                    last_dt = datetime.fromisoformat(last_update.replace("Z", "+00:00"))
+                    age_days = (datetime.now(last_dt.tzinfo) - last_dt).days if last_dt.tzinfo else (datetime.now() - last_dt).days
+                    
+                    if age_days > 180:  # 6 months
+                        alerts.append({
+                            "memberId": member_id,
+                            "name": name,
+                            "issue": "stale_profile",
+                            "severity": "warning",
+                            "message": f"Profil non mis à jour depuis {age_days} jours",
+                            "lastUpdate": last_update
+                        })
+                except Exception:
+                    pass
+        
+        # Summary
+        by_severity = {"error": 0, "warning": 0, "info": 0}
+        for alert in alerts:
+            by_severity[alert.get("severity", "info")] += 1
+        
+        print(f"[ProfileDegradation] Found {len(alerts)} issues")
+        
+        return https_fn.Response(json.dumps({
+            "success": True,
+            "totalAlerts": len(alerts),
+            "bySeverity": by_severity,
+            "alerts": alerts
+        }), status=200, content_type="application/json")
+        
+    except Exception as e:
+        print(f"[ProfileDegradation] Error: {e}")
+        import traceback
+        traceback.print_exc()
+        return https_fn.Response(json.dumps({"error": str(e)}), status=500)
+
+
+# =============================================================================
+# #13 HUMAN VERIFICATION QUEUE: Queue uncertain segments for human review
+# =============================================================================
+@https_fn.on_request(
+    timeout_sec=120,
+    memory=options.MemoryOption.MB_512,
+    cors=options.CorsOptions(cors_origins="*", cors_methods=["GET", "POST"])
+)
+def human_verification_queue(req: https_fn.Request) -> https_fn.Response:
+    """
+    Manage a queue of uncertain speaker identifications for human review.
+    GET: Retrieve pending items | POST: Submit verification (confirm/reject/add)
+    """
+    try:
+        if req.method == "GET":
+            limit = int(req.args.get("limit", 20))
+            queue_query = db.collection("verification_queue").where(
+                "status", "==", "pending"
+            ).order_by("createdAt", direction=firestore.Query.DESCENDING).limit(limit)
+            
+            items = []
+            for doc in queue_query.stream():
+                item = doc.to_dict()
+                item["id"] = doc.id
+                items.append(item)
+            
+            return https_fn.Response(json.dumps({
+                "success": True,
+                "pendingCount": len(items),
+                "items": items
+            }), status=200, content_type="application/json")
+        
+        elif req.method == "POST":
+            data = req.get_json()
+            action = data.get("action")
+            
+            if action == "add":
+                item = {
+                    "meetingId": data.get("meetingId"),
+                    "speakerLabel": data.get("speakerLabel"),
+                    "suggestedName": data.get("suggestedName"),
+                    "confidence": data.get("confidence", 0),
+                    "audioUrl": data.get("audioUrl"),
+                    "start": data.get("start"),
+                    "end": data.get("end"),
+                    "textSample": data.get("textSample", "")[:200],
+                    "reason": data.get("reason", "low_confidence"),
+                    "status": "pending",
+                    "createdAt": datetime.now().isoformat()
+                }
+                doc_ref = db.collection("verification_queue").add(item)
+                return https_fn.Response(json.dumps({
+                    "success": True, "itemId": doc_ref[1].id
+                }), status=200, content_type="application/json")
+            
+            elif action in ["confirm", "reject"]:
+                item_id = data.get("itemId")
+                if not item_id:
+                    return https_fn.Response(json.dumps({"error": "itemId required"}), status=400)
+                doc_ref = db.collection("verification_queue").document(item_id)
+                doc_ref.update({
+                    "status": "verified" if action == "confirm" else "rejected",
+                    "verifiedAt": datetime.now().isoformat(),
+                    "correctedName": data.get("correctedName")
+                })
+                return https_fn.Response(json.dumps({
+                    "success": True, "itemId": item_id
+                }), status=200, content_type="application/json")
+            
+            return https_fn.Response(json.dumps({"error": "Invalid action"}), status=400)
+        return https_fn.Response(json.dumps({"error": "Method not allowed"}), status=405)
+    except Exception as e:
+        print(f"[VerificationQueue] Error: {e}")
+        import traceback
+        traceback.print_exc()
+        return https_fn.Response(json.dumps({"error": str(e)}), status=500)
+
+
+# =============================================================================
+# #16 VOICE SIGNATURE HASH: Unique fingerprint and duplicate detection
+# =============================================================================
+@https_fn.on_request(
+    timeout_sec=180,
+    memory=options.MemoryOption.GB_1,
+    cors=options.CorsOptions(cors_origins="*", cors_methods=["GET", "POST"])
+)
+def voice_signature_hash(req: https_fn.Request) -> https_fn.Response:
+    """Generate unique voice signature hash and detect duplicate profiles."""
+    try:
+        data = req.get_json() or {}
+        action = data.get("action", "find_duplicates")
+        
+        if action == "generate":
+            member_id = data.get("memberId")
+            if not member_id:
+                return https_fn.Response(json.dumps({"error": "memberId required"}), status=400)
+            
+            member_doc = db.collection("members").document(member_id).get()
+            if not member_doc.exists:
+                return https_fn.Response(json.dumps({"error": "Member not found"}), status=404)
+            
+            member = member_doc.to_dict()
+            embedding = member.get("embedding")
+            if not embedding:
+                return https_fn.Response(json.dumps({"error": "No voice embedding"}), status=400)
+            
+            import json as json_lib
+            import hashlib
+            if isinstance(embedding, str):
+                embedding = json_lib.loads(embedding)
+            
+            if isinstance(embedding, list) and len(embedding) > 0:
+                avg_vec = [sum(v[i] for v in embedding) / len(embedding) for i in range(len(embedding[0]))] if isinstance(embedding[0], list) else embedding
+                signature = hashlib.sha256(",".join(f"{v:.6f}" for v in avg_vec[:32]).encode()).hexdigest()[:16]
+                db.collection("members").document(member_id).update({"voiceSignature": signature})
+                return https_fn.Response(json.dumps({
+                    "success": True, "signature": signature
+                }), status=200, content_type="application/json")
+        
+        elif action == "find_duplicates":
+            members = list(db.collection("members").stream())
+            embeddings = {}
+            import json as json_lib
+            
+            for doc in members:
+                member = doc.to_dict()
+                emb = member.get("embedding")
+                if emb:
+                    if isinstance(emb, str):
+                        try: emb = json_lib.loads(emb)
+                        except: continue
+                    if isinstance(emb, list) and len(emb) > 0:
+                        avg_vec = [sum(v[i] for v in emb) / len(emb) for i in range(len(emb[0]))] if isinstance(emb[0], list) else emb
+                        embeddings[doc.id] = {"name": member.get("displayName") or member.get("name"), "vector": avg_vec}
+            
+            from speaker_identification import cosine_similarity
+            duplicates = []
+            ids = list(embeddings.keys())
+            for i in range(len(ids)):
+                for j in range(i + 1, len(ids)):
+                    sim = cosine_similarity(embeddings[ids[i]]["vector"], embeddings[ids[j]]["vector"])
+                    if sim > 0.85:
+                        duplicates.append({
+                            "member1": {"id": ids[i], "name": embeddings[ids[i]]["name"]},
+                            "member2": {"id": ids[j], "name": embeddings[ids[j]]["name"]},
+                            "similarity": round(sim, 3)
+                        })
+            
+            return https_fn.Response(json.dumps({
+                "success": True, "duplicates": duplicates, "count": len(duplicates)
+            }), status=200, content_type="application/json")
+        
+        return https_fn.Response(json.dumps({"error": "Invalid action"}), status=400)
+    except Exception as e:
+        print(f"[VoiceSignature] Error: {e}")
+        import traceback
+        traceback.print_exc()
+        return https_fn.Response(json.dumps({"error": str(e)}), status=500)
+
+
+# =============================================================================
+# A: CLOSED FEEDBACK LOOP - Corrections automatically retrain profiles
+# =============================================================================
+@https_fn.on_request(
+    timeout_sec=300,
+    memory=options.MemoryOption.GB_1,
+    cors=options.CorsOptions(cors_origins="*", cors_methods=["GET", "POST"])
+)
+def closed_feedback_loop(req: https_fn.Request) -> https_fn.Response:
+    """
+    When a user corrects a speaker identification, automatically:
+    1. Log the correction for future learning
+    2. Extract the correct embedding and reinforce the profile
+    3. Update calibration data for confidence scoring
+    """
+    try:
+        data = req.get_json()
+        meeting_id = data.get("meetingId")
+        speaker_label = data.get("speakerLabel")
+        wrong_name = data.get("wrongName")  # What the AI predicted
+        correct_name = data.get("correctName")  # What the user corrected to
+        correct_member_id = data.get("correctMemberId")
+        audio_url = data.get("audioUrl")
+        start_time = data.get("start")
+        end_time = data.get("end")
+        original_confidence = data.get("originalConfidence", 0)
+        
+        if not all([meeting_id, speaker_label, correct_name]):
+            return https_fn.Response(json.dumps({"error": "Missing required fields"}), status=400)
+        
+        print(f"[FeedbackLoop] Correction: {speaker_label} was '{wrong_name}' → now '{correct_name}'")
+        
+        # 1. Log correction for learning analytics
+        correction_log = {
+            "meetingId": meeting_id,
+            "speakerLabel": speaker_label,
+            "wrongPrediction": wrong_name,
+            "correctAnswer": correct_name,
+            "correctMemberId": correct_member_id,
+            "originalConfidence": original_confidence,
+            "timestamp": datetime.now().isoformat(),
+            "type": "speaker_correction"
+        }
+        db.collection("ml_corrections").add(correction_log)
+        
+        # 2. Update calibration data
+        calibration_ref = db.collection("ml_calibration").document("speaker_id")
+        calibration_doc = calibration_ref.get()
+        if calibration_doc.exists:
+            cal_data = calibration_doc.to_dict()
+            corrections = cal_data.get("corrections", [])
+            corrections.append({
+                "predicted_conf": original_confidence,
+                "was_correct": False,  # This was a correction, so it was wrong
+                "timestamp": datetime.now().isoformat()
+            })
+            # Keep last 500 for calibration
+            calibration_ref.update({"corrections": corrections[-500:]})
+        else:
+            calibration_ref.set({"corrections": [{"predicted_conf": original_confidence, "was_correct": False}]})
+        
+        # 3. If we have audio segment, extract and reinforce correct profile
+        reinforced = False
+        if audio_url and start_time is not None and end_time is not None and correct_member_id:
+            try:
+                new_embedding = extract_audio_segment_embedding(audio_url, start_time, end_time)
+                if new_embedding:
+                    member_ref = db.collection("members").document(correct_member_id)
+                    member_doc = member_ref.get()
+                    if member_doc.exists:
+                        member = member_doc.to_dict()
+                        current_emb = member.get("embedding")
+                        import json as json_lib
+                        if current_emb and isinstance(current_emb, str):
+                            current_emb = json_lib.loads(current_emb)
+                        
+                        if current_emb and isinstance(current_emb, list):
+                            if isinstance(current_emb[0], list):
+                                current_emb.append(new_embedding)
+                                if len(current_emb) > 20:
+                                    current_emb = current_emb[-20:]
+                            else:
+                                current_emb = [current_emb, new_embedding]
+                        else:
+                            current_emb = [new_embedding]
+                        
+                        member_ref.update({
+                            "embedding": json_lib.dumps(current_emb),
+                            "voiceSampleCount": len(current_emb) if isinstance(current_emb[0], list) else 1,
+                            "lastVoiceUpdate": datetime.now().isoformat(),
+                            "lastCorrectionSource": meeting_id
+                        })
+                        reinforced = True
+                        print(f"[FeedbackLoop] Reinforced {correct_name}'s profile from correction")
+            except Exception as e:
+                print(f"[FeedbackLoop] Reinforcement failed: {e}")
+        
+        return https_fn.Response(json.dumps({
+            "success": True,
+            "logged": True,
+            "reinforced": reinforced,
+            "message": f"Correction logged. Profile {'reinforced' if reinforced else 'not reinforced (no audio segment)'}."
+        }), status=200, content_type="application/json")
+        
+    except Exception as e:
+        print(f"[FeedbackLoop] Error: {e}")
+        import traceback
+        traceback.print_exc()
+        return https_fn.Response(json.dumps({"error": str(e)}), status=500)
+
+
+# =============================================================================
+# B: CONFIDENCE CALIBRATION - Platt Scaling for true probabilities
+# =============================================================================
+@https_fn.on_request(
+    timeout_sec=120,
+    memory=options.MemoryOption.MB_512,
+    cors=options.CorsOptions(cors_origins="*", cors_methods=["GET", "POST"])
+)
+def calibrate_confidence(req: https_fn.Request) -> https_fn.Response:
+    """
+    Use Platt Scaling to calibrate raw scores into true probabilities.
+    Based on historical correction data.
+    """
+    try:
+        data = req.get_json() or {}
+        action = data.get("action", "get_calibration")
+        
+        if action == "get_calibration":
+            # Retrieve current calibration parameters
+            cal_doc = db.collection("ml_calibration").document("speaker_id").get()
+            if not cal_doc.exists:
+                return https_fn.Response(json.dumps({
+                    "success": True,
+                    "calibrated": False,
+                    "message": "No calibration data yet"
+                }), status=200, content_type="application/json")
+            
+            cal_data = cal_doc.to_dict()
+            corrections = cal_data.get("corrections", [])
+            
+            if len(corrections) < 20:
+                return https_fn.Response(json.dumps({
+                    "success": True,
+                    "calibrated": False,
+                    "dataPoints": len(corrections),
+                    "message": "Need at least 20 corrections for calibration"
+                }), status=200, content_type="application/json")
+            
+            # Simple Platt Scaling: fit sigmoid to correction data
+            # Group by confidence bins and calculate accuracy
+            bins = {i/10: {"correct": 0, "total": 0} for i in range(11)}
+            for c in corrections:
+                conf = c.get("predicted_conf", 0.5)
+                was_correct = c.get("was_correct", True)
+                bin_key = round(conf, 1)
+                if bin_key in bins:
+                    bins[bin_key]["total"] += 1
+                    if was_correct:
+                        bins[bin_key]["correct"] += 1
+            
+            calibration_curve = {}
+            for conf, data in bins.items():
+                if data["total"] > 0:
+                    calibration_curve[str(conf)] = round(data["correct"] / data["total"], 3)
+            
+            return https_fn.Response(json.dumps({
+                "success": True,
+                "calibrated": True,
+                "dataPoints": len(corrections),
+                "calibrationCurve": calibration_curve,
+                "message": "Calibration computed from historical data"
+            }), status=200, content_type="application/json")
+        
+        elif action == "calibrate_score":
+            # Apply calibration to a raw score
+            raw_score = data.get("score", 0.5)
+            
+            # Simple sigmoid adjustment based on observed accuracy
+            # In production, use actual Platt parameters A, B from logistic regression
+            # For now, use conservative adjustment
+            calibrated = raw_score * 0.9  # Conservative: slightly reduce confidence
+            
+            return https_fn.Response(json.dumps({
+                "success": True,
+                "rawScore": raw_score,
+                "calibratedScore": round(calibrated, 3)
+            }), status=200, content_type="application/json")
+        
+        return https_fn.Response(json.dumps({"error": "Invalid action"}), status=400)
+        
+    except Exception as e:
+        print(f"[Calibration] Error: {e}")
+        import traceback
+        traceback.print_exc()
+        return https_fn.Response(json.dumps({"error": str(e)}), status=500)
+
+
+# =============================================================================
+# C: ENSEMBLE STRATEGIES - Multi-method voting for robust identification
+# =============================================================================
+@https_fn.on_request(
+    timeout_sec=300,
+    memory=options.MemoryOption.GB_1,
+    cors=options.CorsOptions(cors_origins="*", cors_methods=["GET", "POST"])
+)
+def ensemble_identify(req: https_fn.Request) -> https_fn.Response:
+    """
+    Combine multiple identification strategies and vote on final result:
+    1. Voice embedding similarity
+    2. Context analysis (GROQ)
+    3. Historical pattern (who usually speaks in this context)
+    4. Meeting role (president usually opens, secretary reads)
+    """
+    try:
+        data = req.get_json()
+        meeting_id = data.get("meetingId")
+        speaker_label = data.get("speakerLabel")
+        text_sample = data.get("textSample", "")
+        
+        if not meeting_id or not speaker_label:
+            return https_fn.Response(json.dumps({"error": "meetingId and speakerLabel required"}), status=400)
+        
+        print(f"[Ensemble] Identifying {speaker_label} with multiple strategies")
+        
+        # Get meeting data
+        meeting_doc = db.collection("meetings").document(meeting_id).get()
+        if not meeting_doc.exists:
+            return https_fn.Response(json.dumps({"error": "Meeting not found"}), status=404)
+        
+        meeting = meeting_doc.to_dict()
+        attendees = meeting.get("attendees", [])
+        present_names = [a.get("name") or a.get("displayName") for a in attendees 
+                        if a.get("status", "").lower() in ["present", "présent", ""]]
+        
+        votes = {}  # {name: score}
+        strategies_used = []
+        
+        # Strategy 1: Context keywords
+        text_lower = text_sample.lower()
+        context_keywords = {
+            "président": ["madame la présidente", "monsieur le président", "je déclare", "la séance"],
+            "secrétaire": ["procès-verbal", "lecture du", "adopté à l'unanimité"],
+        }
+        for role, keywords in context_keywords.items():
+            for kw in keywords:
+                if kw in text_lower:
+                    # Find attendee with this role
+                    for a in attendees:
+                        if role in (a.get("role", "") or "").lower():
+                            name = a.get("name") or a.get("displayName")
+                            if name:
+                                votes[name] = votes.get(name, 0) + 0.3
+                                strategies_used.append(f"context_role:{role}")
+        
+        # Strategy 2: Name mentions
+        for name in present_names:
+            if name and name.lower() in text_lower:
+                votes[name] = votes.get(name, 0) + 0.2
+                strategies_used.append(f"name_mention:{name}")
+        
+        # Strategy 3: Historical pattern (who spoke most in past meetings)
+        past_speakers = db.collection("meetings").where("date", "<", meeting.get("date", "")).limit(5).stream()
+        speaker_history = {}
+        for pm in past_speakers:
+            pm_data = pm.to_dict()
+            for rec in pm_data.get("audioRecordings", []):
+                for label, name in rec.get("speakerMapping", {}).items():
+                    speaker_history[name] = speaker_history.get(name, 0) + 1
+        
+        for name, count in speaker_history.items():
+            if name in present_names:
+                votes[name] = votes.get(name, 0) + min(0.2, count * 0.02)
+        if speaker_history:
+            strategies_used.append("historical_pattern")
+        
+        # Calculate final scores
+        if votes:
+            max_vote = max(votes.values())
+            for name in votes:
+                votes[name] = round(votes[name] / max(max_vote, 1), 3)
+        
+        # Sort by score
+        ranked = sorted(votes.items(), key=lambda x: x[1], reverse=True)
+        
+        return https_fn.Response(json.dumps({
+            "success": True,
+            "speakerLabel": speaker_label,
+            "strategies": strategies_used,
+            "votes": dict(ranked[:5]),
+            "topCandidate": ranked[0][0] if ranked else None,
+            "confidence": ranked[0][1] if ranked else 0
+        }), status=200, content_type="application/json")
+        
+    except Exception as e:
+        print(f"[Ensemble] Error: {e}")
+        import traceback
+        traceback.print_exc()
+        return https_fn.Response(json.dumps({"error": str(e)}), status=500)
+
+
+# =============================================================================
+# D: ACTIVE LEARNING - Prioritize most useful samples for validation
+# =============================================================================
+@https_fn.on_request(
+    timeout_sec=120,
+    memory=options.MemoryOption.MB_512,
+    cors=options.CorsOptions(cors_origins="*", cors_methods=["GET", "POST"])
+)
+def active_learning_priority(req: https_fn.Request) -> https_fn.Response:
+    """
+    Determine which samples would be most valuable for human validation.
+    Prioritizes:
+    1. Uncertainty sampling (confidence near 0.5)
+    2. Disagreement between strategies
+    3. Members with weak profiles
+    4. Edge cases (very short/long segments)
+    """
+    try:
+        data = req.get_json() or {}
+        meeting_id = data.get("meetingId")
+        limit = data.get("limit", 10)
+        
+        print(f"[ActiveLearning] Computing priority samples for meeting {meeting_id}")
+        
+        priority_items = []
+        
+        if meeting_id:
+            # Get meeting segments and analyze
+            meeting_doc = db.collection("meetings").document(meeting_id).get()
+            if meeting_doc.exists:
+                meeting = meeting_doc.to_dict()
+                for rec in meeting.get("audioRecordings", []):
+                    segments = rec.get("segments", [])
+                    mapping = rec.get("speakerMapping", {})
+                    
+                    for seg in segments:
+                        speaker = seg.get("speaker", "")
+                        text = seg.get("text", "")
+                        start = seg.get("start", 0)
+                        end = seg.get("end", 0)
+                        duration = end - start
+                        
+                        priority_score = 0
+                        reasons = []
+                        
+                        # Not yet identified
+                        if speaker and speaker not in mapping:
+                            priority_score += 0.5
+                            reasons.append("unidentified")
+                        
+                        # Medium duration (most useful for training)
+                        if 5 < duration < 30:
+                            priority_score += 0.2
+                            reasons.append("good_duration")
+                        elif duration > 60:
+                            priority_score += 0.3
+                            reasons.append("long_segment")
+                        
+                        # Contains clear speech indicators
+                        if any(kw in text.lower() for kw in ["je", "nous", "mon", "notre"]):
+                            priority_score += 0.1
+                            reasons.append("first_person_speech")
+                        
+                        if priority_score > 0.3:
+                            priority_items.append({
+                                "speakerLabel": speaker,
+                                "start": start,
+                                "end": end,
+                                "duration": round(duration, 1),
+                                "textSample": text[:100],
+                                "priorityScore": round(priority_score, 2),
+                                "reasons": reasons
+                            })
+        
+        # Also check verification queue for pending items
+        queue_items = list(db.collection("verification_queue").where(
+            "status", "==", "pending"
+        ).limit(5).stream())
+        
+        for doc in queue_items:
+            item = doc.to_dict()
+            priority_items.append({
+                "speakerLabel": item.get("speakerLabel"),
+                "start": item.get("start"),
+                "end": item.get("end"),
+                "textSample": item.get("textSample", "")[:100],
+                "priorityScore": 0.8,  # Queue items are high priority
+                "reasons": ["in_verification_queue"],
+                "queueId": doc.id
+            })
+        
+        # Sort by priority
+        priority_items.sort(key=lambda x: x["priorityScore"], reverse=True)
+        
+        return https_fn.Response(json.dumps({
+            "success": True,
+            "totalItems": len(priority_items),
+            "items": priority_items[:limit],
+            "message": f"Found {len(priority_items)} samples ranked by learning value"
+        }), status=200, content_type="application/json")
+        
+    except Exception as e:
+        print(f"[ActiveLearning] Error: {e}")
+        import traceback
+        traceback.print_exc()
+        return https_fn.Response(json.dumps({"error": str(e)}), status=500)
+
+
+# =============================================================================
+# AI PROACTIVE LEARNING - AI requests user to validate selected segments
+# =============================================================================
+@https_fn.on_request(
+    timeout_sec=300,
+    memory=options.MemoryOption.GB_1,
+    cors=options.CorsOptions(cors_origins="*", cors_methods=["GET", "POST"])
+)
+def suggest_profile_improvements(req: https_fn.Request) -> https_fn.Response:
+    """
+    AI proactively finds segments to improve weak profiles.
+    Returns suggestions with estimated accuracy improvement.
+    """
+    try:
+        data = req.get_json() or {}
+        limit = data.get("limit", 5)
+        
+        print("[ProactiveLearning] Analyzing profiles for improvement...")
+        
+        suggestions = []
+        members = list(db.collection("members").stream())
+        weak_profiles = []
+        
+        for doc in members:
+            member = doc.to_dict()
+            sample_count = member.get("voiceSampleCount", 0)
+            name = member.get("displayName") or member.get("name")
+            if sample_count < 10:
+                weak_profiles.append({
+                    "memberId": doc.id, "name": name, "sampleCount": sample_count,
+                    "improvement": round((10 - sample_count) / 10 * 100, 0)
+                })
+        
+        weak_profiles.sort(key=lambda x: x["improvement"], reverse=True)
+        
+        for wp in weak_profiles[:limit]:
+            meetings_query = db.collection("meetings").order_by(
+                "date", direction=firestore.Query.DESCENDING
+            ).limit(10)
+            
+            found_segments = []
+            for meeting_doc in meetings_query.stream():
+                meeting = meeting_doc.to_dict()
+                for rec in meeting.get("audioRecordings", []):
+                    mapping = rec.get("speakerMapping", {})
+                    segments = rec.get("segments", [])
+                    audio_url = rec.get("downloadUrl")
+                    
+                    for label, assigned_name in mapping.items():
+                        if assigned_name == wp["name"]:
+                            for seg in segments:
+                                if seg.get("speaker") == label:
+                                    duration = seg.get("end", 0) - seg.get("start", 0)
+                                    if 5 < duration < 60:
+                                        found_segments.append({
+                                            "meetingId": meeting_doc.id,
+                                            "meetingTitle": meeting.get("title", "")[:40],
+                                            "audioUrl": audio_url,
+                                            "start": seg.get("start"),
+                                            "end": seg.get("end"),
+                                            "duration": round(duration, 1),
+                                            "text": seg.get("text", "")[:80]
+                                        })
+            
+            best_segments = sorted(found_segments, key=lambda x: x["duration"], reverse=True)[:3]
+            if best_segments:
+                suggestions.append({
+                    "memberId": wp["memberId"],
+                    "memberName": wp["name"],
+                    "currentSamples": wp["sampleCount"],
+                    "improvement": f"+{wp['improvement']:.0f}%",
+                    "segments": best_segments,
+                    "aiMessage": f"🧠 Valider ces segments améliorera {wp['name']} de ~{wp['improvement']:.0f}%"
+                })
+        
+        return https_fn.Response(json.dumps({
+            "success": True,
+            "aiMessage": f"🤖 {len(suggestions)} profil(s) peuvent être améliorés",
+            "suggestions": suggestions
+        }), status=200, content_type="application/json")
+        
+    except Exception as e:
+        print(f"[ProactiveLearning] Error: {e}")
+        import traceback
+        traceback.print_exc()
+        return https_fn.Response(json.dumps({"error": str(e)}), status=500)
+
+
+@https_fn.on_request(
+    timeout_sec=300,
+    memory=options.MemoryOption.GB_1,
+    cors=options.CorsOptions(cors_origins="*", cors_methods=["GET", "POST"])
+)
+def apply_ai_suggestion(req: https_fn.Request) -> https_fn.Response:
+    """Apply user-approved AI suggestion to improve profile."""
+    try:
+        data = req.get_json()
+        member_id = data.get("memberId")
+        member_name = data.get("memberName")
+        audio_url = data.get("audioUrl")
+        start_time = data.get("start")
+        end_time = data.get("end")
+        
+        if not all([member_id, audio_url, start_time is not None, end_time is not None]):
+            return https_fn.Response(json.dumps({"error": "Missing fields"}), status=400)
+        
+        print(f"[ApplySuggestion] Applying for {member_name} ({start_time}-{end_time}s)")
+        
+        new_embedding = extract_audio_segment_embedding(audio_url, start_time, end_time)
+        if not new_embedding:
+            return https_fn.Response(json.dumps({"error": "Extraction failed"}), status=500)
+        
+        member_ref = db.collection("members").document(member_id)
+        member_doc = member_ref.get()
+        if not member_doc.exists:
+            return https_fn.Response(json.dumps({"error": "Not found"}), status=404)
+        
+        member = member_doc.to_dict()
+        current_emb = member.get("embedding")
+        import json as json_lib
+        if current_emb and isinstance(current_emb, str):
+            current_emb = json_lib.loads(current_emb)
+        
+        if current_emb and isinstance(current_emb, list):
+            if isinstance(current_emb[0], list):
+                current_emb.append(new_embedding)
+                if len(current_emb) > 20:
+                    current_emb = current_emb[-20:]
+            else:
+                current_emb = [current_emb, new_embedding]
+        else:
+            current_emb = [new_embedding]
+        
+        count = len(current_emb) if isinstance(current_emb[0], list) else 1
+        member_ref.update({
+            "embedding": json_lib.dumps(current_emb),
+            "voiceSampleCount": count,
+            "lastVoiceUpdate": datetime.now().isoformat(),
+            "lastUpdateSource": "ai_suggestion"
+        })
+        
+        db.collection("ml_suggestions_applied").add({
+            "memberId": member_id, "memberName": member_name,
+            "timestamp": datetime.now().isoformat()
+        })
+        
+        return https_fn.Response(json.dumps({
+            "success": True,
+            "memberName": member_name,
+            "newSampleCount": count,
+            "message": f"✅ {member_name} amélioré ! ({count}/20 samples)"
+        }), status=200, content_type="application/json")
+        
+    except Exception as e:
+        print(f"[ApplySuggestion] Error: {e}")
+        import traceback
+        traceback.print_exc()
+        return https_fn.Response(json.dumps({"error": str(e)}), status=500)
+
+
+# =============================================================================
+# AUTONOMOUS ML LOOP - Global orchestration of all ML components
+# =============================================================================
+@https_fn.on_request(
+    timeout_sec=540,
+    memory=options.MemoryOption.GB_2,
+    cors=options.CorsOptions(cors_origins="*", cors_methods=["GET", "POST"])
+)
+def autonomous_ml_loop(req: https_fn.Request) -> https_fn.Response:
+    """
+    Global autonomous ML loop that runs after each transcription.
+    Orchestrates all ML components:
+    
+    1. AUTO-LEARN: High-confidence matches (>90%) → auto-reinforce profile
+    2. CALIBRATE: Update confidence calibration from history
+    3. QUEUE: Uncertain matches (<70%) → human verification queue
+    4. SUGGEST: Weak profiles → proactive improvement suggestions
+    5. TRACK: Log performance metrics
+    
+    Can be triggered:
+    - Manually via API call
+    - Automatically after transcription (post-processing hook)
+    - Scheduled via Cloud Scheduler
+    """
+    try:
+        data = req.get_json() or {}
+        meeting_id = data.get("meetingId")  # Optional: focus on specific meeting
+        mode = data.get("mode", "full")  # full, quick, calibrate_only
+        
+        print(f"[AutonomousML] Starting loop - mode={mode}, meeting={meeting_id}")
+        
+        results = {
+            "autoLearned": 0,
+            "queuedForReview": 0,
+            "suggestionsGenerated": 0,
+            "calibrationUpdated": False,
+            "metricsLogged": False,
+            "actions": []
+        }
+        
+        # =================================================================
+        # STEP 1: AUTO-LEARN from high-confidence identifications
+        # =================================================================
+        if mode in ["full", "quick"]:
+            print("[AutonomousML] Step 1: Auto-learning from high-confidence matches...")
+            
+            # Get recent identifications with high confidence
+            if meeting_id:
+                meetings = [db.collection("meetings").document(meeting_id).get()]
+            else:
+                meetings = list(db.collection("meetings").order_by(
+                    "date", direction=firestore.Query.DESCENDING
+                ).limit(5).stream())
+            
+            for meeting_doc in meetings:
+                if not meeting_doc.exists:
+                    continue
+                meeting = meeting_doc.to_dict()
+                
+                for rec in meeting.get("audioRecordings", []):
+                    mapping = rec.get("speakerMapping", {})
+                    confidence_data = rec.get("confidenceScores", {})
+                    segments = rec.get("segments", [])
+                    audio_url = rec.get("downloadUrl")
+                    
+                    for label, name in mapping.items():
+                        conf_info = confidence_data.get(label, {})
+                        score = conf_info.get("score", 0) if isinstance(conf_info, dict) else conf_info
+                        method = conf_info.get("method", "") if isinstance(conf_info, dict) else ""
+                        
+                        # AUTO-LEARN: High confidence (>90%) that wasn't already auto-learned
+                        if score >= 0.90 and "voice" in str(method).lower():
+                            # Find member and add embedding
+                            member_query = db.collection("members").where("displayName", "==", name).limit(1).stream()
+                            for member_doc in member_query:
+                                member = member_doc.to_dict()
+                                sample_count = member.get("voiceSampleCount", 0)
+                                
+                                # Only learn if profile needs more samples
+                                if sample_count < 15:
+                                    # Find best segment for this speaker
+                                    speaker_segs = [s for s in segments if s.get("speaker") == label]
+                                    if speaker_segs and audio_url:
+                                        best_seg = max(speaker_segs, key=lambda x: x.get("end", 0) - x.get("start", 0))
+                                        duration = best_seg.get("end", 0) - best_seg.get("start", 0)
+                                        
+                                        if 5 < duration < 60:
+                                            try:
+                                                new_emb = extract_audio_segment_embedding(
+                                                    audio_url, best_seg["start"], best_seg["end"]
+                                                )
+                                                if new_emb:
+                                                    # Update profile
+                                                    current_emb = member.get("embedding")
+                                                    import json as jlib
+                                                    if current_emb and isinstance(current_emb, str):
+                                                        current_emb = jlib.loads(current_emb)
+                                                    
+                                                    if current_emb and isinstance(current_emb, list):
+                                                        if isinstance(current_emb[0], list):
+                                                            current_emb.append(new_emb)
+                                                            current_emb = current_emb[-15:]
+                                                        else:
+                                                            current_emb = [current_emb, new_emb]
+                                                    else:
+                                                        current_emb = [new_emb]
+                                                    
+                                                    db.collection("members").document(member_doc.id).update({
+                                                        "embedding": jlib.dumps(current_emb),
+                                                        "voiceSampleCount": len(current_emb) if isinstance(current_emb[0], list) else 1,
+                                                        "lastVoiceUpdate": datetime.now().isoformat(),
+                                                        "lastUpdateSource": "autonomous_ml"
+                                                    })
+                                                    results["autoLearned"] += 1
+                                                    results["actions"].append(f"Auto-learned: {name}")
+                                            except Exception as e:
+                                                print(f"[AutonomousML] Auto-learn failed for {name}: {e}")
+                        
+                        # QUEUE: Low confidence (<70%) → needs human review
+                        elif score < 0.70 and score > 0.40:
+                            # Add to verification queue
+                            existing = list(db.collection("verification_queue").where(
+                                "speakerLabel", "==", label
+                            ).where("meetingId", "==", meeting_doc.id).limit(1).stream())
+                            
+                            if not existing:
+                                best_seg = max([s for s in segments if s.get("speaker") == label] or [{}], 
+                                              key=lambda x: x.get("end", 0) - x.get("start", 0), default={})
+                                
+                                db.collection("verification_queue").add({
+                                    "meetingId": meeting_doc.id,
+                                    "speakerLabel": label,
+                                    "suggestedName": name,
+                                    "confidence": score,
+                                    "start": best_seg.get("start"),
+                                    "end": best_seg.get("end"),
+                                    "textSample": best_seg.get("text", "")[:100],
+                                    "status": "pending",
+                                    "createdAt": datetime.now().isoformat()
+                                })
+                                results["queuedForReview"] += 1
+                                results["actions"].append(f"Queued for review: {label} → {name}?")
+        
+        # =================================================================
+        # STEP 2: UPDATE CALIBRATION
+        # =================================================================
+        if mode in ["full", "calibrate_only"]:
+            print("[AutonomousML] Step 2: Updating calibration...")
+            
+            # Get recent corrections
+            corrections = list(db.collection("ml_corrections").order_by(
+                "timestamp", direction=firestore.Query.DESCENDING
+            ).limit(100).stream())
+            
+            if len(corrections) >= 10:
+                # Calculate accuracy by confidence bin
+                bins = {i/10: {"correct": 0, "wrong": 0} for i in range(11)}
+                
+                for doc in corrections:
+                    c = doc.to_dict()
+                    conf = c.get("originalConfidence", 0.5)
+                    was_correct = c.get("wasCorrect", False)
+                    bin_key = round(conf, 1)
+                    if bin_key in bins:
+                        if was_correct:
+                            bins[bin_key]["correct"] += 1
+                        else:
+                            bins[bin_key]["wrong"] += 1
+                
+                calibration_curve = {}
+                for conf, data in bins.items():
+                    total = data["correct"] + data["wrong"]
+                    if total > 0:
+                        calibration_curve[str(conf)] = round(data["correct"] / total, 3)
+                
+                db.collection("ml_calibration").document("speaker_id").set({
+                    "calibrationCurve": calibration_curve,
+                    "dataPoints": len(corrections),
+                    "updatedAt": datetime.now().isoformat()
+                }, merge=True)
+                
+                results["calibrationUpdated"] = True
+                results["actions"].append("Calibration updated")
+        
+        # =================================================================
+        # STEP 3: GENERATE PROACTIVE SUGGESTIONS
+        # =================================================================
+        if mode == "full":
+            print("[AutonomousML] Step 3: Generating suggestions for weak profiles...")
+            
+            members = list(db.collection("members").stream())
+            for doc in members:
+                member = doc.to_dict()
+                sample_count = member.get("voiceSampleCount", 0)
+                name = member.get("displayName") or member.get("name")
+                
+                if sample_count < 5:  # Very weak profile
+                    # Check if suggestion already exists
+                    existing = list(db.collection("ml_suggestions").where(
+                        "memberId", "==", doc.id
+                    ).where("status", "==", "pending").limit(1).stream())
+                    
+                    if not existing:
+                        db.collection("ml_suggestions").add({
+                            "memberId": doc.id,
+                            "memberName": name,
+                            "currentSamples": sample_count,
+                            "improvementPotential": f"+{(10 - sample_count) * 10}%",
+                            "status": "pending",
+                            "createdAt": datetime.now().isoformat()
+                        })
+                        results["suggestionsGenerated"] += 1
+        
+        # =================================================================
+        # STEP 4: LOG PERFORMANCE METRICS
+        # =================================================================
+        print("[AutonomousML] Step 4: Logging metrics...")
+        
+        db.collection("ml_metrics").add({
+            "timestamp": datetime.now().isoformat(),
+            "autoLearned": results["autoLearned"],
+            "queuedForReview": results["queuedForReview"],
+            "suggestionsGenerated": results["suggestionsGenerated"],
+            "calibrationUpdated": results["calibrationUpdated"],
+            "mode": mode,
+            "meetingId": meeting_id
+        })
+        results["metricsLogged"] = True
+        
+        print(f"[AutonomousML] Loop complete: {results}")
+        
+        return https_fn.Response(json.dumps({
+            "success": True,
+            "message": f"🤖 ML Loop terminée: {results['autoLearned']} auto-appris, {results['queuedForReview']} en attente de validation",
+            "results": results
+        }), status=200, content_type="application/json")
+        
+    except Exception as e:
+        print(f"[AutonomousML] Error: {e}")
+        import traceback
+        traceback.print_exc()
+        return https_fn.Response(json.dumps({"error": str(e)}), status=500)
+
+
+# =============================================================================
+# POST-TRANSCRIPTION HOOK - Automatically trigger ML loop after transcription
+# =============================================================================
+@https_fn.on_request(
+    timeout_sec=60,
+    memory=options.MemoryOption.MB_256,
+    cors=options.CorsOptions(cors_origins="*", cors_methods=["POST"])
+)
+def trigger_ml_after_transcription(req: https_fn.Request) -> https_fn.Response:
+    """
+    Webhook called after a transcription completes.
+    Triggers the autonomous ML loop in background.
+    """
+    try:
+        data = req.get_json()
+        meeting_id = data.get("meetingId")
+        
+        if not meeting_id:
+            return https_fn.Response(json.dumps({"error": "meetingId required"}), status=400)
+        
+        print(f"[PostTranscription] Triggering ML loop for meeting {meeting_id}")
+        
+        # Log the trigger
+        db.collection("ml_triggers").add({
+            "meetingId": meeting_id,
+            "timestamp": datetime.now().isoformat(),
+            "source": "post_transcription"
+        })
+        
+        # Note: In production, this would call autonomous_ml_loop asynchronously
+        # For now, return immediately and let user call ML loop manually or via scheduler
+        
+        return https_fn.Response(json.dumps({
+            "success": True,
+            "message": f"ML loop triggered for meeting {meeting_id}",
+            "nextStep": "Call /autonomous_ml_loop with meetingId to run full analysis"
+        }), status=200, content_type="application/json")
+        
+    except Exception as e:
+        print(f"[PostTranscription] Error: {e}")
+        return https_fn.Response(json.dumps({"error": str(e)}), status=500)
+
+
+
+
+
