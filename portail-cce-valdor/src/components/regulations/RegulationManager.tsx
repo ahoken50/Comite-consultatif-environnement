@@ -45,20 +45,52 @@ const RegulationManager: React.FC = () => {
     const fetchRegulations = async () => {
         setLoading(true);
         try {
-            const results = await searchRegulations(searchQuery, { matchCount: 20 });
-            setRegulations(results.hits.map(h => h.document));
-            setCollectionMissing(false);
-        } catch (error) {
-            // Check if it's a "Collection not found" error
-            const errorMessage = error instanceof Error ? error.message : String(error);
-            if (errorMessage.includes('404') || errorMessage.includes('Collection not found')) {
-                console.info('Typesense regulations collection not yet created');
-                setCollectionMissing(true);
-                setRegulations([]);
-            } else {
-                console.error('Search failed', error);
-                showToast('Erreur lors du chargement des règlements', 'error');
+            // If there's a search query, use Supabase for semantic search
+            if (searchQuery && searchQuery.trim() !== '') {
+                try {
+                    const results = await searchRegulations(searchQuery, { matchCount: 20 });
+                    setRegulations(results.hits.map(h => h.document));
+                    setCollectionMissing(false);
+                    console.log(`[RegulationManager] Found ${results.hits.length} regulations via Supabase search`);
+                    return;
+                } catch (searchError) {
+                    console.warn('Supabase search failed, falling back to Firestore filter', searchError);
+                    // Fall through to Firestore with client-side filter
+                }
             }
+
+            // Load all from Firestore (initial load or fallback)
+            const { collection: firestoreCollection, getDocs, query, orderBy } = await import('firebase/firestore');
+            const regulationsRef = firestoreCollection(db, 'regulations');
+            const q = query(regulationsRef, orderBy('year', 'desc'));
+            const snapshot = await getDocs(q);
+
+            let firestoreRegulations = snapshot.docs.map(doc => ({
+                id: doc.id,
+                title: doc.data().title || '',
+                content: doc.data().content || '',
+                category: doc.data().category || 'Autre',
+                year: doc.data().year || new Date().getFullYear(),
+                status: doc.data().status || 'En vigueur'
+            }));
+
+            // Apply client-side text filter if searchQuery is not empty (fallback)
+            if (searchQuery && searchQuery.trim() !== '') {
+                const lowerQuery = searchQuery.toLowerCase();
+                firestoreRegulations = firestoreRegulations.filter(reg =>
+                    reg.title.toLowerCase().includes(lowerQuery) ||
+                    reg.content.toLowerCase().includes(lowerQuery) ||
+                    reg.category.toLowerCase().includes(lowerQuery)
+                );
+            }
+
+            setRegulations(firestoreRegulations);
+            setCollectionMissing(false);
+            console.log(`[RegulationManager] Loaded ${firestoreRegulations.length} regulations from Firestore`);
+        } catch (error) {
+            console.error('Failed to load regulations', error);
+            showToast('Erreur lors du chargement des règlements', 'error');
+            setRegulations([]);
         } finally {
             setLoading(false);
         }

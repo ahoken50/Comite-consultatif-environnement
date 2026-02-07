@@ -305,44 +305,56 @@ export const searchRegulations = async (
     try {
         const { matchThreshold = 0.5, matchCount = 10 } = options;
 
-        let queryEmbedding: number[] = [];
-        try {
-            queryEmbedding = await aiService.generateEmbedding(query);
-        } catch (e) {
-            console.warn("Failed to generate embedding for query", e);
-        }
-
         let data: any[] | null = null;
         let error: any = null;
 
-        if (queryEmbedding.length > 0) {
-            // Try RPC first
-            const result = await supabase.rpc('hybrid_search_regulations', {
-                query_text: query,
-                query_embedding: queryEmbedding,
-                match_threshold: matchThreshold,
-                match_count: matchCount
-            });
-
-            // If function doesn't exist, it will error. Fallback to text search?
-            if (result.error && result.error.message.includes('function not found')) {
-                console.warn("RPC hybrid_search_regulations not found, falling back to text search");
-                // Fallback below
-            } else {
-                data = result.data;
-                error = result.error;
-            }
-        }
-
-        if (!data) {
-            // Fallback: Text search
+        // If query is empty, just fetch all regulations without search
+        if (!query || query.trim() === '') {
             const result = await supabase
                 .from('regulations')
                 .select('*')
-                .textSearch('content', query, { type: 'websearch', config: 'french' })
+                .order('year', { ascending: false })
                 .limit(matchCount);
             data = result.data;
             error = result.error;
+        } else {
+            // Generate embedding for semantic search
+            let queryEmbedding: number[] = [];
+            try {
+                queryEmbedding = await aiService.generateEmbedding(query);
+            } catch (e) {
+                console.warn("Failed to generate embedding for query", e);
+            }
+
+            if (queryEmbedding.length > 0) {
+                // Try RPC first
+                const result = await supabase.rpc('hybrid_search_regulations', {
+                    query_text: query,
+                    query_embedding: queryEmbedding,
+                    match_threshold: matchThreshold,
+                    match_count: matchCount
+                });
+
+                // If function doesn't exist, it will error. Fallback to text search?
+                if (result.error && result.error.message.includes('function not found')) {
+                    console.warn("RPC hybrid_search_regulations not found, falling back to text search");
+                    // Fallback below
+                } else {
+                    data = result.data;
+                    error = result.error;
+                }
+            }
+
+            if (!data) {
+                // Fallback: Text search
+                const result = await supabase
+                    .from('regulations')
+                    .select('*')
+                    .textSearch('content', query, { type: 'websearch', config: 'french' })
+                    .limit(matchCount);
+                data = result.data;
+                error = result.error;
+            }
         }
 
         if (error) throw error;

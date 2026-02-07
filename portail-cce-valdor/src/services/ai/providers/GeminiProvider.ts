@@ -342,8 +342,8 @@ Retourne uniquement le JSON.`;
     async generateEmbedding(text: string): Promise<number[]> {
         if (!this.isConfigured()) throw new Error('Gemini API key not configured');
 
-        // Use 'text-embedding-004' for lower cost and better performance
-        const MODEL = 'models/text-embedding-004';
+        // Use 'embedding-001' (text-embedding-004 is deprecated in v1beta)
+        const MODEL = 'models/embedding-001';
         const EMBED_URL = `https://generativelanguage.googleapis.com/v1beta/${MODEL}:embedContent`;
 
         const response = await fetch(`${EMBED_URL}?key=${GEMINI_API_KEY}`, {
