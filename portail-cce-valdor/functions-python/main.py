@@ -6049,10 +6049,10 @@ def autonomous_ml_loop(req: https_fn.Request) -> https_fn.Response:
     Global autonomous ML loop that runs after each transcription.
     Orchestrates all ML components:
     
-    1. AUTO-LEARN: High-confidence matches (>90%) → auto-reinforce profile
+    1. AUTO-LEARN: High-confidence matches (>90%) -> auto-reinforce profile
     2. CALIBRATE: Update confidence calibration from history
-    3. QUEUE: Uncertain matches (<70%) → human verification queue
-    4. SUGGEST: Weak profiles → proactive improvement suggestions
+    3. QUEUE: Uncertain matches (<70%) -> human verification queue
+    4. SUGGEST: Weak profiles -> proactive improvement suggestions
     5. TRACK: Log performance metrics
     
     Can be triggered:
