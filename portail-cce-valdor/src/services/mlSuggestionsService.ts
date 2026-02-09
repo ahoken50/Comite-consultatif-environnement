@@ -20,9 +20,9 @@ if (window.location.hostname === 'localhost') {
 // Get the functions URL based on environment
 const getFunctionUrl = (functionName: string): string => {
     if (window.location.hostname === 'localhost') {
-        return `http://localhost:5001/comite-cce-valdor/us-central1/${functionName}`;
+        return `http://localhost:5001/comite-cce/us-central1/${functionName}`;
     }
-    return `https://us-central1-comite-cce-valdor.cloudfunctions.net/${functionName}`;
+    return `https://us-central1-comite-cce.cloudfunctions.net/${functionName}`;
 };
 
 // Types

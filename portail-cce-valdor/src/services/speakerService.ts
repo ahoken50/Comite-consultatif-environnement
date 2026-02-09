@@ -31,7 +31,7 @@ export const enrollSpeaker = async (name: string, audioBlob: Blob): Promise<Enro
         // SIMPLIFICATION FOR PROTOTYPE:
         // Use FormData and fetch to the likely URL structure.
 
-        const projectId = 'comite-cce-valdor'; // Start with hardcoded or env
+        const projectId = 'comite-cce'; // Start with hardcoded or env
         const region = 'us-central1';
         const functionName = 'enroll_speaker';
 
