@@ -5835,7 +5835,8 @@ def active_learning_priority(req: https_fn.Request) -> https_fn.Response:
 # =============================================================================
 @https_fn.on_request(
     timeout_sec=300,
-    memory=options.MemoryOption.GB_1
+    memory=options.MemoryOption.GB_1,
+    invoker=options.HttpsInvoker.PUBLIC
 )
 def suggest_profile_improvements(req: https_fn.Request) -> https_fn.Response:
     """
@@ -5929,7 +5930,8 @@ def suggest_profile_improvements(req: https_fn.Request) -> https_fn.Response:
 
 @https_fn.on_request(
     timeout_sec=60,
-    memory=options.MemoryOption.MB_256
+    memory=options.MemoryOption.MB_256,
+    invoker=options.HttpsInvoker.PUBLIC
 )
 def human_verification_queue(req: https_fn.Request) -> https_fn.Response:
     """
@@ -5976,7 +5978,8 @@ def human_verification_queue(req: https_fn.Request) -> https_fn.Response:
 
 @https_fn.on_request(
     timeout_sec=300,
-    memory=options.MemoryOption.GB_1
+    memory=options.MemoryOption.GB_1,
+    invoker=options.HttpsInvoker.PUBLIC
 )
 def apply_ai_suggestion(req: https_fn.Request) -> https_fn.Response:
     """Apply user-approved AI suggestion to improve profile."""
@@ -6059,7 +6062,8 @@ def apply_ai_suggestion(req: https_fn.Request) -> https_fn.Response:
 # =============================================================================
 @https_fn.on_request(
     timeout_sec=540,
-    memory=options.MemoryOption.GB_2
+    memory=options.MemoryOption.GB_2,
+    invoker=options.HttpsInvoker.PUBLIC
 )
 def autonomous_ml_loop(req: https_fn.Request) -> https_fn.Response:
     """
