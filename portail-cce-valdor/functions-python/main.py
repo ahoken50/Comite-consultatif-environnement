@@ -5800,7 +5800,10 @@ def active_learning_priority(req: https_fn.Request) -> https_fn.Response:
 @https_fn.on_request(
     timeout_sec=300,
     memory=options.MemoryOption.GB_1,
-    cors=options.CorsOptions(cors_origins="*", cors_methods=["GET", "POST"])
+    cors=options.CorsOptions(
+        cors_origins=["https://comite-cce.web.app", "http://localhost:5173", "http://localhost:5174"],
+        cors_methods=["GET", "POST", "OPTIONS"]
+    )
 )
 def suggest_profile_improvements(req: https_fn.Request) -> https_fn.Response:
     """
@@ -5885,7 +5888,10 @@ def suggest_profile_improvements(req: https_fn.Request) -> https_fn.Response:
 @https_fn.on_request(
     timeout_sec=60,
     memory=options.MemoryOption.MB_256,
-    cors=options.CorsOptions(cors_origins="*", cors_methods=["GET", "POST"])
+    cors=options.CorsOptions(
+        cors_origins=["https://comite-cce.web.app", "http://localhost:5173", "http://localhost:5174"],
+        cors_methods=["GET", "POST", "OPTIONS"]
+    )
 )
 def human_verification_queue(req: https_fn.Request) -> https_fn.Response:
     """
@@ -5924,7 +5930,10 @@ def human_verification_queue(req: https_fn.Request) -> https_fn.Response:
 @https_fn.on_request(
     timeout_sec=300,
     memory=options.MemoryOption.GB_1,
-    cors=options.CorsOptions(cors_origins="*", cors_methods=["GET", "POST"])
+    cors=options.CorsOptions(
+        cors_origins=["https://comite-cce.web.app", "http://localhost:5173", "http://localhost:5174"],
+        cors_methods=["GET", "POST", "OPTIONS"]
+    )
 )
 def apply_ai_suggestion(req: https_fn.Request) -> https_fn.Response:
     """Apply user-approved AI suggestion to improve profile."""
@@ -5999,7 +6008,10 @@ def apply_ai_suggestion(req: https_fn.Request) -> https_fn.Response:
 @https_fn.on_request(
     timeout_sec=540,
     memory=options.MemoryOption.GB_2,
-    cors=options.CorsOptions(cors_origins="*", cors_methods=["GET", "POST"])
+    cors=options.CorsOptions(
+        cors_origins=["https://comite-cce.web.app", "http://localhost:5173", "http://localhost:5174"],
+        cors_methods=["GET", "POST", "OPTIONS"]
+    )
 )
 def autonomous_ml_loop(req: https_fn.Request) -> https_fn.Response:
     """
