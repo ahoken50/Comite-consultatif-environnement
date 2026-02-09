@@ -5835,11 +5835,7 @@ def active_learning_priority(req: https_fn.Request) -> https_fn.Response:
 # =============================================================================
 @https_fn.on_request(
     timeout_sec=300,
-    memory=options.MemoryOption.GB_1,
-    cors=options.CorsOptions(
-        cors_origins=["https://comite-cce.web.app", "http://localhost:5173", "http://localhost:5174"],
-        cors_methods=["GET", "POST", "OPTIONS"]
-    )
+    memory=options.MemoryOption.GB_1
 )
 def suggest_profile_improvements(req: https_fn.Request) -> https_fn.Response:
     """
@@ -5853,6 +5849,9 @@ def suggest_profile_improvements(req: https_fn.Request) -> https_fn.Response:
         return https_fn.Response("", status=204, headers=cors_headers)
 
     try:
+        global db
+        if db is None:
+            db = firestore.client()
 
         data = req.get_json() or {}
         limit = data.get("limit", 5)
@@ -5930,11 +5929,7 @@ def suggest_profile_improvements(req: https_fn.Request) -> https_fn.Response:
 
 @https_fn.on_request(
     timeout_sec=60,
-    memory=options.MemoryOption.MB_256,
-    cors=options.CorsOptions(
-        cors_origins=["https://comite-cce.web.app", "http://localhost:5173", "http://localhost:5174"],
-        cors_methods=["GET", "POST", "OPTIONS"]
-    )
+    memory=options.MemoryOption.MB_256
 )
 def human_verification_queue(req: https_fn.Request) -> https_fn.Response:
     """
@@ -5947,6 +5942,9 @@ def human_verification_queue(req: https_fn.Request) -> https_fn.Response:
         return https_fn.Response("", status=204, headers=cors_headers)
 
     try:
+        global db
+        if db is None:
+            db = firestore.client()
 
         data = req.get_json() or {}
         limit = data.get("limit", 10)
@@ -5978,11 +5976,7 @@ def human_verification_queue(req: https_fn.Request) -> https_fn.Response:
 
 @https_fn.on_request(
     timeout_sec=300,
-    memory=options.MemoryOption.GB_1,
-    cors=options.CorsOptions(
-        cors_origins=["https://comite-cce.web.app", "http://localhost:5173", "http://localhost:5174"],
-        cors_methods=["GET", "POST", "OPTIONS"]
-    )
+    memory=options.MemoryOption.GB_1
 )
 def apply_ai_suggestion(req: https_fn.Request) -> https_fn.Response:
     """Apply user-approved AI suggestion to improve profile."""
@@ -5992,6 +5986,9 @@ def apply_ai_suggestion(req: https_fn.Request) -> https_fn.Response:
         return https_fn.Response("", status=204, headers=cors_headers)
 
     try:
+        global db
+        if db is None:
+            db = firestore.client()
 
         data = req.get_json()
         member_id = data.get("memberId")
@@ -6062,11 +6059,7 @@ def apply_ai_suggestion(req: https_fn.Request) -> https_fn.Response:
 # =============================================================================
 @https_fn.on_request(
     timeout_sec=540,
-    memory=options.MemoryOption.GB_2,
-    cors=options.CorsOptions(
-        cors_origins=["https://comite-cce.web.app", "http://localhost:5173", "http://localhost:5174"],
-        cors_methods=["GET", "POST", "OPTIONS"]
-    )
+    memory=options.MemoryOption.GB_2
 )
 def autonomous_ml_loop(req: https_fn.Request) -> https_fn.Response:
     """
@@ -6090,6 +6083,9 @@ def autonomous_ml_loop(req: https_fn.Request) -> https_fn.Response:
         return https_fn.Response("", status=204, headers=cors_headers)
 
     try:
+        global db
+        if db is None:
+            db = firestore.client()
 
         data = req.get_json() or {}
         meeting_id = data.get("meetingId")  # Optional: focus on specific meeting
