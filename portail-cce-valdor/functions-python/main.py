@@ -26,6 +26,8 @@ load_dotenv()
 
 # Initialize Firebase
 initialize_app()
+db = firestore.client()
+bucket = storage.bucket()
 
 # =============================================================================
 # SINGLETON CLIENTS (Lazy Loading Pattern)
