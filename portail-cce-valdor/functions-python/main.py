@@ -155,6 +155,7 @@ def enroll_speaker(req: https_fn.Request) -> https_fn.Response:
         print(f"[Enroll] Saved temp file: {temp_path}")
 
         # 3. Upload to Firebase Storage (with timestamp to prevent conflicts)
+        from datetime import datetime, timedelta
         import time
         timestamp = int(time.time())
         bucket = storage.bucket()
@@ -162,10 +163,14 @@ def enroll_speaker(req: https_fn.Request) -> https_fn.Response:
         blob = bucket.blob(blob_path)
         blob.upload_from_filename(temp_path)
         
-        # Make public so HF Endpoint can access it
-        blob.make_public()
-        public_url = blob.public_url
-        print(f"[Enroll] Uploaded to Storage: {public_url}")
+        # Generate signed URL instead of making public (expires in 1 hour)
+        # This is more secure as audio samples are not permanently public
+        signed_url = blob.generate_signed_url(
+            version="v4",
+            expiration=timedelta(hours=1),
+            method="GET"
+        )
+        print(f"[Enroll] Uploaded to Storage with signed URL (1h expiry)")
 
         # 4. Call Modal/HF Endpoint for embedding generation
         # Supports both HF_ENDPOINT_URL and MODAL_ENDPOINT_URL
@@ -187,7 +192,7 @@ def enroll_speaker(req: https_fn.Request) -> https_fn.Response:
                 headers["Authorization"] = f"Bearer {hf_token}"
             
             # Modal uses "url", HF uses "inputs" - send both for compatibility
-            payload = {"url": public_url, "inputs": public_url}
+            payload = {"url": signed_url, "inputs": signed_url}
             
             response = requests.post(endpoint_url, headers=headers, json=payload, timeout=120)
             
@@ -221,7 +226,7 @@ def enroll_speaker(req: https_fn.Request) -> https_fn.Response:
             "name": name,
             "embedding": embedding,
             "created_at": datetime.now().isoformat(),
-            "sample_url": public_url
+            "sample_url": blob_path  # Store path instead of URL (can regenerate signed URL if needed)
         }
         
         res = supabase.table("speakers").insert(data).execute()
@@ -1251,8 +1256,8 @@ def compare_embedding_with_speakers(segment_embedding: list, enrolled_speakers: 
     """
     from speaker_identification import cosine_similarity
     import json
-    
-    import numpy as np
+
+    # NOTE: numpy import removed (was unused)
 
     # 1. Collect all vectors from all speakers into a flat list
     # [(similarity, speaker_name), ...]
@@ -1361,7 +1366,9 @@ async def identify_speakers_in_transcript(
     from speaker_identification import (
         linguistic_pattern_strategy,
         name_mention_strategy,
-        auto_identification_strategy
+        auto_identification_strategy,
+        contextual_ai_strategy,
+        fuse_scores
     )
     
     # Get enrolled speakers with embeddings
@@ -1458,7 +1465,7 @@ async def identify_speakers_in_transcript(
         # Initialize scores
         voice_scores = {}
         
-        # Try voice embedding if available (50% weight)
+        # Try voice embedding if available (70% weight in fuse_scores)
         if voice_available:
             print(f"[Identify] Getting voice embedding for {speaker_label} ({data['start']:.0f}s-{data['end']:.0f}s)")
             segment_embedding = extract_audio_segment_embedding(audio_url, data["start"], data["end"])
@@ -1466,37 +1473,36 @@ async def identify_speakers_in_transcript(
                 voice_scores = compare_embedding_with_speakers(segment_embedding, enrolled_speakers)
                 print(f"[Identify] Voice scores for {speaker_label}: {voice_scores}")
         
+        # Build meeting context for AI analysis
+        meeting_context = {
+            "type": "Régulière",
+            "meeting_id": meeting_id
+        }
+        
         # Fast pattern strategies
         linguistic_scores = linguistic_pattern_strategy(combined_text, enrolled_speakers)
         mention_scores = name_mention_strategy(combined_text, None, known_member_names)
         auto_id_scores = auto_identification_strategy(combined_text, known_member_names)
         
-        # Fuse with proper weighting
-        best_score = 0
-        best_name = None
+        # Contextual AI strategy (GROQ) - 15% weight
+        # Only call if we have enrolled speakers with roles
+        context_scores = {}
+        if enrolled_speakers:
+            context_scores = contextual_ai_strategy(combined_text, meeting_context, enrolled_speakers)
+            if context_scores:
+                print(f"[Identify] Context AI scores for {speaker_label}: {context_scores}")
         
-        for name in known_member_names:
-            if voice_scores:
-                # Full weighting with voice
-                score = (
-                    voice_scores.get(name, 0) * 0.50 +
-                    linguistic_scores.get(name, 0) * 0.10 +
-                    mention_scores.get(name, 0) * 0.10 +
-                    auto_id_scores.get(name, 0) * 0.05
-                )
-            else:
-                # Without voice, rebalance
-                score = (
-                    linguistic_scores.get(name, 0) * 0.4 +
-                    mention_scores.get(name, 0) * 0.3 +
-                    auto_id_scores.get(name, 0) * 0.3
-                )
-            
-            if score > best_score:
-                best_score = score
-                best_name = name
+        # Use centralized fuse_scores function instead of duplicated logic
+        best_name, best_score = fuse_scores(
+            voice_scores=voice_scores,
+            context_scores=context_scores,
+            linguistic_scores=linguistic_scores,
+            mention_scores=mention_scores,
+            auto_id_scores=auto_id_scores,
+            confidence_threshold=0.35 if voice_scores else 0.45
+        )
         
-        threshold = 0.2 if voice_scores else 0.3
+        # Threshold already applied in fuse_scores, but we need to check for None
         
         # ---------------------------------------------------------
         # ROBUST DECISION LOGIC (User Request)
@@ -1506,7 +1512,8 @@ async def identify_speakers_in_transcript(
         final_decision = None
         rejection_reason = None
         
-        if best_score >= threshold and best_name:
+        # fuse_scores returns None if below threshold, so we just check best_name
+        if best_name:
              # 1. MARGIN CHECK (Top 2 Comparison)
              # If strictly voice based, check if the runner-up is too close.
              if voice_scores:

@@ -2,11 +2,14 @@
 Speaker Identification Module - Multi-Strategy System
 
 Combines 5 strategies to identify speakers in transcriptions:
-1. Voice Embedding (50%) - PyAnnote via Modal
-2. Contextual AI (25%) - GROQ analysis
-3. Linguistic Patterns (10%) - Role-based keywords
-4. Name Mentions (10%) - "Merci Michaël" detection
+1. Voice Embedding (70%) - PyAnnote via Modal (primary signal)
+2. Contextual AI (15%) - GROQ analysis (secondary)  
+3. Linguistic Patterns (5%) - Role-based keywords
+4. Name Mentions (5%) - "Merci Michaël" detection
 5. Auto-Identification (5%) - "Je suis X" detection
+
+NOTE: The actual fusion happens in main.py identify_speakers_in_transcript()
+with slightly different weights when voice is unavailable.
 """
 
 import os
@@ -269,16 +272,19 @@ def fuse_scores(
     linguistic_scores: Dict[str, float],
     mention_scores: Dict[str, float],
     auto_id_scores: Dict[str, float],
-    confidence_threshold: float = 0.2  # Lowered from 0.6 - weighted scores rarely exceed 0.5
+    confidence_threshold: float = 0.35  # Increased from 0.2 for fewer false positives
 ) -> Tuple[Optional[str], float]:
     """
     Fuse all strategy scores with weighted combination.
     
-    Weights:
-    - Voice Embedding: 50%
-    - Contextual AI: 25%
-    - Linguistic Patterns: 10%
-    - Name Mentions: 10%
+    NOTE: This function is currently NOT USED by main.py which has its own
+    inline fusion logic. Consider consolidating in future refactoring.
+    
+    Weights (actual values):
+    - Voice Embedding: 70%
+    - Contextual AI: 15%
+    - Linguistic Patterns: 5%
+    - Name Mentions: 5%
     - Auto-ID: 5%
     """
     # Weights (Updated: Voice priority 70%)

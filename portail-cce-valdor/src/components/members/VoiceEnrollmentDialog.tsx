@@ -67,7 +67,15 @@ const VoiceEnrollmentDialog: React.FC<VoiceEnrollmentDialogProps> = ({
         setError(null);
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            const mediaRecorder = new MediaRecorder(stream);
+
+            // Determine best supported mimeType for voice enrollment
+            const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+                ? 'audio/webm;codecs=opus'
+                : MediaRecorder.isTypeSupported('audio/webm')
+                    ? 'audio/webm'
+                    : 'audio/ogg';
+
+            const mediaRecorder = new MediaRecorder(stream, { mimeType });
             mediaRecorderRef.current = mediaRecorder;
             audioChunksRef.current = [];
 
@@ -78,11 +86,13 @@ const VoiceEnrollmentDialog: React.FC<VoiceEnrollmentDialogProps> = ({
             };
 
             mediaRecorder.onstop = () => {
-                const blob = new Blob(audioChunksRef.current, { type: 'audio/wav' });
+                // Use the actual mimeType from the recorder (not hardcoded 'audio/wav')
+                const blob = new Blob(audioChunksRef.current, { type: mediaRecorder.mimeType });
                 setAudioBlob(blob);
                 setAudioUrl(URL.createObjectURL(blob));
                 stream.getTracks().forEach(track => track.stop()); // Stop mic
             };
+
 
             mediaRecorder.start();
             setIsRecording(true);
@@ -211,6 +221,14 @@ const VoiceEnrollmentDialog: React.FC<VoiceEnrollmentDialogProps> = ({
                                     <Typography variant="h6" color="error">
                                         Enregistrement... {formatTime(duration)}
                                     </Typography>
+                                )}
+
+                                {/* Warning for short recordings */}
+                                {audioBlob && duration < 10 && (
+                                    <Alert severity="warning" sx={{ mt: 1 }}>
+                                        Enregistrement court ({duration}s). Pour une meilleure reconnaissance vocale,
+                                        enregistrez au moins 15-20 secondes.
+                                    </Alert>
                                 )}
                             </>
                         )}

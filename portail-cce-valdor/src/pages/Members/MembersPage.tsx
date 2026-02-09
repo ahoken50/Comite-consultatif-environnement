@@ -14,6 +14,7 @@ import type { Member } from '../../types/member.types';
 import MandateList from '../../components/members/MandateList';
 import { AccessControl } from '../../components/auth/AccessControl';
 import VoiceEnrollmentDialog from '../../components/members/VoiceEnrollmentDialog';
+import MLSuggestionsPanel from '../../components/members/MLSuggestionsPanel';
 import { enrollSpeaker } from '../../services/speakerService';
 
 const MembersPage: React.FC = () => {
@@ -180,6 +181,22 @@ const MembersPage: React.FC = () => {
                 <Box sx={{ mb: 4 }}>
                     <MandateList members={members} />
                 </Box>
+            )}
+
+            {/* ML Suggestions Panel - Only for coordinators on Active tab */}
+            {tabValue === 0 && user?.role === 'coordinator' && (
+                <AccessControl allowedRoles={['coordinator']}>
+                    <MLSuggestionsPanel
+                        onProfileUpdated={(name, count) => {
+                            setNotification({
+                                message: `✅ Profil ${name} amélioré (${count}/10 samples)`,
+                                type: 'success'
+                            });
+                            // Refresh members to update voice sample counts
+                            dispatch(fetchMembers());
+                        }}
+                    />
+                </AccessControl>
             )}
 
             <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
