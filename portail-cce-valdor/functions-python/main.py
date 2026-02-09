@@ -5810,7 +5810,18 @@ def suggest_profile_improvements(req: https_fn.Request) -> https_fn.Response:
     AI proactively finds segments to improve weak profiles.
     Returns suggestions with estimated accuracy improvement.
     """
+    """
     try:
+        # Manual CORS handling for preflight and errors
+        if req.method == "OPTIONS":
+            headers = {
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+                "Access-Control-Allow-Headers": "Content-Type",
+                "Access-Control-Max-Age": "3600"
+            }
+            return https_fn.Response("", status=204, headers=headers)
+
         data = req.get_json() or {}
         limit = data.get("limit", 5)
         
@@ -5876,7 +5887,7 @@ def suggest_profile_improvements(req: https_fn.Request) -> https_fn.Response:
             "success": True,
             "aiMessage": f"🤖 {len(suggestions)} profil(s) peuvent être améliorés",
             "suggestions": suggestions
-        }), status=200, content_type="application/json")
+        }), status=200, content_type="application/json", headers={"Access-Control-Allow-Origin": "*"})
         
     except Exception as e:
         print(f"[ProactiveLearning] Error: {e}")
@@ -5899,6 +5910,16 @@ def human_verification_queue(req: https_fn.Request) -> https_fn.Response:
     Returns the most urgent items first (high confidence but ambiguous).
     """
     try:
+        # Manual CORS handling for preflight and errors
+        if req.method == "OPTIONS":
+            headers = {
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+                "Access-Control-Allow-Headers": "Content-Type",
+                "Access-Control-Max-Age": "3600"
+            }
+            return https_fn.Response("", status=204, headers=headers)
+
         data = req.get_json() or {}
         limit = data.get("limit", 10)
         meeting_id = data.get("meetingId")
@@ -5920,7 +5941,7 @@ def human_verification_queue(req: https_fn.Request) -> https_fn.Response:
         return https_fn.Response(json.dumps({
             "success": True,
             "items": result
-        }), status=200, content_type="application/json")
+        }), status=200, content_type="application/json", headers={"Access-Control-Allow-Origin": "*"})
         
     except Exception as e:
         print(f"[VerificationQueue] Error: {e}")
@@ -5938,6 +5959,16 @@ def human_verification_queue(req: https_fn.Request) -> https_fn.Response:
 def apply_ai_suggestion(req: https_fn.Request) -> https_fn.Response:
     """Apply user-approved AI suggestion to improve profile."""
     try:
+        # Manual CORS handling for preflight and errors
+        if req.method == "OPTIONS":
+            headers = {
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+                "Access-Control-Allow-Headers": "Content-Type",
+                "Access-Control-Max-Age": "3600"
+            }
+            return https_fn.Response("", status=204, headers=headers)
+
         data = req.get_json()
         member_id = data.get("memberId")
         member_name = data.get("memberName")
@@ -5993,13 +6024,13 @@ def apply_ai_suggestion(req: https_fn.Request) -> https_fn.Response:
             "memberName": member_name,
             "newSampleCount": count,
             "message": f"✅ {member_name} amélioré ! ({count}/20 samples)"
-        }), status=200, content_type="application/json")
+        }), status=200, content_type="application/json", headers={"Access-Control-Allow-Origin": "*"})
         
     except Exception as e:
         print(f"[ApplySuggestion] Error: {e}")
         import traceback
         traceback.print_exc()
-        return https_fn.Response(json.dumps({"error": str(e)}), status=500)
+        return https_fn.Response(json.dumps({"error": str(e)}), status=500, headers={"Access-Control-Allow-Origin": "*"})
 
 
 # =============================================================================
@@ -6030,6 +6061,16 @@ def autonomous_ml_loop(req: https_fn.Request) -> https_fn.Response:
     - Scheduled via Cloud Scheduler
     """
     try:
+        # Manual CORS handling for preflight and errors
+        if req.method == "OPTIONS":
+            headers = {
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+                "Access-Control-Allow-Headers": "Content-Type",
+                "Access-Control-Max-Age": "3600"
+            }
+            return https_fn.Response("", status=204, headers=headers)
+
         data = req.get_json() or {}
         meeting_id = data.get("meetingId")  # Optional: focus on specific meeting
         mode = data.get("mode", "full")  # full, quick, calibrate_only
