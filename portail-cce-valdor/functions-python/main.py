@@ -26,8 +26,13 @@ load_dotenv()
 
 # Initialize Firebase
 initialize_app()
-db = firestore.client()
-bucket = storage.bucket()
+try:
+    db = firestore.client()
+    bucket = storage.bucket()
+except Exception as e:
+    print(f"[System] Warning: Global init skipped (Deploy/Build mode?): {e}")
+    db = None
+    bucket = None
 
 # =============================================================================
 # SINGLETON CLIENTS (Lazy Loading Pattern)
