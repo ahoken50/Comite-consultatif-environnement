@@ -1,34 +1,55 @@
 /**
- * SmartPV Agent Service
- * 
- * Orchestrates the 5-step PV generation workflow using Vercel AI SDK.
- * Provides semi-automatic mode with validation at each step.
+ * SmartPV Agent Service — Pipeline complet en 10 étapes
+ *
+ * Orchestrates the full PV generation workflow:
+ * 1. 🎙️ TRANSCRIPTION     → Audio → Text
+ * 2. 🔍 IDENTIFICATION     → Speaker identification
+ * 3. 🧹 NETTOYAGE          → Cleanup + merge segments
+ * 4. 📋 ANALYSE ODJ        → Map discussions → ODJ items
+ * 5. 🏷️ CLASSIFICATION     → Thematic categorization + sentiment
+ * 6. ✍️ RÉDACTION          → Generate PV draft
+ * 7. 🔄 RÉFLEXION          → Self-critique + auto-corrections (loop)
+ * 8. ✅ VALIDATION USER    → Human checkpoint
+ * 9. 📊 COMPARAISON        → Historical PV consistency check (loop)
+ * 10. 🧠 APPRENTISSAGE     → Update models with corrections
  */
 
-// import { createGoogleGenerativeAI } from '@ai-sdk/google'; // Available for future use
 import { createAnthropic } from '@ai-sdk/anthropic';
 import { createGroq } from '@ai-sdk/groq';
 import { generateText } from 'ai';
+import { httpsCallable } from 'firebase/functions';
+import { collection, query, orderBy, limit, getDocs } from 'firebase/firestore';
+import { functions, db } from './firebase';
 import type {
     AgentConfig,
     AgentState,
     AgentStep,
     AgentStepId,
     TranscriptionResult,
-    AnalysisResult,
-    ExtractionResult,
-    ValidationResult,
-    GenerationResult,
+    IdentificationResult,
+    CleaningResult,
+    ODJAnalysisResult,
+    ClassificationResult,
+    DraftingResult,
+    ReflectionResult,
+    UserValidationResult,
+    ComparisonResult,
+    LearningResult,
     CCENumbering,
-} from '../types/pvAgent.types';
-import type { AgendaItem, MinuteEntry } from '../types/meeting.types';
+    } from '../types/pvAgent.types';
+import {
+    getODJAnalysisPrompt,
+    getClassificationPrompt,
+    getDraftingSystemPrompt,
+    getDraftingUserPrompt,
+    getDraftingExtractionPrompt,
+    getReflectionPrompt,
+    getComparisonPrompt,
+} from '../prompts/pvPipelinePrompts';
 
 // ============================================================================
 // AI Provider Configuration
 // ============================================================================
-
-// Gemini provider (available for future use)
-// const getGemini = () => createGoogleGenerativeAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
 
 const getClaude = () => createAnthropic({
     apiKey: import.meta.env.VITE_ANTHROPIC_API_KEY,
@@ -39,34 +60,69 @@ const getGroq = () => createGroq({
 });
 
 // ============================================================================
-// Step Definitions
+// Step Definitions (10 steps)
 // ============================================================================
 
 export const AGENT_STEPS: Omit<AgentStep, 'status' | 'result' | 'error'>[] = [
     {
         id: 'transcription',
-        label: 'Transcription',
+        label: '🎙️ Transcription',
         description: 'Conversion de l\'audio en texte avec identification des intervenants',
+        icon: '🎙️',
     },
     {
-        id: 'analysis',
-        label: 'Analyse de structure',
+        id: 'identification',
+        label: '🔍 Identification',
+        description: 'Identification des locuteurs par empreinte vocale (ML)',
+        icon: '🔍',
+    },
+    {
+        id: 'cleaning',
+        label: '🧹 Nettoyage',
+        description: 'Nettoyage des répétitions, hallucinations et fusion des segments',
+        icon: '🧹',
+    },
+    {
+        id: 'odj_analysis',
+        label: '📋 Analyse ODJ',
         description: 'Association des discussions aux points de l\'ordre du jour',
+        icon: '📋',
     },
     {
-        id: 'extraction',
-        label: 'Extraction des résolutions',
-        description: 'Identification des résolutions, commentaires et votes',
+        id: 'classification',
+        label: '🏷️ Classification',
+        description: 'Catégorisation thématique et analyse de sentiment',
+        icon: '🏷️',
     },
     {
-        id: 'validation',
-        label: 'Validation croisée',
-        description: 'Vérification de la couverture et cohérence du PV',
+        id: 'drafting',
+        label: '✍️ Rédaction',
+        description: 'Génération du brouillon PV (résolutions, commentaires)',
+        icon: '✍️',
     },
     {
-        id: 'generation',
-        label: 'Génération finale',
-        description: 'Production du PV formaté selon le template CCE',
+        id: 'reflection',
+        label: '🔄 Réflexion',
+        description: 'Auto-critique et corrections automatiques (boucle)',
+        icon: '🔄',
+    },
+    {
+        id: 'user_validation',
+        label: '✅ Validation',
+        description: 'Point de contrôle humain — révision et approbation',
+        icon: '✅',
+    },
+    {
+        id: 'comparison',
+        label: '📊 Comparaison',
+        description: 'Vérification de cohérence avec les PV historiques',
+        icon: '📊',
+    },
+    {
+        id: 'learning',
+        label: '🧠 Apprentissage',
+        description: 'Mise à jour des modèles avec les corrections',
+        icon: '🧠',
     },
 ];
 
@@ -84,10 +140,11 @@ export const createInitialState = (meetingId: string, meetingNumber: number): Ag
     })),
     currentStepIndex: 0,
     results: {},
+    pipelineVersion: '2.0',
 });
 
 // ============================================================================
-// Step 1: Transcription
+// Step 1: TRANSCRIPTION — Audio → Text
 // ============================================================================
 
 export const runTranscriptionStep = async (
@@ -100,12 +157,12 @@ export const runTranscriptionStep = async (
             text: existingTranscription,
             duration: 0,
             speakers: extractSpeakersFromText(existingTranscription, config.members.map(m => m.displayName)),
+            engine: 'whisper',
         };
     }
 
     // If audio file provided, transcribe using existing service
     if (config.audioFile) {
-        // Use existing transcription service (Gemini)
         const { transcribeLocalFile } = await import('./geminiService');
         const result = await transcribeLocalFile(config.meeting.id, config.audioFile);
 
@@ -117,6 +174,7 @@ export const runTranscriptionStep = async (
             text: result.transcription,
             duration: 0,
             speakers: extractSpeakersFromText(result.transcription, config.members.map(m => m.displayName)),
+            engine: 'gemini',
         };
     }
 
@@ -142,45 +200,146 @@ const extractSpeakersFromText = (text: string, memberNames: string[]): string[] 
 };
 
 // ============================================================================
-// Step 2: Analysis (Map to ODJ)
+// Step 2: IDENTIFICATION — Speaker identification (delegates to Cloud Function)
 // ============================================================================
 
-export const runAnalysisStep = async (
+export const runIdentificationStep = async (
     config: AgentConfig,
     transcription: TranscriptionResult
-): Promise<AnalysisResult> => {
+): Promise<IdentificationResult> => {
+    // If transcription already has speaker labels mapped, use them
+    const speakerPattern = /\[?(Speaker|Locuteur|Intervenant)\s*(\d+|[A-Z])\]?\s*:/gi;
+    const matches = [...transcription.text.matchAll(speakerPattern)];
+    const uniqueLabels = new Set(matches.map(m => `${m[1]} ${m[2]}`));
+
+    // Build mapping from detected speakers
+    const speakerMapping: Record<string, string> = {};
+    const confidence: Record<string, number> = {};
+    const unidentified: string[] = [];
+
+    if (transcription.speakers && transcription.speakers.length > 0) {
+        // Map detected speakers to member names
+        for (const speaker of transcription.speakers) {
+            const memberMatch = config.members.find(m =>
+                m.displayName.toLowerCase().includes(speaker.toLowerCase()) ||
+                speaker.toLowerCase().includes(m.displayName.split(' ').pop()?.toLowerCase() || '')
+            );
+            if (memberMatch) {
+                speakerMapping[speaker] = memberMatch.displayName;
+                confidence[speaker] = 0.8;
+            } else {
+                unidentified.push(speaker);
+            }
+        }
+    }
+
+    // Also try to match speaker labels from transcription
+    for (const label of uniqueLabels) {
+        if (!speakerMapping[label]) {
+            unidentified.push(label);
+        }
+    }
+
+    return {
+        speakerMapping,
+        confidence,
+        unidentified,
+        totalSegments: matches.length || 1,
+        identifiedSegments: Object.keys(speakerMapping).length,
+    };
+};
+
+// ============================================================================
+// Step 3: CLEANING — Cleanup + merge segments
+// ============================================================================
+
+export const runCleaningStep = async (
+    _config: AgentConfig,
+    transcription: TranscriptionResult,
+    identification: IdentificationResult
+): Promise<CleaningResult> => {
+    let text = transcription.text;
+    let removedDuplicates = 0;
+    let mergedSegments = 0;
+    const hallucinations: string[] = [];
+
+    // 1. Remove repeated segments (Whisper hallucination pattern)
+    const lines = text.split('\n');
+    const cleanedLines: string[] = [];
+    let prevLine = '';
+
+    for (const line of lines) {
+        const trimmed = line.trim();
+        if (trimmed === prevLine && trimmed.length > 10) {
+            removedDuplicates++;
+            continue;
+        }
+        // Detect repeated phrases within a line
+        const repeatedPattern = /(.{20,}?)\1{2,}/g;
+        const cleaned = trimmed.replace(repeatedPattern, (match, group) => {
+            removedDuplicates++;
+            hallucinations.push(`Répétition détectée: "${group.substring(0, 50)}..."`);
+            return group;
+        });
+        cleanedLines.push(cleaned);
+        prevLine = trimmed;
+    }
+
+    text = cleanedLines.join('\n');
+
+    // 2. Apply speaker mapping (replace labels with real names)
+    for (const [label, name] of Object.entries(identification.speakerMapping)) {
+        const escapedLabel = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const regex = new RegExp(`\\[?${escapedLabel}\\]?\\s*:`, 'gi');
+        text = text.replace(regex, `${name} :`);
+        mergedSegments++;
+    }
+
+    // 3. Remove common Whisper hallucination patterns
+    const hallucinationPatterns = [
+        /(?:Merci d'avoir regardé|Thanks for watching|Sous-titres? réalisés?|Sous-titrage)[^\n]*/gi,
+        /(?:♪|🎵|🎶)[^\n]*/g,
+        /\[(?:Musique|Music|Applaudissements|Rires)\]/gi,
+    ];
+
+    for (const pattern of hallucinationPatterns) {
+        const matches = text.match(pattern);
+        if (matches) {
+            hallucinations.push(...matches.map(m => `Hallucination supprimée: "${m.substring(0, 50)}"`));
+            text = text.replace(pattern, '');
+            removedDuplicates += matches.length;
+        }
+    }
+
+    // 4. Clean up excessive whitespace
+    text = text.replace(/\n{3,}/g, '\n\n').trim();
+
+    return {
+        cleanedText: text,
+        removedDuplicates,
+        mergedSegments,
+        hallucinations,
+    };
+};
+
+// ============================================================================
+// Step 4: ANALYSE ODJ — Map discussions → ODJ items
+// ============================================================================
+
+export const runODJAnalysisStep = async (
+    config: AgentConfig,
+    cleaning: CleaningResult
+): Promise<ODJAnalysisResult> => {
     const groq = getGroq();
 
-    const odjTitles = config.meeting.agendaItems?.map((item, i) =>
-        `${i + 1}. ${item.title}`
-    ).join('\n') || 'Aucun ordre du jour défini';
+    const prompt = getODJAnalysisPrompt(
+        config.meeting,
+        cleaning.cleanedText,
+    );
 
     const { text: rawResult } = await generateText({
         model: groq('qwen/qwen3-32b'),
-        prompt: `Tu es un expert en analyse de procès-verbaux municipaux.
-
-ORDRE DU JOUR DE LA RÉUNION:
-${odjTitles}
-
-TRANSCRIPTION DE LA RÉUNION:
-${transcription.text.substring(0, 30000)}
-
-TÂCHE:
-Associe chaque segment de la transcription à un point de l'ordre du jour.
-Retourne un JSON avec cette structure:
-{
-  "mappedItems": [
-    {
-      "odjItemIndex": 0,
-      "odjTitle": "Titre du point",
-      "transcriptSegment": "Résumé du segment pertinent",
-      "confidence": 0.95
-    }
-  ],
-  "unmappedSegments": ["Segments qui ne correspondent à aucun point"]
-}
-
-Réponds UNIQUEMENT avec le JSON, sans markdown.`,
+        prompt,
         temperature: 0.3,
     });
 
@@ -189,7 +348,69 @@ Réponds UNIQUEMENT avec le JSON, sans markdown.`,
         let cleaned = rawResult.replace(/<think>[\s\S]*?<\/think>/g, '');
         cleaned = cleaned.replace(/```(?:json)?/g, '').replace(/```/g, '');
 
-        // Find JSON object
+        const start = cleaned.indexOf('{');
+        const end = cleaned.lastIndexOf('}');
+        if (start !== -1 && end !== -1 && end > start) {
+            cleaned = cleaned.substring(start, end + 1);
+        }
+
+        const parsed = JSON.parse(cleaned);
+
+        // Validate and enrich with actual ODJ item IDs
+        const mappedItems = (parsed.mappedItems || []).map((item: any) => {
+            const odjItem = config.meeting.agendaItems?.find(
+                a => a.id === item.odjItemId || a.title === item.odjTitle
+            );
+            return {
+                odjItemId: odjItem?.id || item.odjItemId || `odj-unknown`,
+                odjTitle: item.odjTitle || odjItem?.title || 'Sans titre',
+                odjOrder: item.odjOrder || odjItem?.order || 0,
+                transcriptSegments: Array.isArray(item.transcriptSegments)
+                    ? item.transcriptSegments
+                    : [item.transcriptSegment || ''],
+                speakers: item.speakers || [],
+                confidence: item.confidence || 0.5,
+            };
+        });
+
+        const odjCount = config.meeting.agendaItems?.length || 0;
+        const coveragePercent = odjCount > 0
+            ? (mappedItems.length / odjCount) * 100
+            : 100;
+
+        return {
+            mappedItems,
+            unmappedSegments: parsed.unmappedSegments || [],
+            coveragePercent: parsed.coveragePercent || coveragePercent,
+        };
+    } catch (e) {
+        console.error('Failed to parse ODJ analysis result:', e);
+        throw new Error('Échec de l\'analyse de structure ODJ');
+    }
+};
+
+// ============================================================================
+// Step 5: CLASSIFICATION — Thematic categorization + sentiment
+// ============================================================================
+
+export const runClassificationStep = async (
+    config: AgentConfig,
+    odjAnalysis: ODJAnalysisResult
+): Promise<ClassificationResult> => {
+    const groq = getGroq();
+
+    const prompt = getClassificationPrompt(config.meeting, odjAnalysis);
+
+    const { text: rawResult } = await generateText({
+        model: groq('qwen/qwen3-32b'),
+        prompt,
+        temperature: 0.3,
+    });
+
+    try {
+        let cleaned = rawResult.replace(/<think>[\s\S]*?<\/think>/g, '');
+        cleaned = cleaned.replace(/```(?:json)?/g, '').replace(/```/g, '');
+
         const start = cleaned.indexOf('{');
         const end = cleaned.lastIndexOf('}');
         if (start !== -1 && end !== -1 && end > start) {
@@ -199,185 +420,439 @@ Réponds UNIQUEMENT avec le JSON, sans markdown.`,
         const parsed = JSON.parse(cleaned);
 
         return {
-            mappedItems: parsed.mappedItems.map((item: any) => ({
-                odjItemId: config.meeting.agendaItems?.[item.odjItemIndex]?.id || `odj-${item.odjItemIndex}`,
-                odjTitle: item.odjTitle,
-                transcriptSegment: item.transcriptSegment,
-                confidence: item.confidence,
-            })),
-            unmappedSegments: parsed.unmappedSegments || [],
+            items: parsed.items || [],
+            globalThemes: parsed.globalThemes || [],
+            globalSentiment: parsed.globalSentiment || 'neutral',
         };
     } catch (e) {
-        console.error('Failed to parse analysis result:', e);
-        throw new Error('Échec de l\'analyse de structure');
+        console.error('Failed to parse classification result:', e);
+        throw new Error('Échec de la classification thématique');
     }
 };
 
 // ============================================================================
-// Step 3: Extraction (Resolutions/Comments)
+// Step 6: RÉDACTION — Generate PV draft
 // ============================================================================
 
-export const runExtractionStep = async (
-    _config: AgentConfig,
-    transcription: TranscriptionResult,
-    _analysis: AnalysisResult,
+export const runDraftingStep = async (
+    config: AgentConfig,
+    odjAnalysis: ODJAnalysisResult,
+    classification: ClassificationResult,
+    cleaning: CleaningResult,
     numbering: CCENumbering
-): Promise<ExtractionResult> => {
-    const claude = getClaude();
+): Promise<DraftingResult> => {
+    // Use Cloud Function for Claude (server-side API key)
+    const generateMinutes = httpsCallable(functions, 'generate_minutes_claude');
+
+    const systemPrompt = getDraftingSystemPrompt();
+    const userMessage = getDraftingUserPrompt(
+        config.meeting,
+        odjAnalysis,
+        classification,
+        numbering,
+        cleaning.cleanedText
+    );
+
+    const result = await generateMinutes({
+        systemPrompt,
+        userMessage,
+        meetingId: config.meeting.id,
+    });
+
+    const data = result.data as { success: boolean; content: string };
+
+    if (!data.success || !data.content) {
+        throw new Error('Échec de la génération du brouillon PV');
+    }
+
+    // Now extract structured data from the generated PV
+    const extractionResult = await extractStructuredData(data.content, numbering);
+
+    return {
+        pvContent: data.content,
+        ...extractionResult,
+    };
+};
+
+/** Helper: Extract structured data (resolutions, comments, attendees) from PV text */
+const extractStructuredData = async (
+    pvContent: string,
+    numbering: CCENumbering
+): Promise<Omit<DraftingResult, 'pvContent'>> => {
+    const groq = getGroq();
+
+    const prompt = getDraftingExtractionPrompt(pvContent, numbering);
 
     const { text: rawResult } = await generateText({
-        model: claude('claude-3-5-sonnet-20241022'),
-        prompt: `Tu es un rédacteur de procès-verbaux expert pour le Comité Consultatif en Environnement (CCE) de Val-d'Or.
-
-TRANSCRIPTION:
-${transcription.text.substring(0, 40000)}
-
-NUMÉROTATION CCE:
-- Assemblée #${numbering.assemblyNumber}
-- Prochaine résolution: ${numbering.assemblyNumber.toString().padStart(2, '0')}-${numbering.nextResolution.toString().padStart(2, '0')}
-- Prochain commentaire: ${numbering.assemblyNumber.toString().padStart(2, '0')}-${numbering.nextComment}
-
-RÈGLES:
-- Les RÉSOLUTIONS ont le format XX-NN (ex: 06-25, 06-26)
-- Les COMMENTAIRES ont le format XX-L (ex: 06-A, 06-B)
-- Chaque résolution doit avoir un proposeur et un secondeur si mentionné
-- Identifie les membres PRÉSENTS et ABSENTS
-
-TÂCHE:
-Extrais toutes les résolutions et commentaires de la transcription.
-
-FORMAT JSON ATTENDU:
-{
-  "resolutions": [
-    {
-      "number": "06-25",
-      "content": "Texte de la résolution...",
-      "proposer": "M. Ross",
-      "seconder": "Mme Boutin"
-    }
-  ],
-  "comments": [
-    {
-      "number": "06-A",
-      "content": "Compte rendu de la discussion..."
-    }
-  ],
-  "attendees": {
-    "present": ["M. Ross", "Mme Boutin"],
-    "absent": ["M. Ratté"]
-  }
-}
-
-Réponds UNIQUEMENT avec le JSON.`,
-        temperature: 0.2,
+        model: groq('qwen/qwen3-32b'),
+        prompt,
+        temperature: 0.1,
     });
 
     try {
-        const parsed = JSON.parse(rawResult.replace(/```json\n?|\n?```/g, ''));
-        return parsed as ExtractionResult;
-    } catch (e) {
-        console.error('Failed to parse extraction result:', e);
-        throw new Error('Échec de l\'extraction des résolutions');
-    }
-};
+        let cleaned = rawResult.replace(/<think>[\s\S]*?<\/think>/g, '');
+        cleaned = cleaned.replace(/```(?:json)?/g, '').replace(/```/g, '');
 
-// ============================================================================
-// Step 4: Validation
-// ============================================================================
-
-export const runValidationStep = async (
-    config: AgentConfig,
-    analysis: AnalysisResult,
-    extraction: ExtractionResult
-): Promise<ValidationResult> => {
-    const odjCount = config.meeting.agendaItems?.length || 0;
-    const coveredCount = analysis.mappedItems.length;
-    const coverage = odjCount > 0 ? (coveredCount / odjCount) * 100 : 100;
-
-    const warnings: string[] = [];
-    const suggestions: string[] = [];
-
-    // Check coverage
-    if (coverage < 100) {
-        const missing = odjCount - coveredCount;
-        warnings.push(`${missing} point(s) de l'ordre du jour non couvert(s)`);
-    }
-
-    // Check resolutions have proposer/seconder
-    for (const res of extraction.resolutions) {
-        if (!res.proposer) {
-            warnings.push(`Résolution ${res.number}: proposeur manquant`);
-        }
-        if (!res.seconder) {
-            warnings.push(`Résolution ${res.number}: secondeur manquant`);
-        }
-    }
-
-    // Check attendees
-    if (extraction.attendees.present.length === 0) {
-        warnings.push('Aucun membre présent identifié');
-    }
-
-    // Confidence check
-    const lowConfidence = analysis.mappedItems.filter(m => m.confidence < 0.7);
-    if (lowConfidence.length > 0) {
-        suggestions.push(`${lowConfidence.length} association(s) avec faible confiance - vérifiez manuellement`);
-    }
-
-    return {
-        isValid: warnings.length === 0,
-        coverage,
-        warnings,
-        suggestions,
-    };
-};
-
-// ============================================================================
-// Step 5: Generation
-// ============================================================================
-
-export const runGenerationStep = async (
-    config: AgentConfig,
-    analysis: AnalysisResult,
-    extraction: ExtractionResult
-): Promise<GenerationResult> => {
-    // Map extraction results to agenda items
-    const updatedAgendaItems: AgendaItem[] = (config.meeting.agendaItems || []).map(item => {
-        const mapped = analysis.mappedItems.find(m => m.odjItemId === item.id);
-
-        if (!mapped) {
-            return item;
+        const start = cleaned.indexOf('{');
+        const end = cleaned.lastIndexOf('}');
+        if (start !== -1 && end !== -1 && end > start) {
+            cleaned = cleaned.substring(start, end + 1);
         }
 
-        // Find resolutions/comments for this item
-        const minuteEntries: MinuteEntry[] = [];
-
-        // For simplicity, we'll distribute resolutions/comments to items
-        // In production, the AI should specify which resolution belongs to which item
+        const parsed = JSON.parse(cleaned);
 
         return {
-            ...item,
-            decision: mapped.transcriptSegment,
-            minuteEntries,
+            resolutions: parsed.resolutions || [],
+            comments: parsed.comments || [],
+            attendees: parsed.attendees || { present: [], absent: [], guests: [] },
+            header: parsed.header || {
+                assemblyNumber: numbering.assemblyNumber,
+                assemblyType: 'ordinaire',
+                date: '',
+                time: '',
+                location: '',
+            },
         };
-    });
+    } catch (e) {
+        console.error('Failed to extract structured data:', e);
+        // Return minimal structure if extraction fails
+        return {
+            resolutions: [],
+            comments: [],
+            attendees: { present: [], absent: [], guests: [] },
+            header: {
+                assemblyNumber: numbering.assemblyNumber,
+                assemblyType: 'ordinaire',
+                date: '',
+                time: '',
+                location: '',
+            },
+        };
+    }
+};
 
-    // Generate global notes (introduction)
-    const globalNotes = `Assemblée du Comité Consultatif en Environnement (CCE)
+// ============================================================================
+// Step 7: RÉFLEXION — Self-critique + auto-corrections (loop)
+// ============================================================================
 
-ÉTAIENT PRÉSENTS:
-${extraction.attendees.present.join(', ')}
+export const runReflectionStep = async (
+    config: AgentConfig,
+    drafting: DraftingResult,
+    cleaning: CleaningResult,
+    maxIterations: number = 3
+): Promise<ReflectionResult> => {
+    const iterations: ReflectionResult['iterations'] = [];
+    let currentContent = drafting.pvContent;
+    let totalIssuesFound = 0;
+    let totalIssuesFixed = 0;
+    let qualityScore = 0;
+    const previousIssuesSummary: string[] = [];
 
-${extraction.attendees.absent.length > 0 ? `ÉTAIENT ABSENTS:\n${extraction.attendees.absent.join(', ')}` : ''}`;
+    for (let i = 1; i <= maxIterations; i++) {
+        config.onProgress?.('reflection', Math.round((i / maxIterations) * 100));
+
+        const generateMinutes = httpsCallable(functions, 'chat_claude');
+
+        const prompt = getReflectionPrompt(
+            currentContent,
+            cleaning.cleanedText,
+            i,
+            previousIssuesSummary.length > 0 ? previousIssuesSummary.join('\n') : undefined
+        );
+
+        const result = await generateMinutes({
+            systemPrompt: 'Tu es un réviseur expert de procès-verbaux municipaux. Réponds UNIQUEMENT en JSON valide.',
+            userMessage: prompt,
+        });
+
+        const data = result.data as { success: boolean; content: string };
+
+        if (!data.success || !data.content) {
+            console.warn(`Reflection iteration ${i} failed, stopping loop`);
+            break;
+        }
+
+        try {
+            let cleaned = data.content.replace(/```(?:json)?/g, '').replace(/```/g, '');
+            const start = cleaned.indexOf('{');
+            const end = cleaned.lastIndexOf('}');
+            if (start !== -1 && end !== -1 && end > start) {
+                cleaned = cleaned.substring(start, end + 1);
+            }
+
+            const parsed = JSON.parse(cleaned);
+            const issues = (parsed.issues || []).map((issue: any) => ({
+                ...issue,
+                applied: issue.applied ?? true,
+            }));
+
+            qualityScore = parsed.qualityScore || 0;
+
+            iterations.push({
+                iterationNumber: i,
+                issues,
+                correctedContent: parsed.correctedContent || currentContent,
+            });
+
+            totalIssuesFound += issues.length;
+            totalIssuesFixed += issues.filter((issue: any) => issue.applied).length;
+
+            // Track previous issues to avoid repetition
+            previousIssuesSummary.push(
+                ...issues.map((issue: any) => `- [${issue.type}] ${issue.description}`)
+            );
+
+            // Update content for next iteration
+            if (parsed.correctedContent) {
+                currentContent = parsed.correctedContent;
+            }
+
+            // Stop early if quality is high enough or no issues found
+            if (qualityScore >= 90 || issues.length === 0) {
+                console.log(`Reflection stopped at iteration ${i}: score=${qualityScore}, issues=${issues.length}`);
+                break;
+            }
+        } catch (e) {
+            console.error(`Failed to parse reflection iteration ${i}:`, e);
+            break;
+        }
+    }
 
     return {
-        agendaItems: updatedAgendaItems,
-        globalNotes,
+        iterations,
+        totalIssuesFound,
+        totalIssuesFixed,
+        finalContent: currentContent,
+        qualityScore,
     };
 };
 
 // ============================================================================
-// Main Orchestrator
+// Step 8: VALIDATION USER — Human checkpoint (handled by UI)
+// ============================================================================
+
+// This step is entirely handled by the UI through the onValidationRequired callback.
+// The result is populated when the user approves/rejects.
+
+// ============================================================================
+// Step 9: COMPARAISON — Historical PV consistency check
+// ============================================================================
+
+export const runComparisonStep = async (
+    config: AgentConfig,
+    currentPVContent: string,
+    meetingNumber: number
+): Promise<ComparisonResult> => {
+    // 1. Fetch historical PVs from Firestore
+    const historicalPVs = await fetchHistoricalPVs(config.meeting.id, 3);
+
+    if (historicalPVs.length === 0) {
+        // No historical PVs to compare with
+        return {
+            historicalPVs: [],
+            consistencyChecks: [{
+                type: 'format',
+                status: 'pass',
+                message: 'Aucun PV historique disponible pour comparaison',
+            }],
+            formatScore: 100,
+            corrections: [],
+            finalContent: currentPVContent,
+        };
+    }
+
+    // 2. Run comparison via Claude
+    const chatClaude = httpsCallable(functions, 'chat_claude');
+
+    const prompt = getComparisonPrompt(
+        currentPVContent,
+        historicalPVs.map(pv => ({ date: pv.date, content: pv.content })),
+        meetingNumber
+    );
+
+    const result = await chatClaude({
+        systemPrompt: 'Tu es un expert en contrôle qualité de procès-verbaux municipaux. Réponds UNIQUEMENT en JSON valide.',
+        userMessage: prompt,
+    });
+
+    const data = result.data as { success: boolean; content: string };
+
+    if (!data.success || !data.content) {
+        throw new Error('Échec de la comparaison historique');
+    }
+
+    try {
+        let cleaned = data.content.replace(/```(?:json)?/g, '').replace(/```/g, '');
+        const start = cleaned.indexOf('{');
+        const end = cleaned.lastIndexOf('}');
+        if (start !== -1 && end !== -1 && end > start) {
+            cleaned = cleaned.substring(start, end + 1);
+        }
+
+        const parsed = JSON.parse(cleaned);
+
+        return {
+            historicalPVs: historicalPVs.map(pv => ({
+                meetingId: pv.meetingId,
+                meetingDate: pv.date,
+                meetingTitle: pv.title,
+                similarity: 0.8, // Could be computed with embeddings
+            })),
+            consistencyChecks: parsed.consistencyChecks || [],
+            formatScore: parsed.formatScore || 0,
+            corrections: parsed.corrections || [],
+            finalContent: parsed.correctedContent || currentPVContent,
+        };
+    } catch (e) {
+        console.error('Failed to parse comparison result:', e);
+        return {
+            historicalPVs: historicalPVs.map(pv => ({
+                meetingId: pv.meetingId,
+                meetingDate: pv.date,
+                meetingTitle: pv.title,
+                similarity: 0,
+            })),
+            consistencyChecks: [],
+            formatScore: 0,
+            corrections: [],
+            finalContent: currentPVContent,
+        };
+    }
+};
+
+/** Helper: Fetch historical PVs from Firestore */
+const fetchHistoricalPVs = async (
+    currentMeetingId: string,
+    count: number
+): Promise<Array<{ meetingId: string; date: string; title: string; content: string }>> => {
+    try {
+        const meetingsRef = collection(db, 'meetings');
+        const q = query(
+            meetingsRef,
+            orderBy('date', 'desc'),
+            limit(count + 1) // +1 to exclude current meeting
+        );
+
+        const snapshot = await getDocs(q);
+        const results: Array<{ meetingId: string; date: string; title: string; content: string }> = [];
+
+        for (const doc of snapshot.docs) {
+            if (doc.id === currentMeetingId) continue;
+            const data = doc.data();
+            const minutes = data.minutes || data.minutesDraft?.content;
+            if (minutes && minutes.length > 100) {
+                results.push({
+                    meetingId: doc.id,
+                    date: data.date || '',
+                    title: data.title || 'Sans titre',
+                    content: minutes,
+                });
+            }
+            if (results.length >= count) break;
+        }
+
+        return results;
+    } catch (e) {
+        console.error('Failed to fetch historical PVs:', e);
+        return [];
+    }
+};
+
+// ============================================================================
+// Step 10: APPRENTISSAGE — Update models with corrections
+// ============================================================================
+
+export const runLearningStep = async (
+    config: AgentConfig,
+    reflection: ReflectionResult,
+    comparison: ComparisonResult,
+    userValidation: UserValidationResult
+): Promise<LearningResult> => {
+    const modelsUpdated: string[] = [];
+    let stylePatterns = 0;
+    let terminologyUpdates = 0;
+    const nextMeetingHints: string[] = [];
+
+    try {
+        // 1. Record feedback in Firestore via Cloud Function
+        const closedFeedbackLoop = httpsCallable(functions, 'closed_feedback_loop');
+
+        // Collect all corrections from reflection + comparison
+        const allCorrections = [
+            ...reflection.iterations.flatMap(it => it.issues.map(issue => ({
+                type: issue.type,
+                description: issue.description,
+                fix: issue.suggestedFix,
+                source: 'reflection',
+            }))),
+            ...comparison.corrections.map(c => ({
+                type: 'format',
+                description: c.reason,
+                fix: `${c.before} → ${c.after}`,
+                source: 'comparison',
+            })),
+        ];
+
+        if (allCorrections.length > 0) {
+            await closedFeedbackLoop({
+                meetingId: config.meeting.id,
+                corrections: allCorrections,
+                userFeedback: userValidation.userComments || '',
+                qualityScore: reflection.qualityScore,
+                formatScore: comparison.formatScore,
+            });
+            modelsUpdated.push('feedback_model');
+        }
+
+        // 2. Extract style patterns from corrections
+        const styleIssues = reflection.iterations
+            .flatMap(it => it.issues)
+            .filter(issue => issue.type === 'style' || issue.type === 'formatting');
+        stylePatterns = styleIssues.length;
+
+        if (stylePatterns > 0) {
+            modelsUpdated.push('style_patterns');
+        }
+
+        // 3. Extract terminology updates
+        const terminologyIssues = comparison.consistencyChecks
+            .filter(check => check.type === 'terminology');
+        terminologyUpdates = terminologyIssues.length;
+
+        if (terminologyUpdates > 0) {
+            modelsUpdated.push('terminology_model');
+        }
+
+        // 4. Generate hints for next meeting
+        if (reflection.qualityScore < 80) {
+            nextMeetingHints.push('Améliorer la qualité audio pour une meilleure transcription');
+        }
+        if (comparison.formatScore < 80) {
+            nextMeetingHints.push('Revoir le format du PV pour plus de cohérence avec les précédents');
+        }
+
+        const lowConfidenceItems = comparison.consistencyChecks
+            .filter(c => c.status === 'warning' || c.status === 'fail');
+        if (lowConfidenceItems.length > 0) {
+            nextMeetingHints.push(`${lowConfidenceItems.length} point(s) de cohérence à surveiller`);
+        }
+
+    } catch (e) {
+        console.error('Learning step partial failure:', e);
+        // Learning is non-critical, don't throw
+    }
+
+    return {
+        modelsUpdated,
+        feedbackRecorded: modelsUpdated.length > 0,
+        stylePatterns,
+        terminologyUpdates,
+        nextMeetingHints,
+    };
+};
+
+// ============================================================================
+// Main Orchestrator — 10-step pipeline
 // ============================================================================
 
 export const runPVAgent = async (
@@ -386,6 +861,7 @@ export const runPVAgent = async (
     onStateChange: (state: AgentState) => void
 ): Promise<AgentState> => {
     let currentState: AgentState = { ...state, startedAt: new Date() };
+    const startTime = Date.now();
 
     const numbering: CCENumbering = {
         assemblyNumber: currentState.meetingNumber,
@@ -393,113 +869,257 @@ export const runPVAgent = async (
         nextComment: 'A',
     };
 
+    const maxReflectionIterations = config.maxReflectionIterations ?? 3;
+
     try {
-        // Step 1: Transcription
-        currentState = updateStepStatus(currentState, 'transcription', 'running');
+        // ================================================================
+        // STEP 1: TRANSCRIPTION
+        // ================================================================
+        if (config.skipTranscription && config.existingTranscription) {
+            currentState = updateStepStatus(currentState, 'transcription', 'skipped');
+            currentState = updateStepResult(currentState, 'transcription', {
+                text: config.existingTranscription,
+                duration: 0,
+                speakers: extractSpeakersFromText(config.existingTranscription, config.members.map(m => m.displayName)),
+            }, 'skipped');
+            onStateChange(currentState);
+        } else {
+            currentState = updateStepStatus(currentState, 'transcription', 'running');
+            onStateChange(currentState);
+
+            const transcription = await runTranscriptionStep(
+                config,
+                config.existingTranscription || config.meeting.audioRecording?.transcription
+            );
+
+            currentState = updateStepResult(currentState, 'transcription', transcription, 'awaiting');
+            onStateChange(currentState);
+
+            if (config.onValidationRequired) {
+                const validationResult = await config.onValidationRequired('transcription', transcription);
+                if (validationResult === false) throw new Error('Étape annulée par l\'utilisateur');
+                if (validationResult !== true && typeof validationResult === 'object') {
+                    currentState = updateStepResult(currentState, 'transcription', validationResult, 'awaiting');
+                }
+            }
+
+            currentState = updateStepStatus(currentState, 'transcription', 'completed');
+            onStateChange(currentState);
+        }
+
+        const transcriptionResult = currentState.results.transcription!;
+
+        // ================================================================
+        // STEP 2: IDENTIFICATION
+        // ================================================================
+        if (config.skipIdentification) {
+            currentState = updateStepStatus(currentState, 'identification', 'skipped');
+            currentState = updateStepResult(currentState, 'identification', {
+                speakerMapping: {},
+                confidence: {},
+                unidentified: [],
+                totalSegments: 0,
+                identifiedSegments: 0,
+            }, 'skipped');
+            onStateChange(currentState);
+        } else {
+            currentState = updateStepStatus(currentState, 'identification', 'running');
+            onStateChange(currentState);
+
+            const identification = await runIdentificationStep(config, transcriptionResult);
+
+            currentState = updateStepResult(currentState, 'identification', identification, 'completed');
+            onStateChange(currentState);
+        }
+
+        const identificationResult = currentState.results.identification!;
+
+        // ================================================================
+        // STEP 3: CLEANING
+        // ================================================================
+        currentState = updateStepStatus(currentState, 'cleaning', 'running');
         onStateChange(currentState);
 
-        const transcription = await runTranscriptionStep(
+        const cleaning = await runCleaningStep(config, transcriptionResult, identificationResult);
+
+        currentState = updateStepResult(currentState, 'cleaning', cleaning, 'completed');
+        onStateChange(currentState);
+
+        // ================================================================
+        // STEP 4: ANALYSE ODJ
+        // ================================================================
+        currentState = updateStepStatus(currentState, 'odj_analysis', 'running');
+        onStateChange(currentState);
+
+        const odjAnalysis = await runODJAnalysisStep(config, cleaning);
+
+        currentState = updateStepResult(currentState, 'odj_analysis', odjAnalysis, 'awaiting');
+        onStateChange(currentState);
+
+        // User validation for ODJ analysis
+        if (config.onValidationRequired) {
+            const validationResult = await config.onValidationRequired('odj_analysis', odjAnalysis);
+            if (validationResult === false) throw new Error('Étape annulée par l\'utilisateur');
+            if (validationResult !== true && typeof validationResult === 'object') {
+                currentState = updateStepResult(currentState, 'odj_analysis', validationResult, 'awaiting');
+            }
+        }
+
+        currentState = updateStepStatus(currentState, 'odj_analysis', 'completed');
+        onStateChange(currentState);
+
+        const finalODJAnalysis = currentState.results.odj_analysis!;
+
+        // ================================================================
+        // STEP 5: CLASSIFICATION
+        // ================================================================
+        currentState = updateStepStatus(currentState, 'classification', 'running');
+        onStateChange(currentState);
+
+        const classification = await runClassificationStep(config, finalODJAnalysis);
+
+        currentState = updateStepResult(currentState, 'classification', classification, 'completed');
+        onStateChange(currentState);
+
+        // ================================================================
+        // STEP 6: RÉDACTION
+        // ================================================================
+        currentState = updateStepStatus(currentState, 'drafting', 'running');
+        onStateChange(currentState);
+
+        const drafting = await runDraftingStep(
             config,
-            config.existingTranscription || config.meeting.audioRecording?.transcription
+            finalODJAnalysis,
+            classification,
+            cleaning,
+            numbering
         );
 
-        currentState = updateStepResult(currentState, 'transcription', transcription, 'awaiting');
+        currentState = updateStepResult(currentState, 'drafting', drafting, 'completed');
         onStateChange(currentState);
 
-        // Wait for validation (handled by UI)
-        if (config.onValidationRequired) {
-            const validationResult = await config.onValidationRequired('transcription', transcription);
-            if (validationResult === false) throw new Error('Étape annulée par l\'utilisateur');
+        // ================================================================
+        // STEP 7: RÉFLEXION (loop)
+        // ================================================================
+        currentState = updateStepStatus(currentState, 'reflection', 'running');
+        onStateChange(currentState);
 
-            // If user modified the result, update it
-            if (validationResult !== true && typeof validationResult === 'object') {
-                currentState = updateStepResult(currentState, 'transcription', validationResult, 'awaiting');
+        const reflection = await runReflectionStep(
+            config,
+            drafting,
+            cleaning,
+            maxReflectionIterations
+        );
+
+        currentState = updateStepResult(currentState, 'reflection', reflection, 'completed');
+        onStateChange(currentState);
+
+        // ================================================================
+        // STEP 8: VALIDATION USER
+        // ================================================================
+        currentState = updateStepStatus(currentState, 'user_validation', 'awaiting');
+        onStateChange(currentState);
+
+        let userValidation: UserValidationResult = {
+            approved: true,
+            validatedAt: new Date().toISOString(),
+        };
+
+        if (config.onValidationRequired) {
+            const validationResult = await config.onValidationRequired('user_validation', {
+                pvContent: reflection.finalContent,
+                qualityScore: reflection.qualityScore,
+                drafting,
+                reflection,
+            });
+
+            if (validationResult === false) {
+                throw new Error('PV rejeté par l\'utilisateur');
+            }
+
+            if (typeof validationResult === 'object' && validationResult !== null) {
+                userValidation = {
+                    approved: true,
+                    userEdits: (validationResult as any).userEdits,
+                    userComments: (validationResult as any).userComments,
+                    validatedAt: new Date().toISOString(),
+                };
             }
         }
 
-        currentState = updateStepStatus(currentState, 'transcription', 'completed');
+        currentState = updateStepResult(currentState, 'user_validation', userValidation, 'completed');
         onStateChange(currentState);
 
-        // Step 2: Analysis
-        currentState = updateStepStatus(currentState, 'analysis', 'running');
-        onStateChange(currentState);
+        // Use user-edited content if provided
+        const finalPVContent = userValidation.userEdits || reflection.finalContent;
 
-        const analysis = await runAnalysisStep(config, transcription);
+        // ================================================================
+        // STEP 9: COMPARAISON (optional)
+        // ================================================================
+        let comparison: ComparisonResult;
 
-        currentState = updateStepResult(currentState, 'analysis', analysis, 'awaiting');
-        onStateChange(currentState);
+        if (config.enableHistoricalComparison !== false) {
+            currentState = updateStepStatus(currentState, 'comparison', 'running');
+            onStateChange(currentState);
 
-        if (config.onValidationRequired) {
-            const validationResult = await config.onValidationRequired('analysis', analysis);
-            if (validationResult === false) throw new Error('Étape annulée par l\'utilisateur');
+            comparison = await runComparisonStep(
+                config,
+                finalPVContent,
+                currentState.meetingNumber
+            );
 
-            // If user modified the result, update it
-            if (validationResult !== true && typeof validationResult === 'object') {
-                currentState = updateStepResult(currentState, 'analysis', validationResult, 'awaiting');
-            }
+            currentState = updateStepResult(currentState, 'comparison', comparison, 'completed');
+            onStateChange(currentState);
+        } else {
+            comparison = {
+                historicalPVs: [],
+                consistencyChecks: [],
+                formatScore: 100,
+                corrections: [],
+                finalContent: finalPVContent,
+            };
+            currentState = updateStepStatus(currentState, 'comparison', 'skipped');
+            currentState = updateStepResult(currentState, 'comparison', comparison, 'skipped');
+            onStateChange(currentState);
         }
 
-        currentState = updateStepStatus(currentState, 'analysis', 'completed');
-        onStateChange(currentState);
+        // ================================================================
+        // STEP 10: APPRENTISSAGE (optional)
+        // ================================================================
+        let learning: LearningResult;
 
-        // Step 3: Extraction
-        currentState = updateStepStatus(currentState, 'extraction', 'running');
-        onStateChange(currentState);
+        if (config.enableLearning !== false) {
+            currentState = updateStepStatus(currentState, 'learning', 'running');
+            onStateChange(currentState);
 
-        const extraction = await runExtractionStep(config, transcription, analysis, numbering);
+            learning = await runLearningStep(config, reflection, comparison, userValidation);
 
-        currentState = updateStepResult(currentState, 'extraction', extraction, 'awaiting');
-        onStateChange(currentState);
-
-        if (config.onValidationRequired) {
-            const validationResult = await config.onValidationRequired('extraction', extraction);
-            if (validationResult === false) throw new Error('Étape annulée par l\'utilisateur');
-
-            // If user modified the result, update it
-            if (validationResult !== true && typeof validationResult === 'object') {
-                currentState = updateStepResult(currentState, 'extraction', validationResult, 'awaiting');
-            }
+            currentState = updateStepResult(currentState, 'learning', learning, 'completed');
+            onStateChange(currentState);
+        } else {
+            learning = {
+                modelsUpdated: [],
+                feedbackRecorded: false,
+                stylePatterns: 0,
+                terminologyUpdates: 0,
+                nextMeetingHints: [],
+            };
+            currentState = updateStepStatus(currentState, 'learning', 'skipped');
+            currentState = updateStepResult(currentState, 'learning', learning, 'skipped');
+            onStateChange(currentState);
         }
 
-        currentState = updateStepStatus(currentState, 'extraction', 'completed');
-        onStateChange(currentState);
-
-        // Step 4: Validation
-        currentState = updateStepStatus(currentState, 'validation', 'running');
-        onStateChange(currentState);
-
-        const validation = await runValidationStep(config, analysis, extraction);
-
-        currentState = updateStepResult(currentState, 'validation', validation, 'awaiting');
-        onStateChange(currentState);
-
-        if (config.onValidationRequired) {
-            const validationResult = await config.onValidationRequired('validation', validation);
-            if (validationResult === false) throw new Error('Étape annulée par l\'utilisateur');
-
-            // If user modified the result, update it
-            if (validationResult !== true && typeof validationResult === 'object') {
-                currentState = updateStepResult(currentState, 'validation', validationResult, 'awaiting');
-            }
-        }
-
-        currentState = updateStepStatus(currentState, 'validation', 'completed');
-        onStateChange(currentState);
-
-        // Step 5: Generation
-        currentState = updateStepStatus(currentState, 'generation', 'running');
-        onStateChange(currentState);
-
-        const generation = await runGenerationStep(config, analysis, extraction);
-
-        currentState = updateStepResult(currentState, 'generation', generation, 'completed');
+        // ================================================================
+        // PIPELINE COMPLETE
+        // ================================================================
         currentState.completedAt = new Date();
+        currentState.totalDuration = Date.now() - startTime;
         onStateChange(currentState);
 
         return currentState;
 
     } catch (error) {
-        const stepId = currentState.steps.find(s => s.status === 'running')?.id;
+        const stepId = currentState.steps.find(s => s.status === 'running' || s.status === 'awaiting')?.id;
         if (stepId) {
             currentState = updateStepStatus(currentState, stepId, 'error');
             currentState.steps = currentState.steps.map(s =>

@@ -1,3 +1,10 @@
+/**
+ * AnalysisValidator — Validation de l'analyse ODJ (Step 4)
+ *
+ * Permet à l'utilisateur de vérifier et corriger l'association
+ * entre les points de l'ordre du jour et les segments de transcription.
+ * Compatible avec le nouveau type ODJAnalysisResult.
+ */
 
 import React, { useState } from 'react';
 import {
@@ -8,33 +15,33 @@ import {
     Chip,
     IconButton,
     TextField,
-    Button
+    Button,
 } from '@mui/material';
 import {
     Edit as EditIcon,
     Check as CheckIcon,
-    Close as CloseIcon
+    Close as CloseIcon,
 } from '@mui/icons-material';
 import type { AgendaItem } from '../../../types/meeting.types';
-import type { AnalysisResult } from '../../../types/pvAgent.types';
+import type { ODJAnalysisResult } from '../../../types/pvAgent.types';
 
 interface AnalysisValidatorProps {
-    analysis: AnalysisResult;
+    analysis: ODJAnalysisResult;
     agendaItems: AgendaItem[];
-    onChange: (updatedAnalysis: AnalysisResult) => void;
+    onChange: (updatedAnalysis: ODJAnalysisResult) => void;
 }
 
 const AnalysisValidator: React.FC<AnalysisValidatorProps> = ({
     analysis,
     agendaItems,
-    onChange
+    onChange,
 }) => {
     const [editingId, setEditingId] = useState<string | null>(null);
     const [editValue, setEditValue] = useState('');
 
-    const handleEditStart = (odjId: string, currentText: string) => {
+    const handleEditStart = (odjId: string, currentSegments: string[]) => {
         setEditingId(odjId);
-        setEditValue(currentText);
+        setEditValue(currentSegments.join('\n\n'));
     };
 
     const handleEditSave = () => {
@@ -42,18 +49,19 @@ const AnalysisValidator: React.FC<AnalysisValidatorProps> = ({
 
         const updatedMapped = analysis.mappedItems.map(item =>
             item.odjItemId === editingId
-                ? { ...item, transcriptSegment: editValue }
+                ? {
+                    ...item,
+                    transcriptSegments: editValue.split('\n\n').filter(s => s.trim()),
+                }
                 : item
         );
 
         onChange({
             ...analysis,
-            mappedItems: updatedMapped
+            mappedItems: updatedMapped,
         });
         setEditingId(null);
     };
-
-
 
     return (
         <Box>
@@ -61,10 +69,26 @@ const AnalysisValidator: React.FC<AnalysisValidatorProps> = ({
                 Vérifiez et corrigez l'association entre les points de l'ordre du jour et les discussions.
             </Typography>
 
+            {/* Coverage indicator */}
+            {analysis.coveragePercent !== undefined && (
+                <Chip
+                    label={`Couverture: ${analysis.coveragePercent.toFixed(0)}%`}
+                    color={analysis.coveragePercent >= 90 ? 'success' : analysis.coveragePercent >= 70 ? 'warning' : 'error'}
+                    size="small"
+                    sx={{ mb: 2 }}
+                />
+            )}
+
             <List disablePadding>
                 {agendaItems.map((item, index) => {
                     const mapped = analysis.mappedItems.find(m => m.odjItemId === item.id);
                     const isEditing = editingId === item.id;
+
+                    // Support both old (transcriptSegment) and new (transcriptSegments) format
+                    const segments = mapped?.transcriptSegments
+                        || (mapped as any)?.transcriptSegment
+                            ? [(mapped as any).transcriptSegment]
+                            : [];
 
                     return (
                         <Paper key={item.id} variant="outlined" sx={{ mb: 2, overflow: 'hidden' }}>
@@ -74,20 +98,30 @@ const AnalysisValidator: React.FC<AnalysisValidatorProps> = ({
                                 color: mapped ? 'success.contrastText' : 'text.primary',
                                 display: 'flex',
                                 alignItems: 'center',
-                                justifyContent: 'space-between'
+                                justifyContent: 'space-between',
                             }}>
                                 <Typography variant="subtitle2" fontWeight="bold">
                                     {index + 1}. {item.title}
                                 </Typography>
-                                {mapped && (
-                                    <Chip
-                                        label={`${(mapped.confidence * 100).toFixed(0)}% confiance`}
-                                        size="small"
-                                        color={mapped.confidence > 0.8 ? 'success' : 'warning'}
-                                        variant="outlined"
-                                        sx={{ bgcolor: 'white', border: 'none' }}
-                                    />
-                                )}
+                                <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center' }}>
+                                    {mapped?.speakers && mapped.speakers.length > 0 && (
+                                        <Chip
+                                            label={`${mapped.speakers.length} intervenant(s)`}
+                                            size="small"
+                                            variant="outlined"
+                                            sx={{ bgcolor: 'white', border: 'none' }}
+                                        />
+                                    )}
+                                    {mapped && (
+                                        <Chip
+                                            label={`${((mapped.confidence || 0) * 100).toFixed(0)}% confiance`}
+                                            size="small"
+                                            color={mapped.confidence > 0.8 ? 'success' : 'warning'}
+                                            variant="outlined"
+                                            sx={{ bgcolor: 'white', border: 'none' }}
+                                        />
+                                    )}
+                                </Box>
                             </Box>
 
                             {mapped ? (
@@ -103,6 +137,7 @@ const AnalysisValidator: React.FC<AnalysisValidatorProps> = ({
                                                 variant="outlined"
                                                 size="small"
                                                 autoFocus
+                                                helperText="Séparez les segments par une ligne vide"
                                             />
                                             <Box sx={{ mt: 1, display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
                                                 <Button size="small" onClick={() => setEditingId(null)} startIcon={<CloseIcon />}>
@@ -115,10 +150,40 @@ const AnalysisValidator: React.FC<AnalysisValidatorProps> = ({
                                         </Box>
                                     ) : (
                                         <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1 }}>
-                                            <Typography variant="body2" sx={{ flexGrow: 1, whiteSpace: 'pre-wrap' }}>
-                                                {mapped.transcriptSegment}
-                                            </Typography>
-                                            <IconButton size="small" onClick={() => handleEditStart(item.id, mapped.transcriptSegment)}>
+                                            <Box sx={{ flexGrow: 1 }}>
+                                                {(mapped.transcriptSegments || segments).map((seg: string, i: number) => (
+                                                    <Typography
+                                                        key={i}
+                                                        variant="body2"
+                                                        sx={{
+                                                            whiteSpace: 'pre-wrap',
+                                                            mb: i < (mapped.transcriptSegments || segments).length - 1 ? 1 : 0,
+                                                            pl: 1,
+                                                            borderLeft: '2px solid',
+                                                            borderColor: 'divider',
+                                                        }}
+                                                    >
+                                                        {seg}
+                                                    </Typography>
+                                                ))}
+                                                {mapped.speakers && mapped.speakers.length > 0 && (
+                                                    <Box sx={{ mt: 1, display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
+                                                        {mapped.speakers.map((speaker: string, i: number) => (
+                                                            <Chip
+                                                                key={i}
+                                                                label={speaker}
+                                                                size="small"
+                                                                variant="outlined"
+                                                                color="primary"
+                                                            />
+                                                        ))}
+                                                    </Box>
+                                                )}
+                                            </Box>
+                                            <IconButton
+                                                size="small"
+                                                onClick={() => handleEditStart(item.id, mapped.transcriptSegments || segments)}
+                                            >
                                                 <EditIcon fontSize="small" />
                                             </IconButton>
                                         </Box>

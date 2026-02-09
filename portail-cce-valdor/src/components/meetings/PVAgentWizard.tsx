@@ -1,8 +1,8 @@
 /**
- * PV Agent Wizard Component
- * 
- * Full-screen wizard UI for the SmartPV Agent 5-step workflow.
- * Shows progress, step details, and validation controls.
+ * PV Agent Wizard Component — Pipeline complet en 10 étapes
+ *
+ * Full-screen wizard UI for the SmartPV Agent 10-step workflow.
+ * Shows progress, step details, validation controls, and loop indicators.
  */
 
 import React from 'react';
@@ -29,6 +29,10 @@ import {
     ListItem,
     ListItemIcon,
     ListItemText,
+    TextField,
+    Accordion,
+    AccordionSummary,
+    AccordionDetails,
 } from '@mui/material';
 import {
     CheckCircle as CheckCircleIcon,
@@ -40,8 +44,24 @@ import {
     ExpandLess as ExpandLessIcon,
     Warning as WarningIcon,
     Info as InfoIcon,
+    SkipNext as SkipIcon,
+    Loop as LoopIcon,
 } from '@mui/icons-material';
-import type { AgentState, AgentStep, AgentStepId, ValidationResult, AnalysisResult } from '../../types/pvAgent.types';
+import type {
+    AgentState,
+    AgentStep,
+    AgentStepId,
+    TranscriptionResult,
+    IdentificationResult,
+    CleaningResult,
+    ODJAnalysisResult,
+    ClassificationResult,
+    DraftingResult,
+    ReflectionResult,
+    UserValidationResult,
+    ComparisonResult,
+    LearningResult,
+} from '../../types/pvAgent.types';
 import AnalysisValidator from './PVAgentValidation/AnalysisValidator';
 import type { AgendaItem } from '../../types/meeting.types';
 
@@ -49,13 +69,13 @@ interface PVAgentWizardProps {
     open: boolean;
     state: AgentState | null;
     isRunning: boolean;
-    onValidate: (approved: boolean) => void;
+    onValidate: (approved: boolean | unknown) => void;
     onCancel: () => void;
     onApply: () => void;
     agendaItems?: AgendaItem[];
 }
 
-const getStepIcon = (status: AgentStep['status']) => {
+const getStepIcon = (status: AgentStep['status'], icon?: string) => {
     switch (status) {
         case 'completed':
             return <CheckCircleIcon color="success" />;
@@ -65,6 +85,8 @@ const getStepIcon = (status: AgentStep['status']) => {
             return <RunningIcon color="primary" sx={{ animation: 'pulse 1s infinite' }} />;
         case 'awaiting':
             return <AwaitingIcon color="warning" />;
+        case 'skipped':
+            return <SkipIcon color="disabled" />;
         default:
             return <PendingIcon color="disabled" />;
     }
@@ -80,20 +102,41 @@ const PVAgentWizard: React.FC<PVAgentWizardProps> = ({
     agendaItems = [],
 }) => {
     const [expandedStep, setExpandedStep] = React.useState<AgentStepId | null>(null);
-    const [editedAnalysis, setEditedAnalysis] = React.useState<AnalysisResult | null>(null);
+    const [editedAnalysis, setEditedAnalysis] = React.useState<ODJAnalysisResult | null>(null);
+    const [userComments, setUserComments] = React.useState('');
+    const [userEdits, setUserEdits] = React.useState('');
 
-    // Reset edited state when step changes or completes
+    // Reset edited state when step changes
     React.useEffect(() => {
         setEditedAnalysis(null);
+        setUserComments('');
+        setUserEdits('');
     }, [state?.currentStepIndex]);
 
     const handleValidate = (approved: boolean) => {
-        if (approved && editedAnalysis && state?.steps.find(s => s.id === 'analysis')?.status === 'awaiting') {
-            // Pass back the modified data
-            onValidate(editedAnalysis as any);
-        } else {
+        const currentStep = state?.steps.find(s => s.status === 'awaiting');
+
+        if (!currentStep) {
             onValidate(approved);
+            return;
         }
+
+        // ODJ Analysis: pass back edited data
+        if (approved && editedAnalysis && currentStep.id === 'odj_analysis') {
+            onValidate(editedAnalysis);
+            return;
+        }
+
+        // User Validation: pass back user edits and comments
+        if (approved && currentStep.id === 'user_validation') {
+            onValidate({
+                userEdits: userEdits || undefined,
+                userComments: userComments || undefined,
+            });
+            return;
+        }
+
+        onValidate(approved);
     };
 
     if (!state) return null;
@@ -101,7 +144,7 @@ const PVAgentWizard: React.FC<PVAgentWizardProps> = ({
     const currentStepIndex = state.steps.findIndex(s =>
         s.status === 'running' || s.status === 'awaiting'
     );
-    const completedSteps = state.steps.filter(s => s.status === 'completed').length;
+    const completedSteps = state.steps.filter(s => s.status === 'completed' || s.status === 'skipped').length;
     const progress = (completedSteps / state.steps.length) * 100;
     const isComplete = completedSteps === state.steps.length;
 
@@ -109,35 +152,104 @@ const PVAgentWizard: React.FC<PVAgentWizardProps> = ({
         setExpandedStep(expandedStep === stepId ? null : stepId);
     };
 
+    // ========================================================================
+    // Step Result Renderers
+    // ========================================================================
+
     const renderStepResult = (step: AgentStep): React.ReactNode => {
         if (!step.result) return null;
 
         switch (step.id) {
-            case 'transcription':
-                const transResult = step.result as { text: string; speakers?: string[] };
+            case 'transcription': {
+                const r = step.result as TranscriptionResult;
                 return (
                     <Box>
                         <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                            {transResult.text.substring(0, 500)}...
+                            {r.text.substring(0, 500)}...
                         </Typography>
-                        {transResult.speakers && transResult.speakers.length > 0 && (
-                            <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
-                                {transResult.speakers.map((s, i) => (
+                        {r.speakers && r.speakers.length > 0 && (
+                            <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', mt: 1 }}>
+                                <Typography variant="caption" color="text.secondary" sx={{ mr: 1 }}>
+                                    Locuteurs détectés:
+                                </Typography>
+                                {r.speakers.map((s, i) => (
                                     <Chip key={i} label={s} size="small" variant="outlined" />
                                 ))}
                             </Box>
                         )}
+                        {r.engine && (
+                            <Chip label={`Moteur: ${r.engine}`} size="small" sx={{ mt: 1 }} />
+                        )}
                     </Box>
                 );
+            }
 
-            case 'analysis':
-                const analysisResult = step.result as AnalysisResult;
+            case 'identification': {
+                const r = step.result as IdentificationResult;
+                return (
+                    <Box>
+                        <Typography variant="body2">
+                            🎯 {r.identifiedSegments}/{r.totalSegments} segments identifiés
+                        </Typography>
+                        {Object.entries(r.speakerMapping).length > 0 && (
+                            <Box sx={{ mt: 1 }}>
+                                {Object.entries(r.speakerMapping).map(([label, name]) => (
+                                    <Chip
+                                        key={label}
+                                        label={`${label} → ${name}`}
+                                        size="small"
+                                        color="primary"
+                                        variant="outlined"
+                                        sx={{ mr: 0.5, mb: 0.5 }}
+                                    />
+                                ))}
+                            </Box>
+                        )}
+                        {r.unidentified.length > 0 && (
+                            <Typography variant="body2" color="warning.main" sx={{ mt: 1 }}>
+                                ⚠️ {r.unidentified.length} locuteur(s) non identifié(s)
+                            </Typography>
+                        )}
+                    </Box>
+                );
+            }
+
+            case 'cleaning': {
+                const r = step.result as CleaningResult;
+                return (
+                    <Box>
+                        <Typography variant="body2">
+                            🧹 {r.removedDuplicates} doublon(s) supprimé(s), {r.mergedSegments} segment(s) fusionné(s)
+                        </Typography>
+                        {r.hallucinations.length > 0 && (
+                            <Box sx={{ mt: 1 }}>
+                                <Typography variant="caption" color="warning.main">
+                                    Hallucinations détectées:
+                                </Typography>
+                                {r.hallucinations.slice(0, 3).map((h, i) => (
+                                    <Typography key={i} variant="body2" fontSize="0.8rem" color="text.secondary">
+                                        • {h}
+                                    </Typography>
+                                ))}
+                                {r.hallucinations.length > 3 && (
+                                    <Typography variant="caption" color="text.secondary">
+                                        ... et {r.hallucinations.length - 3} autre(s)
+                                    </Typography>
+                                )}
+                            </Box>
+                        )}
+                    </Box>
+                );
+            }
+
+            case 'odj_analysis': {
+                const r = step.result as ODJAnalysisResult;
                 const isAwaitingValidation = step.status === 'awaiting';
 
                 if (isAwaitingValidation) {
                     return (
                         <AnalysisValidator
-                            analysis={editedAnalysis || analysisResult}
+                            analysis={editedAnalysis || r}
                             agendaItems={agendaItems}
                             onChange={setEditedAnalysis}
                         />
@@ -147,104 +259,307 @@ const PVAgentWizard: React.FC<PVAgentWizardProps> = ({
                 return (
                     <Box>
                         <Typography variant="body2" sx={{ mb: 1 }}>
-                            ✅ {analysisResult.mappedItems.length} point(s) associé(s)
+                            ✅ {r.mappedItems.length} point(s) associé(s) — Couverture: {r.coveragePercent?.toFixed(0) || '?'}%
                         </Typography>
-                        {analysisResult.unmappedSegments.length > 0 && (
+                        {r.unmappedSegments.length > 0 && (
                             <Typography variant="body2" color="warning.main">
-                                ⚠️ {analysisResult.unmappedSegments.length} segment(s) non associé(s)
+                                ⚠️ {r.unmappedSegments.length} segment(s) non associé(s)
                             </Typography>
                         )}
                     </Box>
                 );
+            }
 
-            case 'extraction':
-                const extractResult = step.result as { resolutions: any[]; comments: any[]; attendees: any };
+            case 'classification': {
+                const r = step.result as ClassificationResult;
                 return (
                     <Box>
+                        <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', mb: 1 }}>
+                            {r.globalThemes.map((theme, i) => (
+                                <Chip key={i} label={theme} size="small" color="info" variant="outlined" />
+                            ))}
+                        </Box>
                         <Typography variant="body2">
-                            📋 {extractResult.resolutions.length} résolution(s)
+                            Sentiment global: {
+                                r.globalSentiment === 'positive' ? '😊 Positif' :
+                                r.globalSentiment === 'negative' ? '😟 Négatif' :
+                                r.globalSentiment === 'mixed' ? '🤔 Mixte' : '😐 Neutre'
+                            }
                         </Typography>
-                        <Typography variant="body2">
-                            💬 {extractResult.comments.length} commentaire(s)
-                        </Typography>
-                        <Typography variant="body2">
-                            👥 {extractResult.attendees?.present?.length || 0} présent(s), {extractResult.attendees?.absent?.length || 0} absent(s)
-                        </Typography>
+                        {r.items.map((item, i) => (
+                            <Box key={i} sx={{ mt: 1, pl: 1, borderLeft: '2px solid', borderColor: 'divider' }}>
+                                <Typography variant="body2" fontWeight="bold" fontSize="0.85rem">
+                                    {item.odjTitle}
+                                </Typography>
+                                <Typography variant="caption" color="text.secondary">
+                                    {item.issueType === 'resolution' ? '📜 Résolution' :
+                                     item.issueType === 'comment' ? '💬 Commentaire' :
+                                     item.issueType === 'decision' ? '✅ Décision' : 'ℹ️ Information'}
+                                    {' • '}{item.priority === 'high' ? '🔴' : item.priority === 'medium' ? '🟡' : '🟢'} {item.priority}
+                                    {' • '}{item.summary}
+                                </Typography>
+                            </Box>
+                        ))}
                     </Box>
                 );
+            }
 
-            case 'validation':
-                const validResult = step.result as ValidationResult;
+            case 'drafting': {
+                const r = step.result as DraftingResult;
+                return (
+                    <Box>
+                        <Typography variant="body2" color="success.main" fontWeight="bold">
+                            ✍️ Brouillon généré
+                        </Typography>
+                        <Typography variant="body2">
+                            📜 {r.resolutions.length} résolution(s) • 💬 {r.comments.length} commentaire(s)
+                        </Typography>
+                        <Typography variant="body2">
+                            👥 {r.attendees.present.length} présent(s), {r.attendees.absent.length} absent(s)
+                        </Typography>
+                        <Paper variant="outlined" sx={{ p: 1.5, mt: 1, maxHeight: 200, overflow: 'auto', bgcolor: 'grey.50' }}>
+                            <Typography variant="body2" fontSize="0.8rem" sx={{ whiteSpace: 'pre-wrap' }}>
+                                {r.pvContent.substring(0, 1000)}...
+                            </Typography>
+                        </Paper>
+                    </Box>
+                );
+            }
+
+            case 'reflection': {
+                const r = step.result as ReflectionResult;
+                return (
+                    <Box>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                            <LoopIcon fontSize="small" color="primary" />
+                            <Typography variant="body2">
+                                {r.iterations.length} itération(s) • Score qualité: {r.qualityScore}/100
+                            </Typography>
+                            <LinearProgress
+                                variant="determinate"
+                                value={r.qualityScore}
+                                sx={{ flexGrow: 1, height: 8, borderRadius: 4 }}
+                                color={r.qualityScore >= 90 ? 'success' : r.qualityScore >= 70 ? 'warning' : 'error'}
+                            />
+                        </Box>
+                        <Typography variant="body2">
+                            🔍 {r.totalIssuesFound} problème(s) trouvé(s) • ✅ {r.totalIssuesFixed} corrigé(s)
+                        </Typography>
+                        {r.iterations.map((it, i) => (
+                            <Accordion key={i} variant="outlined" sx={{ mt: 1 }}>
+                                <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                                    <Typography variant="body2" fontSize="0.85rem">
+                                        Itération #{it.iterationNumber} — {it.issues.length} problème(s)
+                                    </Typography>
+                                </AccordionSummary>
+                                <AccordionDetails>
+                                    {it.issues.length === 0 ? (
+                                        <Typography variant="body2" color="success.main">
+                                            ✅ Aucun problème détecté
+                                        </Typography>
+                                    ) : (
+                                        <List dense>
+                                            {it.issues.map((issue, j) => (
+                                                <ListItem key={j} sx={{ py: 0 }}>
+                                                    <ListItemIcon sx={{ minWidth: 28 }}>
+                                                        {issue.severity === 'critical' ? <ErrorIcon color="error" fontSize="small" /> :
+                                                         issue.severity === 'major' ? <WarningIcon color="warning" fontSize="small" /> :
+                                                         <InfoIcon color="info" fontSize="small" />}
+                                                    </ListItemIcon>
+                                                    <ListItemText
+                                                        primary={issue.description}
+                                                        secondary={`${issue.location} — ${issue.applied ? '✅ Corrigé' : '⏳ Non corrigé'}`}
+                                                        primaryTypographyProps={{ variant: 'body2', fontSize: '0.8rem' }}
+                                                        secondaryTypographyProps={{ fontSize: '0.75rem' }}
+                                                    />
+                                                </ListItem>
+                                            ))}
+                                        </List>
+                                    )}
+                                </AccordionDetails>
+                            </Accordion>
+                        ))}
+                    </Box>
+                );
+            }
+
+            case 'user_validation': {
+                const isAwaitingValidation = step.status === 'awaiting';
+                const reflectionResult = state?.results.reflection;
+                const draftingResult = state?.results.drafting;
+
+                if (isAwaitingValidation) {
+                    return (
+                        <Box>
+                            <Alert severity="info" sx={{ mb: 2 }}>
+                                <Typography variant="body2" fontWeight="bold">
+                                    Révisez le PV ci-dessous. Vous pouvez modifier le texte ou ajouter des commentaires.
+                                </Typography>
+                            </Alert>
+
+                            {reflectionResult && (
+                                <Box sx={{ mb: 2 }}>
+                                    <Chip
+                                        label={`Score qualité: ${reflectionResult.qualityScore}/100`}
+                                        color={reflectionResult.qualityScore >= 90 ? 'success' : reflectionResult.qualityScore >= 70 ? 'warning' : 'error'}
+                                        size="small"
+                                        sx={{ mb: 1 }}
+                                    />
+                                </Box>
+                            )}
+
+                            <TextField
+                                fullWidth
+                                multiline
+                                minRows={10}
+                                maxRows={20}
+                                label="Contenu du PV (modifiable)"
+                                value={userEdits || reflectionResult?.finalContent || draftingResult?.pvContent || ''}
+                                onChange={(e) => setUserEdits(e.target.value)}
+                                variant="outlined"
+                                sx={{ mb: 2 }}
+                            />
+
+                            <TextField
+                                fullWidth
+                                multiline
+                                minRows={2}
+                                maxRows={5}
+                                label="Commentaires / Instructions supplémentaires (optionnel)"
+                                value={userComments}
+                                onChange={(e) => setUserComments(e.target.value)}
+                                variant="outlined"
+                                placeholder="Ex: Corriger le nom de M. Tremblay, ajouter la mention du quorum..."
+                            />
+                        </Box>
+                    );
+                }
+
+                const r = step.result as UserValidationResult;
+                return (
+                    <Box>
+                        <Typography variant="body2" color={r?.approved ? 'success.main' : 'error.main'}>
+                            {r?.approved ? '✅ PV approuvé par l\'utilisateur' : '❌ PV rejeté'}
+                        </Typography>
+                        {r?.userComments && (
+                            <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                                💬 {r.userComments}
+                            </Typography>
+                        )}
+                    </Box>
+                );
+            }
+
+            case 'comparison': {
+                const r = step.result as ComparisonResult;
                 return (
                     <Box>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
                             <Typography variant="body2">
-                                Couverture: {validResult.coverage.toFixed(0)}%
+                                Score de cohérence: {r.formatScore}/100
                             </Typography>
                             <LinearProgress
                                 variant="determinate"
-                                value={validResult.coverage}
+                                value={r.formatScore}
                                 sx={{ flexGrow: 1, height: 8, borderRadius: 4 }}
-                                color={validResult.coverage >= 90 ? 'success' : validResult.coverage >= 70 ? 'warning' : 'error'}
+                                color={r.formatScore >= 90 ? 'success' : r.formatScore >= 70 ? 'warning' : 'error'}
                             />
                         </Box>
-                        {validResult.warnings.length > 0 && (
+
+                        {r.historicalPVs.length > 0 && (
+                            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                                📊 Comparé avec {r.historicalPVs.length} PV historique(s)
+                            </Typography>
+                        )}
+
+                        {r.consistencyChecks.length > 0 && (
                             <List dense>
-                                {validResult.warnings.map((w, i) => (
+                                {r.consistencyChecks.map((check, i) => (
                                     <ListItem key={i} sx={{ py: 0 }}>
-                                        <ListItemIcon sx={{ minWidth: 32 }}>
-                                            <WarningIcon color="warning" fontSize="small" />
+                                        <ListItemIcon sx={{ minWidth: 28 }}>
+                                            {check.status === 'fail' ? <ErrorIcon color="error" fontSize="small" /> :
+                                             check.status === 'warning' ? <WarningIcon color="warning" fontSize="small" /> :
+                                             <CheckCircleIcon color="success" fontSize="small" />}
                                         </ListItemIcon>
-                                        <ListItemText primary={w} primaryTypographyProps={{ variant: 'body2' }} />
+                                        <ListItemText
+                                            primary={check.message}
+                                            secondary={check.suggestion}
+                                            primaryTypographyProps={{ variant: 'body2', fontSize: '0.85rem' }}
+                                            secondaryTypographyProps={{ fontSize: '0.75rem' }}
+                                        />
                                     </ListItem>
                                 ))}
                             </List>
                         )}
-                        {validResult.suggestions.length > 0 && (
-                            <List dense>
-                                {validResult.suggestions.map((s, i) => (
-                                    <ListItem key={i} sx={{ py: 0 }}>
-                                        <ListItemIcon sx={{ minWidth: 32 }}>
-                                            <InfoIcon color="info" fontSize="small" />
-                                        </ListItemIcon>
-                                        <ListItemText primary={s} primaryTypographyProps={{ variant: 'body2' }} />
-                                    </ListItem>
-                                ))}
-                            </List>
+
+                        {r.corrections.length > 0 && (
+                            <Typography variant="body2" color="info.main" sx={{ mt: 1 }}>
+                                ✏️ {r.corrections.length} correction(s) appliquée(s)
+                            </Typography>
                         )}
                     </Box>
                 );
+            }
 
-            case 'generation':
-                const genResult = step.result as { agendaItems: any[]; globalNotes: string };
+            case 'learning': {
+                const r = step.result as LearningResult;
                 return (
                     <Box>
-                        <Typography variant="body2" color="success.main" fontWeight="bold">
-                            ✅ PV généré avec succès !
-                        </Typography>
                         <Typography variant="body2">
-                            {genResult.agendaItems?.length || 0} point(s) mis à jour
+                            🧠 {r.modelsUpdated.length} modèle(s) mis à jour
                         </Typography>
+                        {r.stylePatterns > 0 && (
+                            <Typography variant="body2" color="text.secondary">
+                                📐 {r.stylePatterns} patron(s) de style appris
+                            </Typography>
+                        )}
+                        {r.terminologyUpdates > 0 && (
+                            <Typography variant="body2" color="text.secondary">
+                                📝 {r.terminologyUpdates} mise(s) à jour terminologique(s)
+                            </Typography>
+                        )}
+                        {r.nextMeetingHints.length > 0 && (
+                            <Box sx={{ mt: 1 }}>
+                                <Typography variant="caption" fontWeight="bold">
+                                    💡 Suggestions pour la prochaine réunion:
+                                </Typography>
+                                {r.nextMeetingHints.map((hint, i) => (
+                                    <Typography key={i} variant="body2" fontSize="0.8rem" color="text.secondary">
+                                        • {hint}
+                                    </Typography>
+                                ))}
+                            </Box>
+                        )}
                     </Box>
                 );
+            }
 
             default:
                 return null;
         }
     };
 
+    // ========================================================================
+    // Render
+    // ========================================================================
+
     return (
         <Dialog open={open} fullWidth maxWidth="md" onClose={onCancel}>
             <DialogTitle>
                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <Typography variant="h6">
-                        🤖 Agent SmartPV - Génération Autonome
+                        🤖 Agent SmartPV — Pipeline en 10 étapes
                     </Typography>
-                    <Chip
-                        label={isComplete ? 'Terminé' : isRunning ? 'En cours...' : 'En pause'}
-                        color={isComplete ? 'success' : isRunning ? 'primary' : 'warning'}
-                        size="small"
-                    />
+                    <Box sx={{ display: 'flex', gap: 1 }}>
+                        {state.pipelineVersion && (
+                            <Chip label={`v${state.pipelineVersion}`} size="small" variant="outlined" />
+                        )}
+                        <Chip
+                            label={isComplete ? 'Terminé' : isRunning ? 'En cours...' : 'En pause'}
+                            color={isComplete ? 'success' : isRunning ? 'primary' : 'warning'}
+                            size="small"
+                        />
+                    </Box>
                 </Box>
             </DialogTitle>
 
@@ -253,7 +568,7 @@ const PVAgentWizard: React.FC<PVAgentWizardProps> = ({
                 <Box sx={{ mb: 3 }}>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
                         <Typography variant="body2" color="text.secondary">
-                            Progression globale
+                            Progression globale — {completedSteps}/{state.steps.length} étapes
                         </Typography>
                         <Typography variant="body2" fontWeight="bold">
                             {progress.toFixed(0)}%
@@ -264,25 +579,45 @@ const PVAgentWizard: React.FC<PVAgentWizardProps> = ({
                         value={progress}
                         sx={{ height: 10, borderRadius: 5 }}
                     />
+                    {state.totalDuration && (
+                        <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5 }}>
+                            Durée totale: {(state.totalDuration / 1000).toFixed(1)}s
+                        </Typography>
+                    )}
                 </Box>
 
                 {/* Steps */}
                 <Stepper activeStep={currentStepIndex} orientation="vertical">
-                    {state.steps.map((step, _index) => (
-                        <Step key={step.id} completed={step.status === 'completed'}>
+                    {state.steps.map((step) => (
+                        <Step key={step.id} completed={step.status === 'completed' || step.status === 'skipped'}>
                             <StepLabel
-                                StepIconComponent={() => getStepIcon(step.status)}
+                                StepIconComponent={() => getStepIcon(step.status, step.icon)}
                                 optional={
-                                    step.error && (
+                                    step.error ? (
                                         <Typography variant="caption" color="error">
                                             {step.error}
                                         </Typography>
-                                    )
+                                    ) : step.status === 'skipped' ? (
+                                        <Typography variant="caption" color="text.secondary">
+                                            Ignoré
+                                        </Typography>
+                                    ) : undefined
                                 }
                             >
                                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                    <Typography variant="subtitle2">{step.label}</Typography>
-                                    {!!step.result && (
+                                    <Typography variant="subtitle2">
+                                        {step.icon} {step.label}
+                                    </Typography>
+                                    {step.iterationCount && step.iterationCount > 1 && (
+                                        <Chip
+                                            icon={<LoopIcon />}
+                                            label={`${step.iterationCount}x`}
+                                            size="small"
+                                            variant="outlined"
+                                            color="info"
+                                        />
+                                    )}
+                                    {!!step.result && step.status !== 'awaiting' && (
                                         <IconButton size="small" onClick={() => toggleExpand(step.id)}>
                                             {expandedStep === step.id ? <ExpandLessIcon /> : <ExpandMoreIcon />}
                                         </IconButton>
@@ -343,11 +678,17 @@ const PVAgentWizard: React.FC<PVAgentWizardProps> = ({
                 {isComplete && (
                     <Alert severity="success" sx={{ mt: 2 }}>
                         <Typography variant="subtitle2">
-                            🎉 Génération terminée avec succès !
+                            🎉 Pipeline terminé avec succès !
                         </Typography>
                         <Typography variant="body2">
                             Cliquez sur "Appliquer au PV" pour mettre à jour le procès-verbal.
                         </Typography>
+                        {state.results.reflection && (
+                            <Typography variant="body2" sx={{ mt: 0.5 }}>
+                                Score qualité: {state.results.reflection.qualityScore}/100
+                                {state.results.comparison && ` • Score cohérence: ${state.results.comparison.formatScore}/100`}
+                            </Typography>
+                        )}
                     </Alert>
                 )}
             </DialogContent>
@@ -367,12 +708,12 @@ const PVAgentWizard: React.FC<PVAgentWizardProps> = ({
 
             {/* Pulse animation for running step */}
             <style>{`
-        @keyframes pulse {
-          0% { opacity: 1; }
-          50% { opacity: 0.5; }
-          100% { opacity: 1; }
-        }
-      `}</style>
+                @keyframes pulse {
+                    0% { opacity: 1; }
+                    50% { opacity: 0.5; }
+                    100% { opacity: 1; }
+                }
+            `}</style>
         </Dialog>
     );
 };

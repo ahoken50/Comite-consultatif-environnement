@@ -6424,6 +6424,363 @@ def trigger_ml_after_transcription(req: https_fn.Request) -> https_fn.Response:
         return https_fn.Response(json.dumps({"error": str(e)}), status=500)
 
 
+# =============================================================================
+# PV PIPELINE — Étapes 4 à 10 du pipeline de génération de PV
+# =============================================================================
+
+from pv_pipeline import (
+    analyze_odj_mapping,
+    classify_agenda_items,
+    run_reflection_loop,
+    compare_with_historical,
+    record_learning,
+    run_pv_pipeline,
+)
+
+
+# -----------------------------------------------------------------------------
+# STEP 4: ANALYSE ODJ — Mapping discussions → Points ordre du jour
+# -----------------------------------------------------------------------------
+@https_fn.on_call(
+    timeout_sec=120,
+    memory=options.MemoryOption.GB_1,
+)
+def pv_analyze_odj(req: https_fn.CallableRequest) -> dict:
+    """
+    Cloud Function: Analyse ODJ — Map transcription segments to agenda items.
+    """
+    if not req.auth:
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.UNAUTHENTICATED,
+            message="Authentication required."
+        )
+
+    data = req.data
+    transcription = data.get("transcription")
+    agenda_items = data.get("agendaItems", [])
+    speaker_mapping = data.get("speakerMapping")
+
+    if not transcription:
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT,
+            message="Missing key: transcription"
+        )
+
+    if not agenda_items:
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT,
+            message="Missing key: agendaItems"
+        )
+
+    print(f"[PV-ODJ] Analyzing {len(agenda_items)} agenda items")
+
+    try:
+        client = get_anthropic_client()
+        result = analyze_odj_mapping(
+            transcription=transcription,
+            agenda_items=agenda_items,
+            speaker_mapping=speaker_mapping,
+            anthropic_client=client,
+        )
+        return {"success": True, **result}
+    except Exception as e:
+        print(f"[PV-ODJ] Error: {e}")
+        import traceback
+        traceback.print_exc()
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.INTERNAL,
+            message=str(e)
+        )
+
+
+# -----------------------------------------------------------------------------
+# STEP 5: CLASSIFICATION — Catégorisation thématique + sentiment
+# -----------------------------------------------------------------------------
+@https_fn.on_call(
+    timeout_sec=120,
+    memory=options.MemoryOption.GB_1,
+)
+def pv_classify(req: https_fn.CallableRequest) -> dict:
+    """
+    Cloud Function: Classification — Categorize agenda items by theme and sentiment.
+    """
+    if not req.auth:
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.UNAUTHENTICATED,
+            message="Authentication required."
+        )
+
+    data = req.data
+    meeting_date = data.get("meetingDate", "")
+    odj_analysis = data.get("odjAnalysis")
+
+    if not odj_analysis:
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT,
+            message="Missing key: odjAnalysis"
+        )
+
+    print(f"[PV-Classify] Classifying {len(odj_analysis.get('mappedItems', []))} items")
+
+    try:
+        client = get_anthropic_client()
+        result = classify_agenda_items(
+            meeting_date=meeting_date,
+            odj_analysis=odj_analysis,
+            anthropic_client=client,
+        )
+        return {"success": True, **result}
+    except Exception as e:
+        print(f"[PV-Classify] Error: {e}")
+        import traceback
+        traceback.print_exc()
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.INTERNAL,
+            message=str(e)
+        )
+
+
+# -----------------------------------------------------------------------------
+# STEP 7: RÉFLEXION — Auto-critique + corrections automatiques (boucle)
+# -----------------------------------------------------------------------------
+@https_fn.on_call(
+    timeout_sec=540,
+    memory=options.MemoryOption.GB_2,
+)
+def pv_reflect(req: https_fn.CallableRequest) -> dict:
+    """
+    Cloud Function: Réflexion — Self-critique loop on PV draft.
+    Runs up to maxIterations of self-critique until quality threshold is met.
+    """
+    if not req.auth:
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.UNAUTHENTICATED,
+            message="Authentication required."
+        )
+
+    data = req.data
+    pv_draft = data.get("pvDraft")
+    transcription = data.get("transcription")
+    max_iterations = data.get("maxIterations", 3)
+    min_quality_score = data.get("minQualityScore", 90)
+
+    if not pv_draft:
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT,
+            message="Missing key: pvDraft"
+        )
+
+    if not transcription:
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT,
+            message="Missing key: transcription"
+        )
+
+    print(f"[PV-Reflect] Starting reflection loop (max {max_iterations} iterations)")
+
+    try:
+        client = get_anthropic_client()
+        result = run_reflection_loop(
+            pv_draft=pv_draft,
+            transcription=transcription,
+            max_iterations=max_iterations,
+            min_quality_score=min_quality_score,
+            anthropic_client=client,
+        )
+        return {"success": True, **result}
+    except Exception as e:
+        print(f"[PV-Reflect] Error: {e}")
+        import traceback
+        traceback.print_exc()
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.INTERNAL,
+            message=str(e)
+        )
+
+
+# -----------------------------------------------------------------------------
+# STEP 9: COMPARAISON — Vérification cohérence avec PV historiques
+# -----------------------------------------------------------------------------
+@https_fn.on_call(
+    timeout_sec=300,
+    memory=options.MemoryOption.GB_1,
+)
+def pv_compare_historical(req: https_fn.CallableRequest) -> dict:
+    """
+    Cloud Function: Comparaison — Compare current PV with historical PVs.
+    Fetches historical PVs from Firestore and runs consistency checks.
+    """
+    if not req.auth:
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.UNAUTHENTICATED,
+            message="Authentication required."
+        )
+
+    data = req.data
+    current_pv = data.get("currentPV")
+    meeting_id = data.get("meetingId")
+    meeting_number = data.get("meetingNumber", 0)
+    historical_count = data.get("historicalCount", 3)
+
+    if not current_pv:
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT,
+            message="Missing key: currentPV"
+        )
+
+    print(f"[PV-Compare] Comparing with {historical_count} historical PVs")
+
+    try:
+        # Fetch historical PVs from Firestore
+        historical_pvs = []
+        if db:
+            meetings_query = db.collection("meetings").order_by(
+                "date", direction=firestore.Query.DESCENDING
+            ).limit(historical_count + 1)
+
+            for meeting_doc in meetings_query.stream():
+                if meeting_doc.id == meeting_id:
+                    continue
+                m_data = meeting_doc.to_dict()
+                minutes = m_data.get("minutes") or ""
+                draft = m_data.get("minutesDraft", {})
+                content = minutes or draft.get("content", "")
+
+                if content and len(content) > 100:
+                    historical_pvs.append({
+                        "date": m_data.get("date", ""),
+                        "content": content,
+                    })
+
+                if len(historical_pvs) >= historical_count:
+                    break
+
+        client = get_anthropic_client()
+        result = compare_with_historical(
+            current_pv=current_pv,
+            historical_pvs=historical_pvs,
+            meeting_number=meeting_number,
+            anthropic_client=client,
+        )
+        return {"success": True, **result}
+    except Exception as e:
+        print(f"[PV-Compare] Error: {e}")
+        import traceback
+        traceback.print_exc()
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.INTERNAL,
+            message=str(e)
+        )
+
+
+# -----------------------------------------------------------------------------
+# STEP 10: APPRENTISSAGE — Mise à jour modèles avec corrections
+# -----------------------------------------------------------------------------
+@https_fn.on_call(
+    timeout_sec=60,
+    memory=options.MemoryOption.MB_512,
+)
+def pv_record_learning(req: https_fn.CallableRequest) -> dict:
+    """
+    Cloud Function: Apprentissage — Record learning data from PV pipeline.
+    Stores corrections, patterns, and feedback in Firestore for future improvements.
+    """
+    if not req.auth:
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.UNAUTHENTICATED,
+            message="Authentication required."
+        )
+
+    data = req.data
+    meeting_id = data.get("meetingId")
+    reflection_result = data.get("reflectionResult", {})
+    comparison_result = data.get("comparisonResult", {})
+    user_feedback = data.get("userFeedback", "")
+
+    if not meeting_id:
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT,
+            message="Missing key: meetingId"
+        )
+
+    print(f"[PV-Learn] Recording learning for meeting {meeting_id}")
+
+    try:
+        result = record_learning(
+            db_client=db,
+            meeting_id=meeting_id,
+            reflection_result=reflection_result,
+            comparison_result=comparison_result,
+            user_feedback=user_feedback,
+        )
+        return {"success": True, **result}
+    except Exception as e:
+        print(f"[PV-Learn] Error: {e}")
+        import traceback
+        traceback.print_exc()
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.INTERNAL,
+            message=str(e)
+        )
+
+
+# -----------------------------------------------------------------------------
+# FULL PIPELINE: Run steps 4-5 server-side (analysis + classification)
+# -----------------------------------------------------------------------------
+@https_fn.on_call(
+    timeout_sec=300,
+    memory=options.MemoryOption.GB_2,
+)
+def pv_run_pipeline(req: https_fn.CallableRequest) -> dict:
+    """
+    Cloud Function: Run PV pipeline steps 4-5 server-side.
+    Steps 6-10 are orchestrated by the client with individual calls.
+    """
+    if not req.auth:
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.UNAUTHENTICATED,
+            message="Authentication required."
+        )
+
+    data = req.data
+    meeting_id = data.get("meetingId")
+    transcription = data.get("transcription")
+    agenda_items = data.get("agendaItems", [])
+    meeting_date = data.get("meetingDate", "")
+    meeting_number = data.get("meetingNumber", 0)
+    speaker_mapping = data.get("speakerMapping")
+
+    if not meeting_id or not transcription:
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT,
+            message="Missing keys: meetingId, transcription"
+        )
+
+    print(f"[PV-Pipeline] Running pipeline for meeting {meeting_id}")
+
+    try:
+        client = get_anthropic_client()
+        result = run_pv_pipeline(
+            db_client=db,
+            anthropic_client=client,
+            meeting_id=meeting_id,
+            transcription=transcription,
+            agenda_items=agenda_items,
+            meeting_date=meeting_date,
+            meeting_number=meeting_number,
+            speaker_mapping=speaker_mapping,
+        )
+        return result
+    except Exception as e:
+        print(f"[PV-Pipeline] Error: {e}")
+        import traceback
+        traceback.print_exc()
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.INTERNAL,
+            message=str(e)
+        )
+
+
 
 
 

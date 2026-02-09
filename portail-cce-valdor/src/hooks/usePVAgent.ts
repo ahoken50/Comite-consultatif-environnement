@@ -1,7 +1,8 @@
 /**
- * usePVAgent Hook
- * 
+ * usePVAgent Hook — Pipeline complet en 10 étapes
+ *
  * React hook for managing the SmartPV Agent workflow state and execution.
+ * Supports the full 10-step pipeline with skip options and progress tracking.
  */
 
 import { useState, useCallback, useRef } from 'react';
@@ -20,8 +21,16 @@ import type { Member } from '../types/member.types';
 interface UsePVAgentOptions {
     meeting: Meeting;
     members: Member[];
+    // Pipeline options
+    skipTranscription?: boolean;
+    skipIdentification?: boolean;
+    maxReflectionIterations?: number;
+    enableHistoricalComparison?: boolean;
+    enableLearning?: boolean;
+    // Callbacks
     onComplete?: (state: AgentState) => void;
     onError?: (error: Error) => void;
+    onStepComplete?: (stepId: AgentStepId, result: unknown) => void;
 }
 
 interface UsePVAgentReturn {
@@ -31,17 +40,31 @@ interface UsePVAgentReturn {
 
     // Actions
     start: (audioFile?: File, existingTranscription?: string) => void;
-    validateStep: (approved: boolean) => void;
+    validateStep: (result: boolean | unknown) => void;
     cancel: () => void;
     reset: () => void;
 
     // Helpers
     getStepProgress: () => number;
     getStepResult: <T>(stepId: AgentStepId) => T | undefined;
+    getCompletedSteps: () => number;
+    getTotalSteps: () => number;
+    getPipelineDuration: () => number | null;
 }
 
 export const usePVAgent = (options: UsePVAgentOptions): UsePVAgentReturn => {
-    const { meeting, members, onComplete, onError } = options;
+    const {
+        meeting,
+        members,
+        skipTranscription,
+        skipIdentification,
+        maxReflectionIterations = 3,
+        enableHistoricalComparison = true,
+        enableLearning = true,
+        onComplete,
+        onError,
+        onStepComplete,
+    } = options;
 
     const [state, setState] = useState<AgentState | null>(null);
     const [isRunning, setIsRunning] = useState(false);
@@ -70,8 +93,16 @@ export const usePVAgent = (options: UsePVAgentOptions): UsePVAgentReturn => {
             members,
             audioFile,
             existingTranscription,
+            // Pipeline options
+            skipTranscription: skipTranscription || (!audioFile && !!existingTranscription),
+            skipIdentification,
+            maxReflectionIterations,
+            enableHistoricalComparison,
+            enableLearning,
+            // Callbacks
             onStepComplete: (stepId, result) => {
-                console.log(`Step ${stepId} completed:`, result);
+                console.log(`[PVAgent] Step ${stepId} completed`);
+                onStepComplete?.(stepId, result);
             },
             onValidationRequired: (_stepId, _result) => {
                 return new Promise<boolean | unknown>((resolve) => {
@@ -79,8 +110,19 @@ export const usePVAgent = (options: UsePVAgentOptions): UsePVAgentReturn => {
                 });
             },
             onError: (stepId, error) => {
-                console.error(`Step ${stepId} failed:`, error);
+                console.error(`[PVAgent] Step ${stepId} failed:`, error);
                 onError?.(error);
+            },
+            onProgress: (stepId, progress) => {
+                setState(prev => {
+                    if (!prev) return prev;
+                    return {
+                        ...prev,
+                        steps: prev.steps.map(s =>
+                            s.id === stepId ? { ...s, progress } : s
+                        ),
+                    };
+                });
             },
         };
 
@@ -101,7 +143,11 @@ export const usePVAgent = (options: UsePVAgentOptions): UsePVAgentReturn => {
             setIsRunning(false);
             validationResolverRef.current = null;
         }
-    }, [meeting, members, isRunning, onComplete, onError]);
+    }, [
+        meeting, members, isRunning, onComplete, onError, onStepComplete,
+        skipTranscription, skipIdentification, maxReflectionIterations,
+        enableHistoricalComparison, enableLearning,
+    ]);
 
     const validateStep = useCallback((result: boolean | unknown) => {
         if (validationResolverRef.current) {
@@ -128,13 +174,32 @@ export const usePVAgent = (options: UsePVAgentOptions): UsePVAgentReturn => {
 
     const getStepProgress = useCallback(() => {
         if (!state) return 0;
-        const completedSteps = state.steps.filter(s => s.status === 'completed').length;
+        const completedSteps = state.steps.filter(
+            s => s.status === 'completed' || s.status === 'skipped'
+        ).length;
         return (completedSteps / state.steps.length) * 100;
     }, [state]);
 
     const getStepResult = useCallback(<T,>(stepId: AgentStepId): T | undefined => {
         if (!state) return undefined;
         return state.results[stepId] as T | undefined;
+    }, [state]);
+
+    const getCompletedSteps = useCallback(() => {
+        if (!state) return 0;
+        return state.steps.filter(
+            s => s.status === 'completed' || s.status === 'skipped'
+        ).length;
+    }, [state]);
+
+    const getTotalSteps = useCallback(() => {
+        if (!state) return 10;
+        return state.steps.length;
+    }, [state]);
+
+    const getPipelineDuration = useCallback(() => {
+        if (!state) return null;
+        return state.totalDuration || null;
     }, [state]);
 
     const currentStep = state?.steps.find(s =>
@@ -151,5 +216,8 @@ export const usePVAgent = (options: UsePVAgentOptions): UsePVAgentReturn => {
         reset,
         getStepProgress,
         getStepResult,
+        getCompletedSteps,
+        getTotalSteps,
+        getPipelineDuration,
     };
 };
