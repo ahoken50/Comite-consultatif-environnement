@@ -131,23 +131,11 @@ def enroll_speaker(req: https_fn.Request) -> https_fn.Response:
     from firebase_admin import storage, firestore
     from supabase import create_client, Client
 
-    # 0. CORS Handling
-    if req.method == 'OPTIONS':
-        headers = {
-            'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-            'Access-Control-Allow-Headers': 'Content-Type',
-            'Access-Control-Max-Age': '3600'
-        }
-        return https_fn.Response('', status=204, headers=headers)
-
-    cors_headers = {'Access-Control-Allow-Origin': '*'}
-
     try:
         # 1. Validation
         name = req.args.get('name')
         if not name:
-            return https_fn.Response("Missing 'name' query parameter", status=400, headers=cors_headers)
+            return https_fn.Response("Missing 'name' query parameter", status=400)
 
         # 2. Get Audio Content (JSON URL or Multipart File)
         temp_path = None
@@ -159,12 +147,12 @@ def enroll_speaker(req: https_fn.Request) -> https_fn.Response:
             data = req.get_json()
             url = data.get('url')
             if not url:
-                return https_fn.Response("JSON body must contain 'url'", status=400, headers=cors_headers)
+                return https_fn.Response("JSON body must contain 'url'", status=400)
             
             # Download file
             resp = requests.get(url, stream=True)
             if not resp.ok:
-                return https_fn.Response(f"Failed to download audio: {resp.status_code}", status=400, headers=cors_headers)
+                return https_fn.Response(f"Failed to download audio: {resp.status_code}", status=400)
             
             filename = secure_filename(f"{name}_enrollment.wav")
             temp_path = f"/tmp/{filename}"
@@ -174,7 +162,7 @@ def enroll_speaker(req: https_fn.Request) -> https_fn.Response:
 
         elif 'multipart/form-data' in content_type:
              if 'file' not in req.files:
-                 return https_fn.Response("No file uploaded", status=400, headers=cors_headers)
+                 return https_fn.Response("No file uploaded", status=400)
              
              file_data = req.files['file']
              filename = secure_filename(file_data.filename)
@@ -215,7 +203,7 @@ def enroll_speaker(req: https_fn.Request) -> https_fn.Response:
         
         if not endpoint_url:
             print("[Enroll] MODAL_ENDPOINT_URL or HF_ENDPOINT_URL not configured")
-            return https_fn.Response("Server configuration error: AI Endpoint missing", status=500, headers=cors_headers)
+            return https_fn.Response("Server configuration error: AI Endpoint missing", status=500)
 
         print(f"[Enroll] Calling Endpoint: {endpoint_url}")
         
@@ -234,7 +222,7 @@ def enroll_speaker(req: https_fn.Request) -> https_fn.Response:
             
             if not response.ok:
                 print(f"[Enroll] Endpoint Error {response.status_code}: {response.text}")
-                return https_fn.Response(f"AI Provider Error: {response.text}", status=502, headers=cors_headers)
+                return https_fn.Response(f"AI Provider Error: {response.text}", status=502)
                 
             embedding_data = response.json()
             
@@ -243,18 +231,18 @@ def enroll_speaker(req: https_fn.Request) -> https_fn.Response:
                 embedding = embedding_data
             else:
                 print(f"[Enroll] Unexpected HF response format: {str(embedding_data)[:100]}")
-                return https_fn.Response("Invalid AI response format", status=502, headers=cors_headers)
+                return https_fn.Response("Invalid AI response format", status=502)
 
         except Exception as hf_error:
             print(f"[Enroll] HF Request Failed: {str(hf_error)}")
-            return https_fn.Response(f"AI Request Failed: {str(hf_error)}", status=502, headers=cors_headers)
+            return https_fn.Response(f"AI Request Failed: {str(hf_error)}", status=502)
 
         # 5. Save to Supabase
         supabase_url = os.environ.get("SUPABASE_URL")
         supabase_key = os.environ.get("SUPABASE_KEY")
         
         if not supabase_url or not supabase_key:
-             return https_fn.Response("Supabase config missing", status=500, headers=cors_headers)
+             return https_fn.Response("Supabase config missing", status=500)
 
         supabase: Client = create_client(supabase_url, supabase_key)
         
@@ -274,7 +262,6 @@ def enroll_speaker(req: https_fn.Request) -> https_fn.Response:
         return https_fn.Response(
             json.dumps({"success": True, "name": name, "id": res.data[0]['id'] if res.data else "unknown"}),
             status=200,
-            headers=cors_headers,
             content_type="application/json"
         )
 
@@ -283,7 +270,7 @@ def enroll_speaker(req: https_fn.Request) -> https_fn.Response:
         # Cleanup on error
         if temp_path and os.path.exists(temp_path):
             os.remove(temp_path)
-        return https_fn.Response(f"Internal Error: {str(e)}", status=500, headers=cors_headers)
+        return https_fn.Response(f"Internal Error: {str(e)}", status=500)
     finally:
         pass
 
@@ -4785,8 +4772,6 @@ def reinforce_speaker_voice(req: https_fn.Request) -> https_fn.Response:
     """
     Active Learning: Add a new voice sample to a member's profile from a meeting segment.
     """
-    if req.method == 'OPTIONS':
-        return handle_cors_options()
 
     try:
         data = req.get_json()
@@ -5848,11 +5833,6 @@ def suggest_profile_improvements(req: https_fn.Request) -> https_fn.Response:
     Returns suggestions with estimated accuracy improvement.
     """
 
-    cors_headers = get_cors_headers(req)
-    # Manual CORS handling for preflight
-    if req.method == "OPTIONS":
-        return https_fn.Response("", status=204, headers=cors_headers)
-
     try:
         global db
         if db is None:
@@ -5923,13 +5903,13 @@ def suggest_profile_improvements(req: https_fn.Request) -> https_fn.Response:
             "success": True,
             "aiMessage": f"🤖 {len(suggestions)} profil(s) peuvent être améliorés",
             "suggestions": suggestions
-        }), status=200, content_type="application/json", headers=cors_headers)
+        }), status=200, content_type="application/json")
         
     except Exception as e:
         print(f"[ProactiveLearning] Error: {e}")
         import traceback
         traceback.print_exc()
-        return https_fn.Response(json.dumps({"error": str(e)}), status=500, headers=cors_headers)
+        return https_fn.Response(json.dumps({"error": str(e)}), status=500)
 
 
 @https_fn.on_request(
@@ -5942,10 +5922,6 @@ def human_verification_queue(req: https_fn.Request) -> https_fn.Response:
     Fetch items from the verification queue that need human review.
     Returns the most urgent items first (high confidence but ambiguous).
     """
-    cors_headers = get_cors_headers(req)
-    # Manual CORS handling for preflight
-    if req.method == "OPTIONS":
-        return https_fn.Response("", status=204, headers=cors_headers)
 
     try:
         global db
@@ -5973,11 +5949,11 @@ def human_verification_queue(req: https_fn.Request) -> https_fn.Response:
         return https_fn.Response(json.dumps({
             "success": True,
             "items": result
-        }), status=200, content_type="application/json", headers=cors_headers)
+        }), status=200, content_type="application/json")
         
     except Exception as e:
         print(f"[VerificationQueue] Error: {e}")
-        return https_fn.Response(json.dumps({"error": str(e)}), status=500, headers=cors_headers)
+        return https_fn.Response(json.dumps({"error": str(e)}), status=500)
 
 
 @https_fn.on_request(
@@ -5987,10 +5963,6 @@ def human_verification_queue(req: https_fn.Request) -> https_fn.Response:
 )
 def apply_ai_suggestion(req: https_fn.Request) -> https_fn.Response:
     """Apply user-approved AI suggestion to improve profile."""
-    cors_headers = get_cors_headers(req)
-    # Manual CORS handling for preflight
-    if req.method == "OPTIONS":
-        return https_fn.Response("", status=204, headers=cors_headers)
 
     try:
         global db
@@ -6052,13 +6024,13 @@ def apply_ai_suggestion(req: https_fn.Request) -> https_fn.Response:
             "memberName": member_name,
             "newSampleCount": count,
             "message": f"✅ {member_name} amélioré ! ({count}/20 samples)"
-        }), status=200, content_type="application/json", headers=cors_headers)
+        }), status=200, content_type="application/json")
         
     except Exception as e:
         print(f"[ApplySuggestion] Error: {e}")
         import traceback
         traceback.print_exc()
-        return https_fn.Response(json.dumps({"error": str(e)}), status=500, headers=cors_headers)
+        return https_fn.Response(json.dumps({"error": str(e)}), status=500)
 
 
 # =============================================================================
@@ -6085,10 +6057,6 @@ def autonomous_ml_loop(req: https_fn.Request) -> https_fn.Response:
     - Automatically after transcription (post-processing hook)
     - Scheduled via Cloud Scheduler
     """
-    cors_headers = get_cors_headers(req)
-    # Manual CORS handling for preflight
-    if req.method == "OPTIONS":
-        return https_fn.Response("", status=204, headers=cors_headers)
 
     try:
         global db
@@ -6305,13 +6273,13 @@ def autonomous_ml_loop(req: https_fn.Request) -> https_fn.Response:
             "success": True,
             "message": f"🤖 ML Loop terminée: {results['autoLearned']} auto-appris, {results['queuedForReview']} en attente de validation",
             "results": results
-        }), status=200, content_type="application/json", headers=cors_headers)
+        }), status=200, content_type="application/json")
         
     except Exception as e:
         print(f"[AutonomousML] Error: {e}")
         import traceback
         traceback.print_exc()
-        return https_fn.Response(json.dumps({"error": str(e)}), status=500, headers=cors_headers)
+        return https_fn.Response(json.dumps({"error": str(e)}), status=500)
 
 
 # =============================================================================
