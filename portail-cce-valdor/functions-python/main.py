@@ -5810,7 +5810,7 @@ def suggest_profile_improvements(req: https_fn.Request) -> https_fn.Response:
     AI proactively finds segments to improve weak profiles.
     Returns suggestions with estimated accuracy improvement.
     """
-    """
+
     try:
         # Manual CORS handling for preflight and errors
         if req.method == "OPTIONS":
