@@ -1140,26 +1140,81 @@ def format_speechmatics_output(result: dict) -> dict:
 
 def get_enrolled_speakers() -> list:
     """
-    Fetch all enrolled speakers from Supabase with their embeddings.
+    Fetch all enrolled speakers with their embeddings.
+    
+    UNIFIED APPROACH: Merges data from both Supabase (initial enrollments)
+    and Firestore members (ML-learned embeddings) to ensure all embeddings
+    are used for identification.
     """
+    speakers = []
+    speaker_names_seen = set()
+    
+    # === SOURCE 1: Firestore members (ML-learned embeddings — PRIMARY) ===
+    try:
+        import json as json_lib
+        _db = firestore.client()
+        members = list(_db.collection("members").stream())
+        
+        for doc in members:
+            member = doc.to_dict()
+            name = member.get("displayName") or member.get("name")
+            embedding = member.get("embedding")
+            
+            if not name or not embedding:
+                continue
+            
+            # Parse string embedding (stored as JSON string in Firestore)
+            if isinstance(embedding, str):
+                try:
+                    embedding = json_lib.loads(embedding)
+                except (json.JSONDecodeError, ValueError):
+                    continue
+            
+            if embedding and isinstance(embedding, list):
+                speakers.append({
+                    "id": doc.id,
+                    "name": name,
+                    "embedding": embedding,
+                    "role": member.get("role", "Membre"),
+                    "source": "firestore",
+                    "sampleCount": member.get("voiceSampleCount", 1)
+                })
+                speaker_names_seen.add(name)
+                
+        print(f"[Speakers] Loaded {len(speakers)} speakers from Firestore")
+        
+    except Exception as e:
+        print(f"[Speakers] Firestore error (non-fatal): {e}")
+    
+    # === SOURCE 2: Supabase speakers (initial enrollments — FALLBACK) ===
     try:
         from supabase import create_client
         
         supabase_url = os.environ.get("SUPABASE_URL")
         supabase_key = os.environ.get("SUPABASE_KEY")
         
-        if not supabase_url or not supabase_key:
-            print("[Speakers] Supabase config missing")
-            return []
-        
-        supabase = create_client(supabase_url, supabase_key)
-        result = supabase.table("speakers").select("id, name, embedding, role").execute()
-        
-        return result.data if result.data else []
-        
+        if supabase_url and supabase_key:
+            supabase = create_client(supabase_url, supabase_key)
+            result = supabase.table("speakers").select("id, name, embedding, role").execute()
+            
+            if result.data:
+                for row in result.data:
+                    name = row.get("name")
+                    # Only add if NOT already loaded from Firestore (Firestore has fresher data)
+                    if name and name not in speaker_names_seen:
+                        speakers.append({
+                            **row,
+                            "source": "supabase",
+                            "sampleCount": 1
+                        })
+                        speaker_names_seen.add(name)
+                        
+                print(f"[Speakers] Added {len(result.data)} speakers from Supabase (new only)")
     except Exception as e:
-        print(f"[Speakers] Error fetching speakers: {e}")
-        return []
+        print(f"[Speakers] Supabase error (non-fatal): {e}")
+    
+    print(f"[Speakers] Total: {len(speakers)} unique speakers loaded")
+    return speakers
 
 
 def get_meeting_attendees(meeting_id: str) -> list:
@@ -1275,16 +1330,18 @@ def extract_audio_segment_embedding(audio_url: str, start_sec: float, end_sec: f
 def compare_embedding_with_speakers(segment_embedding: list, enrolled_speakers: list) -> dict:
     """
     Compare a segment embedding with all enrolled speaker embeddings.
-    Returns dict of {name: similarity_score}
+    
+    FAIR SCORING: Uses top-3 average per speaker instead of global k-NN.
+    This prevents speakers with more samples from being systematically favored.
+    
+    Returns dict of {name: similarity_score} (0.0 to 1.0)
     """
     from speaker_identification import cosine_similarity
-    import json
+    import json as json_lib
 
-    # NOTE: numpy import removed (was unused)
-
-    # 1. Collect all vectors from all speakers into a flat list
-    # [(similarity, speaker_name), ...]
-    all_matches = []
+    # 1. Compute similarities PER SPEAKER (fair comparison)
+    # {name: [list of similarity scores]}
+    speaker_similarities = {}
     
     for speaker in enrolled_speakers:
         stored_embedding = speaker.get("embedding")
@@ -1293,10 +1350,9 @@ def compare_embedding_with_speakers(segment_embedding: list, enrolled_speakers: 
         # Parse string embedding
         if isinstance(stored_embedding, str):
             try:
-                 import json
-                 stored_embedding = json.loads(stored_embedding)
-            except:
-                 continue
+                stored_embedding = json_lib.loads(stored_embedding)
+            except (json_lib.JSONDecodeError, ValueError):
+                continue
                  
         if not stored_embedding:
             continue
@@ -1308,62 +1364,54 @@ def compare_embedding_with_speakers(segment_embedding: list, enrolled_speakers: 
         elif isinstance(stored_embedding, list) and len(stored_embedding) == len(segment_embedding):
             vectors = [stored_embedding]
             
+        sims = []
         for vec in vectors:
             if len(vec) == len(segment_embedding):
                 sim = cosine_similarity(segment_embedding, vec)
-                all_matches.append({
-                    "similarity": sim,
-                    "name": name,
-                    "weighted_score": (sim + 1) / 2 # Normalize -1..1 to 0..1
-                })
-    
-    # 2. Sort by similarity descending
-    all_matches.sort(key=lambda x: x["similarity"], reverse=True)
-    
-    if not all_matches:
-        return {}
+                sims.append(sim)
         
-    # 3. k-NN Logic (k=3)
-    # Take top 3 closest vectors
-    top_k = all_matches[:3]
+        if sims:
+            speaker_similarities[name] = sorted(sims, reverse=True)
     
-    # Calculate score per speaker based on presence in top_k
-    # Standard: Max score
-    # Reinforcement: Boost score if multiple top vectors belong to same speaker
+    if not speaker_similarities:
+        return {}
     
+    # 2. FAIR SCORING: For each speaker, take the average of their top-3 best matches
+    # This ensures a speaker with 12 samples isn't favored over one with 3
     final_scores = {}
     
-    # Initialize with 0
-    unique_names = set(m["name"] for m in all_matches)
-    for name in unique_names:
-        final_scores[name] = 0.0
+    for name, sims in speaker_similarities.items():
+        # Take top-3 (or fewer if less available)
+        top_n = sims[:3]
         
-    # Strategy:
-    # Base score = Max Similarity (keep compatibility)
-    # Bonus = +0.05 for each additional vector in top_k belonging to this speaker
-    
-    # Limit to top candidate to avoid boosting everyone
-    if top_k:
-        best_match = top_k[0]
-        primary_speaker = best_match["name"]
-        final_scores[primary_speaker] = best_match["weighted_score"]
+        # Weighted average: best match counts more (50% best, 30% second, 20% third)
+        if len(top_n) == 1:
+            avg_sim = top_n[0]
+        elif len(top_n) == 2:
+            avg_sim = top_n[0] * 0.6 + top_n[1] * 0.4
+        else:
+            avg_sim = top_n[0] * 0.5 + top_n[1] * 0.3 + top_n[2] * 0.2
         
-        # Check density (Are other top matches also this speaker?)
-        match_count = sum(1 for m in top_k if m["name"] == primary_speaker)
+        # Normalize cosine similarity (-1..1) to score (0..1)
+        score = (avg_sim + 1) / 2
         
-        if match_count == 3:
-            final_scores[primary_speaker] += 0.10 # Huge confidence if all 3 match
-            print(f"[VoiceEmbed] Strong Reinforcement: {primary_speaker} (3/3 matches)")
-        elif match_count == 2:
-            final_scores[primary_speaker] += 0.05
-            print(f"[VoiceEmbed] Moderate Reinforcement: {primary_speaker} (2/3 matches)")
+        # Consistency bonus: if multiple vectors agree, boost confidence
+        if len(top_n) >= 3 and all(s > 0.5 for s in top_n):
+            score += 0.05  # Small bonus for consistent multi-vector match
             
-    # Also populate other speakers with their max score (no boost) for comparison
-    for m in all_matches:
-        if m["name"] not in final_scores or final_scores[m["name"]] == 0:
-             # Only keep max
-             if m["weighted_score"] > final_scores.get(m["name"], 0):
-                 final_scores[m["name"]] = m["weighted_score"]
+        # Diversity bonus: if speaker has many samples AND they all score well
+        if len(sims) >= 5 and len(top_n) >= 3 and top_n[2] > 0.4:
+            score += 0.03  # Robust profile bonus
+        
+        final_scores[name] = min(score, 1.0)  # Cap at 1.0
+    
+    # 3. Log comparison for debugging
+    sorted_scores = sorted(final_scores.items(), key=lambda x: x[1], reverse=True)
+    if sorted_scores:
+        top = sorted_scores[0]
+        runner = sorted_scores[1] if len(sorted_scores) > 1 else ("N/A", 0)
+        margin = top[1] - runner[1]
+        print(f"[VoiceEmbed] Top: {top[0]}={top[1]:.3f}, Runner: {runner[0]}={runner[1]:.3f}, Margin: {margin:.3f}")
                  
     return final_scores
 
@@ -5994,7 +6042,32 @@ def apply_ai_suggestion(req: https_fn.Request) -> https_fn.Response:
         current_emb = member.get("embedding")
         import json as json_lib
         if current_emb and isinstance(current_emb, str):
-            current_emb = json_lib.loads(current_emb)
+            try:
+                current_emb = json_lib.loads(current_emb)
+            except:
+                current_emb = None
+        
+        # DEDUPLICATION: Check if new embedding is too similar to existing ones
+        from speaker_identification import cosine_similarity as cos_sim
+        is_duplicate = False
+        if current_emb and isinstance(current_emb, list):
+            existing_vecs = current_emb if (isinstance(current_emb[0], list)) else [current_emb]
+            for existing_vec in existing_vecs:
+                if len(existing_vec) == len(new_embedding):
+                    sim = cos_sim(new_embedding, existing_vec)
+                    if sim > 0.95:
+                        is_duplicate = True
+                        print(f"[ApplySuggestion] Duplicate embedding detected (sim={sim:.3f}), skipping")
+                        break
+        
+        if is_duplicate:
+            count = member.get("voiceSampleCount", 1)
+            return https_fn.Response(json.dumps({
+                "success": True,
+                "memberName": member_name,
+                "newSampleCount": count,
+                "message": f"⚠️ Échantillon trop similaire à un existant. Profil inchangé ({count} samples)"
+            }), status=200, content_type="application/json")
         
         if current_emb and isinstance(current_emb, list):
             if isinstance(current_emb[0], list):
@@ -6108,8 +6181,9 @@ def autonomous_ml_loop(req: https_fn.Request) -> https_fn.Response:
                         score = conf_info.get("score", 0) if isinstance(conf_info, dict) else conf_info
                         method = conf_info.get("method", "") if isinstance(conf_info, dict) else ""
                         
-                        # AUTO-LEARN: High confidence (>90%) that wasn't already auto-learned
-                        if score >= 0.90 and "voice" in str(method).lower():
+                        # AUTO-LEARN: High confidence (>80%) — relaxed from 90%
+                        # No longer requires "voice" method — any high-confidence match qualifies
+                        if score >= 0.80:
                             # Find member and add embedding
                             member_query = db.collection("members").where("displayName", "==", name).limit(1).stream()
                             for member_doc in member_query:
@@ -6118,41 +6192,66 @@ def autonomous_ml_loop(req: https_fn.Request) -> https_fn.Response:
                                 
                                 # Only learn if profile needs more samples
                                 if sample_count < 15:
-                                    # Find best segment for this speaker
+                                    # Find best segment for this speaker (prefer 15-45s range)
                                     speaker_segs = [s for s in segments if s.get("speaker") == label]
                                     if speaker_segs and audio_url:
-                                        best_seg = max(speaker_segs, key=lambda x: x.get("end", 0) - x.get("start", 0))
-                                        duration = best_seg.get("end", 0) - best_seg.get("start", 0)
+                                        # Prefer segments in the 15-45s sweet spot
+                                        ideal_segs = [s for s in speaker_segs 
+                                                      if 15 <= (s.get("end", 0) - s.get("start", 0)) <= 45]
+                                        if not ideal_segs:
+                                            ideal_segs = [s for s in speaker_segs 
+                                                          if 5 < (s.get("end", 0) - s.get("start", 0)) < 60]
                                         
-                                        if 5 < duration < 60:
+                                        if ideal_segs:
+                                            best_seg = max(ideal_segs, key=lambda x: x.get("end", 0) - x.get("start", 0))
+                                            duration = best_seg.get("end", 0) - best_seg.get("start", 0)
+                                        
                                             try:
                                                 new_emb = extract_audio_segment_embedding(
                                                     audio_url, best_seg["start"], best_seg["end"]
                                                 )
                                                 if new_emb:
-                                                    # Update profile
+                                                    # DEDUPLICATION: Check if this embedding is too similar to existing ones
+                                                    from speaker_identification import cosine_similarity as cos_sim
                                                     current_emb = member.get("embedding")
                                                     import json as jlib
                                                     if current_emb and isinstance(current_emb, str):
-                                                        current_emb = jlib.loads(current_emb)
+                                                        try:
+                                                            current_emb = jlib.loads(current_emb)
+                                                        except:
+                                                            current_emb = None
                                                     
+                                                    is_duplicate = False
                                                     if current_emb and isinstance(current_emb, list):
-                                                        if isinstance(current_emb[0], list):
-                                                            current_emb.append(new_emb)
-                                                            current_emb = current_emb[-15:]
-                                                        else:
-                                                            current_emb = [current_emb, new_emb]
-                                                    else:
-                                                        current_emb = [new_emb]
+                                                        existing_vecs = current_emb if isinstance(current_emb[0], list) else [current_emb]
+                                                        for existing_vec in existing_vecs:
+                                                            if len(existing_vec) == len(new_emb):
+                                                                sim = cos_sim(new_emb, existing_vec)
+                                                                if sim > 0.95:  # Too similar — skip
+                                                                    is_duplicate = True
+                                                                    print(f"[AutonomousML] Skipping duplicate embedding for {name} (sim={sim:.3f})")
+                                                                    break
                                                     
-                                                    db.collection("members").document(member_doc.id).update({
-                                                        "embedding": jlib.dumps(current_emb),
-                                                        "voiceSampleCount": len(current_emb) if isinstance(current_emb[0], list) else 1,
-                                                        "lastVoiceUpdate": datetime.now().isoformat(),
-                                                        "lastUpdateSource": "autonomous_ml"
-                                                    })
-                                                    results["autoLearned"] += 1
-                                                    results["actions"].append(f"Auto-learned: {name}")
+                                                    if not is_duplicate:
+                                                        # Update profile with new diverse embedding
+                                                        if current_emb and isinstance(current_emb, list):
+                                                            if isinstance(current_emb[0], list):
+                                                                current_emb.append(new_emb)
+                                                                current_emb = current_emb[-15:]
+                                                            else:
+                                                                current_emb = [current_emb, new_emb]
+                                                        else:
+                                                            current_emb = [new_emb]
+                                                        
+                                                        new_count = len(current_emb) if isinstance(current_emb[0], list) else 1
+                                                        db.collection("members").document(member_doc.id).update({
+                                                            "embedding": jlib.dumps(current_emb),
+                                                            "voiceSampleCount": new_count,
+                                                            "lastVoiceUpdate": datetime.now().isoformat(),
+                                                            "lastUpdateSource": "autonomous_ml"
+                                                        })
+                                                        results["autoLearned"] += 1
+                                                        results["actions"].append(f"Auto-learned: {name} ({new_count} samples)")
                                             except Exception as e:
                                                 print(f"[AutonomousML] Auto-learn failed for {name}: {e}")
                         

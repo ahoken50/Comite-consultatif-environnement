@@ -277,15 +277,15 @@ def fuse_scores(
     """
     Fuse all strategy scores with weighted combination.
     
-    NOTE: This function is currently NOT USED by main.py which has its own
-    inline fusion logic. Consider consolidating in future refactoring.
+    Called by main.py identify_speakers_in_transcript() as the primary
+    fusion function. Additional margin/gender checks are applied after.
     
-    Weights (actual values):
-    - Voice Embedding: 70%
-    - Contextual AI: 15%
-    - Linguistic Patterns: 5%
-    - Name Mentions: 5%
-    - Auto-ID: 5%
+    Weights:
+    - Voice Embedding: 70% (primary biometric signal)
+    - Contextual AI: 15% (GROQ role-based analysis)
+    - Linguistic Patterns: 5% (keyword detection)
+    - Name Mentions: 5% (direct name references)
+    - Auto-ID: 5% ("Je suis X" detection)
     """
     # Weights (Updated: Voice priority 70%)
     weights = {
