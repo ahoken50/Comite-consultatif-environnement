@@ -5813,14 +5813,21 @@ def suggest_profile_improvements(req: https_fn.Request) -> https_fn.Response:
 
     try:
         # Manual CORS handling for preflight and errors
+        origin = req.headers.get("Origin")
+        allowed = ["https://comite-cce.web.app", "http://localhost:5173", "http://localhost:5174", "http://127.0.0.1:5173"]
+        if origin not in allowed:
+            origin = allowed[0]
+            
+        cors_headers = {
+            "Access-Control-Allow-Origin": origin,
+            "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type",
+            "Access-Control-Allow-Credentials": "true",
+            "Access-Control-Max-Age": "3600"
+        }
+
         if req.method == "OPTIONS":
-            headers = {
-                "Access-Control-Allow-Origin": "*",
-                "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-                "Access-Control-Allow-Headers": "Content-Type",
-                "Access-Control-Max-Age": "3600"
-            }
-            return https_fn.Response("", status=204, headers=headers)
+            return https_fn.Response("", status=204, headers=cors_headers)
 
         data = req.get_json() or {}
         limit = data.get("limit", 5)
@@ -5887,13 +5894,13 @@ def suggest_profile_improvements(req: https_fn.Request) -> https_fn.Response:
             "success": True,
             "aiMessage": f"🤖 {len(suggestions)} profil(s) peuvent être améliorés",
             "suggestions": suggestions
-        }), status=200, content_type="application/json", headers={"Access-Control-Allow-Origin": "*"})
+        }), status=200, content_type="application/json", headers=cors_headers)
         
     except Exception as e:
         print(f"[ProactiveLearning] Error: {e}")
         import traceback
         traceback.print_exc()
-        return https_fn.Response(json.dumps({"error": str(e)}), status=500)
+        return https_fn.Response(json.dumps({"error": str(e)}), status=500, headers=cors_headers)
 
 
 @https_fn.on_request(
@@ -5911,14 +5918,21 @@ def human_verification_queue(req: https_fn.Request) -> https_fn.Response:
     """
     try:
         # Manual CORS handling for preflight and errors
+        origin = req.headers.get("Origin")
+        allowed = ["https://comite-cce.web.app", "http://localhost:5173", "http://localhost:5174", "http://127.0.0.1:5173"]
+        if origin not in allowed:
+            origin = allowed[0]
+            
+        cors_headers = {
+            "Access-Control-Allow-Origin": origin,
+            "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type",
+            "Access-Control-Allow-Credentials": "true",
+            "Access-Control-Max-Age": "3600"
+        }
+
         if req.method == "OPTIONS":
-            headers = {
-                "Access-Control-Allow-Origin": "*",
-                "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-                "Access-Control-Allow-Headers": "Content-Type",
-                "Access-Control-Max-Age": "3600"
-            }
-            return https_fn.Response("", status=204, headers=headers)
+            return https_fn.Response("", status=204, headers=cors_headers)
 
         data = req.get_json() or {}
         limit = data.get("limit", 10)
@@ -5941,11 +5955,11 @@ def human_verification_queue(req: https_fn.Request) -> https_fn.Response:
         return https_fn.Response(json.dumps({
             "success": True,
             "items": result
-        }), status=200, content_type="application/json", headers={"Access-Control-Allow-Origin": "*"})
+        }), status=200, content_type="application/json", headers=cors_headers)
         
     except Exception as e:
         print(f"[VerificationQueue] Error: {e}")
-        return https_fn.Response(json.dumps({"error": str(e)}), status=500)
+        return https_fn.Response(json.dumps({"error": str(e)}), status=500, headers=cors_headers)
 
 
 @https_fn.on_request(
@@ -5960,14 +5974,21 @@ def apply_ai_suggestion(req: https_fn.Request) -> https_fn.Response:
     """Apply user-approved AI suggestion to improve profile."""
     try:
         # Manual CORS handling for preflight and errors
+        origin = req.headers.get("Origin")
+        allowed = ["https://comite-cce.web.app", "http://localhost:5173", "http://localhost:5174", "http://127.0.0.1:5173"]
+        if origin not in allowed:
+            origin = allowed[0]
+            
+        cors_headers = {
+            "Access-Control-Allow-Origin": origin,
+            "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type",
+            "Access-Control-Allow-Credentials": "true",
+            "Access-Control-Max-Age": "3600"
+        }
+
         if req.method == "OPTIONS":
-            headers = {
-                "Access-Control-Allow-Origin": "*",
-                "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-                "Access-Control-Allow-Headers": "Content-Type",
-                "Access-Control-Max-Age": "3600"
-            }
-            return https_fn.Response("", status=204, headers=headers)
+            return https_fn.Response("", status=204, headers=cors_headers)
 
         data = req.get_json()
         member_id = data.get("memberId")
@@ -6024,13 +6045,13 @@ def apply_ai_suggestion(req: https_fn.Request) -> https_fn.Response:
             "memberName": member_name,
             "newSampleCount": count,
             "message": f"✅ {member_name} amélioré ! ({count}/20 samples)"
-        }), status=200, content_type="application/json", headers={"Access-Control-Allow-Origin": "*"})
+        }), status=200, content_type="application/json", headers=cors_headers)
         
     except Exception as e:
         print(f"[ApplySuggestion] Error: {e}")
         import traceback
         traceback.print_exc()
-        return https_fn.Response(json.dumps({"error": str(e)}), status=500, headers={"Access-Control-Allow-Origin": "*"})
+        return https_fn.Response(json.dumps({"error": str(e)}), status=500, headers=cors_headers)
 
 
 # =============================================================================
@@ -6062,14 +6083,21 @@ def autonomous_ml_loop(req: https_fn.Request) -> https_fn.Response:
     """
     try:
         # Manual CORS handling for preflight and errors
+        origin = req.headers.get("Origin")
+        allowed = ["https://comite-cce.web.app", "http://localhost:5173", "http://localhost:5174", "http://127.0.0.1:5173"]
+        if origin not in allowed:
+            origin = allowed[0]
+            
+        cors_headers = {
+            "Access-Control-Allow-Origin": origin,
+            "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type",
+            "Access-Control-Allow-Credentials": "true",
+            "Access-Control-Max-Age": "3600"
+        }
+
         if req.method == "OPTIONS":
-            headers = {
-                "Access-Control-Allow-Origin": "*",
-                "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-                "Access-Control-Allow-Headers": "Content-Type",
-                "Access-Control-Max-Age": "3600"
-            }
-            return https_fn.Response("", status=204, headers=headers)
+            return https_fn.Response("", status=204, headers=cors_headers)
 
         data = req.get_json() or {}
         meeting_id = data.get("meetingId")  # Optional: focus on specific meeting
@@ -6281,13 +6309,13 @@ def autonomous_ml_loop(req: https_fn.Request) -> https_fn.Response:
             "success": True,
             "message": f"🤖 ML Loop terminée: {results['autoLearned']} auto-appris, {results['queuedForReview']} en attente de validation",
             "results": results
-        }), status=200, content_type="application/json")
+        }), status=200, content_type="application/json", headers=cors_headers)
         
     except Exception as e:
         print(f"[AutonomousML] Error: {e}")
         import traceback
         traceback.print_exc()
-        return https_fn.Response(json.dumps({"error": str(e)}), status=500)
+        return https_fn.Response(json.dumps({"error": str(e)}), status=500, headers=cors_headers)
 
 
 # =============================================================================
