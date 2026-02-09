@@ -225,7 +225,7 @@ const TranscriptionViewer: React.FC<TranscriptionViewerProps> = ({
         setIsLoadingSuggestions(true);
         try {
             const response = await fetch(
-                `https://us-central1-portail-cce-valdor.cloudfunctions.net/suggest_profile_improvements`,
+                `https://us-central1-comite-cce.cloudfunctions.net/suggest_profile_improvements`,
                 { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ limit: 5 }) }
             );
             const data = await response.json();
@@ -246,7 +246,7 @@ const TranscriptionViewer: React.FC<TranscriptionViewerProps> = ({
     const handleLoadVerificationQueue = async () => {
         try {
             const response = await fetch(
-                `https://us-central1-portail-cce-valdor.cloudfunctions.net/human_verification_queue`,
+                `https://us-central1-comite-cce.cloudfunctions.net/human_verification_queue`,
                 { method: 'GET' }
             );
             const data = await response.json();
@@ -264,7 +264,7 @@ const TranscriptionViewer: React.FC<TranscriptionViewerProps> = ({
     const handleApplyAiSuggestion = async (suggestion: any, segment: any) => {
         try {
             const response = await fetch(
-                `https://us-central1-portail-cce-valdor.cloudfunctions.net/apply_ai_suggestion`,
+                `https://us-central1-comite-cce.cloudfunctions.net/apply_ai_suggestion`,
                 {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -293,7 +293,7 @@ const TranscriptionViewer: React.FC<TranscriptionViewerProps> = ({
     const handleConfirmVerification = async (item: any, correctedName: string) => {
         try {
             const response = await fetch(
-                `https://us-central1-portail-cce-valdor.cloudfunctions.net/human_verification_queue`,
+                `https://us-central1-comite-cce.cloudfunctions.net/human_verification_queue`,
                 {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
