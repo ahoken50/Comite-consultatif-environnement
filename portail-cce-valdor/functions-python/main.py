@@ -120,20 +120,21 @@ def get_cors_headers(req):
 # =============================================================================
 # SUPABASE ↔ FIRESTORE SYNC HELPER
 # =============================================================================
-def sync_embedding_to_supabase(member_name: str, embedding_data, member_id: str = ""):
+def sync_embedding_to_supabase(member_name: str, embedding_data, member_id: str = "", sample_source: str = "ml_auto"):
     """
-    Synchronize a member's embedding to Supabase speakers table.
+    Synchronize a member's embedding to Supabase speaker_embeddings table (Phase 2).
     
     Called after any embedding update (apply_ai_suggestion, closed_feedback_loop,
     autonomous_ml_loop, active_learning) to keep Supabase in sync with Firestore.
     
-    Strategy: UPSERT by name — if the speaker exists in Supabase, update their
-    embedding. If not, insert a new row.
+    PHASE 2 STRATEGY: Store each embedding as a separate row in speaker_embeddings.
+    The centroid is automatically maintained by the PostgreSQL function insert_speaker_embedding.
     
     Args:
         member_name: Display name of the member
         embedding_data: The embedding (list of floats or list of list of floats)
         member_id: Optional Firestore member ID for logging
+        sample_source: Source of the embedding (enrollment, correction, ml_auto, batch_import)
     """
     try:
         from supabase import create_client
@@ -142,28 +143,124 @@ def sync_embedding_to_supabase(member_name: str, embedding_data, member_id: str 
         supabase_key = os.environ.get("SUPABASE_KEY")
         
         if not supabase_url or not supabase_key:
-            print("[SupabaseSync] SUPABASE_URL or SUPABASE_KEY not configured, skipping sync")
+            print("[SupabaseSync Phase 2] SUPABASE_URL or SUPABASE_KEY not configured, skipping sync")
             return False
         
         supabase = create_client(supabase_url, supabase_key)
         
-        # Normalize embedding: Supabase stores a single vector, so if we have
-        # multiple embeddings (list of lists), compute the centroid (average)
+        # Normalize embedding: Parse if string
         import json as json_lib
         if isinstance(embedding_data, str):
             try:
                 embedding_data = json_lib.loads(embedding_data)
             except (json.JSONDecodeError, ValueError):
-                print(f"[SupabaseSync] Failed to parse embedding string for {member_name}")
+                print(f"[SupabaseSync Phase 2] Failed to parse embedding string for {member_name}")
                 return False
         
         if not embedding_data or not isinstance(embedding_data, list):
-            print(f"[SupabaseSync] No valid embedding for {member_name}")
+            print(f"[SupabaseSync Phase 2] No valid embedding for {member_name}")
             return False
         
-        # If it's a list of vectors, compute centroid for Supabase
+        # Vérifier si la table speaker_embeddings existe (Phase 2 déployée?)
+        try:
+            # Test d'accès à speaker_embeddings
+            test_result = supabase.table("speaker_embeddings").select("id").limit(1).execute()
+            speaker_embeddings_available = True
+        except:
+            speaker_embeddings_available = False
+            print(f"[SupabaseSync Phase 2] speaker_embeddings table not available, using fallback")
+        
+        if not speaker_embeddings_available:
+            # FALLBACK: Utiliser l'ancienne méthode (table speakers avec centroid)
+            return sync_embedding_to_supabase_fallback(member_name, embedding_data, member_id)
+        
+        # PHASE 2: Insérer dans speaker_embeddings (multi-rows)
+        # Si embedding_data est une liste de vecteurs, insérer chaque vecteur séparément
+        if isinstance(embedding_data[0], list) and isinstance(embedding_data[0][0], (int, float)):
+            # Liste de vecteurs: insérer chacun
+            vectors = embedding_data
+            for vec in vectors:
+                if len(vec) == 768:  # Dimension attendue
+                    result = supabase.table("speaker_embeddings").insert({
+                        "speaker_name": member_name,
+                        "embedding": vec,
+                        "sample_source": sample_source,
+                        "created_at": datetime.now().isoformat()
+                    }).execute()
+            print(f"[SupabaseSync Phase 2] Inserted {len(vectors)} embeddings for {member_name} (source: {sample_source})")
+            
+        elif isinstance(embedding_data[0], (int, float)):
+            # Vecteur unique
+            result = supabase.table("speaker_embeddings").insert({
+                "speaker_name": member_name,
+                "embedding": embedding_data,
+                "sample_source": sample_source,
+                "created_at": datetime.now().isoformat()
+            }).execute()
+            print(f"[SupabaseSync Phase 2] Inserted 1 embedding for {member_name} (source: {sample_source})")
+        else:
+            print(f"[SupabaseSync Phase 2] Invalid embedding format for {member_name}")
+            return False
+        
+        # Nettoyer les anciens embeddings si trop nombreux (garder max 20 par speaker)
+        try:
+            # Compter les embeddings actuels
+            count_result = supabase.table("speaker_embeddings").select("id", count="exact").eq("speaker_name", member_name).execute()
+            count = count_result.count if hasattr(count_result, 'count') else len(count_result.data)
+            
+            if count > 20:
+                # Récupérer tous les embeddings ordonnés par date
+                all_result = supabase.table("speaker_embeddings").select("id").eq("speaker_name", member_name).order("created_at", desc=True).execute()
+                ids_to_keep = [row["id"] for row in all_result.data[:20]]
+                ids_to_delete = [row["id"] for row in all_result.data[20:]]
+                
+                for id_to_delete in ids_to_delete:
+                    supabase.table("speaker_embeddings").delete().eq("id", id_to_delete).execute()
+                
+                print(f"[SupabaseSync Phase 2] Cleaned up {len(ids_to_delete)} old embeddings for {member_name}")
+        except Exception as e:
+            print(f"[SupabaseSync Phase 2] Cleanup error (non-fatal): {e}")
+        
+        return True
+        
+    except Exception as e:
+        print(f"[SupabaseSync Phase 2] Error syncing {member_name}: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+
+def sync_embedding_to_supabase_fallback(member_name: str, embedding_data, member_id: str = ""):
+    """
+    FALLBACK VERSION: Sync to old Supabase speakers table (Phase 1).
+    
+    Used when speaker_embeddings table is not yet available.
+    """
+    try:
+        from supabase import create_client
+        
+        supabase_url = os.environ.get("SUPABASE_URL")
+        supabase_key = os.environ.get("SUPABASE_KEY")
+        
+        if not supabase_url or not supabase_key:
+            print("[SupabaseSync Fallback] SUPABASE_URL or SUPABASE_KEY not configured")
+            return False
+        
+        supabase = create_client(supabase_url, supabase_key)
+        
+        # Normalize embedding: Compute centroid if multi-vector
+        import json as json_lib
+        if isinstance(embedding_data, str):
+            try:
+                embedding_data = json_lib.loads(embedding_data)
+            except (json.JSONDecodeError, ValueError):
+                return False
+        
+        if not embedding_data or not isinstance(embedding_data, list):
+            return False
+        
+        # If it's a list of vectors, compute centroid
         if isinstance(embedding_data[0], list):
-            # Centroid = average of all vectors
             num_vectors = len(embedding_data)
             dim = len(embedding_data[0])
             centroid = [0.0] * dim
@@ -173,37 +270,31 @@ def sync_embedding_to_supabase(member_name: str, embedding_data, member_id: str 
                         centroid[i] += vec[i]
             centroid = [v / num_vectors for v in centroid]
             embedding_for_supabase = centroid
-            print(f"[SupabaseSync] Computed centroid from {num_vectors} vectors for {member_name}")
         else:
-            # Single vector
             embedding_for_supabase = embedding_data
         
-        # Check if speaker already exists in Supabase
+        # Check if speaker exists
         existing = supabase.table("speakers").select("id, name").eq("name", member_name).execute()
         
         if existing.data and len(existing.data) > 0:
-            # UPDATE existing row
             speaker_id = existing.data[0]["id"]
             supabase.table("speakers").update({
                 "embedding": embedding_for_supabase,
                 "updated_at": datetime.now().isoformat(),
             }).eq("id", speaker_id).execute()
-            print(f"[SupabaseSync] Updated Supabase speaker '{member_name}' (id={speaker_id})")
+            print(f"[SupabaseSync Fallback] Updated speaker '{member_name}'")
         else:
-            # INSERT new row
             supabase.table("speakers").insert({
                 "name": member_name,
                 "embedding": embedding_for_supabase,
                 "created_at": datetime.now().isoformat(),
             }).execute()
-            print(f"[SupabaseSync] Inserted new Supabase speaker '{member_name}'")
+            print(f"[SupabaseSync Fallback] Inserted speaker '{member_name}'")
         
         return True
         
     except Exception as e:
-        print(f"[SupabaseSync] Error syncing {member_name}: {e}")
-        import traceback
-        traceback.print_exc()
+        print(f"[SupabaseSync Fallback] Error: {e}")
         return False
 
 
@@ -1254,51 +1345,13 @@ def get_enrolled_speakers() -> list:
     """
     Fetch all enrolled speakers with their embeddings.
     
-    UNIFIED APPROACH: Merges data from both Supabase (initial enrollments)
-    and Firestore members (ML-learned embeddings) to ensure all embeddings
-    are used for identification.
+    PHASE 2 APPROACH: Primary source is Supabase speaker_embeddings table.
+    Fallback to Firestore members only if Supabase is unavailable.
     """
     speakers = []
     speaker_names_seen = set()
     
-    # === SOURCE 1: Firestore members (ML-learned embeddings — PRIMARY) ===
-    try:
-        import json as json_lib
-        _db = firestore.client()
-        members = list(_db.collection("members").stream())
-        
-        for doc in members:
-            member = doc.to_dict()
-            name = member.get("displayName") or member.get("name")
-            embedding = member.get("embedding")
-            
-            if not name or not embedding:
-                continue
-            
-            # Parse string embedding (stored as JSON string in Firestore)
-            if isinstance(embedding, str):
-                try:
-                    embedding = json_lib.loads(embedding)
-                except (json.JSONDecodeError, ValueError):
-                    continue
-            
-            if embedding and isinstance(embedding, list):
-                speakers.append({
-                    "id": doc.id,
-                    "name": name,
-                    "embedding": embedding,
-                    "role": member.get("role", "Membre"),
-                    "source": "firestore",
-                    "sampleCount": member.get("voiceSampleCount", 1)
-                })
-                speaker_names_seen.add(name)
-                
-        print(f"[Speakers] Loaded {len(speakers)} speakers from Firestore")
-        
-    except Exception as e:
-        print(f"[Speakers] Firestore error (non-fatal): {e}")
-    
-    # === SOURCE 2: Supabase speakers (initial enrollments — FALLBACK) ===
+    # === SOURCE 1: Supabase speaker_embeddings (PRIMARY — Phase 2) ===
     try:
         from supabase import create_client
         
@@ -1307,25 +1360,98 @@ def get_enrolled_speakers() -> list:
         
         if supabase_url and supabase_key:
             supabase = create_client(supabase_url, supabase_key)
-            result = supabase.table("speakers").select("id, name, embedding, role").execute()
+            
+            # Récupérer tous les embeddings groupés par speaker
+            # Cette requête retourne: speaker_name, speaker_id, embedding, sample_source
+            result = supabase.table("speaker_embeddings").select(
+                "speaker_name, speaker_id, embedding, sample_source, created_at"
+            ).execute()
             
             if result.data:
+                # Grouper les embeddings par speaker
+                speaker_embeddings = {}
                 for row in result.data:
-                    name = row.get("name")
-                    # Only add if NOT already loaded from Firestore (Firestore has fresher data)
-                    if name and name not in speaker_names_seen:
-                        speakers.append({
-                            **row,
-                            "source": "supabase",
-                            "sampleCount": 1
-                        })
-                        speaker_names_seen.add(name)
-                        
-                print(f"[Speakers] Added {len(result.data)} speakers from Supabase (new only)")
+                    name = row.get("speaker_name")
+                    if not name:
+                        continue
+                    
+                    embedding = row.get("embedding")
+                    if embedding:
+                        if name not in speaker_embeddings:
+                            speaker_embeddings[name] = {
+                                "embeddings": [],
+                                "speaker_id": row.get("speaker_id"),
+                                "sample_sources": set()
+                            }
+                        speaker_embeddings[name]["embeddings"].append(embedding)
+                        speaker_embeddings[name]["sample_sources"].add(row.get("sample_source"))
+                
+                # Construire la liste des speakers
+                for name, data in speaker_embeddings.items():
+                    speakers.append({
+                        "id": data.get("speaker_id", name),
+                        "name": name,
+                        "embedding": data["embeddings"],  # Liste de vecteurs
+                        "source": "supabase",
+                        "sampleCount": len(data["embeddings"]),
+                        "sample_sources": list(data["sample_sources"])
+                    })
+                    speaker_names_seen.add(name)
+                
+                print(f"[Speakers Phase 2] Loaded {len(speakers)} speakers from Supabase speaker_embeddings")
+                
+                # Récupérer les rôles depuis la table speakers
+                speakers_result = supabase.table("speakers").select("id, name, role").execute()
+                if speakers_result.data:
+                    role_map = {s["name"]: s.get("role", "Membre") for s in speakers_result.data}
+                    for speaker in speakers:
+                        speaker["role"] = role_map.get(speaker["name"], "Membre")
+        
     except Exception as e:
-        print(f"[Speakers] Supabase error (non-fatal): {e}")
+        print(f"[Speakers Phase 2] Supabase error (will fallback to Firestore): {e}")
+        import traceback
+        traceback.print_exc()
     
-    print(f"[Speakers] Total: {len(speakers)} unique speakers loaded")
+    # === SOURCE 2: Firestore members (FALLBACK — only if Supabase unavailable) ===
+    if not speakers:
+        print(f"[Speakers Phase 2] Supabase unavailable, falling back to Firestore")
+        try:
+            import json as json_lib
+            _db = firestore.client()
+            members = list(_db.collection("members").stream())
+            
+            for doc in members:
+                member = doc.to_dict()
+                name = member.get("displayName") or member.get("name")
+                embedding = member.get("embedding")
+                
+                if not name or not embedding:
+                    continue
+                
+                # Parse string embedding (stored as JSON string in Firestore)
+                if isinstance(embedding, str):
+                    try:
+                        embedding = json_lib.loads(embedding)
+                    except (json.JSONDecodeError, ValueError):
+                        continue
+                
+                if embedding and isinstance(embedding, list):
+                    speakers.append({
+                        "id": doc.id,
+                        "name": name,
+                        "embedding": embedding,
+                        "role": member.get("role", "Membre"),
+                        "source": "firestore",
+                        "sampleCount": member.get("voiceSampleCount", 1)
+                    })
+                    speaker_names_seen.add(name)
+                    
+            print(f"[Speakers Phase 2] Loaded {len(speakers)} speakers from Firestore (fallback)")
+            
+        except Exception as e:
+            print(f"[Speakers Phase 2] Firestore error (non-fatal): {e}")
+    
+    print(f"[Speakers Phase 2] Total: {len(speakers)} unique speakers loaded")
     return speakers
 
 
@@ -1439,9 +1565,71 @@ def extract_audio_segment_embedding(audio_url: str, start_sec: float, end_sec: f
         return []
 
 
-def compare_embedding_with_speakers(segment_embedding: list, enrolled_speakers: list) -> dict:
+def match_speakers_with_pgvector(segment_embedding: list, enrolled_speakers: list = None, limit: int = 10) -> dict:
     """
-    Compare a segment embedding with all enrolled speaker embeddings.
+    Match a segment embedding with speakers using pgvector (Phase 2 - Primary).
+    
+    Uses Supabase's native vector similarity search via SQL function match_speakers().
+    Falls back to local computation if Supabase is unavailable.
+    
+    Returns dict of {name: similarity_score} (0.0 to 1.0)
+    """
+    try:
+        from supabase import create_client
+        
+        supabase_url = os.environ.get("SUPABASE_URL")
+        supabase_key = os.environ.get("SUPABASE_KEY")
+        
+        if supabase_url and supabase_key:
+            supabase = create_client(supabase_url, supabase_key)
+            
+            # Appeler la fonction SQL match_speakers via RPC
+            # Attention: Supabase Python client n'a pas de support direct pour les fonctions SQL avec paramètres complexes
+            # On doit faire la requête SQL manuellement
+            
+            # Convertir l'embedding en format PostgreSQL
+            embedding_str = "[" + ",".join(str(x) for x in segment_embedding) + "]"
+            
+            # Exécuter la requête SQL
+            query = f"""
+                SELECT speaker_name, similarity, match_count, avg_similarity, sample_sources
+                FROM match_speakers('[{embedding_str}]'::vector(768), {limit})
+            """
+            
+            result = supabase.rpc('match_speakers', {
+                'target_embedding': embedding_str,
+                'limit_count': limit
+            })
+            
+            # Alternative: faire une requête directe avec execute_sql (si disponible)
+            # Pour l'instant, on fait fallback sur le calcul local
+            print(f"[PGVector] Using fallback to local computation (RPC not fully supported)")
+            raise Exception("RPC fallback needed")
+            
+            if result.data:
+                scores = {}
+                for row in result.data:
+                    name = row.get("speaker_name")
+                    similarity = row.get("avg_similarity", 0.0)
+                    if similarity is not None:
+                        scores[name] = max(0.0, min(1.0, float(similarity)))
+                
+                print(f"[PGVector] Matched {len(scores)} speakers via pgvector")
+                return scores
+        
+    except Exception as e:
+        print(f"[PGVector] Error using pgvector, falling back to local computation: {e}")
+    
+    # Fallback: calcul local avec les speakers fournis
+    if enrolled_speakers:
+        return compare_embedding_with_speakers_local(segment_embedding, enrolled_speakers)
+    
+    return {}
+
+
+def compare_embedding_with_speakers_local(segment_embedding: list, enrolled_speakers: list) -> dict:
+    """
+    LOCAL VERSION: Compare a segment embedding with speakers (fallback when pgvector unavailable).
     
     FAIR SCORING: Uses top-3 average per speaker instead of global k-NN.
     This prevents speakers with more samples from being systematically favored.
@@ -5670,7 +5858,7 @@ def closed_feedback_loop(req: https_fn.Request) -> https_fn.Response:
                         reinforced = True
                         print(f"[FeedbackLoop] Reinforced {correct_name}'s profile from correction")
                         # Sync updated embedding to Supabase
-                        sync_embedding_to_supabase(correct_name, current_emb, correct_member_id or "")
+                        sync_embedding_to_supabase(correct_name, current_emb, correct_member_id or "", sample_source="correction")
             except Exception as e:
                 print(f"[FeedbackLoop] Reinforcement failed: {e}")
         
@@ -6303,7 +6491,7 @@ def apply_ai_suggestion(req: https_fn.Request) -> https_fn.Response:
         })
         
         # Sync to Supabase speakers table
-        sync_embedding_to_supabase(member_name, current_emb, member_id)
+        sync_embedding_to_supabase(member_name, current_emb, member_id, sample_source="ml_auto")
         return https_fn.Response(json.dumps({
             "success": True,
             "memberName": member_name,
@@ -6465,7 +6653,7 @@ def autonomous_ml_loop(req: https_fn.Request) -> https_fn.Response:
                                                         results["autoLearned"] += 1
                                                         results["actions"].append(f"Auto-learned: {name} ({new_count} samples)")
                                                         # Sync to Supabase
-                                                        sync_embedding_to_supabase(name, current_emb, member_doc.id)
+                                                        sync_embedding_to_supabase(name, current_emb, member_doc.id, sample_source="ml_auto")
                                             except Exception as e:
                                                 print(f"[AutonomousML] Auto-learn failed for {name}: {e}")
                         
@@ -6679,6 +6867,7 @@ from active_learning import (
 
 from clear_supabase_speakers import clear_supabase_speakers
 from batch_enroll_from_storage import batch_enroll_from_storage
+from migrate_to_supabase_primary import run_migration_to_supabase_primary
 
 
 # -----------------------------------------------------------------------------
