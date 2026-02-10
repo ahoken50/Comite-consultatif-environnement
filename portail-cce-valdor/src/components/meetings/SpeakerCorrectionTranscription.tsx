@@ -25,7 +25,6 @@ import {
 import {
     RecordVoiceOver as VoiceIcon,
     CheckCircle as CheckIcon,
-    SwapHoriz as SwapIcon,
     Psychology as MLIcon,
 } from '@mui/icons-material';
 import type { SelectChangeEvent } from '@mui/material';
@@ -85,8 +84,8 @@ export const SpeakerCorrectionTranscription: React.FC<SpeakerCorrectionTranscrip
     }, [segments]);
 
     // Build member options for dropdown
-    const memberOptions = useMemo(() => {
-        const options = members
+    const memberOptions = useMemo((): Array<{ value: string; label: string; role: string; id: string }> => {
+        const options: Array<{ value: string; label: string; role: string; id: string }> = members
             .filter(m => m.displayName)
             .map(m => ({
                 value: m.displayName,
@@ -153,10 +152,6 @@ export const SpeakerCorrectionTranscription: React.FC<SpeakerCorrectionTranscrip
             setLearningStatus(`🧠 Apprentissage en cours pour ${newName}...`);
 
             try {
-                // Estimate timestamp from text position
-                const textRatio = segment.position / Math.max(transcription.length, 1);
-                const estimatedStart = Math.floor(textRatio * audioDuration);
-                
                 // Find nearest timestamp markers for better accuracy
                 const { start, end } = estimateSegmentTime(
                     transcription, segment.position, audioDuration
@@ -168,8 +163,6 @@ export const SpeakerCorrectionTranscription: React.FC<SpeakerCorrectionTranscrip
                 if (segmentDuration >= 5) {
                     // Find member IDs
                     const correctMember = members.find(m => m.displayName === newName);
-                    const wrongMember = members.find(m => m.displayName === oldName);
-
                     if (correctMember) {
                         // Call closed_feedback_loop for correction logging + embedding reinforcement
                         const { getFunctions, httpsCallable } = await import('firebase/functions');
