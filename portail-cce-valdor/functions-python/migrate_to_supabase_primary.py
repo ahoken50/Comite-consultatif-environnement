@@ -10,7 +10,7 @@ Run this AFTER deploying the SQL migration script (supabase_phase2_migration.sql
 import os
 import json
 from datetime import datetime
-from firebase_admin import firestore, credentials, initialize_app
+from firebase_admin import firestore, credentials, initialize_app, _apps
 from supabase import create_client
 from firebase_functions import https_fn, options
 
@@ -25,7 +25,7 @@ def migrate_firestore_to_supabase():
     
     # Initialize Firebase
     try:
-        if not firestore._apps:
+        if not _apps:
             cred = credentials.ApplicationDefault()
             initialize_app(cred)
         db = firestore.client()
