@@ -107,41 +107,33 @@ def batch_enroll_from_storage(req: https_fn.Request) -> https_fn.Response:
                 except (json.JSONDecodeError, ValueError):
                     pass
             
-            # Generate signed URL for the audio file
-            from datetime import timedelta
-            signed_url = blob.generate_signed_url(
-                version="v4",
-                expiration=timedelta(hours=1),
-                method="GET"
-            )
-            
             # Extract embedding via Modal
             # Assume the audio file is the full enrollment, so we extract from 0 to end
             # We'll use a reasonable duration (e.g., 30 seconds max)
             try:
-                # Download audio to get duration
+                # Download audio directly from Firebase Storage
                 import tempfile
                 import subprocess
                 
                 with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
                     blob.download_to_filename(tmp.name)
-                    temp_path = tmp.name
+                    audio_path = tmp.name
                 
                 # Get audio duration with ffprobe
                 cmd = [
                     "ffprobe", "-v", "error", "-show_entries",
                     "format=duration", "-of", "default=noprint_wrappers=1:nokey=1",
-                    temp_path
+                    audio_path
                 ]
                 result = subprocess.run(cmd, capture_output=True, text=True)
                 duration = float(result.stdout.strip()) if result.returncode == 0 else 30.0
                 
                 # Extract embedding from the full audio (max 30s)
                 end_time = min(duration, 30.0)
-                embedding = extract_audio_segment_embedding(signed_url, 0, end_time)
+                embedding = extract_audio_segment_embedding(audio_path, 0, end_time)
                 
                 # Cleanup temp file
-                os.unlink(temp_path)
+                os.unlink(audio_path)
                 
                 if not embedding or len(embedding) == 0:
                     results["details"].append({
