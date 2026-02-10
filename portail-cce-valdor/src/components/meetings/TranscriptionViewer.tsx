@@ -25,6 +25,7 @@ import {
 import {
     Dialog, DialogTitle, DialogContent, DialogActions, Tooltip
 } from '@mui/material';
+import { SpeakerCorrectionTranscription } from './SpeakerCorrectionTranscription';
 import { useSelector } from 'react-redux';
 import type { Meeting, MinutesDraft } from '../../types/meeting.types';
 import { buildHistoricalContext, formatHistoricalContextForPrompt, reinforceSpeaker } from '../../services/geminiService';
@@ -462,20 +463,17 @@ const TranscriptionViewer: React.FC<TranscriptionViewerProps> = ({
                         Copier
                     </Button>
                 </Box>
-                <Paper
-                    variant="outlined"
-                    sx={{
-                        p: 2,
-                        maxHeight: 300,
-                        overflow: 'auto',
-                        bgcolor: 'grey.50',
-                        fontFamily: 'monospace',
-                        fontSize: '0.85rem',
-                        whiteSpace: 'pre-wrap'
+                <SpeakerCorrectionTranscription
+                    transcription={transcription}
+                    members={members}
+                    meetingId={meeting.id}
+                    audioUrl={meeting.audioRecording?.fileUrl}
+                    audioDuration={meeting.audioRecording?.duration || 0}
+                    onTranscriptionUpdate={onTranscriptionUpdate}
+                    onCorrectionMade={(original, corrected) => {
+                        showToast?.(`Locuteur corrigé: ${original} → ${corrected}`, 'success');
                     }}
-                >
-                    {transcription}
-                </Paper>
+                />
             </Paper>
 
             {/* Speaker Identification Section */}

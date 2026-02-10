@@ -5914,6 +5914,19 @@ def active_learning_priority(req: https_fn.Request) -> https_fn.Response:
 # =============================================================================
 # AI PROACTIVE LEARNING - AI requests user to validate selected segments
 # =============================================================================
+
+def _parse_timestamp(ts_str: str) -> float:
+    """Parse a timestamp string like '01:23' or '01:23:45' into seconds."""
+    parts = ts_str.split(":")
+    try:
+        if len(parts) == 3:
+            return int(parts[0]) * 3600 + int(parts[1]) * 60 + int(parts[2])
+        elif len(parts) == 2:
+            return int(parts[0]) * 60 + int(parts[1])
+    except (ValueError, IndexError):
+        pass
+    return 0.0
+
 @https_fn.on_request(
     timeout_sec=300,
     memory=options.MemoryOption.GB_1,
@@ -5922,7 +5935,8 @@ def active_learning_priority(req: https_fn.Request) -> https_fn.Response:
 def suggest_profile_improvements(req: https_fn.Request) -> https_fn.Response:
     """
     AI proactively finds segments to improve weak profiles.
-    Returns suggestions with estimated accuracy improvement.
+    Parses transcription text to find segments where each member speaks,
+    and estimates timestamps from text position or [HH:MM] markers.
     """
 
     try:
@@ -5941,8 +5955,10 @@ def suggest_profile_improvements(req: https_fn.Request) -> https_fn.Response:
         
         for doc in members:
             member = doc.to_dict()
-            sample_count = member.get("voiceSampleCount", 0)
+            sample_count = member.get("voiceSampleCount", 0) or 0
             name = member.get("displayName") or member.get("name")
+            if not name:
+                continue
             if sample_count < 10:
                 weak_profiles.append({
                     "memberId": doc.id, "name": name, "sampleCount": sample_count,
@@ -5950,6 +5966,8 @@ def suggest_profile_improvements(req: https_fn.Request) -> https_fn.Response:
                 })
         
         weak_profiles.sort(key=lambda x: x["improvement"], reverse=True)
+        
+        import re as re_mod
         
         for wp in weak_profiles[:limit]:
             meetings_query = db.collection("meetings").order_by(
@@ -5959,28 +5977,101 @@ def suggest_profile_improvements(req: https_fn.Request) -> https_fn.Response:
             found_segments = []
             for meeting_doc in meetings_query.stream():
                 meeting = meeting_doc.to_dict()
-                for rec in meeting.get("audioRecordings", []):
-                    mapping = rec.get("speakerMapping", {})
-                    segments = rec.get("segments", [])
-                    audio_url = rec.get("downloadUrl")
+                
+                # Get audio URL and transcription from the actual data model
+                audio_url = None
+                transcription_text = None
+                audio_duration = 0
+                
+                # Try singular audioRecording first (primary model)
+                rec = meeting.get("audioRecording")
+                if rec and isinstance(rec, dict):
+                    audio_url = rec.get("fileUrl") or rec.get("downloadUrl")
+                    transcription_text = rec.get("transcription", "")
+                    audio_duration = rec.get("duration", 0) or 0
+                
+                # Try plural audioRecordings as fallback
+                if not audio_url:
+                    recs = meeting.get("audioRecordings", [])
+                    if recs and isinstance(recs, list) and len(recs) > 0:
+                        first_rec = recs[0] if isinstance(recs[0], dict) else {}
+                        audio_url = first_rec.get("fileUrl") or first_rec.get("downloadUrl")
+                        transcription_text = first_rec.get("transcription", "")
+                        audio_duration = first_rec.get("duration", 0) or 0
+                
+                if not audio_url or not transcription_text:
+                    continue
+                
+                # Parse transcription to find segments where this member speaks
+                member_name = wp["name"]
+                escaped_name = re_mod.escape(member_name)
+                
+                # Find all timestamps [HH:MM:SS] or [MM:SS]
+                timestamp_pattern = re_mod.compile(r'\[(\d{1,2}:\d{2}(?::\d{2})?)\]')
+                speaker_pattern = re_mod.compile(
+                    r'(?:\[' + escaped_name + r'\]|\*\*' + escaped_name + r'\*\*:?)',
+                    re_mod.IGNORECASE
+                )
+                
+                timestamps = [(m.start(), m.group(1)) for m in timestamp_pattern.finditer(transcription_text)]
+                speaker_matches = list(speaker_pattern.finditer(transcription_text))
+                
+                for sp_match in speaker_matches:
+                    sp_pos = sp_match.start()
+                    start_time = 0
+                    end_time = 0
                     
-                    for label, assigned_name in mapping.items():
-                        if assigned_name == wp["name"]:
-                            for seg in segments:
-                                if seg.get("speaker") == label:
-                                    duration = seg.get("end", 0) - seg.get("start", 0)
-                                    if 5 < duration < 60:
-                                        found_segments.append({
-                                            "meetingId": meeting_doc.id,
-                                            "meetingTitle": meeting.get("title", "")[:40],
-                                            "audioUrl": audio_url,
-                                            "start": seg.get("start"),
-                                            "end": seg.get("end"),
-                                            "duration": round(duration, 1),
-                                            "text": seg.get("text", "")[:80]
-                                        })
+                    if timestamps:
+                        prev_ts = None
+                        next_ts = None
+                        for ts_pos, ts_val in timestamps:
+                            if ts_pos <= sp_pos:
+                                prev_ts = ts_val
+                            elif next_ts is None:
+                                next_ts = ts_val
+                        
+                        if prev_ts:
+                            start_time = _parse_timestamp(prev_ts)
+                        if next_ts:
+                            end_time = _parse_timestamp(next_ts)
+                        elif audio_duration > 0:
+                            end_time = min(start_time + 30, audio_duration)
+                        else:
+                            end_time = start_time + 30
+                    elif audio_duration > 0:
+                        # Estimate timestamp from text position ratio
+                        text_ratio = sp_pos / max(len(transcription_text), 1)
+                        start_time = int(text_ratio * audio_duration)
+                        end_time = min(start_time + 30, audio_duration)
+                    
+                    duration = end_time - start_time
+                    
+                    if 5 < duration < 60 and start_time >= 0:
+                        text_start = sp_match.end()
+                        text_end = min(text_start + 100, len(transcription_text))
+                        text_sample = transcription_text[text_start:text_end].strip()
+                        text_sample = re_mod.sub(r'\[.*?\]', '', text_sample).strip()[:80]
+                        
+                        found_segments.append({
+                            "meetingId": meeting_doc.id,
+                            "meetingTitle": meeting.get("title", "Sans titre")[:40],
+                            "audioUrl": audio_url,
+                            "start": round(start_time, 1),
+                            "end": round(end_time, 1),
+                            "duration": round(duration, 1),
+                            "text": text_sample or "(segment audio)"
+                        })
             
-            best_segments = sorted(found_segments, key=lambda x: x["duration"], reverse=True)[:3]
+            # Deduplicate and pick best segments
+            seen = set()
+            unique_segments = []
+            for seg in found_segments:
+                key = f"{seg['meetingId']}-{seg['start']}"
+                if key not in seen:
+                    seen.add(key)
+                    unique_segments.append(seg)
+            
+            best_segments = sorted(unique_segments, key=lambda x: x["duration"], reverse=True)[:3]
             if best_segments:
                 suggestions.append({
                     "memberId": wp["memberId"],
@@ -5988,12 +6079,12 @@ def suggest_profile_improvements(req: https_fn.Request) -> https_fn.Response:
                     "currentSamples": wp["sampleCount"],
                     "improvement": f"+{wp['improvement']:.0f}%",
                     "segments": best_segments,
-                    "aiMessage": f"🧠 Valider ces segments améliorera {wp['name']} de ~{wp['improvement']:.0f}%"
+                    "aiMessage": f"\U0001f9e0 Valider ces segments am\u00e9liorera {wp['name']} de ~{wp['improvement']:.0f}%"
                 })
         
         return https_fn.Response(json.dumps({
             "success": True,
-            "aiMessage": f"🤖 {len(suggestions)} profil(s) peuvent être améliorés",
+            "aiMessage": f"\U0001f916 {len(suggestions)} profil(s) peuvent \u00eatre am\u00e9lior\u00e9s",
             "suggestions": suggestions
         }), status=200, content_type="application/json")
         
@@ -6002,6 +6093,7 @@ def suggest_profile_improvements(req: https_fn.Request) -> https_fn.Response:
         import traceback
         traceback.print_exc()
         return https_fn.Response(json.dumps({"error": str(e)}), status=500)
+
 
 
 # NOTE: human_verification_queue duplicate removed — original is at #13 above (line ~5309)
