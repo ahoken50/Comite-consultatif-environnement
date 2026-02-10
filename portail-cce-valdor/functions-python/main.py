@@ -6895,6 +6895,7 @@ from migrate_to_supabase_primary import run_migration_to_supabase_primary
 from auto_migration import ensure_migration_completed, get_migration_status
 from migration_status import api_get_migration_status, trigger_manual_migration, reset_migration_flag
 from diagnose_migration import api_diagnose_migration
+from diagnose_enrollment import diagnose_enrollment_issues
 
 
 # -----------------------------------------------------------------------------
