@@ -75,7 +75,7 @@ firebase deploy --only functions
 ### Vérifier le statut de migration
 
 ```bash
-curl https://us-central1-comite-cce.cloudfunctions.net/get_migration_status
+curl https://us-central1-comite-cce.cloudfunctions.net/api_get_migration_status
 ```
 
 **Réponse:**

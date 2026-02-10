@@ -14,12 +14,12 @@ from datetime import datetime
     memory=options.MemoryOption.MB_128,
     cors=options.CorsOptions(cors_origins="*", cors_methods=["GET", "POST", "OPTIONS"])
 )
-def get_migration_status(req: https_fn.Request) -> https_fn.Response:
+def api_get_migration_status(req: https_fn.Request) -> https_fn.Response:
     """
-    Get the current status of Phase 2 migration.
+    Get the current status of Phase 2 migration (REST API endpoint).
     
     Usage:
-        curl https://us-central1-comite-cce.cloudfunctions.net/get_migration_status
+        curl https://us-central1-comite-cce.cloudfunctions.net/api_get_migration_status
     
     Returns:
         {
