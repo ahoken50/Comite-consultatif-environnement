@@ -141,6 +141,21 @@ def update_embedding_with_correction(
             "correctionCount": (member.get("correctionCount", 0) or 0) + 1,
         })
         
+        # Step 5: Sync to Supabase (deferred import to avoid circular dependency)
+        if not is_duplicate:
+            try:
+                # Import at call-time to avoid circular import (active_learning ↔ main)
+                import importlib
+                main_module = importlib.import_module("main")
+                sync_fn = getattr(main_module, "sync_embedding_to_supabase", None)
+                if sync_fn:
+                    member_name = member.get("displayName") or member.get("name", "")
+                    sync_fn(member_name, vectors, member_id)
+                else:
+                    print("[ActiveLearning] sync_embedding_to_supabase not found in main module")
+            except Exception as sync_err:
+                print(f"[ActiveLearning] Supabase sync failed (non-fatal): {sync_err}")
+        
         action = "added" if not is_duplicate else "skipped (duplicate)"
         msg = f"Embedding {action} for member. Samples: {new_count}. Wrong removed: {removed_wrong}"
         print(f"[ActiveLearning] {msg}")

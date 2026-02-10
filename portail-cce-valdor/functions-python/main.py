@@ -117,6 +117,95 @@ def get_cors_headers(req):
 # Pyannote model loading removed (offloaded to Hugging Face Endpoint)
 
 
+# =============================================================================
+# SUPABASE ↔ FIRESTORE SYNC HELPER
+# =============================================================================
+def sync_embedding_to_supabase(member_name: str, embedding_data, member_id: str = ""):
+    """
+    Synchronize a member's embedding to Supabase speakers table.
+    
+    Called after any embedding update (apply_ai_suggestion, closed_feedback_loop,
+    autonomous_ml_loop, active_learning) to keep Supabase in sync with Firestore.
+    
+    Strategy: UPSERT by name — if the speaker exists in Supabase, update their
+    embedding. If not, insert a new row.
+    
+    Args:
+        member_name: Display name of the member
+        embedding_data: The embedding (list of floats or list of list of floats)
+        member_id: Optional Firestore member ID for logging
+    """
+    try:
+        from supabase import create_client
+        
+        supabase_url = os.environ.get("SUPABASE_URL")
+        supabase_key = os.environ.get("SUPABASE_KEY")
+        
+        if not supabase_url or not supabase_key:
+            print("[SupabaseSync] SUPABASE_URL or SUPABASE_KEY not configured, skipping sync")
+            return False
+        
+        supabase = create_client(supabase_url, supabase_key)
+        
+        # Normalize embedding: Supabase stores a single vector, so if we have
+        # multiple embeddings (list of lists), compute the centroid (average)
+        import json as json_lib
+        if isinstance(embedding_data, str):
+            try:
+                embedding_data = json_lib.loads(embedding_data)
+            except (json.JSONDecodeError, ValueError):
+                print(f"[SupabaseSync] Failed to parse embedding string for {member_name}")
+                return False
+        
+        if not embedding_data or not isinstance(embedding_data, list):
+            print(f"[SupabaseSync] No valid embedding for {member_name}")
+            return False
+        
+        # If it's a list of vectors, compute centroid for Supabase
+        if isinstance(embedding_data[0], list):
+            # Centroid = average of all vectors
+            num_vectors = len(embedding_data)
+            dim = len(embedding_data[0])
+            centroid = [0.0] * dim
+            for vec in embedding_data:
+                if len(vec) == dim:
+                    for i in range(dim):
+                        centroid[i] += vec[i]
+            centroid = [v / num_vectors for v in centroid]
+            embedding_for_supabase = centroid
+            print(f"[SupabaseSync] Computed centroid from {num_vectors} vectors for {member_name}")
+        else:
+            # Single vector
+            embedding_for_supabase = embedding_data
+        
+        # Check if speaker already exists in Supabase
+        existing = supabase.table("speakers").select("id, name").eq("name", member_name).execute()
+        
+        if existing.data and len(existing.data) > 0:
+            # UPDATE existing row
+            speaker_id = existing.data[0]["id"]
+            supabase.table("speakers").update({
+                "embedding": embedding_for_supabase,
+                "updated_at": datetime.now().isoformat(),
+            }).eq("id", speaker_id).execute()
+            print(f"[SupabaseSync] Updated Supabase speaker '{member_name}' (id={speaker_id})")
+        else:
+            # INSERT new row
+            supabase.table("speakers").insert({
+                "name": member_name,
+                "embedding": embedding_for_supabase,
+                "created_at": datetime.now().isoformat(),
+            }).execute()
+            print(f"[SupabaseSync] Inserted new Supabase speaker '{member_name}'")
+        
+        return True
+        
+    except Exception as e:
+        print(f"[SupabaseSync] Error syncing {member_name}: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
 
 @https_fn.on_request(
     timeout_sec=540,  # 9 minutes for Modal cold start + processing
@@ -254,6 +343,29 @@ def enroll_speaker(req: https_fn.Request) -> https_fn.Response:
         }
         
         res = supabase.table("speakers").insert(data).execute()
+        
+        # 6. ALSO write embedding to Firestore members (keep both sources in sync)
+        try:
+            _db = firestore.client()
+            # Find member by displayName
+            member_query = list(_db.collection("members").where(
+                "displayName", "==", name
+            ).limit(1).stream())
+            
+            if member_query:
+                member_doc = member_query[0]
+                import json as json_lib
+                member_doc.reference.update({
+                    "embedding": json_lib.dumps([embedding]),  # Wrap in list for multi-embedding format
+                    "voiceSampleCount": 1,
+                    "lastVoiceUpdate": datetime.now().isoformat(),
+                    "lastUpdateSource": "enrollment",
+                })
+                print(f"[Enroll] Also synced embedding to Firestore member '{name}'")
+            else:
+                print(f"[Enroll] No Firestore member found for '{name}' — Supabase only")
+        except Exception as fs_err:
+            print(f"[Enroll] Firestore sync failed (non-fatal): {fs_err}")
         
         # Cleanup
         if os.path.exists(temp_path):
@@ -5557,6 +5669,8 @@ def closed_feedback_loop(req: https_fn.Request) -> https_fn.Response:
                         })
                         reinforced = True
                         print(f"[FeedbackLoop] Reinforced {correct_name}'s profile from correction")
+                        # Sync updated embedding to Supabase
+                        sync_embedding_to_supabase(correct_name, current_emb, correct_member_id or "")
             except Exception as e:
                 print(f"[FeedbackLoop] Reinforcement failed: {e}")
         
@@ -6188,6 +6302,8 @@ def apply_ai_suggestion(req: https_fn.Request) -> https_fn.Response:
             "timestamp": datetime.now().isoformat()
         })
         
+        # Sync to Supabase speakers table
+        sync_embedding_to_supabase(member_name, current_emb, member_id)
         return https_fn.Response(json.dumps({
             "success": True,
             "memberName": member_name,
@@ -6348,6 +6464,8 @@ def autonomous_ml_loop(req: https_fn.Request) -> https_fn.Response:
                                                         })
                                                         results["autoLearned"] += 1
                                                         results["actions"].append(f"Auto-learned: {name} ({new_count} samples)")
+                                                        # Sync to Supabase
+                                                        sync_embedding_to_supabase(name, current_emb, member_doc.id)
                                             except Exception as e:
                                                 print(f"[AutonomousML] Auto-learn failed for {name}: {e}")
                         
