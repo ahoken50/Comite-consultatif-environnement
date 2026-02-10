@@ -5555,10 +5555,49 @@ def closed_feedback_loop(req: https_fn.Request) -> https_fn.Response:
             except Exception as e:
                 print(f"[FeedbackLoop] Reinforcement failed: {e}")
         
+        # 4. ACTIVE LEARNING: Compute embedding reward signal
+        active_result = {}
+        try:
+            compute_embedding_reward(
+                db_client=db,
+                member_id=correct_member_id or "",
+                was_correct=False,  # This was a correction, so the prediction was wrong
+                confidence=original_confidence,
+                correction_source="user",
+            )
+            
+            # If we have the wrong member, penalize their embedding too
+            if wrong_name:
+                # Find wrong member ID
+                wrong_query = db.collection("members").where(
+                    "displayName", "==", wrong_name
+                ).limit(1).stream()
+                for wrong_doc in wrong_query:
+                    compute_embedding_reward(
+                        db_client=db,
+                        member_id=wrong_doc.id,
+                        was_correct=False,
+                        confidence=original_confidence,
+                        correction_source="user",
+                    )
+            
+            # Use active learning for weighted embedding update
+            if reinforced and correct_member_id and audio_url:
+                active_result = update_embedding_with_correction(
+                    db_client=db,
+                    member_id=correct_member_id,
+                    correct_embedding=new_embedding if 'new_embedding' in dir() else None,
+                    wrong_embedding=None,
+                    correction_weight=2.0,
+                )
+        except Exception as al_err:
+            print(f"[FeedbackLoop] Active learning integration skipped: {al_err}")
+
         return https_fn.Response(json.dumps({
             "success": True,
             "logged": True,
             "reinforced": reinforced,
+            "activeLearning": active_result if active_result else None,
             "message": f"Correction logged. Profile {'reinforced' if reinforced else 'not reinforced (no audio segment)'}."
         }), status=200, content_type="application/json")
         
@@ -6437,6 +6476,32 @@ from pv_pipeline import (
     run_pv_pipeline,
 )
 
+from rlhf_engine import (
+    compute_reward,
+    optimize_policy,
+    get_current_policy,
+    record_preference,
+    get_learned_preferences,
+    enhance_prompt_with_rlhf,
+    compute_embedding_reward,
+    get_members_needing_improvement,
+)
+
+from recommendation_engine import (
+    detect_patterns,
+    predict_resolutions,
+    learn_resolution_template,
+    extract_meeting_features,
+)
+
+from active_learning import (
+    update_embedding_with_correction,
+    analyze_embedding_quality,
+    build_style_memory,
+    inject_style_memory_into_prompt,
+    analyze_quality_trends,
+)
+
 
 # -----------------------------------------------------------------------------
 # STEP 4: ANALYSE ODJ — Mapping discussions → Points ordre du jour
@@ -6586,6 +6651,7 @@ def pv_reflect(req: https_fn.CallableRequest) -> dict:
             max_iterations=max_iterations,
             min_quality_score=min_quality_score,
             anthropic_client=client,
+            db_client=db,
         )
         return {"success": True, **result}
     except Exception as e:
@@ -6661,6 +6727,7 @@ def pv_compare_historical(req: https_fn.CallableRequest) -> dict:
             historical_pvs=historical_pvs,
             meeting_number=meeting_number,
             anthropic_client=client,
+            db_client=db,
         )
         return {"success": True, **result}
     except Exception as e:
@@ -6781,6 +6848,524 @@ def pv_run_pipeline(req: https_fn.CallableRequest) -> dict:
         )
 
 
+# =============================================================================
+# RLHF — Reinforcement Learning from Human Feedback
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# RLHF: Compute reward signal from human feedback
+# -----------------------------------------------------------------------------
+@https_fn.on_call(
+    timeout_sec=60,
+    memory=options.MemoryOption.MB_512,
+)
+def rlhf_compute_rewards(req: https_fn.CallableRequest) -> dict:
+    """
+    Compute and store RLHF reward signal from a completed PV pipeline.
+    Called after user validation (Step 8) to record the reward.
+    """
+    if not req.auth:
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.UNAUTHENTICATED,
+            message="Authentication required."
+        )
+
+    data = req.data
+    meeting_id = data.get("meetingId")
+    user_corrections = data.get("corrections", [])
+    quality_score = data.get("qualityScore", 0)
+    format_score = data.get("formatScore", 0)
+    user_approved = data.get("userApproved", True)
+    user_comments = data.get("userComments", "")
+    time_to_approval = data.get("timeToApprovalSeconds")
+    reflection_iterations = data.get("reflectionIterations", 1)
+
+    if not meeting_id:
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT,
+            message="Missing key: meetingId"
+        )
+
+    print(f"[RLHF] Computing reward for meeting {meeting_id}")
+
+    try:
+        reward = compute_reward(
+            user_corrections=user_corrections,
+            quality_score=quality_score,
+            format_score=format_score,
+            user_approved=user_approved,
+            user_comments=user_comments,
+            time_to_approval_seconds=time_to_approval,
+            reflection_iterations=reflection_iterations,
+        )
+
+        global db
+        if db is None:
+            db = firestore.client()
+
+        db.collection("rlhf_rewards").add({
+            "meetingId": meeting_id,
+            "timestamp": datetime.now().isoformat(),
+            **reward,
+        })
+
+        print(f"[RLHF] Reward computed: {reward['totalReward']:.4f} (grade: {reward['grade']})")
+        return {"success": True, **reward}
+
+    except Exception as e:
+        print(f"[RLHF] Error: {e}")
+        import traceback
+        traceback.print_exc()
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.INTERNAL,
+            message=str(e)
+        )
 
 
+# -----------------------------------------------------------------------------
+# RLHF: Get optimized generation parameters
+# -----------------------------------------------------------------------------
+@https_fn.on_call(
+    timeout_sec=120,
+    memory=options.MemoryOption.MB_512,
+)
+def rlhf_get_optimized_params(req: https_fn.CallableRequest) -> dict:
+    """
+    Get RLHF-optimized generation parameters for the PV pipeline.
+    Returns policy parameters + learned preferences + style memory.
+    """
+    if not req.auth:
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.UNAUTHENTICATED,
+            message="Authentication required."
+        )
+
+    data = req.data
+    force_reoptimize = data.get("forceReoptimize", False)
+
+    print("[RLHF] Fetching optimized parameters")
+
+    try:
+        global db
+        if db is None:
+            db = firestore.client()
+
+        if force_reoptimize:
+            policy = optimize_policy(db)
+        else:
+            policy = get_current_policy(db)
+
+        preferences = get_learned_preferences(db)
+        style_memory = build_style_memory(db)
+        trends = analyze_quality_trends(db)
+
+        return {
+            "success": True,
+            "policy": policy,
+            "preferences": preferences,
+            "styleMemory": style_memory,
+            "qualityTrends": trends,
+        }
+
+    except Exception as e:
+        print(f"[RLHF] Error: {e}")
+        import traceback
+        traceback.print_exc()
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.INTERNAL,
+            message=str(e)
+        )
+
+
+# -----------------------------------------------------------------------------
+# RLHF: Record a human preference signal
+# -----------------------------------------------------------------------------
+@https_fn.on_call(
+    timeout_sec=30,
+    memory=options.MemoryOption.MB_256,
+)
+def rlhf_record_preference(req: https_fn.CallableRequest) -> dict:
+    """
+    Record a human preference signal (terminology, style, format, content).
+    Called when user makes edits during validation.
+    """
+    if not req.auth:
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.UNAUTHENTICATED,
+            message="Authentication required."
+        )
+
+    data = req.data
+    meeting_id = data.get("meetingId", "")
+    preference_type = data.get("type", "")
+    original_value = data.get("original", "")
+    corrected_value = data.get("corrected", "")
+    context = data.get("context", {})
+
+    if not preference_type or not corrected_value:
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT,
+            message="Missing keys: type, corrected"
+        )
+
+    try:
+        global db
+        if db is None:
+            db = firestore.client()
+
+        record_preference(
+            db_client=db,
+            meeting_id=meeting_id,
+            preference_type=preference_type,
+            original_value=original_value,
+            corrected_value=corrected_value,
+            context=context,
+        )
+
+        return {"success": True, "message": "Preference recorded"}
+
+    except Exception as e:
+        print(f"[RLHF] Error: {e}")
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.INTERNAL,
+            message=str(e)
+        )
+
+
+# =============================================================================
+# RECOMMENDATION ENGINE — Prediction intelligente
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Get meeting recommendations (patterns + predictions)
+# -----------------------------------------------------------------------------
+@https_fn.on_call(
+    timeout_sec=120,
+    memory=options.MemoryOption.GB_1,
+)
+def get_meeting_recommendations(req: https_fn.CallableRequest) -> dict:
+    """
+    Get intelligent recommendations for a meeting based on historical data.
+    Returns predicted resolutions, seasonal relevance, and pattern analysis.
+    """
+    if not req.auth:
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.UNAUTHENTICATED,
+            message="Authentication required."
+        )
+
+    data = req.data
+    agenda_items = data.get("agendaItems", [])
+    meeting_date = data.get("meetingDate", "")
+
+    print(f"[Recommendation] Getting recommendations for {len(agenda_items)} agenda items")
+
+    try:
+        global db
+        if db is None:
+            db = firestore.client()
+
+        predictions = predict_resolutions(
+            db_client=db,
+            current_agenda=agenda_items,
+            current_date=meeting_date,
+        )
+
+        patterns = detect_patterns(db, lookback_meetings=30)
+
+        return {
+            "success": True,
+            "predictions": predictions.get("predictions", []),
+            "generalSuggestions": predictions.get("generalSuggestions", []),
+            "seasonalRelevance": predictions.get("seasonalRelevance", []),
+            "patterns": patterns,
+        }
+
+    except Exception as e:
+        print(f"[Recommendation] Error: {e}")
+        import traceback
+        traceback.print_exc()
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.INTERNAL,
+            message=str(e)
+        )
+
+
+# -----------------------------------------------------------------------------
+# Learn resolution template from approved PV
+# -----------------------------------------------------------------------------
+@https_fn.on_call(
+    timeout_sec=30,
+    memory=options.MemoryOption.MB_256,
+)
+def learn_resolution(req: https_fn.CallableRequest) -> dict:
+    """
+    Learn a resolution template from an approved PV.
+    Called after user approves a PV to learn the resolution format.
+    """
+    if not req.auth:
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.UNAUTHENTICATED,
+            message="Authentication required."
+        )
+
+    data = req.data
+    resolution_type = data.get("resolutionType", "")
+    resolution_text = data.get("resolutionText", "")
+    keywords = data.get("keywords", [])
+    meeting_id = data.get("meetingId", "")
+
+    if not resolution_type or not resolution_text:
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT,
+            message="Missing keys: resolutionType, resolutionText"
+        )
+
+    try:
+        global db
+        if db is None:
+            db = firestore.client()
+
+        learn_resolution_template(
+            db_client=db,
+            resolution_type=resolution_type,
+            resolution_text=resolution_text,
+            keywords=keywords,
+            meeting_id=meeting_id,
+        )
+
+        return {"success": True, "message": f"Template learned for type '{resolution_type}'"}
+
+    except Exception as e:
+        print(f"[Recommendation] Error: {e}")
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.INTERNAL,
+            message=str(e)
+        )
+
+
+# =============================================================================
+# ACTIVE LEARNING — Exploitation active des donnees
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Active embedding update from correction
+# -----------------------------------------------------------------------------
+@https_fn.on_call(
+    timeout_sec=120,
+    memory=options.MemoryOption.GB_1,
+)
+def active_update_embedding(req: https_fn.CallableRequest) -> dict:
+    """
+    Actively update voice embeddings using correction signals.
+    Corrections get 2x weight compared to auto-learned embeddings.
+    Wrong embeddings are identified and removed.
+    """
+    if not req.auth:
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.UNAUTHENTICATED,
+            message="Authentication required."
+        )
+
+    data = req.data
+    member_id = data.get("memberId", "")
+    audio_url = data.get("audioUrl", "")
+    start_time = data.get("start", 0)
+    end_time = data.get("end", 0)
+    wrong_member_id = data.get("wrongMemberId", "")
+
+    if not member_id:
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT,
+            message="Missing key: memberId"
+        )
+
+    print(f"[ActiveLearning] Updating embedding for member {member_id}")
+
+    try:
+        global db
+        if db is None:
+            db = firestore.client()
+
+        correct_embedding = None
+        wrong_embedding = None
+
+        if audio_url and end_time > start_time:
+            correct_embedding = extract_audio_segment_embedding(audio_url, start_time, end_time)
+
+        if wrong_member_id and audio_url and end_time > start_time:
+            wrong_embedding = correct_embedding
+
+        if not correct_embedding:
+            return {
+                "success": False,
+                "message": "Could not extract embedding from audio",
+            }
+
+        result = update_embedding_with_correction(
+            db_client=db,
+            member_id=member_id,
+            correct_embedding=correct_embedding,
+            wrong_embedding=wrong_embedding,
+            correction_weight=2.0,
+        )
+
+        compute_embedding_reward(
+            db_client=db,
+            member_id=member_id,
+            was_correct=True,
+            confidence=1.0,
+            correction_source="user",
+        )
+
+        if wrong_member_id:
+            compute_embedding_reward(
+                db_client=db,
+                member_id=wrong_member_id,
+                was_correct=False,
+                confidence=0.0,
+                correction_source="user",
+            )
+
+        return {"success": True, **result}
+
+    except Exception as e:
+        print(f"[ActiveLearning] Error: {e}")
+        import traceback
+        traceback.print_exc()
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.INTERNAL,
+            message=str(e)
+        )
+
+
+# -----------------------------------------------------------------------------
+# Get embedding quality analysis
+# -----------------------------------------------------------------------------
+@https_fn.on_call(
+    timeout_sec=60,
+    memory=options.MemoryOption.MB_512,
+)
+def get_embedding_quality(req: https_fn.CallableRequest) -> dict:
+    """
+    Get quality analysis of all member voice embeddings.
+    Returns members sorted by priority (worst quality first).
+    """
+    if not req.auth:
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.UNAUTHENTICATED,
+            message="Authentication required."
+        )
+
+    print("[ActiveLearning] Analyzing embedding quality")
+
+    try:
+        global db
+        if db is None:
+            db = firestore.client()
+
+        quality_report = analyze_embedding_quality(db)
+        members_needing = get_members_needing_improvement(db, top_n=10)
+
+        return {
+            "success": True,
+            "qualityReport": quality_report,
+            "membersNeedingImprovement": members_needing,
+            "totalMembers": len(quality_report),
+        }
+
+    except Exception as e:
+        print(f"[ActiveLearning] Error: {e}")
+        import traceback
+        traceback.print_exc()
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.INTERNAL,
+            message=str(e)
+        )
+
+
+# -----------------------------------------------------------------------------
+# Get ML dashboard data (quality trends + style memory + RLHF stats)
+# -----------------------------------------------------------------------------
+@https_fn.on_call(
+    timeout_sec=120,
+    memory=options.MemoryOption.GB_1,
+)
+def get_ml_dashboard(req: https_fn.CallableRequest) -> dict:
+    """
+    Get comprehensive ML dashboard data combining all engines.
+    Returns RLHF stats, embedding quality, recommendations, and trends.
+    """
+    if not req.auth:
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.UNAUTHENTICATED,
+            message="Authentication required."
+        )
+
+    print("[ML Dashboard] Building dashboard data")
+
+    try:
+        global db
+        if db is None:
+            db = firestore.client()
+
+        policy = get_current_policy(db)
+        trends = analyze_quality_trends(db)
+        embedding_quality = analyze_embedding_quality(db)
+        style_memory = build_style_memory(db)
+        patterns = detect_patterns(db, lookback_meetings=20)
+
+        recent_rewards = []
+        try:
+            rewards_query = db.collection("rlhf_rewards").order_by(
+                "timestamp", direction="DESCENDING"
+            ).limit(10)
+            for doc in rewards_query.stream():
+                r = doc.to_dict()
+                recent_rewards.append({
+                    "meetingId": r.get("meetingId", ""),
+                    "totalReward": r.get("totalReward", 0),
+                    "grade": r.get("grade", ""),
+                    "timestamp": r.get("timestamp", ""),
+                })
+        except Exception:
+            pass
+
+        return {
+            "success": True,
+            "rlhf": {
+                "policy": policy,
+                "recentRewards": recent_rewards,
+                "avgReward": policy.get("avgReward", 0),
+                "rewardTrend": policy.get("rewardTrend", "unknown"),
+            },
+            "embeddingQuality": {
+                "members": embedding_quality[:10],
+                "totalMembers": len(embedding_quality),
+                "avgAccuracy": round(
+                    sum(m.get("accuracy", 0) for m in embedding_quality) /
+                    max(len(embedding_quality), 1), 3
+                ),
+            },
+            "qualityTrends": trends,
+            "styleMemory": {
+                "terminologyRules": len(style_memory.get("terminologyMap", {})),
+                "formatRules": len(style_memory.get("formatRules", [])),
+                "benchmarks": style_memory.get("qualityBenchmarks", {}),
+            },
+            "patterns": {
+                "recurringThemes": len(patterns.get("recurringThemes", [])),
+                "seasonalPatterns": len(patterns.get("seasonalPatterns", {})),
+                "trendingTopics": patterns.get("trendingTopics", [])[:5],
+            },
+        }
+
+    except Exception as e:
+        print(f"[ML Dashboard] Error: {e}")
+        import traceback
+        traceback.print_exc()
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.INTERNAL,
+            message=str(e)
+        )
 

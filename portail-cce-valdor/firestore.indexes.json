@@ -73,16 +73,6 @@
                     "order": "DESCENDING"
                 }
             ]
-        },
-        {
-            "collectionGroup": "ml_corrections",
-            "queryScope": "COLLECTION",
-            "fields": [
-                {
-                    "fieldPath": "timestamp",
-                    "order": "DESCENDING"
-                }
-            ]
         }
     ]
 }

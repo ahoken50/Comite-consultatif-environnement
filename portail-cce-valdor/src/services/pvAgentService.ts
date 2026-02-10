@@ -125,6 +125,104 @@ export const AGENT_STEPS: Omit<AgentStep, 'status' | 'result' | 'error'>[] = [
 // Initial State Factory
 // ============================================================================
 
+// ============================================================================
+// RLHF & Recommendation Helpers (callable from UI)
+// ============================================================================
+
+/** Fetch RLHF-optimized parameters before starting the pipeline */
+export const fetchRLHFParams = async (): Promise<{
+    policy: Record<string, unknown>;
+    preferences: Record<string, unknown>;
+    styleMemory: Record<string, unknown>;
+    qualityTrends: Record<string, unknown>;
+} | null> => {
+    try {
+        const rlhfGetParams = httpsCallable(functions, 'rlhf_get_optimized_params');
+        const result = await rlhfGetParams({ forceReoptimize: false });
+        const data = result.data as { success: boolean; policy: Record<string, unknown>; preferences: Record<string, unknown>; styleMemory: Record<string, unknown>; qualityTrends: Record<string, unknown> };
+        if (data.success) {
+            console.log('[RLHF] Loaded optimized params:', data.policy);
+            return {
+                policy: data.policy,
+                preferences: data.preferences,
+                styleMemory: data.styleMemory,
+                qualityTrends: data.qualityTrends,
+            };
+        }
+        return null;
+    } catch (e) {
+        console.warn('[RLHF] Could not fetch optimized params:', e);
+        return null;
+    }
+};
+
+/** Fetch meeting recommendations based on agenda items */
+export const fetchMeetingRecommendations = async (
+    agendaItems: Array<{ id?: string; title: string; description?: string; objective?: string }>,
+    meetingDate: string
+): Promise<{
+    predictions: Array<{
+        odjItemId: string;
+        odjTitle: string;
+        predictedType: string;
+        confidence: number;
+        suggestedTemplate: string;
+        keywords: string[];
+    }>;
+    generalSuggestions: string[];
+    seasonalRelevance: string[];
+} | null> => {
+    try {
+        const getRecommendations = httpsCallable(functions, 'get_meeting_recommendations');
+        const result = await getRecommendations({ agendaItems, meetingDate });
+        const data = result.data as {
+            success: boolean;
+            predictions: Array<{
+                odjItemId: string;
+                odjTitle: string;
+                predictedType: string;
+                confidence: number;
+                suggestedTemplate: string;
+                keywords: string[];
+            }>;
+            generalSuggestions: string[];
+            seasonalRelevance: string[];
+        };
+        if (data.success) {
+            console.log(`[Recommendation] Got ${data.predictions.length} predictions`);
+            return {
+                predictions: data.predictions,
+                generalSuggestions: data.generalSuggestions,
+                seasonalRelevance: data.seasonalRelevance,
+            };
+        }
+        return null;
+    } catch (e) {
+        console.warn('[Recommendation] Could not fetch recommendations:', e);
+        return null;
+    }
+};
+
+/** Fetch ML dashboard data */
+export const fetchMLDashboard = async (): Promise<Record<string, unknown> | null> => {
+    try {
+        const getDashboard = httpsCallable(functions, 'get_ml_dashboard');
+        const result = await getDashboard({});
+        const data = result.data as { success: boolean } & Record<string, unknown>;
+        if (data.success) {
+            return data;
+        }
+        return null;
+    } catch (e) {
+        console.warn('[ML Dashboard] Could not fetch dashboard:', e);
+        return null;
+    }
+};
+
+// ============================================================================
+// Initial State Factory
+// ============================================================================
+
 export const createInitialState = (meetingId: string, meetingNumber: number): AgentState => ({
     meetingId,
     meetingNumber,
@@ -761,7 +859,8 @@ export const runLearningStep = async (
     config: AgentConfig,
     reflection: ReflectionResult,
     comparison: ComparisonResult,
-    userValidation: UserValidationResult
+    userValidation: UserValidationResult,
+    pipelineStartTime?: number,
 ): Promise<LearningResult> => {
     const modelsUpdated: string[] = [];
     let stylePatterns = 0;
@@ -770,7 +869,7 @@ export const runLearningStep = async (
 
     try {
         // 1. Record feedback in Firestore via Cloud Function
-        const closedFeedbackLoop = httpsCallable(functions, 'closed_feedback_loop');
+        const pvRecordLearning = httpsCallable(functions, 'pv_record_learning');
 
         // Collect all corrections from reflection + comparison
         const allCorrections = [
@@ -779,6 +878,8 @@ export const runLearningStep = async (
                 description: issue.description,
                 fix: issue.suggestedFix,
                 source: 'reflection',
+                severity: issue.severity,
+                applied: issue.applied,
             }))),
             ...comparison.corrections.map(c => ({
                 type: 'format',
@@ -788,18 +889,71 @@ export const runLearningStep = async (
             })),
         ];
 
-        if (allCorrections.length > 0) {
-            await closedFeedbackLoop({
+        // Calculate time to approval
+        const timeToApproval = pipelineStartTime
+            ? (Date.now() - pipelineStartTime) / 1000
+            : undefined;
+
+        if (allCorrections.length > 0 || userValidation.userComments) {
+            await pvRecordLearning({
                 meetingId: config.meeting.id,
-                corrections: allCorrections,
+                reflectionResult: {
+                    iterations: reflection.iterations,
+                    qualityScore: reflection.qualityScore,
+                    totalIssuesFound: reflection.totalIssuesFound,
+                    totalIssuesFixed: reflection.totalIssuesFixed,
+                },
+                comparisonResult: {
+                    corrections: comparison.corrections,
+                    consistencyChecks: comparison.consistencyChecks,
+                    formatScore: comparison.formatScore,
+                },
                 userFeedback: userValidation.userComments || '',
-                qualityScore: reflection.qualityScore,
-                formatScore: comparison.formatScore,
             });
             modelsUpdated.push('feedback_model');
         }
 
-        // 2. Extract style patterns from corrections
+        // 2. RLHF: Compute and store reward signal
+        try {
+            const rlhfComputeRewards = httpsCallable(functions, 'rlhf_compute_rewards');
+            const rewardResult = await rlhfComputeRewards({
+                meetingId: config.meeting.id,
+                corrections: allCorrections,
+                qualityScore: reflection.qualityScore,
+                formatScore: comparison.formatScore,
+                userApproved: userValidation.approved,
+                userComments: userValidation.userComments || '',
+                timeToApprovalSeconds: timeToApproval,
+                reflectionIterations: reflection.iterations.length,
+            });
+
+            const rewardData = rewardResult.data as { success: boolean; grade: string; totalReward: number };
+            if (rewardData.success) {
+                modelsUpdated.push('rlhf_reward');
+                console.log(`[RLHF] Reward: ${rewardData.totalReward.toFixed(4)} (grade: ${rewardData.grade})`);
+            }
+        } catch (rlhfErr) {
+            console.warn('[RLHF] Reward computation skipped:', rlhfErr);
+        }
+
+        // 3. RLHF: Record user edit preferences if user made edits
+        if (userValidation.userEdits) {
+            try {
+                const rlhfRecordPref = httpsCallable(functions, 'rlhf_record_preference');
+                await rlhfRecordPref({
+                    meetingId: config.meeting.id,
+                    type: 'content',
+                    original: 'auto-generated',
+                    corrected: userValidation.userEdits.substring(0, 500),
+                    context: { source: 'user_validation_edits' },
+                });
+                modelsUpdated.push('rlhf_preferences');
+            } catch (prefErr) {
+                console.warn('[RLHF] Preference recording skipped:', prefErr);
+            }
+        }
+
+        // 4. Extract style patterns from corrections
         const styleIssues = reflection.iterations
             .flatMap(it => it.issues)
             .filter(issue => issue.type === 'style' || issue.type === 'formatting');
@@ -809,7 +963,7 @@ export const runLearningStep = async (
             modelsUpdated.push('style_patterns');
         }
 
-        // 3. Extract terminology updates
+        // 5. Extract terminology updates
         const terminologyIssues = comparison.consistencyChecks
             .filter(check => check.type === 'terminology');
         terminologyUpdates = terminologyIssues.length;
@@ -818,7 +972,7 @@ export const runLearningStep = async (
             modelsUpdated.push('terminology_model');
         }
 
-        // 4. Generate hints for next meeting
+        // 6. Generate hints for next meeting
         if (reflection.qualityScore < 80) {
             nextMeetingHints.push('Améliorer la qualité audio pour une meilleure transcription');
         }
@@ -830,6 +984,15 @@ export const runLearningStep = async (
             .filter(c => c.status === 'warning' || c.status === 'fail');
         if (lowConfidenceItems.length > 0) {
             nextMeetingHints.push(`${lowConfidenceItems.length} point(s) de cohérence à surveiller`);
+        }
+
+        // 7. Trigger RLHF policy re-optimization (async, non-blocking)
+        try {
+            const rlhfOptimize = httpsCallable(functions, 'rlhf_get_optimized_params');
+            rlhfOptimize({ forceReoptimize: true }).catch(() => {});
+            // Fire and forget — don't block the pipeline
+        } catch {
+            // Non-critical
         }
 
     } catch (e) {
@@ -1087,7 +1250,7 @@ export const runPVAgent = async (
             currentState = updateStepStatus(currentState, 'learning', 'running');
             onStateChange(currentState);
 
-            learning = await runLearningStep(config, reflection, comparison, userValidation);
+            learning = await runLearningStep(config, reflection, comparison, userValidation, startTime);
 
             currentState = updateStepResult(currentState, 'learning', learning, 'completed');
             onStateChange(currentState);

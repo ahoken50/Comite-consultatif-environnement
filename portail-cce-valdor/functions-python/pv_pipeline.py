@@ -16,6 +16,27 @@ import re
 from datetime import datetime
 from typing import Any, Optional
 
+# Active learning imports (lazy — only used when db_client is available)
+def _get_enhanced_prompt(base_prompt: str, db_client: Any = None, step: str = "drafting") -> str:
+    """Enhance prompt with RLHF + active learning data if available."""
+    if not db_client:
+        return base_prompt
+    try:
+        from rlhf_engine import enhance_prompt_with_rlhf
+        from active_learning import build_style_memory, inject_style_memory_into_prompt
+        
+        # Layer 1: RLHF preferences and policy
+        enhanced = enhance_prompt_with_rlhf(base_prompt, db_client, step=step)
+        
+        # Layer 2: Active style memory
+        style_memory = build_style_memory(db_client, max_entries=30)
+        enhanced = inject_style_memory_into_prompt(enhanced, style_memory)
+        
+        return enhanced
+    except Exception as e:
+        print(f"[PVPipeline] Prompt enhancement skipped: {e}")
+        return base_prompt
+
 
 # ============================================================================
 # STEP 4 — ANALYSE ODJ : Mapping discussions → Points ordre du jour
@@ -26,6 +47,7 @@ def analyze_odj_mapping(
     agenda_items: list,
     speaker_mapping: Optional[dict] = None,
     anthropic_client: Any = None,
+    db_client: Any = None,
 ) -> dict:
     """
     Map transcription segments to agenda items (ODJ).
@@ -53,7 +75,7 @@ def analyze_odj_mapping(
             f"- {label} → {name}" for label, name in speaker_mapping.items()
         )
 
-    prompt = f"""Tu es un expert en analyse de procès-verbaux municipaux québécois.
+    base_prompt = f"""Tu es un expert en analyse de procès-verbaux municipaux québécois.
 
 ORDRE DU JOUR DE LA RÉUNION:
 {odj_list}
@@ -90,6 +112,9 @@ FORMAT JSON ATTENDU:
 
 Réponds UNIQUEMENT avec le JSON."""
 
+    # Enhance with RLHF + active learning
+    prompt = _get_enhanced_prompt(base_prompt, db_client, step="odj_analysis")
+
     message = anthropic_client.messages.create(
         model="claude-haiku-4-5-20251001",
         max_tokens=8000,
@@ -110,6 +135,7 @@ def classify_agenda_items(
     meeting_date: str,
     odj_analysis: dict,
     anthropic_client: Any = None,
+    db_client: Any = None,
 ) -> dict:
     """
     Classify each agenda item by theme, sentiment, issue type, priority.
@@ -130,7 +156,7 @@ def classify_agenda_items(
         for item in odj_analysis.get("mappedItems", [])
     )
 
-    prompt = f"""Tu es un analyste spécialisé en gouvernance municipale et environnement au Québec.
+    base_prompt = f"""Tu es un analyste spécialisé en gouvernance municipale et environnement au Québec.
 
 CONTEXTE: Réunion du Comité Consultatif en Environnement (CCE) de Val-d'Or
 DATE: {meeting_date}
@@ -167,6 +193,9 @@ FORMAT JSON ATTENDU:
 
 Réponds UNIQUEMENT avec le JSON."""
 
+    # Enhance with RLHF + active learning
+    prompt = _get_enhanced_prompt(base_prompt, db_client, step="classification")
+
     message = anthropic_client.messages.create(
         model="claude-haiku-4-5-20251001",
         max_tokens=6000,
@@ -189,6 +218,7 @@ def reflect_on_draft(
     iteration_number: int,
     previous_issues: Optional[str] = None,
     anthropic_client: Any = None,
+    db_client: Any = None,
 ) -> dict:
     """
     Self-critique loop: analyze PV draft for errors, inconsistencies, hallucinations.
@@ -210,7 +240,7 @@ def reflect_on_draft(
             "Ne répète PAS ces corrections. Cherche de NOUVEAUX problèmes."
         )
 
-    prompt = f"""Tu es un réviseur expert de procès-verbaux municipaux. Itération #{iteration_number}.
+    base_prompt = f"""Tu es un réviseur expert de procès-verbaux municipaux. Itération #{iteration_number}.
 
 BROUILLON DU PV À RÉVISER:
 {pv_draft[:40000]}
@@ -253,6 +283,9 @@ FORMAT JSON ATTENDU:
 
 Réponds UNIQUEMENT avec le JSON."""
 
+    # Enhance with RLHF + active learning (especially important for reflection)
+    prompt = _get_enhanced_prompt(base_prompt, db_client, step="reflection")
+
     message = anthropic_client.messages.create(
         model="claude-haiku-4-5-20251001",
         max_tokens=20000,
@@ -271,6 +304,7 @@ def run_reflection_loop(
     max_iterations: int = 3,
     min_quality_score: int = 90,
     anthropic_client: Any = None,
+    db_client: Any = None,
 ) -> dict:
     """
     Run the full reflection loop until quality threshold is met or max iterations reached.
@@ -302,6 +336,7 @@ def run_reflection_loop(
             iteration_number=i,
             previous_issues=previous_str,
             anthropic_client=anthropic_client,
+            db_client=db_client,
         )
 
         issues = result.get("issues", [])
@@ -350,6 +385,7 @@ def compare_with_historical(
     historical_pvs: list,
     meeting_number: int,
     anthropic_client: Any = None,
+    db_client: Any = None,
 ) -> dict:
     """
     Compare current PV with historical PVs for consistency.
@@ -447,6 +483,9 @@ def record_learning(
     reflection_result: dict,
     comparison_result: dict,
     user_feedback: str = "",
+    user_approved: bool = True,
+    user_edits: str = "",
+    time_to_approval: float = None,
 ) -> dict:
     """
     Record learning data from the pipeline for future improvements.
@@ -558,6 +597,61 @@ def record_learning(
                 "count": style_patterns,
             })
 
+        # 7. RLHF: Compute and store reward signal
+        try:
+            from rlhf_engine import compute_reward
+
+            reward = compute_reward(
+                user_corrections=all_corrections,
+                quality_score=reflection_result.get("qualityScore", 0),
+                format_score=comparison_result.get("formatScore", 0),
+                user_approved=user_approved,
+                user_comments=user_feedback,
+                time_to_approval_seconds=time_to_approval,
+                reflection_iterations=len(reflection_result.get("iterations", [])),
+            )
+
+            if db_client:
+                db_client.collection("rlhf_rewards").add({
+                    "meetingId": meeting_id,
+                    "timestamp": datetime.now().isoformat(),
+                    **reward,
+                })
+                models_updated.append("rlhf_reward")
+                print(f"[Learning] RLHF reward: {reward['totalReward']:.4f} (grade: {reward['grade']})")
+
+                # Record terminology preferences from corrections
+                from rlhf_engine import record_preference
+                for c in all_corrections:
+                    if c.get("type") in ("terminology", "style") and c.get("fix", "").count("\u2192") == 1:
+                        parts = c["fix"].split("\u2192")
+                        if len(parts) == 2:
+                            record_preference(
+                                db_client=db_client,
+                                meeting_id=meeting_id,
+                                preference_type=c["type"],
+                                original_value=parts[0].strip(),
+                                corrected_value=parts[1].strip(),
+                            )
+
+        except Exception as rlhf_err:
+            print(f"[Learning] RLHF reward computation skipped: {rlhf_err}")
+
+        # 8. Detect and record user edit preferences
+        if user_edits and db_client:
+            try:
+                from rlhf_engine import record_preference as rec_pref
+                rec_pref(
+                    db_client=db_client,
+                    meeting_id=meeting_id,
+                    preference_type="content",
+                    original_value="auto-generated",
+                    corrected_value=user_edits[:500],
+                    context={"source": "user_validation_edits"},
+                )
+            except Exception:
+                pass
+
     except Exception as e:
         print(f"[Learning] Error recording learning data: {e}")
         import traceback
@@ -606,6 +700,7 @@ def run_pv_pipeline(
         agenda_items=agenda_items,
         speaker_mapping=speaker_mapping,
         anthropic_client=anthropic_client,
+        db_client=db_client,
     )
     results["odj_analysis"] = odj_analysis
 
@@ -615,6 +710,7 @@ def run_pv_pipeline(
         meeting_date=meeting_date,
         odj_analysis=odj_analysis,
         anthropic_client=anthropic_client,
+        db_client=db_client,
     )
     results["classification"] = classification
 
