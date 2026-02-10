@@ -6677,6 +6677,8 @@ from active_learning import (
     analyze_quality_trends,
 )
 
+from clear_supabase_speakers import clear_supabase_speakers
+
 
 # -----------------------------------------------------------------------------
 # STEP 4: ANALYSE ODJ — Mapping discussions → Points ordre du jour
