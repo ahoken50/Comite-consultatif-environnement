@@ -6678,6 +6678,7 @@ from active_learning import (
 )
 
 from clear_supabase_speakers import clear_supabase_speakers
+from batch_enroll_from_storage import batch_enroll_from_storage
 
 
 # -----------------------------------------------------------------------------
