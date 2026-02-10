@@ -1347,22 +1347,46 @@ def get_enrolled_speakers() -> list:
     
     PHASE 2 APPROACH: Primary source is Supabase speaker_embeddings table.
     Fallback to Firestore members only if Supabase is unavailable.
+    
+    AUTO-MIGRATION: If Supabase Phase 2 is not ready but credentials exist,
+    automatically run migration on first call.
     """
     speakers = []
     speaker_names_seen = set()
     
-    # === SOURCE 1: Supabase speaker_embeddings (PRIMARY — Phase 2) ===
-    try:
-        from supabase import create_client
-        
-        supabase_url = os.environ.get("SUPABASE_URL")
-        supabase_key = os.environ.get("SUPABASE_KEY")
-        
-        if supabase_url and supabase_key:
-            supabase = create_client(supabase_url, supabase_key)
+    # === CHECK: Is Supabase Phase 2 ready? ===
+    supabase_phase2_ready = False
+    from supabase import create_client
+    supabase_url = os.environ.get("SUPABASE_URL")
+    supabase_key = os.environ.get("SUPABASE_KEY")
+    
+    if supabase_url and supabase_key:
+        supabase = create_client(supabase_url, supabase_key)
+        try:
+            # Test if speaker_embeddings table exists
+            test_result = supabase.table("speaker_embeddings").select("id").limit(1).execute()
+            supabase_phase2_ready = True
+        except:
+            # speaker_embeddings doesn't exist - Phase 2 not deployed yet
+            print("[Speakers Phase 2] Supabase Phase 2 tables not found")
             
+            # Try auto-migration
+            print("[Speakers Phase 2] Attempting auto-migration...")
+            try:
+                migration_success = ensure_migration_completed()
+                if migration_success:
+                    # Retry loading speakers after migration
+                    print("[Speakers Phase 2] Auto-migration successful, reloading...")
+                    supabase_phase2_ready = True
+                else:
+                    print("[Speakers Phase 2] Auto-migration failed, using fallback")
+            except Exception as e:
+                print(f"[Speakers Phase 2] Auto-migration error: {e}")
+    
+    # === SOURCE 1: Supabase speaker_embeddings (PRIMARY — Phase 2) ===
+    if supabase_phase2_ready:
+        try:
             # Récupérer tous les embeddings groupés par speaker
-            # Cette requête retourne: speaker_name, speaker_id, embedding, sample_source
             result = supabase.table("speaker_embeddings").select(
                 "speaker_name, speaker_id, embedding, sample_source, created_at"
             ).execute()
@@ -1407,10 +1431,10 @@ def get_enrolled_speakers() -> list:
                     for speaker in speakers:
                         speaker["role"] = role_map.get(speaker["name"], "Membre")
         
-    except Exception as e:
-        print(f"[Speakers Phase 2] Supabase error (will fallback to Firestore): {e}")
-        import traceback
-        traceback.print_exc()
+        except Exception as e:
+            print(f"[Speakers Phase 2] Supabase error (will fallback to Firestore): {e}")
+            import traceback
+            traceback.print_exc()
     
     # === SOURCE 2: Firestore members (FALLBACK — only if Supabase unavailable) ===
     if not speakers:
@@ -6868,6 +6892,8 @@ from active_learning import (
 from clear_supabase_speakers import clear_supabase_speakers
 from batch_enroll_from_storage import batch_enroll_from_storage
 from migrate_to_supabase_primary import run_migration_to_supabase_primary
+from auto_migration import ensure_migration_completed, get_migration_status
+from migration_status import get_migration_status as get_migration_status_endpoint, trigger_manual_migration, reset_migration_flag
 
 
 # -----------------------------------------------------------------------------

@@ -12,6 +12,7 @@ import json
 from datetime import datetime
 from firebase_admin import firestore, credentials, initialize_app
 from supabase import create_client
+from firebase_functions import https_fn, options
 
 
 def migrate_firestore_to_supabase():
