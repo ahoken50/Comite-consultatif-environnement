@@ -5312,11 +5312,16 @@ def human_verification_queue(req: https_fn.Request) -> https_fn.Response:
     GET: Retrieve pending items | POST: Submit verification (confirm/reject/add)
     """
     try:
+        global db
+        if db is None:
+            db = firestore.client()
+
         if req.method == "GET":
             limit = int(req.args.get("limit", 20))
+            # Uses composite index: status ASC + confidence DESC
             queue_query = db.collection("verification_queue").where(
                 "status", "==", "pending"
-            ).order_by("createdAt", direction=firestore.Query.DESCENDING).limit(limit)
+            ).order_by("confidence", direction=firestore.Query.DESCENDING).limit(limit)
             
             items = []
             for doc in queue_query.stream():
@@ -5999,48 +6004,8 @@ def suggest_profile_improvements(req: https_fn.Request) -> https_fn.Response:
         return https_fn.Response(json.dumps({"error": str(e)}), status=500)
 
 
-@https_fn.on_request(
-    timeout_sec=60,
-    memory=options.MemoryOption.MB_256,
-    cors=options.CorsOptions(cors_origins="*", cors_methods=["GET", "POST", "OPTIONS"])
-)
-def human_verification_queue(req: https_fn.Request) -> https_fn.Response:
-    """
-    Fetch items from the verification queue that need human review.
-    Returns the most urgent items first (high confidence but ambiguous).
-    """
-
-    try:
-        global db
-        if db is None:
-            db = firestore.client()
-
-        data = req.get_json() or {}
-        limit = data.get("limit", 10)
-        meeting_id = data.get("meetingId")
-        
-        query = db.collection("verification_queue").where("status", "==", "pending")
-        
-        if meeting_id:
-            query = query.where("meetingId", "==", meeting_id)
-            
-        # Order by confidence (descending) to show "almost sure" items first
-        items = list(query.order_by("confidence", direction=firestore.Query.DESCENDING).limit(limit).stream())
-        
-        result = []
-        for doc in items:
-            item = doc.to_dict()
-            item["id"] = doc.id
-            result.append(item)
-            
-        return https_fn.Response(json.dumps({
-            "success": True,
-            "items": result
-        }), status=200, content_type="application/json")
-        
-    except Exception as e:
-        print(f"[VerificationQueue] Error: {e}")
-        return https_fn.Response(json.dumps({"error": str(e)}), status=500)
+# NOTE: human_verification_queue duplicate removed — original is at #13 above (line ~5309)
+# It handles both GET (fetch pending items) and POST (confirm/reject/add)
 
 
 @https_fn.on_request(
