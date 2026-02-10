@@ -75,7 +75,7 @@ interface PVAgentWizardProps {
     agendaItems?: AgendaItem[];
 }
 
-const getStepIcon = (status: AgentStep['status'], icon?: string) => {
+const getStepIcon = (status: AgentStep['status']) => {
     switch (status) {
         case 'completed':
             return <CheckCircleIcon color="success" />;
@@ -591,7 +591,7 @@ const PVAgentWizard: React.FC<PVAgentWizardProps> = ({
                     {state.steps.map((step) => (
                         <Step key={step.id} completed={step.status === 'completed' || step.status === 'skipped'}>
                             <StepLabel
-                                StepIconComponent={() => getStepIcon(step.status, step.icon)}
+                                StepIconComponent={() => getStepIcon(step.status)}
                                 optional={
                                     step.error ? (
                                         <Typography variant="caption" color="error">

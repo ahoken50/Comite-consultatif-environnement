@@ -814,14 +814,21 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate, readOn
                 }}
                 onApply={() => {
                     // Apply generated PV to local state
-                    const genResult = pvAgent.state?.results.generation;
-                    if (genResult) {
-                        const { agendaItems, globalNotes } = genResult;
-                        if (agendaItems) setLocalAgendaItems(agendaItems);
-                        if (globalNotes) setGlobalNotes(globalNotes);
-                        setHasUnsavedChanges(true);
-                        showSuccess('PV appliqué avec succès !');
-                    }
+                    const draftingResult = pvAgent.state?.results.drafting;
+                       const reflectionResult = pvAgent.state?.results.reflection;
+                       const comparisonResult = pvAgent.state?.results.comparison;
+                       
+                       // Use the final content from comparison (if available), reflection, or drafting
+                       const finalContent = comparisonResult?.finalContent 
+                           || reflectionResult?.finalContent 
+                           || draftingResult?.pvContent;
+                       
+                       if (finalContent) {
+                           // Update the global notes with the full PV content
+                           setGlobalNotes(finalContent);
+                           setHasUnsavedChanges(true);
+                           showSuccess('PV appliqué avec succès !');
+                       }
                     setIsAgentWizardOpen(false);
                     pvAgent.reset();
                 }}

@@ -14,7 +14,6 @@
  * 10. 🧠 APPRENTISSAGE     → Update models with corrections
  */
 
-import { createAnthropic } from '@ai-sdk/anthropic';
 import { createGroq } from '@ai-sdk/groq';
 import { generateText } from 'ai';
 import { httpsCallable } from 'firebase/functions';
@@ -50,10 +49,6 @@ import {
 // ============================================================================
 // AI Provider Configuration
 // ============================================================================
-
-const getClaude = () => createAnthropic({
-    apiKey: import.meta.env.VITE_ANTHROPIC_API_KEY,
-});
 
 const getGroq = () => createGroq({
     apiKey: import.meta.env.VITE_GROQ_API_KEY,
@@ -276,7 +271,7 @@ export const runCleaningStep = async (
         }
         // Detect repeated phrases within a line
         const repeatedPattern = /(.{20,}?)\1{2,}/g;
-        const cleaned = trimmed.replace(repeatedPattern, (match, group) => {
+        const cleaned = trimmed.replace(repeatedPattern, (_match, group) => {
             removedDuplicates++;
             hallucinations.push(`Répétition détectée: "${group.substring(0, 50)}..."`);
             return group;
