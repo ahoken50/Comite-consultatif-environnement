@@ -1650,6 +1650,13 @@ def extract_audio_segment_embedding(audio_url: str, start_sec: float, end_sec: f
         
         duration = min(end_sec - start_sec, 30)  # Max 30 seconds
         
+        # DEBUG: Check input file
+        input_size = os.path.getsize(input_path)
+        print(f"[VoiceEmbed] Input file size: {input_size} bytes")
+        if input_size == 0:
+            print("[VoiceEmbed] ERROR: Input file is empty")
+            return []
+
         # Check if ffmpeg is available
         try:
             subprocess.run(["ffmpeg", "-version"], capture_output=True, check=True)
@@ -1666,14 +1673,24 @@ def extract_audio_segment_embedding(audio_url: str, start_sec: float, end_sec: f
         ]
         
         try:
+            # Capture stdout/stderr to debug
             result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+            # print(f"[VoiceEmbed] FFMPEG Output: {result.stderr[:200]}...") # Optional: print first 200 chars
         except subprocess.CalledProcessError as e:
             print(f"[VoiceEmbed] FFMPEG Failed: {e.stderr}")
             return []
         
+        # Verify output exists
+        if not os.path.exists(output_path):
+            print(f"[VoiceEmbed] ERROR: Output file not created: {output_path}")
+            print(f"[VoiceEmbed] FFMPEG stderr: {result.stderr}")
+            return []
+
         # Read segment and send to Modal
         with open(output_path, "rb") as f:
             segment_data = f.read()
+            
+        print(f"[VoiceEmbed] Segment created: {len(segment_data)} bytes")
         
         # Clean up temp files
         if not is_local:
