@@ -77,6 +77,24 @@ def migrate_firestore_to_supabase():
         print(f"✗ Failed to fetch Firestore members: {e}")
         return False
     
+    # Step 2a: Pre-fetch Supabase speakers to link IDs (Optimization)
+    print("\n[Step 2a] Fetching Supabase speakers for ID linking...")
+    try:
+        # Fetch all speakers (id, name)
+        # Note: If > 1000 speakers, might need pagination, but likely okay for now
+        sp_result = supabase.table("speakers").select("id, name").execute()
+        
+        speaker_map = {}
+        for row in sp_result.data:
+            # Create a normalized map: Lowercase trimmed name -> ID
+            norm_name = row["name"].strip().lower()
+            speaker_map[norm_name] = row["id"]
+            
+        print(f"✓ Cached {len(speaker_map)} speakers from Supabase")
+    except Exception as e:
+        print(f"⚠ Failed to cache speakers (will proceed without linking IDs): {e}")
+        speaker_map = {}
+
     # Step 3: Migrate embeddings
     print("\n[Step 3] Migrating embeddings to Supabase speaker_embeddings...")
     
@@ -97,6 +115,35 @@ def migrate_firestore_to_supabase():
         if not name:
             print(f"  ⚠ Skipping member {member_id} (no name)")
             continue
+        
+        # Lookup speaker ID
+        norm_name = name.strip().lower()
+        speaker_id = speaker_map.get(norm_name)
+        
+        if not speaker_id:
+            # CREATE SPEAKER if missing (since table was cleared)
+            try:
+                print(f"  + Creating speaker '{name}' in Supabase...")
+                # Assuming 'role' is in member dict or default to 'member'
+                role = member.get("role", "member")
+                
+                # Check if role is valid for Supabase enum if specific constraints exist
+                # Otherwise just insert
+                new_speaker = {
+                    "name": name,
+                    "role": role,
+                    "created_at": datetime.now().isoformat()
+                }
+                
+                res = supabase.table("speakers").insert(new_speaker).execute()
+                if res.data:
+                    speaker_id = res.data[0]["id"]
+                    speaker_map[norm_name] = speaker_id
+                    print(f"  ✓ Created speaker ID: {speaker_id}")
+                else:
+                    print(f"  ⚠ Failed to create speaker '{name}' (no data returned)")
+            except Exception as e:
+                print(f"  ✗ Error creating speaker '{name}': {e}")
         
         # Parse embedding
         if isinstance(embedding, str):
@@ -120,9 +167,10 @@ def migrate_firestore_to_supabase():
                 # List of vectors: insert each separately
                 vectors = embedding
                 for i, vec in enumerate(vectors):
-                    if len(vec) == 768:  # Validate dimension
+                    if len(vec) in [512, 768]:  # Validate dimension (Modal=512, standard=768)
                         result = supabase.table("speaker_embeddings").insert({
                             "speaker_name": name,
+                            "speaker_id": speaker_id,  # Linked ID
                             "embedding": vec,
                             "sample_source": "batch_import",
                             "created_at": datetime.now().isoformat(),
@@ -133,13 +181,14 @@ def migrate_firestore_to_supabase():
                             })
                         }).execute()
                         migration_stats["total_embeddings_inserted"] += 1
-                print(f"  ✓ {name}: Migrated {len(vectors)} embeddings")
+                print(f"  ✓ {name}: Migrated {len(vectors)} embeddings (ID: {speaker_id})")
                 
             elif isinstance(embedding[0], (int, float)):
                 # Single vector
-                if len(embedding) == 768:
+                if len(embedding) in [512, 768]:
                     result = supabase.table("speaker_embeddings").insert({
                         "speaker_name": name,
+                        "speaker_id": speaker_id,  # Linked ID
                         "embedding": embedding,
                         "sample_source": "batch_import",
                         "created_at": datetime.now().isoformat(),
@@ -149,7 +198,7 @@ def migrate_firestore_to_supabase():
                         })
                     }).execute()
                     migration_stats["total_embeddings_inserted"] += 1
-                    print(f"  ✓ {name}: Migrated 1 embedding")
+                    print(f"  ✓ {name}: Migrated 1 embedding (ID: {speaker_id})")
                 else:
                     print(f"  ⚠ {name}: Invalid embedding dimension {len(embedding)}")
             else:

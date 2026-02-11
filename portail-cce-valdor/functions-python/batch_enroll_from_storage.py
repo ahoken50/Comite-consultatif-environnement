@@ -57,7 +57,15 @@ def batch_enroll_from_storage(req: https_fn.Request) -> https_fn.Response:
             "details": []
         }
         
+        # Limit processing to avoid timeout (Cloud Function max 9 mins)
+        # Each enrollment takes ~15-30s. 15 files * 30s = 450s (7.5 mins)
+        BATCH_LIMIT = 15
+        
         for blob in blobs:
+            if results["processed"] >= BATCH_LIMIT:
+                print(f"[BatchEnroll] Reached batch limit of {BATCH_LIMIT}. Stopping.")
+                break
+                
             # Skip directories
             if blob.name.endswith('/'):
                 continue

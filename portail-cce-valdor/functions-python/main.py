@@ -19,7 +19,32 @@ from firebase_admin import initialize_app, firestore, storage
 # Importing them lazily inside the legacy function to reduce cold start memory.
 # import openai
 # from pydub import AudioSegment
+# Local Imports
+from pv_pipeline import (
+    run_pv_pipeline,
+    run_reflection_loop,
+    compare_with_historical,
+    record_learning,
+    learn_resolution_template
+)
+from active_learning import (
+    update_embedding_with_correction,
+    analyze_embedding_quality,
+    analyze_quality_trends,
+    build_style_memory
+)
+from rlhf_engine import (
+    compute_embedding_reward,
+    get_members_needing_improvement,
+    optimize_policy,
+    get_current_policy,
+    get_learned_preferences,
+    compute_reward,
+    record_preference
+)
+
 from dotenv import load_dotenv
+
 
 # Load environment variables
 load_dotenv()
@@ -174,8 +199,47 @@ def sync_embedding_to_supabase(member_name: str, embedding_data, member_id: str 
             # FALLBACK: Utiliser l'ancienne méthode (table speakers avec centroid)
             return sync_embedding_to_supabase_fallback(member_name, embedding_data, member_id)
         
+        # Lookup speaker_id from speakers table to link the embedding
+        speaker_id = None
+        try:
+            # Verify if speaker exists in 'speakers' table
+            speaker_res = supabase.table("speakers").select("id").eq("name", member_name).limit(1).execute()
+            if speaker_res.data:
+                speaker_id = speaker_res.data[0]["id"]
+            else:
+                # PHASE 2 FIX: Auto-create speaker if missing (e.g. table cleared)
+                try:
+                    print(f"[SupabaseSync Phase 2] Speaker '{member_name}' not found. Creating...")
+                    role = "member" # Default
+                    
+                    # Try to fetch role from Firestore if member_id is provided
+                    if member_id and db:
+                        try:
+                            m_doc = db.collection("members").document(member_id).get()
+                            if m_doc.exists:
+                                role = m_doc.to_dict().get("role", "member")
+                        except Exception as fb_err:
+                            print(f"[SupabaseSync Phase 2] Failed to fetch role from Firestore: {fb_err}")
+                    
+                    new_speaker = {
+                        "name": member_name,
+                        "role": role,
+                        "created_at": datetime.now().isoformat()
+                    }
+                    
+                    sp_new = supabase.table("speakers").insert(new_speaker).execute()
+                    if sp_new.data:
+                        speaker_id = sp_new.data[0]["id"]
+                        print(f"[SupabaseSync Phase 2] Created new speaker '{member_name}' (ID: {speaker_id})")
+                    else:
+                        print(f"[SupabaseSync Phase 2] Failed to create speaker '{member_name}'")
+                except Exception as create_err:
+                    print(f"[SupabaseSync Phase 2] Error creating speaker: {create_err}")
+        except Exception as e:
+            print(f"[SupabaseSync Phase 2] Error looking up speaker_id: {e}")
+
         # PHASE 2: Insérer dans speaker_embeddings (multi-rows)
-        # Insertion directe avec speaker_id = None (table modifiée pour autoriser NULL)
+        # Insertion avec speaker_id si trouvé (sinon NULL)
         # Si embedding_data est une liste de vecteurs, insérer chaque vecteur séparément
         if isinstance(embedding_data[0], list) and isinstance(embedding_data[0][0], (int, float)):
             # Liste de vecteurs: insérer chacun
@@ -187,7 +251,7 @@ def sync_embedding_to_supabase(member_name: str, embedding_data, member_id: str 
                     try:
                         result = supabase.table("speaker_embeddings").insert({
                             "speaker_name": member_name,
-                            "speaker_id": None,  # NULL autorisé - speaker_id sera lié plus tard si nécessaire
+                            "speaker_id": speaker_id,  # Linked ID or NULL
                             "embedding": vec,
                             "sample_source": sample_source,
                             "created_at": datetime.now().isoformat(),
@@ -199,11 +263,9 @@ def sync_embedding_to_supabase(member_name: str, embedding_data, member_id: str 
                         inserted_count += 1
                     except Exception as e:
                         print(f"[SupabaseSync Phase 2] Error inserting for {member_name}: {e}")
-                        import traceback
-                        traceback.print_exc()
                 else:
                     print(f"[SupabaseSync Phase 2] Warning: Embedding dimension {len(vec)} not expected (512 or 768) for {member_name}")
-            print(f"[SupabaseSync Phase 2] Inserted {inserted_count}/{len(vectors)} embeddings for {member_name} (source: {sample_source})")
+            print(f"[SupabaseSync Phase 2] Inserted {inserted_count}/{len(vectors)} embeddings for {member_name} (ID: {speaker_id})")
             
         elif isinstance(embedding_data[0], (int, float)):
             # Vecteur unique
@@ -211,7 +273,7 @@ def sync_embedding_to_supabase(member_name: str, embedding_data, member_id: str 
                 try:
                     result = supabase.table("speaker_embeddings").insert({
                         "speaker_name": member_name,
-                        "speaker_id": None,  # NULL autorisé
+                        "speaker_id": speaker_id,  # Linked ID or NULL
                         "embedding": embedding_data,
                         "sample_source": sample_source,
                         "created_at": datetime.now().isoformat(),
@@ -220,7 +282,7 @@ def sync_embedding_to_supabase(member_name: str, embedding_data, member_id: str 
                             "migration_timestamp": datetime.now().isoformat()
                         })
                     }).execute()
-                    print(f"[SupabaseSync Phase 2] Inserted 1 embedding for {member_name} (source: {sample_source}, dims: {len(embedding_data)})")
+                    print(f"[SupabaseSync Phase 2] Inserted 1 embedding for {member_name} (ID: {speaker_id})")
                 except Exception as e:
                     print(f"[SupabaseSync Phase 2] Error inserting for {member_name}: {e}")
                     import traceback
@@ -7611,9 +7673,9 @@ def learn_resolution(req: https_fn.CallableRequest) -> dict:
     timeout_sec=120,
     memory=options.MemoryOption.GB_1,
 )
-def active_update_embedding(req: https_fn.CallableRequest) -> dict:
+def closed_feedback_loop(req: https_fn.CallableRequest) -> dict:
     """
-    Actively update voice embeddings using correction signals.
+    Actively update voice embeddings using correction signals (Amelioration Loop).
     Corrections get 2x weight compared to auto-learned embeddings.
     Wrong embeddings are identified and removed.
     """
@@ -7624,7 +7686,8 @@ def active_update_embedding(req: https_fn.CallableRequest) -> dict:
         )
 
     data = req.data
-    member_id = data.get("memberId", "")
+    # Frontend sends correctMemberId, we map it to memberId
+    member_id = data.get("memberId") or data.get("correctMemberId", "")
     audio_url = data.get("audioUrl", "")
     start_time = data.get("start", 0)
     end_time = data.get("end", 0)
