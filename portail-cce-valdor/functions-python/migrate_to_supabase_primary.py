@@ -178,12 +178,13 @@ def migrate_firestore_to_supabase():
                             "speaker_name": name,
                             "speaker_id": speaker_id,  # Linked ID
                             "embedding": vec,
-                            "sample_source": "batch_import_padded" if len(vectors[i]) == 512 else "batch_import",
+                            "sample_source": "batch_import",
                             "created_at": datetime.now().isoformat(),
                             "metadata": json.dumps({
                                 "firestore_member_id": member_id,
                                 "vector_index": i,
                                 "original_dim": len(vectors[i]),
+                                "padded": len(vectors[i]) == 512,
                                 "migration_timestamp": datetime.now().isoformat()
                             })
                         }).execute()
@@ -202,11 +203,12 @@ def migrate_firestore_to_supabase():
                         "speaker_name": name,
                         "speaker_id": speaker_id,  # Linked ID
                         "embedding": vec,
-                        "sample_source": "batch_import_padded" if len(embedding) == 512 else "batch_import",
+                        "sample_source": "batch_import",
                         "created_at": datetime.now().isoformat(),
                         "metadata": json.dumps({
                             "firestore_member_id": member_id,
                             "original_dim": len(embedding),
+                            "padded": len(embedding) == 512,
                             "migration_timestamp": datetime.now().isoformat()
                         })
                     }).execute()
