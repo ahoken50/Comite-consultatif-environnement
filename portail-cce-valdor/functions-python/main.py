@@ -43,6 +43,17 @@ from rlhf_engine import (
 )
 from recommendation_engine import learn_resolution_template
 
+# Import other Cloud Functions to ensure they are deployed
+from migration_status import (
+    api_get_migration_status,
+    trigger_manual_migration,
+    reset_migration_flag
+)
+from diagnose_migration import api_diagnose_migration
+from batch_enroll_from_storage import batch_enroll_from_storage
+from sync_firestore_to_supabase import force_sync_firestore_to_supabase
+from clear_supabase_speakers import clear_supabase_speakers
+
 from dotenv import load_dotenv
 
 
