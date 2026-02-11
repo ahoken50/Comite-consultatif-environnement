@@ -258,6 +258,92 @@ export const SpeakerCorrectionTranscription: React.FC<SpeakerCorrectionTranscrip
         }
     };
 
+    // Selection / Precision Correction State
+    const [selectionRange, setSelectionRange] = useState<{ start: number; end: number; text: string } | null>(null);
+    const [selectionPopoverAnchor, setSelectionPopoverAnchor] = useState<HTMLElement | null>(null);
+
+    // Handle text selection for precision correction
+    const handleTextMouseUp = () => {
+        const selection = window.getSelection();
+        if (!selection || selection.isCollapsed) return;
+
+        const range = selection.getRangeAt(0);
+        const startNode = range.startContainer.parentElement; // Expected to be the span with data-pos
+        const endNode = range.endContainer.parentElement;
+
+        if (!startNode || !endNode) return;
+
+        // Check if we are selecting inside our transcription segments
+        const startPosAttr = startNode.getAttribute('data-pos');
+        const endPosAttr = endNode.getAttribute('data-pos');
+
+        if (startPosAttr && endPosAttr) {
+            const startBase = parseInt(startPosAttr, 10);
+            const endBase = parseInt(endPosAttr, 10);
+
+            const absStart = startBase + range.startOffset;
+            const absEnd = endBase + range.endOffset;
+
+            if (absEnd > absStart) {
+                const selectedText = transcription.substring(absStart, absEnd);
+                // Only show if meaningful selection length
+                if (selectedText.trim().length > 2) {
+                    setSelectionRange({ start: absStart, end: absEnd, text: selectedText });
+                    // Anchor to the end of selection or mouse position?
+                    // Using the end node or a virtual element is better
+                    setSelectionPopoverAnchor(endNode as HTMLElement);
+                }
+            }
+        }
+    };
+
+    const handleApplySpeakerToSelection = (newSpeakerName: string) => {
+        if (!selectionRange) return;
+
+        const { start, end } = selectionRange;
+        const selectedText = transcription.substring(start, end);
+
+        // We need to determine the "original" speaker at the point where selection ends
+        // to restore them if needed.
+        // Simple heuristic: search backwards from 'end' to find the last speaker tag.
+        let originalSpeaker = '';
+        const textBeforeEnd = transcription.substring(0, end);
+        const lastSpeakerMatch = [...textBeforeEnd.matchAll(/\[([A-Za-z][^\]]*)\]/g)].pop();
+        if (lastSpeakerMatch) {
+            originalSpeaker = lastSpeakerMatch[1];
+        }
+
+        // Construct new text
+        // 1. Before selection
+        const before = transcription.substring(0, start);
+        // 2. The selection with new speaker tag
+        // Ensure double newline before if needed for clean block
+        const prefix = (start > 0 && transcription[start - 1] !== '\n') ? '\n' : '';
+        const selectionBlock = `${prefix}[${newSpeakerName}] ${selectedText}`;
+        
+        // 3. After selection
+        // If we are in the middle of a block, we might want to restore the original speaker
+        // ONLY if the text continues immediately.
+        const after = transcription.substring(end);
+        let suffix = '';
+        if (after.trim().length > 0 && originalSpeaker && originalSpeaker !== newSpeakerName) {
+             // restore original speaker
+             suffix = `\n[${originalSpeaker}]`;
+        }
+
+        const newTranscription = before + selectionBlock + suffix + after;
+
+        onTranscriptionUpdate?.(newTranscription);
+        onCorrectionMade?.(originalSpeaker || 'Inconnu', newSpeakerName); // Approximate stats
+
+        // Reset
+        setSelectionRange(null);
+        setSelectionPopoverAnchor(null);
+        window.getSelection()?.removeAllRanges();
+        
+        setSnackMessage(`✅ Locuteur "${newSpeakerName}" appliqué à la sélection.`);
+    };
+
     return (
         <Box>
             {/* Correction stats */}
@@ -286,6 +372,7 @@ export const SpeakerCorrectionTranscription: React.FC<SpeakerCorrectionTranscrip
             {/* Interactive transcription */}
             <Paper
                 variant="outlined"
+                onMouseUp={handleTextMouseUp}
                 sx={{
                     p: 2,
                     maxHeight: 600,
@@ -390,11 +477,12 @@ export const SpeakerCorrectionTranscription: React.FC<SpeakerCorrectionTranscrip
                         );
                     }
 
-                    // 3. TEXT (with split capability)
+                    // 3. TEXT (with data-pos for selection mapping)
                     return (
                         <Box
                             component="span"
                             key={idx}
+                            data-pos={segment.position}
                             sx={{
                                 position: 'relative',
                                 display: 'inline',
@@ -409,6 +497,8 @@ export const SpeakerCorrectionTranscription: React.FC<SpeakerCorrectionTranscrip
                                     onClick={(e) => {
                                         setSplitAnchorEl(e.currentTarget);
                                         setActiveSplitSegment(segment);
+                                        // Clear selection to avoid conflict
+                                        setSelectionRange(null);
                                     }}
                                     sx={{
                                         position: 'absolute',
@@ -435,7 +525,70 @@ export const SpeakerCorrectionTranscription: React.FC<SpeakerCorrectionTranscrip
                 })}
             </Paper>
 
-            {/* Split/New Speaker Popover */}
+            {/* Selection Popover */}
+            <Popover
+                open={Boolean(selectionRange && selectionPopoverAnchor)}
+                anchorEl={selectionPopoverAnchor}
+                onClose={() => {
+                    setSelectionRange(null);
+                    setSelectionPopoverAnchor(null);
+                    window.getSelection()?.removeAllRanges();
+                }}
+                anchorOrigin={{
+                    vertical: 'bottom',
+                    horizontal: 'left',
+                }}
+            >
+                <Box sx={{ p: 2, maxHeight: 300, overflow: 'auto', width: 320 }}>
+                     <Typography variant="subtitle2" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <PersonAddIcon fontSize="small" color="primary" /> 
+                        Assigner la sélection à...
+                    </Typography>
+                    
+                    {selectionRange && (
+                        <Typography 
+                            variant="caption" 
+                            sx={{ 
+                                display: 'block', 
+                                mb: 1.5, 
+                                p: 1, 
+                                bgcolor: 'grey.100', 
+                                borderRadius: 1,
+                                fontStyle: 'italic',
+                                maxHeight: 60,
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis'
+                            }}
+                        >
+                            "{selectionRange.text}"
+                        </Typography>
+                    )}
+
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                        {memberOptions.map(option => (
+                            <MenuItem
+                                key={option.value}
+                                onClick={() => handleApplySpeakerToSelection(option.value)}
+                                sx={{ borderRadius: 1, py: 1 }}
+                            >
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, width: '100%' }}>
+                                    <Typography variant="body2">{option.label}</Typography>
+                                    {option.role && (
+                                        <Chip
+                                            label={option.role}
+                                            size="small"
+                                            variant="outlined"
+                                            sx={{ ml: 'auto', fontSize: '0.65rem', height: 20 }}
+                                        />
+                                    )}
+                                </Box>
+                            </MenuItem>
+                        ))}
+                    </Box>
+                </Box>
+            </Popover>
+
+            {/* Split/New Speaker Popover (Hover Button) */}
             <Popover
                 open={Boolean(splitAnchorEl)}
                 anchorEl={splitAnchorEl}
@@ -477,9 +630,9 @@ export const SpeakerCorrectionTranscription: React.FC<SpeakerCorrectionTranscrip
             </Popover>
 
             {/* Legend */}
-            <Box sx={{ mt: 1, display: 'flex', gap: 2, alignItems: 'center' }}>
+            <Box sx={{ mt: 1, display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
                 <Typography variant="caption" color="text.secondary">
-                    💡 Cliquez sur un nom pour corriger. Survolez une ligne de texte pour changer de locuteur.
+                    💡 <strong>Astuce:</strong> Sélectionnez du texte avec la souris pour changer le locuteur d'une phrase spécifique.
                 </Typography>
                 {audioUrl && (
                     <Typography variant="caption" color="success.main">
