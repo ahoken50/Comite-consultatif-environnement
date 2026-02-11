@@ -179,25 +179,35 @@ def sync_embedding_to_supabase(member_name: str, embedding_data, member_id: str 
         if isinstance(embedding_data[0], list) and isinstance(embedding_data[0][0], (int, float)):
             # Liste de vecteurs: insérer chacun
             vectors = embedding_data
+            inserted_count = 0
             for vec in vectors:
-                if len(vec) == 768:  # Dimension attendue
+                # Accepter dimensions 512 ou 768 (Modal peut retourner 512)
+                if len(vec) in [512, 768]:  # Dimensions acceptées
                     result = supabase.table("speaker_embeddings").insert({
                         "speaker_name": member_name,
                         "embedding": vec,
                         "sample_source": sample_source,
                         "created_at": datetime.now().isoformat()
                     }).execute()
-            print(f"[SupabaseSync Phase 2] Inserted {len(vectors)} embeddings for {member_name} (source: {sample_source})")
+                    inserted_count += 1
+                else:
+                    print(f"[SupabaseSync Phase 2] Warning: Embedding dimension {len(vec)} not expected (512 or 768) for {member_name}")
+            print(f"[SupabaseSync Phase 2] Inserted {inserted_count}/{len(vectors)} embeddings for {member_name} (source: {sample_source})")
             
         elif isinstance(embedding_data[0], (int, float)):
             # Vecteur unique
-            result = supabase.table("speaker_embeddings").insert({
-                "speaker_name": member_name,
-                "embedding": embedding_data,
-                "sample_source": sample_source,
-                "created_at": datetime.now().isoformat()
-            }).execute()
-            print(f"[SupabaseSync Phase 2] Inserted 1 embedding for {member_name} (source: {sample_source})")
+            # Accepter dimensions 512 ou 768
+            if len(embedding_data) in [512, 768]:
+                result = supabase.table("speaker_embeddings").insert({
+                    "speaker_name": member_name,
+                    "embedding": embedding_data,
+                    "sample_source": sample_source,
+                    "created_at": datetime.now().isoformat()
+                }).execute()
+                print(f"[SupabaseSync Phase 2] Inserted 1 embedding for {member_name} (source: {sample_source}, dims: {len(embedding_data)})")
+            else:
+                print(f"[SupabaseSync Phase 2] Warning: Embedding dimension {len(embedding_data)} not expected (512 or 768) for {member_name}")
+                return False
         else:
             print(f"[SupabaseSync Phase 2] Invalid embedding format for {member_name}")
             return False
