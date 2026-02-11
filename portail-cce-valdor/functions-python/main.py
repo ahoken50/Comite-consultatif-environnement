@@ -24,8 +24,7 @@ from pv_pipeline import (
     run_pv_pipeline,
     run_reflection_loop,
     compare_with_historical,
-    record_learning,
-    learn_resolution_template
+    record_learning
 )
 from active_learning import (
     update_embedding_with_correction,
@@ -42,6 +41,7 @@ from rlhf_engine import (
     compute_reward,
     record_preference
 )
+from recommendation_engine import learn_resolution_template
 
 from dotenv import load_dotenv
 
