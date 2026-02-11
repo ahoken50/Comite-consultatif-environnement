@@ -175,6 +175,7 @@ def sync_embedding_to_supabase(member_name: str, embedding_data, member_id: str 
             return sync_embedding_to_supabase_fallback(member_name, embedding_data, member_id)
         
         # PHASE 2: Insérer dans speaker_embeddings (multi-rows)
+        # Insertion directe avec speaker_id = None (table modifiée pour autoriser NULL)
         # Si embedding_data est une liste de vecteurs, insérer chaque vecteur séparément
         if isinstance(embedding_data[0], list) and isinstance(embedding_data[0][0], (int, float)):
             # Liste de vecteurs: insérer chacun
@@ -183,28 +184,48 @@ def sync_embedding_to_supabase(member_name: str, embedding_data, member_id: str 
             for vec in vectors:
                 # Accepter dimensions 512 ou 768 (Modal peut retourner 512)
                 if len(vec) in [512, 768]:  # Dimensions acceptées
-                    result = supabase.table("speaker_embeddings").insert({
-                        "speaker_name": member_name,
-                        "embedding": vec,
-                        "sample_source": sample_source,
-                        "created_at": datetime.now().isoformat()
-                    }).execute()
-                    inserted_count += 1
+                    try:
+                        result = supabase.table("speaker_embeddings").insert({
+                            "speaker_name": member_name,
+                            "speaker_id": None,  # NULL autorisé - speaker_id sera lié plus tard si nécessaire
+                            "embedding": vec,
+                            "sample_source": sample_source,
+                            "created_at": datetime.now().isoformat(),
+                            "metadata": json_lib.dumps({
+                                "firestore_member_id": member_id,
+                                "migration_timestamp": datetime.now().isoformat()
+                            })
+                        }).execute()
+                        inserted_count += 1
+                    except Exception as e:
+                        print(f"[SupabaseSync Phase 2] Error inserting for {member_name}: {e}")
+                        import traceback
+                        traceback.print_exc()
                 else:
                     print(f"[SupabaseSync Phase 2] Warning: Embedding dimension {len(vec)} not expected (512 or 768) for {member_name}")
             print(f"[SupabaseSync Phase 2] Inserted {inserted_count}/{len(vectors)} embeddings for {member_name} (source: {sample_source})")
             
         elif isinstance(embedding_data[0], (int, float)):
             # Vecteur unique
-            # Accepter dimensions 512 ou 768
             if len(embedding_data) in [512, 768]:
-                result = supabase.table("speaker_embeddings").insert({
-                    "speaker_name": member_name,
-                    "embedding": embedding_data,
-                    "sample_source": sample_source,
-                    "created_at": datetime.now().isoformat()
-                }).execute()
-                print(f"[SupabaseSync Phase 2] Inserted 1 embedding for {member_name} (source: {sample_source}, dims: {len(embedding_data)})")
+                try:
+                    result = supabase.table("speaker_embeddings").insert({
+                        "speaker_name": member_name,
+                        "speaker_id": None,  # NULL autorisé
+                        "embedding": embedding_data,
+                        "sample_source": sample_source,
+                        "created_at": datetime.now().isoformat(),
+                        "metadata": json_lib.dumps({
+                            "firestore_member_id": member_id,
+                            "migration_timestamp": datetime.now().isoformat()
+                        })
+                    }).execute()
+                    print(f"[SupabaseSync Phase 2] Inserted 1 embedding for {member_name} (source: {sample_source}, dims: {len(embedding_data)})")
+                except Exception as e:
+                    print(f"[SupabaseSync Phase 2] Error inserting for {member_name}: {e}")
+                    import traceback
+                    traceback.print_exc()
+                    return False
             else:
                 print(f"[SupabaseSync Phase 2] Warning: Embedding dimension {len(embedding_data)} not expected (512 or 768) for {member_name}")
                 return False
