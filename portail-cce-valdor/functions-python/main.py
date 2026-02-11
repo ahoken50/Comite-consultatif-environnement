@@ -1511,13 +1511,18 @@ def get_meeting_attendees(meeting_id: str) -> list:
 
 def extract_audio_segment_embedding(audio_url: str, start_sec: float, end_sec: float) -> list:
     """
-    Extract audio segment and get embedding via Modal.
+    Extract audio segment and get embedding via Modal or Hugging Face.
     Returns embedding vector or empty list on failure.
+    
+    Supports both MODAL_ENDPOINT_URL and HF_ENDPOINT_URL + HF_TOKEN.
     """
     try:
-        modal_endpoint = os.environ.get("MODAL_ENDPOINT_URL")
-        if not modal_endpoint:
-            print("[VoiceEmbed] MODAL_ENDPOINT_URL not configured")
+        # Support both Modal and Hugging Face endpoints (same as enroll_speaker)
+        endpoint_url = os.environ.get("MODAL_ENDPOINT_URL") or os.environ.get("HF_ENDPOINT_URL")
+        hf_token = os.environ.get("HF_TOKEN")
+        
+        if not endpoint_url:
+            print("[VoiceEmbed] MODAL_ENDPOINT_URL or HF_ENDPOINT_URL not configured")
             return []
         
         if os.path.exists(audio_url):
@@ -1570,20 +1575,39 @@ def extract_audio_segment_embedding(audio_url: str, start_sec: float, end_sec: f
             os.unlink(input_path)
         os.unlink(output_path)
         
-        # Base64 encode for Modal
-        import base64
-        audio_b64 = base64.b64encode(segment_data).decode()
+        # Upload segment to temporary storage for remote access
+        # Both Modal and HF need a URL they can access
+        bucket = storage.bucket()
+        temp_blob_path = f"temp_audio_segments/{int(time.time())}_{start_sec}_{end_sec}.wav"
+        temp_blob = bucket.blob(temp_blob_path)
+        temp_blob.upload_from_filename(output_path)
         
-        # Call Modal endpoint
-        print(f"[VoiceEmbed] Sending segment to Modal ({duration:.1f}s)")
+        # Generate signed URL (expires in 15 minutes)
+        signed_url = temp_blob.generate_signed_url(
+            version="v4",
+            expiration=timedelta(minutes=15),
+            method="GET"
+        )
+        
+        print(f"[VoiceEmbed] Sending segment to {endpoint_url.split('//')[1].split('/')[0]} ({duration:.1f}s)")
+        
+        # Call endpoint with headers (supports both Modal and HF)
+        headers = {"Content-Type": "application/json"}
+        if hf_token:
+            headers["Authorization"] = f"Bearer {hf_token}"
+        
+        # Modal uses "url", HF uses "inputs" - send both for compatibility
+        payload = {"url": signed_url, "inputs": signed_url}
+        
         modal_response = requests.post(
-            modal_endpoint,
-            json={"audio_base64": audio_b64},
-            timeout=600  # Increased to 10m to handle Modal cold start
+            endpoint_url,
+            headers=headers,
+            json=payload,
+            timeout=600  # Increased to 10m to handle cold start
         )
         
         if not modal_response.ok:
-            print(f"[VoiceEmbed] Modal error: {modal_response.status_code} - {modal_response.text}")
+            print(f"[VoiceEmbed] Endpoint error: {modal_response.status_code} - {modal_response.text}")
             return []
         
         result = modal_response.json()
