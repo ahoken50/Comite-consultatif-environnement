@@ -21,11 +21,14 @@ import {
     Alert,
     CircularProgress,
     Snackbar,
+    IconButton,
+    Popover,
 } from '@mui/material';
 import {
     RecordVoiceOver as VoiceIcon,
     CheckCircle as CheckIcon,
     Psychology as MLIcon,
+    PersonAdd as PersonAddIcon,
 } from '@mui/icons-material';
 import type { SelectChangeEvent } from '@mui/material';
 import type { Member } from '../../types/member.types';
@@ -69,6 +72,10 @@ export const SpeakerCorrectionTranscription: React.FC<SpeakerCorrectionTranscrip
     const [learningStatus, setLearningStatus] = useState<string | null>(null);
     const [snackMessage, setSnackMessage] = useState<string | null>(null);
 
+    // Split Popover State
+    const [splitAnchorEl, setSplitAnchorEl] = useState<HTMLElement | null>(null);
+    const [activeSplitSegment, setActiveSplitSegment] = useState<TranscriptionSegment | null>(null);
+
     // Parse transcription into segments
     const segments = useMemo(() => parseTranscription(transcription), [transcription]);
 
@@ -93,7 +100,7 @@ export const SpeakerCorrectionTranscription: React.FC<SpeakerCorrectionTranscrip
                 role: m.role || '',
                 id: m.id,
             }));
-        
+
         // Also include detected speakers that aren't members
         detectedSpeakers.forEach(name => {
             if (!options.find(o => o.value === name)) {
@@ -109,7 +116,7 @@ export const SpeakerCorrectionTranscription: React.FC<SpeakerCorrectionTranscrip
         return options.sort((a, b) => a.label.localeCompare(b.label));
     }, [members, detectedSpeakers]);
 
-    // Handle speaker correction
+    // Handle existing speaker label change (Rename speaker for this segment)
     const handleSpeakerChange = useCallback(async (
         event: SelectChangeEvent<string>,
         segment: TranscriptionSegment,
@@ -119,16 +126,23 @@ export const SpeakerCorrectionTranscription: React.FC<SpeakerCorrectionTranscrip
 
         if (newName === oldName) return;
 
-        // 1. Update transcription text
-        let newTranscription = transcription;
-        const escapedOldName = oldName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        // 1. Update transcription text LOCALLY (Only replace THIS instance)
+        // We depend on segment.position to find the exact occurrence
+        const before = transcription.substring(0, segment.position);
 
-        // Replace all occurrences of this speaker name
-        const bracketPattern = new RegExp(`\\[${escapedOldName}\\]`, 'g');
-        newTranscription = newTranscription.replace(bracketPattern, `[${newName}]`);
+        // Find the length of the tag we are replacing
+        // It could be [Name] or **Name**:
+        let tagLength = 0;
+        if (transcription.substring(segment.position).startsWith('[')) {
+            tagLength = oldName.length + 2; // [Name]
+        } else {
+            // **Name**: or **Name**
+            const suffix = transcription.substring(segment.position + oldName.length + 4).startsWith(':') ? 1 : 0;
+            tagLength = oldName.length + 4 + suffix;
+        }
 
-        const boldPattern = new RegExp(`\\*\\*${escapedOldName}\\*\\*:?`, 'g');
-        newTranscription = newTranscription.replace(boldPattern, `**${newName}**:`);
+        const after = transcription.substring(segment.position + tagLength);
+        const newTranscription = before + `[${newName}]` + after;
 
         // 2. Track correction
         const correction: SpeakerCorrection = {
@@ -144,17 +158,57 @@ export const SpeakerCorrectionTranscription: React.FC<SpeakerCorrectionTranscrip
         onCorrectionMade?.(oldName, newName);
 
         // 3. Trigger ML learning if audio is available
+        triggerLearning(correction, newName, oldName, segment.position);
+
+    }, [transcription, members, meetingId, audioUrl, audioDuration, onTranscriptionUpdate, onCorrectionMade]);
+
+    // Handle splitting a text line to assign a new speaker
+    const handleSplitSpeaker = (newName: string) => {
+        if (!activeSplitSegment) return;
+
+        const position = activeSplitSegment.position;
+        // Insert \n\n[New Name] at the start of this line
+        const before = transcription.substring(0, position);
+        const after = transcription.substring(position);
+
+        // Add double newline to ensure clean separation if not already there
+        // Actually, since we split by lines, 'before' ends right before this line.
+        // If the previous char is not \n, add one.
+        const prefix = (position > 0 && transcription[position - 1] !== '\n') ? '\n' : '';
+        const newTag = `${prefix}[${newName}] `;
+
+        const newTranscription = before + newTag + after;
+
+        onTranscriptionUpdate?.(newTranscription);
+        setSplitAnchorEl(null);
+        setActiveSplitSegment(null);
+
+        setSnackMessage(`✅ Nouveau locuteur assigné : ${newName}`);
+    };
+
+    const triggerLearning = async (
+        correction: SpeakerCorrection,
+        newName: string,
+        oldName: string,
+        position: number
+    ) => {
         if (audioUrl && audioDuration > 0) {
-            correction.isLearning = true;
-            setCorrections(prev => prev.map(c => 
-                c.position === correction.position ? { ...c, isLearning: true } : c
-            ));
+
+            // Update local state to show loading
+            setCorrections(prev => {
+                const existing = prev.find(c => c.position === position);
+                if (existing) {
+                    return prev.map(c => c.position === position ? { ...c, isLearning: true } : c);
+                }
+                return [...prev, { ...correction, isLearning: true }];
+            });
+
             setLearningStatus(`🧠 Apprentissage en cours pour ${newName}...`);
 
             try {
                 // Find nearest timestamp markers for better accuracy
                 const { start, end } = estimateSegmentTime(
-                    transcription, segment.position, audioDuration
+                    transcription, position, audioDuration
                 );
 
                 const segmentDuration = end - start;
@@ -164,10 +218,10 @@ export const SpeakerCorrectionTranscription: React.FC<SpeakerCorrectionTranscrip
                     // Find member IDs
                     const correctMember = members.find(m => m.displayName === newName);
                     if (correctMember) {
-                        // Call closed_feedback_loop for correction logging + embedding reinforcement
+                        // Call closed_feedback_loop
                         const { getFunctions, httpsCallable } = await import('firebase/functions');
                         const functions = getFunctions();
-                        
+
                         const feedbackFn = httpsCallable(functions, 'closed_feedback_loop');
                         await feedbackFn({
                             meetingId,
@@ -185,8 +239,6 @@ export const SpeakerCorrectionTranscription: React.FC<SpeakerCorrectionTranscrip
                             `✅ Correction appliquée: ${oldName} → ${newName}. ` +
                             `Profil vocal renforcé (${Math.round(segmentDuration)}s d'audio).`
                         );
-                    } else {
-                        setSnackMessage(`✅ Correction appliquée: ${oldName} → ${newName}`);
                     }
                 } else {
                     setSnackMessage(
@@ -198,22 +250,20 @@ export const SpeakerCorrectionTranscription: React.FC<SpeakerCorrectionTranscrip
                 console.error('[SpeakerCorrection] ML learning error:', err);
                 setSnackMessage(`✅ Correction appliquée. ⚠️ Apprentissage ML échoué.`);
             } finally {
-                setCorrections(prev => prev.map(c => 
-                    c.position === correction.position ? { ...c, isLearning: false, learned: true } : c
+                setCorrections(prev => prev.map(c =>
+                    c.position === position ? { ...c, isLearning: false, learned: true } : c
                 ));
                 setLearningStatus(null);
             }
-        } else {
-            setSnackMessage(`✅ Correction appliquée: ${oldName} → ${newName}`);
         }
-    }, [transcription, members, meetingId, audioUrl, audioDuration, onTranscriptionUpdate, onCorrectionMade]);
+    };
 
     return (
         <Box>
             {/* Correction stats */}
             {corrections.length > 0 && (
-                <Alert 
-                    severity="info" 
+                <Alert
+                    severity="info"
                     icon={<MLIcon />}
                     sx={{ mb: 1 }}
                 >
@@ -238,26 +288,25 @@ export const SpeakerCorrectionTranscription: React.FC<SpeakerCorrectionTranscrip
                 variant="outlined"
                 sx={{
                     p: 2,
-                    maxHeight: 400,
+                    maxHeight: 600,
                     overflow: 'auto',
                     bgcolor: 'grey.50',
-                    fontSize: '0.85rem',
+                    fontSize: '0.9rem',
                     lineHeight: 1.8,
                 }}
             >
                 {segments.map((segment, idx) => {
+                    // 1. SPEAKER TAG
                     if (segment.type === 'speaker') {
                         const correctionForThis = corrections.find(
-                            c => c.originalName === segment.speakerName && !c.learned
+                            c => c.position === segment.position
                         );
-                        const wasLearned = corrections.find(
-                            c => (c.originalName === segment.speakerName || c.correctedName === segment.speakerName) && c.learned
-                        );
+                        const wasLearned = correctionForThis?.learned;
 
                         return (
                             <Tooltip
                                 key={idx}
-                                title="Cliquez pour corriger le locuteur"
+                                title="Cliquez pour changer ce locuteur (seulement ici)"
                                 arrow
                                 placement="top"
                             >
@@ -274,7 +323,10 @@ export const SpeakerCorrectionTranscription: React.FC<SpeakerCorrectionTranscrip
                                         borderRadius: 1,
                                         px: 0.5,
                                         mx: 0.25,
-                                        minWidth: 'auto',
+                                        mt: 1, // Add space before new speaker block
+                                        mb: 0.5,
+                                        display: 'block', // Force new line for speaker tags usually
+                                        width: 'fit-content',
                                         '& .MuiSelect-select': {
                                             py: 0.25,
                                             pr: '20px !important',
@@ -300,9 +352,9 @@ export const SpeakerCorrectionTranscription: React.FC<SpeakerCorrectionTranscrip
                                                 <VoiceIcon sx={{ fontSize: 16, color: 'action.active' }} />
                                                 <Typography variant="body2">{option.label}</Typography>
                                                 {option.role && (
-                                                    <Chip 
-                                                        label={option.role} 
-                                                        size="small" 
+                                                    <Chip
+                                                        label={option.role}
+                                                        size="small"
                                                         variant="outlined"
                                                         sx={{ ml: 'auto', fontSize: '0.65rem', height: 20 }}
                                                     />
@@ -318,6 +370,7 @@ export const SpeakerCorrectionTranscription: React.FC<SpeakerCorrectionTranscrip
                         );
                     }
 
+                    // 2. TIMESTAMP
                     if (segment.type === 'timestamp') {
                         return (
                             <Chip
@@ -331,28 +384,106 @@ export const SpeakerCorrectionTranscription: React.FC<SpeakerCorrectionTranscrip
                                     mx: 0.5,
                                     color: 'text.secondary',
                                     borderColor: 'divider',
+                                    verticalAlign: 'middle',
                                 }}
                             />
                         );
                     }
 
-                    // Regular text
+                    // 3. TEXT (with split capability)
                     return (
-                        <span key={idx} style={{ whiteSpace: 'pre-wrap' }}>
-                            {segment.content}
-                        </span>
+                        <Box
+                            component="span"
+                            key={idx}
+                            sx={{
+                                position: 'relative',
+                                display: 'inline',
+                                '&:hover .split-btn': { opacity: 1 }
+                            }}
+                        >
+                            {/* Split Button (appears on hover) */}
+                            <Tooltip title="Définir un locuteur à partir d'ici" arrow placement="top">
+                                <IconButton
+                                    className="split-btn"
+                                    size="small"
+                                    onClick={(e) => {
+                                        setSplitAnchorEl(e.currentTarget);
+                                        setActiveSplitSegment(segment);
+                                    }}
+                                    sx={{
+                                        position: 'absolute',
+                                        left: -28,
+                                        top: '50%',
+                                        transform: 'translateY(-50%)',
+                                        opacity: 0,
+                                        transition: 'opacity 0.2s',
+                                        bgcolor: 'background.paper',
+                                        boxShadow: 1,
+                                        width: 24,
+                                        height: 24,
+                                        zIndex: 10,
+                                        '&:hover': { bgcolor: 'primary.50' }
+                                    }}
+                                >
+                                    <PersonAddIcon sx={{ fontSize: 16, color: 'primary.main' }} />
+                                </IconButton>
+                            </Tooltip>
+
+                            <span style={{ whiteSpace: 'pre-wrap' }}>{segment.content}</span>
+                        </Box>
                     );
                 })}
             </Paper>
 
+            {/* Split/New Speaker Popover */}
+            <Popover
+                open={Boolean(splitAnchorEl)}
+                anchorEl={splitAnchorEl}
+                onClose={() => {
+                    setSplitAnchorEl(null);
+                    setActiveSplitSegment(null);
+                }}
+                anchorOrigin={{
+                    vertical: 'bottom',
+                    horizontal: 'left',
+                }}
+            >
+                <Box sx={{ p: 2, maxHeight: 300, overflow: 'auto', width: 300 }}>
+                    <Typography variant="subtitle2" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <PersonAddIcon fontSize="small" /> Qui parle ici ?
+                    </Typography>
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                        {memberOptions.map(option => (
+                            <MenuItem
+                                key={option.value}
+                                onClick={() => handleSplitSpeaker(option.value)}
+                                sx={{ borderRadius: 1, py: 1 }}
+                            >
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, width: '100%' }}>
+                                    <Typography variant="body2">{option.label}</Typography>
+                                    {option.role && (
+                                        <Chip
+                                            label={option.role}
+                                            size="small"
+                                            variant="outlined"
+                                            sx={{ ml: 'auto', fontSize: '0.65rem', height: 20 }}
+                                        />
+                                    )}
+                                </Box>
+                            </MenuItem>
+                        ))}
+                    </Box>
+                </Box>
+            </Popover>
+
             {/* Legend */}
             <Box sx={{ mt: 1, display: 'flex', gap: 2, alignItems: 'center' }}>
                 <Typography variant="caption" color="text.secondary">
-                    💡 Cliquez sur un nom de locuteur pour le corriger.
+                    💡 Cliquez sur un nom pour corriger. Survolez une ligne de texte pour changer de locuteur.
                 </Typography>
                 {audioUrl && (
                     <Typography variant="caption" color="success.main">
-                        🧠 Les corrections longues (&gt;5s) entraînent automatiquement l'IA.
+                        🧠 L'IA apprend de vos corrections.
                     </Typography>
                 )}
             </Box>
@@ -375,47 +506,51 @@ export const SpeakerCorrectionTranscription: React.FC<SpeakerCorrectionTranscrip
 
 /**
  * Parse transcription text into typed segments for rendering.
- * Handles formats: [Speaker Name], **Speaker Name**:, [HH:MM:SS]
+ * Splits text by newlines to allow line-level interactivity.
  */
 function parseTranscription(text: string): TranscriptionSegment[] {
     if (!text) return [];
 
     const segments: TranscriptionSegment[] = [];
-    
+
     // Combined regex to match speakers and timestamps
-    // Group 1: [Speaker Name] (not timestamps)
-    // Group 2: **Speaker Name**
-    // Group 3: [HH:MM:SS] timestamps
     const pattern = /(\[([A-Za-zÀ-ÿ][^\]]*)\])|(\*\*([^*]+)\*\*:?)|(\[\d{1,2}:\d{2}(?::\d{2})?\])/g;
-    
+
     let lastIndex = 0;
     let match;
 
     while ((match = pattern.exec(text)) !== null) {
-        // Add text before this match
+        // Handle text BEFORE the match
         if (match.index > lastIndex) {
-            const textBefore = text.substring(lastIndex, match.index);
-            if (textBefore) {
-                segments.push({
-                    type: 'text',
-                    content: textBefore,
-                    position: lastIndex,
-                });
-            }
+            const textChunk = text.substring(lastIndex, match.index);
+            // Split by newline to create separate segments per line (preserves exact chars)
+            // We use 'split' but need to keep delimiters or calculate positions manually.
+            let currentPos = lastIndex;
+            // Split by newline but keep the newline in the segment
+            const lines = textChunk.split(/(\r\n|\r|\n)/);
+
+            lines.forEach(line => {
+                if (line) {
+                    segments.push({
+                        type: 'text',
+                        content: line,
+                        position: currentPos,
+                    });
+                    currentPos += line.length;
+                }
+            });
         }
 
-        if (match[5]) {
-            // Timestamp [HH:MM:SS]
+        // Handle the MATCH itself
+        if (match[5]) { // Timestamp
             segments.push({
                 type: 'timestamp',
                 content: match[5],
                 position: match.index,
             });
-        } else if (match[1]) {
-            // [Speaker Name] — check it's not a timestamp
+        } else if (match[1]) { // [Speaker Name]
             const name = match[2].trim();
-            if (/^\d{1,2}:\d{2}/.test(name)) {
-                // It's a timestamp
+            if (/^\d{1,2}:\d{2}/.test(name)) { // Ignore timestamp-like
                 segments.push({
                     type: 'timestamp',
                     content: match[1],
@@ -429,8 +564,7 @@ function parseTranscription(text: string): TranscriptionSegment[] {
                     position: match.index,
                 });
             }
-        } else if (match[3]) {
-            // **Speaker Name**
+        } else if (match[3]) { // **Speaker Name**
             const name = match[4].replace(/:$/, '').trim();
             segments.push({
                 type: 'speaker',
@@ -445,10 +579,19 @@ function parseTranscription(text: string): TranscriptionSegment[] {
 
     // Add remaining text
     if (lastIndex < text.length) {
-        segments.push({
-            type: 'text',
-            content: text.substring(lastIndex),
-            position: lastIndex,
+        const textChunk = text.substring(lastIndex);
+        let currentPos = lastIndex;
+        const lines = textChunk.split(/(\r\n|\r|\n)/);
+
+        lines.forEach(line => {
+            if (line) {
+                segments.push({
+                    type: 'text',
+                    content: line,
+                    position: currentPos,
+                });
+                currentPos += line.length;
+            }
         });
     }
 
@@ -457,17 +600,15 @@ function parseTranscription(text: string): TranscriptionSegment[] {
 
 /**
  * Estimate the audio time range for a segment based on its position in the text.
- * Uses timestamp markers if available, otherwise estimates from text position ratio.
  */
 function estimateSegmentTime(
     text: string,
     position: number,
     totalDuration: number
 ): { start: number; end: number } {
-    // Find timestamp markers
     const tsPattern = /\[(\d{1,2}:\d{2}(?::\d{2})?)\]/g;
     const timestamps: Array<{ pos: number; seconds: number }> = [];
-    
+
     let match;
     while ((match = tsPattern.exec(text)) !== null) {
         const parts = match[1].split(':').map(Number);
@@ -481,7 +622,6 @@ function estimateSegmentTime(
     }
 
     if (timestamps.length >= 2) {
-        // Find surrounding timestamps
         let prevTs = timestamps[0];
         let nextTs = timestamps[timestamps.length - 1];
 
@@ -494,13 +634,14 @@ function estimateSegmentTime(
             }
         }
 
+        // If we are closer to the next TS than the prev (short segment at end of block), adjust?
+        // For now, simple window
         return {
             start: prevTs.seconds,
             end: Math.min(nextTs.seconds, prevTs.seconds + 45),
         };
     }
 
-    // Fallback: estimate from position ratio
     const ratio = position / Math.max(text.length, 1);
     const start = Math.floor(ratio * totalDuration);
     return {

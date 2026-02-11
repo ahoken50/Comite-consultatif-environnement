@@ -1650,6 +1650,13 @@ def extract_audio_segment_embedding(audio_url: str, start_sec: float, end_sec: f
         
         duration = min(end_sec - start_sec, 30)  # Max 30 seconds
         
+        # Check if ffmpeg is available
+        try:
+            subprocess.run(["ffmpeg", "-version"], capture_output=True, check=True)
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            print("[VoiceEmbed] ERROR: ffmpeg is not installed or not in PATH.")
+            return []
+
         cmd = [
             "ffmpeg", "-y", "-i", input_path,
             "-ss", str(start_sec),
@@ -1658,7 +1665,11 @@ def extract_audio_segment_embedding(audio_url: str, start_sec: float, end_sec: f
             output_path
         ]
         
-        subprocess.run(cmd, capture_output=True, check=True)
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        except subprocess.CalledProcessError as e:
+            print(f"[VoiceEmbed] FFMPEG Failed: {e.stderr}")
+            return []
         
         # Read segment and send to Modal
         with open(output_path, "rb") as f:
