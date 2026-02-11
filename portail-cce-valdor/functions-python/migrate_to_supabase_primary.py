@@ -167,16 +167,23 @@ def migrate_firestore_to_supabase():
                 # List of vectors: insert each separately
                 vectors = embedding
                 for i, vec in enumerate(vectors):
-                    if len(vec) in [512, 768]:  # Validate dimension (Modal=512, standard=768)
+                    # HANDLE DIMENSION MISMATCH (512 vs 768)
+                    # Legacy embeddings = 512, Supabase table = 768
+                    if len(vec) == 512:
+                        print(f"  ⚠ Padding 512d vector to 768d for {name}")
+                        vec = vec + [0.0] * (768 - 512)
+                    
+                    if len(vec) == 768:
                         result = supabase.table("speaker_embeddings").insert({
                             "speaker_name": name,
                             "speaker_id": speaker_id,  # Linked ID
                             "embedding": vec,
-                            "sample_source": "batch_import",
+                            "sample_source": "batch_import_padded" if len(vectors[i]) == 512 else "batch_import",
                             "created_at": datetime.now().isoformat(),
                             "metadata": json.dumps({
                                 "firestore_member_id": member_id,
                                 "vector_index": i,
+                                "original_dim": len(vectors[i]),
                                 "migration_timestamp": datetime.now().isoformat()
                             })
                         }).execute()
@@ -185,15 +192,21 @@ def migrate_firestore_to_supabase():
                 
             elif isinstance(embedding[0], (int, float)):
                 # Single vector
-                if len(embedding) in [512, 768]:
+                vec = embedding
+                if len(vec) == 512:
+                     print(f"  ⚠ Padding 512d vector to 768d for {name}")
+                     vec = vec + [0.0] * (768 - 512)
+
+                if len(vec) == 768:
                     result = supabase.table("speaker_embeddings").insert({
                         "speaker_name": name,
                         "speaker_id": speaker_id,  # Linked ID
-                        "embedding": embedding,
-                        "sample_source": "batch_import",
+                        "embedding": vec,
+                        "sample_source": "batch_import_padded" if len(embedding) == 512 else "batch_import",
                         "created_at": datetime.now().isoformat(),
                         "metadata": json.dumps({
                             "firestore_member_id": member_id,
+                            "original_dim": len(embedding),
                             "migration_timestamp": datetime.now().isoformat()
                         })
                     }).execute()
