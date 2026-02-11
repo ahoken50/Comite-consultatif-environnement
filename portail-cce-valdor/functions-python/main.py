@@ -1534,7 +1534,11 @@ def extract_audio_segment_embedding(audio_url: str, start_sec: float, end_sec: f
                     input_path = tmp_in.name
         
         # Extract segment with ffmpeg
-        output_path = input_path.replace(".mp3", "_segment.wav")
+        # Create unique output path to avoid overwriting input file
+        import tempfile
+        with tempfile.NamedTemporaryFile(suffix="_segment.wav", delete=False) as tmp_out:
+            output_path = tmp_out.name
+        
         duration = min(end_sec - start_sec, 30)  # Max 30 seconds
         
         cmd = [
@@ -6897,6 +6901,7 @@ from migration_status import api_get_migration_status, trigger_manual_migration,
 from diagnose_migration import api_diagnose_migration
 from diagnose_enrollment import diagnose_enrollment_issues
 from sync_firestore_to_supabase import force_sync_firestore_to_supabase
+from retry_enrollment import retry_failed_enrollments
 
 
 # -----------------------------------------------------------------------------
