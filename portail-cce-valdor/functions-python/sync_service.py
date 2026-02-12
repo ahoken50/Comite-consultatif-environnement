@@ -4,12 +4,14 @@ from datetime import datetime
 from firebase_admin import firestore
 
 # Initialize db
-db = firestore.client()
 
 def sync_embedding_to_supabase(member_name: str, embedding_data, member_id: str = "", sample_source: str = "ml_auto"):
     """
     Synchronize a member's embedding to Supabase speaker_embeddings table (Phase 2).
     """
+    # Initialize db lazily to ensure app is initialized
+    db = firestore.client()
+
     try:
         from supabase import create_client
         
