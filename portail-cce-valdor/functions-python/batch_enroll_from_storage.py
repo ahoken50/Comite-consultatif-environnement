@@ -39,7 +39,8 @@ def batch_enroll_from_storage(req: https_fn.Request) -> https_fn.Response:
         }
     """
     try:
-        from main import extract_audio_segment_embedding, sync_embedding_to_supabase
+        from audio_utils import extract_audio_segment_embedding
+        from sync_service import sync_embedding_to_supabase
         
         db = firestore.client()
         bucket = storage.bucket()

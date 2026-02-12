@@ -55,6 +55,7 @@ from batch_enroll_from_storage import batch_enroll_from_storage
 from sync_firestore_to_supabase import force_sync_firestore_to_supabase
 from clear_supabase_speakers import clear_supabase_speakers
 from sync_service import sync_embedding_to_supabase
+from audio_utils import extract_audio_segment_embedding
 
 from dotenv import load_dotenv
 
