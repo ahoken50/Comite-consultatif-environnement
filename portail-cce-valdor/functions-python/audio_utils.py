@@ -134,11 +134,16 @@ def extract_audio_segment_embedding(audio_url: str, start_sec: float, end_sec: f
                     signed_url = f"https://firebasestorage.googleapis.com/v0/b/{bucket_name}/o/{blob_name}?alt=media&token={token}"
                     print(f"[VoiceEmbed] Fallback to token-based URL: {signed_url}")
                 except Exception as e3:
-                     print(f"[VoiceEmbed] Token generation failed: {e3}")
+                     print(f"[VoiceEmbed] Token generation/patch failed: {e3}")
+                     # Print more details about the error to debug the 403
+                     import traceback
+                     traceback.print_exc()
+                     
                      # Last resort: try public link without token (will fail if not public)
                      bucket_name = temp_blob.bucket.name
                      blob_name = temp_blob.name.replace("/", "%2F")
                      signed_url = f"https://firebasestorage.googleapis.com/v0/b/{bucket_name}/o/{blob_name}?alt=media"
+                     print(f"[VoiceEmbed] WARNING: Attempting unsigned link (likely to fail 403): {signed_url}")
 
         print(f"[VoiceEmbed] Sending segment to {endpoint_url.split('//')[1].split('/')[0]} ({duration:.1f}s)")
         

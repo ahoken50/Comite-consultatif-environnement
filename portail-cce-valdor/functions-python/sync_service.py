@@ -106,7 +106,7 @@ def sync_embedding_to_supabase(member_name: str, embedding_data, member_id: str 
                     except Exception as e:
                         print(f"[SupabaseSync Phase 2] Error inserting for {member_name}: {e}")
                 else:
-                    print(f"[SupabaseSync Phase 2] Warning: Embedding dimension {len(vec)} not expected (512 or 768) for {member_name}")
+                    print(f"[SupabaseSync Phase 2] Warning: Embedding dimension {len(vec)} mismatch (expected 512 or 768) for {member_name}. Skipping.")
             print(f"[SupabaseSync Phase 2] Inserted {inserted_count}/{len(vectors)} embeddings for {member_name} (ID: {speaker_id})")
             
         elif isinstance(embedding_data[0], (int, float)):
@@ -127,7 +127,7 @@ def sync_embedding_to_supabase(member_name: str, embedding_data, member_id: str 
                 except Exception as e:
                     print(f"[SupabaseSync Phase 2] Error inserting for {member_name}: {e}")
             else:
-                print(f"[SupabaseSync Phase 2] Warning: Embedding dimension {len(embedding_data)} not expected (512 or 768) for {member_name}")
+                print(f"[SupabaseSync Phase 2] Warning: Embedding dimension {len(embedding_data)} mismatch (expected 512 or 768) for {member_name}. Skipping.")
                 return False
         else:
             print(f"[SupabaseSync Phase 2] Invalid embedding format for {member_name}")
