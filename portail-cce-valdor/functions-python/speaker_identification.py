@@ -100,16 +100,42 @@ async def voice_embedding_strategy(
         
         segment_embedding = response.json()
         
-        # Compare with all known speakers
-        scores = {}
-        for speaker in known_speakers:
-            if speaker.get("embedding"):
-                similarity = cosine_similarity(segment_embedding, speaker["embedding"])
-                # Convert similarity (-1 to 1) to score (0 to 1)
-                scores[speaker["name"]] = (similarity + 1) / 2
-        
-        return scores
-        
+        # Use Supabase Vector Search instead of local loop
+        try:
+            from pgvector_service import match_speakers_with_pgvector
+            
+            # Call RPC
+            matches = match_speakers_with_pgvector(segment_embedding, match_threshold=0.4, limit=10)
+            
+            scores = {}
+            for match in matches:
+                name = match.get("speaker_name")
+                similarity = match.get("similarity", 0)
+                if name:
+                    # Keep the highest score for this speaker (RPC can return multiple embeddings for same person)
+                    if not scores.get(name) or similarity > scores[name]:
+                        scores[name] = similarity
+            
+            return scores
+            
+        except ImportError:
+            # Fallback if service not found (or circular import issue, though unlikely here)
+            print("[VoiceEmbed] PGVector service not found, falling back to local loop")
+            scores = {}
+            for speaker in known_speakers:
+                if speaker.get("embedding"):
+                    # Check if multi-embedding (list of lists) or single
+                    emb = speaker["embedding"]
+                    sim = 0
+                    if isinstance(emb[0], list):
+                         # Take max similarity across all samples
+                         sim = max([cosine_similarity(segment_embedding, e) for e in emb])
+                    else:
+                         sim = cosine_similarity(segment_embedding, emb)
+                         
+                    scores[speaker["name"]] = (sim + 1) / 2
+            return scores
+            
     except Exception as e:
         print(f"[VoiceEmbed] Error: {e}")
         return {}
