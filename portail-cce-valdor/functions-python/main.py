@@ -10,6 +10,7 @@ import subprocess
 import json
 import time
 import requests
+import google.auth
 from datetime import datetime, timedelta
 from typing import Any
 from firebase_functions import https_fn, options
@@ -1465,12 +1466,26 @@ def extract_audio_segment_embedding(audio_url: str, start_sec: float, end_sec: f
         except:
             pass
         
-        # Generate signed URL (expires in 15 minutes)
-        signed_url = temp_blob.generate_signed_url(
-            version="v4",
-            expiration=timedelta(minutes=15),
-            method="GET"
-        )
+        # Get service account email for signing via IAM API
+        # This avoids the need for a local private key file
+        try:
+            credentials, project_id = google.auth.default()
+            service_account_email = credentials.service_account_email
+            
+            if not service_account_email:
+                print("[VoiceEmbed] Warning: Could not determine service account email. Signing might fail.")
+                
+            # Generate signed URL (expires in 15 minutes)
+            # Passing service_account_email forces IAM API signing
+            signed_url = temp_blob.generate_signed_url(
+                version="v4",
+                expiration=timedelta(minutes=15),
+                method="GET",
+                service_account_email=service_account_email
+            )
+        except Exception as e:
+            print(f"[VoiceEmbed] Signed URL generation failed: {e}")
+            return []
         
         print(f"[VoiceEmbed] Sending segment to {endpoint_url.split('//')[1].split('/')[0]} ({duration:.1f}s)")
         
