@@ -11,7 +11,7 @@ from datetime import datetime
 
 @https_fn.on_request(
     timeout_sec=60,
-    memory=options.MemoryOption.MB_128,
+    memory=options.MemoryOption.MB_256,
     cors=options.CorsOptions(cors_origins="*", cors_methods=["GET", "POST", "OPTIONS"])
 )
 def api_get_migration_status(req: https_fn.Request) -> https_fn.Response:
@@ -152,7 +152,7 @@ def trigger_manual_migration(req: https_fn.Request) -> https_fn.Response:
 
 @https_fn.on_request(
     timeout_sec=60,
-    memory=options.MemoryOption.MB_128,
+    memory=options.MemoryOption.MB_256,
     cors=options.CorsOptions(cors_origins="*", cors_methods=["POST", "OPTIONS"])
 )
 def reset_migration_flag(req: https_fn.Request) -> https_fn.Response:
