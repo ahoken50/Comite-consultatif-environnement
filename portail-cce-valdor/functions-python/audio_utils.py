@@ -4,6 +4,8 @@ import time
 import requests
 import subprocess
 import google.auth
+import google.auth.iam
+from google.auth.transport import requests as google_requests
 from datetime import timedelta
 from firebase_admin import storage
 
@@ -117,18 +119,27 @@ def extract_audio_segment_embedding(audio_url: str, start_sec: float, end_sec: f
         # This avoids the need for a local private key file
         try:
             credentials, project_id = google.auth.default()
+            
+            # Ensure credentials are fresh
+            request = google_requests.Request()
+            credentials.refresh(request)
+            
             service_account_email = credentials.service_account_email
             
             if not service_account_email:
                 print("[VoiceEmbed] Warning: Could not determine service account email. Signing might fail.")
+            
+            # Explicitly create IAM signer
+            signer = google.auth.iam.Signer(request, credentials, service_account_email)
                 
             # Generate signed URL (expires in 15 minutes)
-            # Passing service_account_email forces IAM API signing
+            # Passing signer explicitly to ensure IAM API is used
             signed_url = temp_blob.generate_signed_url(
                 version="v4",
                 expiration=timedelta(minutes=15),
                 method="GET",
-                service_account_email=service_account_email
+                service_account_email=service_account_email,
+                signer=signer
             )
         except Exception as e:
             print(f"[VoiceEmbed] Signed URL generation failed: {e}")
