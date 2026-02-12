@@ -473,11 +473,24 @@ def enroll_speaker(req: https_fn.Request) -> https_fn.Response:
         
         # Generate signed URL instead of making public (expires in 1 hour)
         # This is more secure as audio samples are not permanently public
-        signed_url = blob.generate_signed_url(
-            version="v4",
-            expiration=timedelta(hours=1),
-            method="GET"
-        )
+        try:
+            signed_url = blob.generate_signed_url(
+                version="v4",
+                expiration=timedelta(hours=1),
+                method="GET"
+            )
+        except TypeError as e:
+            print(f"[Enroll] Signed URL generation failed: {e}")
+            # Fallback for older libraries or different signatures
+            try:
+                signed_url = blob.generate_signed_url(
+                    expiration=timedelta(hours=1),
+                    method="GET"
+                )
+                print("[Enroll] Fallback to v2 signing succeeded")
+            except Exception as e2:
+                print(f"[Enroll] Fallback signing failed: {e2}")
+                raise e
         print(f"[Enroll] Uploaded to Storage with signed URL (1h expiry)")
 
         # 4. Call Modal/HF Endpoint for embedding generation
@@ -1705,11 +1718,24 @@ def extract_audio_segment_embedding(audio_url: str, start_sec: float, end_sec: f
         temp_blob.upload_from_filename(output_path)
         
         # Generate signed URL (expires in 15 minutes)
-        signed_url = temp_blob.generate_signed_url(
-            version="v4",
-            expiration=timedelta(minutes=15),
-            method="GET"
-        )
+        try:
+            signed_url = temp_blob.generate_signed_url(
+                version="v4",
+                expiration=timedelta(minutes=15),
+                method="GET"
+            )
+        except TypeError as e:
+            print(f"[VoiceEmbed] Signed URL generation failed: {e}")
+            # Fallback for older libraries or different signatures
+            try:
+                signed_url = temp_blob.generate_signed_url(
+                    expiration=timedelta(minutes=15),
+                    method="GET"
+                )
+                print("[VoiceEmbed] Fallback to v2 signing succeeded")
+            except Exception as e2:
+                print(f"[VoiceEmbed] Fallback signing failed: {e2}")
+                raise e
         
         print(f"[VoiceEmbed] Sending segment to {endpoint_url.split('//')[1].split('/')[0]} ({duration:.1f}s)")
         
