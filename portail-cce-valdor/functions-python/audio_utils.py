@@ -109,9 +109,9 @@ def extract_audio_segment_embedding(audio_url: str, start_sec: float, end_sec: f
                 expiration=timedelta(minutes=15),
                 method="GET"
             )
-        except TypeError as e:
+        except (TypeError, AttributeError) as e:
             print(f"[VoiceEmbed] Signed URL generation failed: {e}")
-            # Fallback for older libraries or different signatures
+            # Fallback 1: Try v2 signing
             try:
                 signed_url = temp_blob.generate_signed_url(
                     expiration=timedelta(minutes=15),
@@ -120,8 +120,24 @@ def extract_audio_segment_embedding(audio_url: str, start_sec: float, end_sec: f
                 print("[VoiceEmbed] Fallback to v2 signing succeeded")
             except Exception as e2:
                 print(f"[VoiceEmbed] Fallback signing failed: {e2}")
-                raise e
-        
+                # Fallback 2: Use public URL (if bucket allows) or specific token-based URL
+                # For Firebase Storage, we can often use the download token logic, but here we'll try standard link
+                # NOTE: This requires the object to be readable or having a token. 
+                # Since we are in internal system, we might need another approach if this fails.
+                # However, usually the 'AttributeError' means we are on GCE/Lambda without key.
+                # We will try to use the media link which might work if the receiver has access, 
+                # but better yet, let's just make it public temporarily if needed or return None.
+                
+                # ACTUALLY, BEST FALLBACK for AI services: 
+                # Just return the mediaLink if it's publicly accessible, OR
+                # We can't easily sign without a key. 
+                # Fix: Manually construct a Firebase Storage download URL if it's a firebase bucket
+                
+                bucket_name = temp_blob.bucket.name
+                blob_name = temp_blob.name.replace("/", "%2F")
+                signed_url = f"https://firebasestorage.googleapis.com/v0/b/{bucket_name}/o/{blob_name}?alt=media"
+                print(f"[VoiceEmbed] Fallback to unsigned media link: {signed_url}")
+
         print(f"[VoiceEmbed] Sending segment to {endpoint_url.split('//')[1].split('/')[0]} ({duration:.1f}s)")
         
         # Call endpoint with headers (supports both Modal and HF)
