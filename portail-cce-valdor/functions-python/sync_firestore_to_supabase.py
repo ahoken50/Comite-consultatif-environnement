@@ -44,7 +44,7 @@ def force_sync_firestore_to_supabase(req: https_fn.Request) -> https_fn.Response
     
     try:
         # Import sync function
-        from main import sync_embedding_to_supabase
+        from sync_service import sync_embedding_to_supabase
         
         db = firestore.client()
         

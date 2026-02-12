@@ -1447,17 +1447,23 @@ def extract_audio_segment_embedding(audio_url: str, start_sec: float, end_sec: f
             
         print(f"[VoiceEmbed] Segment created: {len(segment_data)} bytes")
         
-        # Clean up temp files
-        if not is_local:
-            os.unlink(input_path)
-        os.unlink(output_path)
-        
         # Upload segment to temporary storage for remote access
         # Both Modal and HF need a URL they can access
         bucket = storage.bucket()
         temp_blob_path = f"temp_audio_segments/{int(time.time())}_{start_sec}_{end_sec}.wav"
         temp_blob = bucket.blob(temp_blob_path)
         temp_blob.upload_from_filename(output_path)
+        
+        # Now it is safe to Clean up temp files
+        if not is_local:
+            try:
+                os.unlink(input_path)
+            except:
+                pass
+        try:
+            os.unlink(output_path)
+        except:
+            pass
         
         # Generate signed URL (expires in 15 minutes)
         signed_url = temp_blob.generate_signed_url(
