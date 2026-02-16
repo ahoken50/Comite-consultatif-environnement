@@ -267,7 +267,7 @@ def update_with_correction(
             result["removedWrong"] = removed > 0
 
         # Step 2: Check for duplicates
-        if is_duplicate(speaker_name, correct_vec, threshold=0.95):
+        if is_duplicate(speaker_name, correct_vec, threshold=0.90):
             count = get_embedding_count(speaker_name)
             result["success"] = True
             result["newSampleCount"] = count

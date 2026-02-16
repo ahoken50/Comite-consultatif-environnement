@@ -525,7 +525,7 @@ function parseTranscription(text: string): TranscriptionSegment[] {
     const segments: TranscriptionSegment[] = [];
 
     // Combined regex to match speakers and timestamps
-    const pattern = /(\[([A-Za-zÀ-ÿ][^\]]*)\])|(\*\*([^*]+)\*\*:?)|(\[\d{1,2}:\d{2}(?::\d{2})?\])/g;
+    const pattern = /(\[([A-Za-zÀ-ÿ][^\]]*)\])|(\*\*([^*]+)\*\*:?)|(\[\d+:\d{2}(?::\d{2})?\])/g;
 
     let lastIndex = 0;
     let match;
@@ -617,7 +617,7 @@ function estimateSegmentTime(
     position: number,
     totalDuration: number
 ): { start: number; end: number } {
-    const tsPattern = /\[(\d{1,2}:\d{2}(?::\d{2})?)\]/g;
+    const tsPattern = /\[(\d+:\d{2}(?::\d{2})?)\]/g;
     const timestamps: Array<{ pos: number; seconds: number }> = [];
 
     let match;
@@ -649,20 +649,30 @@ function estimateSegmentTime(
         const prevTs = timestamps[prevIdx];
 
         // Case 1: Position is AFTER the last timestamp
+        // Interpolate based on how far into the remaining text we are
         if (nextIdx === -1) {
-            // Use a 30-second window from the previous timestamp, capped at total duration
+            const remainingText = text.length - prevTs.pos;
+            const posInRemaining = position - prevTs.pos;
+            const ratio = remainingText > 0 ? posInRemaining / remainingText : 0;
+            const remainingAudio = totalDuration - prevTs.seconds;
+
+            const start = Math.floor(prevTs.seconds + ratio * remainingAudio);
             return {
-                start: prevTs.seconds,
-                end: Math.min(prevTs.seconds + 30, totalDuration),
+                start,
+                end: Math.min(start + 30, totalDuration),
             };
         }
 
         // Case 2: Position is between two timestamps
-        const nextTs = timestamps[nextIdx];
-        return {
-            start: prevTs.seconds,
-            end: Math.min(nextTs.seconds, prevTs.seconds + 45),
-        };
+        // Interpolate within the two timestamps based on text position
+        const textSpan = nextIdx > 0 ? (timestamps[nextIdx].pos - prevTs.pos) : 1;
+        const posInSpan = position - prevTs.pos;
+        const ratio = textSpan > 0 ? posInSpan / textSpan : 0;
+        const timeSpan = timestamps[nextIdx].seconds - prevTs.seconds;
+
+        const start = Math.floor(prevTs.seconds + ratio * timeSpan);
+        const end = Math.min(start + 30, timestamps[nextIdx].seconds);
+        return { start, end: Math.max(end, start + 5) }; // at least 5s
     }
 
     // Fallback: no timestamps found, estimate from text position ratio
