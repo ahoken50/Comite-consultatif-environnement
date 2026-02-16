@@ -633,26 +633,39 @@ function estimateSegmentTime(
     }
 
     if (timestamps.length >= 2) {
-        let prevTs = timestamps[0];
-        let nextTs = timestamps[timestamps.length - 1];
+        // Find the timestamp just before and just after the position
+        let prevIdx = 0;
+        let nextIdx = -1;
 
-        for (const ts of timestamps) {
-            if (ts.pos <= position) {
-                prevTs = ts;
+        for (let i = 0; i < timestamps.length; i++) {
+            if (timestamps[i].pos <= position) {
+                prevIdx = i;
             } else {
-                nextTs = ts;
+                nextIdx = i;
                 break;
             }
         }
 
-        // If we are closer to the next TS than the prev (short segment at end of block), adjust?
-        // For now, simple window
+        const prevTs = timestamps[prevIdx];
+
+        // Case 1: Position is AFTER the last timestamp
+        if (nextIdx === -1) {
+            // Use a 30-second window from the previous timestamp, capped at total duration
+            return {
+                start: prevTs.seconds,
+                end: Math.min(prevTs.seconds + 30, totalDuration),
+            };
+        }
+
+        // Case 2: Position is between two timestamps
+        const nextTs = timestamps[nextIdx];
         return {
             start: prevTs.seconds,
             end: Math.min(nextTs.seconds, prevTs.seconds + 45),
         };
     }
 
+    // Fallback: no timestamps found, estimate from text position ratio
     const ratio = position / Math.max(text.length, 1);
     const start = Math.floor(ratio * totalDuration);
     return {
