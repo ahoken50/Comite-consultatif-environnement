@@ -70,6 +70,7 @@ def add_embedding(
         return False
 
     try:
+        print(f"[SupabaseEmb] add_embedding called: speaker='{speaker_name}', dim={len(embedding_vec)}, source={sample_source}")
         supabase = _get_supabase_client()
         speaker_id = _ensure_speaker(supabase, speaker_name, member_id)
 
@@ -258,6 +259,7 @@ def update_with_correction(
         return result
 
     try:
+        print(f"[SupabaseEmb] update_with_correction called: speaker='{speaker_name}', dim={len(correct_vec)}, wrong='{wrong_speaker_name}', weight={correction_weight}")
         # Step 1: Remove wrong embedding from wrong speaker
         removed = 0
         if wrong_vec and wrong_speaker_name:

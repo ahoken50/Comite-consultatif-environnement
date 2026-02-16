@@ -7337,7 +7337,9 @@ def closed_feedback_loop(req: https_fn.CallableRequest) -> dict:
 
         correct_embedding = None
         if audio_url and end_time > start_time:
+            print(f"[ActiveLearning] Extracting embedding from audio: {start_time}-{end_time}s")
             correct_embedding = extract_audio_segment_embedding(audio_url, start_time, end_time)
+            print(f"[ActiveLearning] Extraction result: {'OK dim=' + str(len(correct_embedding)) if correct_embedding else 'FAILED'}")
 
         if not correct_embedding:
             return {
@@ -7346,15 +7348,17 @@ def closed_feedback_loop(req: https_fn.CallableRequest) -> dict:
             }
 
         # Write directly to Supabase (primary store)
+        print(f"[ActiveLearning] Writing to Supabase for '{correct_name}' (dim={len(correct_embedding)})")
         from supabase_embeddings import update_with_correction
         result = update_with_correction(
             speaker_name=correct_name,
             correct_vec=correct_embedding,
             member_id=member_id,
             wrong_speaker_name=wrong_name,
-            wrong_vec=correct_embedding if wrong_name else None,
+            wrong_vec=None,  # We don't have the wrong embedding
             correction_weight=2,
         )
+        print(f"[ActiveLearning] Supabase result: {result}")
 
         # Update Firestore metadata only (not embeddings)
         db.collection("members").document(member_id).update({
