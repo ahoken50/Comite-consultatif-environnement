@@ -1844,7 +1844,7 @@ async def identify_speakers_in_transcript(
             voice_conf = voice_scores.get(best_name, 0)
             if voice_available and segment_embedding:
                 if 0.55 <= voice_conf <= 0.78 and best_score > 0.65:
-                      try:
+                     try:
                          print(f"[AutoLearn] Autonomous Reinforcement triggered for {best_name}!")
                          # Write directly to Supabase (primary store)
                          from supabase_embeddings import add_embedding, is_duplicate as emb_is_dup
