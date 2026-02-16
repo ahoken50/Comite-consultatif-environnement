@@ -28,7 +28,7 @@ from pv_pipeline import (
     record_learning
 )
 from active_learning import (
-    update_embedding_with_correction,
+
     analyze_embedding_quality,
     analyze_quality_trends,
     build_style_memory
@@ -54,7 +54,7 @@ from diagnose_migration import api_diagnose_migration
 from batch_enroll_from_storage import batch_enroll_from_storage
 from sync_firestore_to_supabase import force_sync_firestore_to_supabase
 from clear_supabase_speakers import clear_supabase_speakers
-from sync_service import sync_embedding_to_supabase
+# sync_service no longer needed — Supabase is primary store
 from audio_utils import extract_audio_segment_embedding
 
 from dotenv import load_dotenv
@@ -309,28 +309,32 @@ def enroll_speaker(req: https_fn.Request) -> https_fn.Response:
         
         res = supabase.table("speakers").insert(data).execute()
         
-        # 6. ALSO write embedding to Firestore members (keep both sources in sync)
+        # 6. Write embedding to speaker_embeddings table (primary store)
+        try:
+            from supabase_embeddings import add_embedding
+            add_embedding(name, embedding, "", sample_source="enrollment")
+        except Exception as emb_err:
+            print(f"[Enroll] speaker_embeddings insert failed (non-fatal): {emb_err}")
+        
+        # 7. Update Firestore member metadata only (no embedding)
         try:
             _db = firestore.client()
-            # Find member by displayName
             member_query = list(_db.collection("members").where(
                 "displayName", "==", name
             ).limit(1).stream())
             
             if member_query:
                 member_doc = member_query[0]
-                import json as json_lib
                 member_doc.reference.update({
-                    "embedding": json_lib.dumps([embedding]),  # Wrap in list for multi-embedding format
                     "voiceSampleCount": 1,
                     "lastVoiceUpdate": datetime.now().isoformat(),
                     "lastUpdateSource": "enrollment",
                 })
-                print(f"[Enroll] Also synced embedding to Firestore member '{name}'")
+                print(f"[Enroll] Updated Firestore metadata for '{name}'")
             else:
-                print(f"[Enroll] No Firestore member found for '{name}' — Supabase only")
+                print(f"[Enroll] No Firestore member found for '{name}'")
         except Exception as fs_err:
-            print(f"[Enroll] Firestore sync failed (non-fatal): {fs_err}")
+            print(f"[Enroll] Firestore metadata update failed (non-fatal): {fs_err}")
         
         # Cleanup
         if os.path.exists(temp_path):
@@ -1840,32 +1844,25 @@ async def identify_speakers_in_transcript(
             voice_conf = voice_scores.get(best_name, 0)
             if voice_available and segment_embedding:
                 if 0.55 <= voice_conf <= 0.78 and best_score > 0.65:
-                     try:
+                      try:
                          print(f"[AutoLearn] Autonomous Reinforcement triggered for {best_name}!")
-                         # Direct Firestore update
+                         # Write directly to Supabase (primary store)
+                         from supabase_embeddings import add_embedding, is_duplicate as emb_is_dup
                          member_ref = db.collection("members").where("displayName", "==", best_name).limit(1).get()
-                         if member_ref:
-                             doc = member_ref[0]
-                             current_emb = doc.to_dict().get("embedding", [])
-                             import json as json_lib
-                             if isinstance(current_emb, str):
-                                 try: current_emb = json_lib.loads(current_emb)
-                                 except: current_emb = []
-                                 
-                             new_emb_list = []
-                             if not current_emb: new_emb_list = [segment_embedding]
-                             elif isinstance(current_emb, list) and len(current_emb)>0 and isinstance(current_emb[0], list):
-                                 new_emb_list = current_emb + [segment_embedding]
-                                 if len(new_emb_list) > 12: new_emb_list = new_emb_list[-12:] 
-                             elif isinstance(current_emb, list):
-                                 new_emb_list = [current_emb, segment_embedding]
-                                 
-                             doc.reference.update({
-                                 "embedding": json_lib.dumps(new_emb_list),
-                                 "lastVoiceUpdate": datetime.now().isoformat(),
-                                 "voiceSampleCount": len(new_emb_list)
-                             })
-                             print(f"[AutoLearn] Successfully learned new sample for {best_name} (Total: {len(new_emb_list)})")
+                         member_id_for_learn = member_ref[0].id if member_ref else ""
+                         if not emb_is_dup(best_name, segment_embedding, threshold=0.95):
+                             add_embedding(best_name, segment_embedding, member_id_for_learn, sample_source="auto_learn")
+                             from supabase_embeddings import get_embedding_count
+                             count = get_embedding_count(best_name)
+                             # Update Firestore metadata only
+                             if member_ref:
+                                 member_ref[0].reference.update({
+                                     "lastVoiceUpdate": datetime.now().isoformat(),
+                                     "voiceSampleCount": count
+                                 })
+                             print(f"[AutoLearn] Successfully learned new sample for {best_name} ({count} total)")
+                         else:
+                             print(f"[AutoLearn] Skipping duplicate for {best_name}")
                      except Exception as e:
                          print(f"[AutoLearn] Failed to auto-learn: {e}")
         else:
@@ -3043,35 +3040,19 @@ def identify_speakers(req: https_fn.CallableRequest) -> dict:
                                 source = local_audio_path if local_audio_path else audio_url
                                 auto_embedding = extract_audio_segment_embedding(source, ts["start"], ts["end"])
                                 if auto_embedding:
-                                    # Update member profile inline
-                                    member_ref = db.collection("members").document(member_id)
-                                    member_doc = member_ref.get()
-                                    if member_doc.exists:
-                                        import json as json_lib
-                                        member_data = member_doc.to_dict()
-                                        current = member_data.get("embedding", "[]")
-                                        if isinstance(current, str):
-                                            try:
-                                                current = json_lib.loads(current)
-                                            except:
-                                                current = []
-                                        
-                                        # Append new embedding
-                                        if isinstance(current, list) and len(current) > 0 and isinstance(current[0], list):
-                                            current.append(auto_embedding)
-                                            if len(current) > 20:
-                                                current = current[-20:]
-                                        elif current:
-                                            current = [current, auto_embedding]
-                                        else:
-                                            current = [auto_embedding]
-                                        
-                                        member_ref.update({
-                                            "embedding": json_lib.dumps(current),
-                                            "voiceSampleCount": len(current),
+                                    # Write directly to Supabase (primary store)
+                                    from supabase_embeddings import add_embedding, is_duplicate as emb_is_dup, get_embedding_count
+                                    if not emb_is_dup(best_name, auto_embedding, threshold=0.95):
+                                        add_embedding(best_name, auto_embedding, member_id, sample_source="auto_learn")
+                                        count = get_embedding_count(best_name)
+                                        # Update Firestore metadata only
+                                        db.collection("members").document(member_id).update({
+                                            "voiceSampleCount": count,
                                             "lastVoiceUpdate": datetime.now().isoformat()
                                         })
-                                        print(f"[Auto-Learn] SUCCESS: Added sample to {best_name} ({len(current)} total)")
+                                        print(f"[Auto-Learn] SUCCESS: Added sample to {best_name} ({count} total)")
+                                    else:
+                                        print(f"[Auto-Learn] Skipping duplicate for {best_name}")
                             except Exception as ae:
                                 print(f"[Auto-Learn] Failed for {best_name}: {ae}")
                     except Exception as e:
@@ -5151,69 +5132,41 @@ def reinforce_speaker_voice(req: https_fn.Request) -> https_fn.Response:
         if not new_embedding:
              return https_fn.Response(json.dumps({"error": "Empty embedding"}), status=500)
 
-        # 4. Update Member Profile
+        # 4. Update Member Profile — write directly to Supabase (primary store)
         member_ref = db.collection("members").document(member_id)
         member_doc = member_ref.get()
         if not member_doc.exists:
              return https_fn.Response(json.dumps({"error": "Member not found"}), status=404)
-             
+        
         member_data = member_doc.to_dict()
-        current_embedding = member_data.get("embedding")
+        member_name = member_data.get("displayName") or member_data.get("name", "")
         
-        # Parse / Handle Multi-Vector (Same as before)
-        import json as json_lib
-        if isinstance(current_embedding, str):
-            try:
-                current_embedding = json_lib.loads(current_embedding)
-            except:
-                current_embedding = []
-        
-        # CONSISTENCY CHECK (Reinforcement)
-        # Check if new embedding matches existing profile
+        # CONSISTENCY CHECK against existing Supabase embeddings
+        from supabase_embeddings import get_embeddings, add_embedding, get_embedding_count
         warning_msg = ""
         is_outlier = False
         
-        if current_embedding:
+        existing_vectors = get_embeddings(member_name)
+        if existing_vectors:
             from speaker_identification import cosine_similarity
             max_sim = -1.0
-            
-            # Helper to normalize 'current_embedding' to list of lists for comparison
-            compare_list = []
-            if isinstance(current_embedding, list) and len(current_embedding) > 0 and isinstance(current_embedding[0], list):
-                 compare_list = current_embedding
-            elif isinstance(current_embedding, list) and len(current_embedding) > 0:
-                 compare_list = [current_embedding]
-                 
-            for old_vec in compare_list:
+            for old_vec in existing_vectors:
                 sim = cosine_similarity(new_embedding, old_vec)
                 if sim > max_sim:
                     max_sim = sim
             
-            # Threshold Check
-            # 0.60 is typical "same speaker" threshold for pyannote embeddings
             if max_sim > 0 and max_sim < 0.60:
                  is_outlier = True
                  warning_msg = f"Attention: Segment atypique (Score: {max_sim:.2f})."
                  print(f"[Reinforce] OUTLIER DETECTED! Similarity {max_sim:.2f} < 0.60")
 
-        updated_embedding = []
+        # Write to Supabase
+        add_embedding(member_name, new_embedding, member_id, sample_source="reinforcement")
+        count = get_embedding_count(member_name)
         
-        # Helper to add unique embeddings? (Cosine check could be done here to avoid duplicates)
-        # For now, just append
-        if not current_embedding:
-            updated_embedding = [new_embedding]
-        elif isinstance(current_embedding, list) and len(current_embedding) > 0 and isinstance(current_embedding[0], list):
-             updated_embedding = current_embedding
-             updated_embedding.append(new_embedding)
-             if len(updated_embedding) > 20: # Dynamic Limit: 20 samples for robust profiles
-                 updated_embedding = updated_embedding[-20:]
-        elif isinstance(current_embedding, list):
-             updated_embedding = [current_embedding, new_embedding]
-
-        # Save
+        # Update Firestore metadata only
         member_ref.update({
-            "embedding": json_lib.dumps(updated_embedding),
-            "voiceSampleCount": len(updated_embedding),
+            "voiceSampleCount": count,
             "lastVoiceUpdate": datetime.now().isoformat()
         })
         
@@ -5732,35 +5685,18 @@ def closed_feedback_loop_http(req: https_fn.Request) -> https_fn.Response:
             try:
                 new_embedding = extract_audio_segment_embedding(audio_url, start_time, end_time)
                 if new_embedding:
-                    member_ref = db.collection("members").document(correct_member_id)
-                    member_doc = member_ref.get()
-                    if member_doc.exists:
-                        member = member_doc.to_dict()
-                        current_emb = member.get("embedding")
-                        import json as json_lib
-                        if current_emb and isinstance(current_emb, str):
-                            current_emb = json_lib.loads(current_emb)
-                        
-                        if current_emb and isinstance(current_emb, list):
-                            if isinstance(current_emb[0], list):
-                                current_emb.append(new_embedding)
-                                if len(current_emb) > 20:
-                                    current_emb = current_emb[-20:]
-                            else:
-                                current_emb = [current_emb, new_embedding]
-                        else:
-                            current_emb = [new_embedding]
-                        
-                        member_ref.update({
-                            "embedding": json_lib.dumps(current_emb),
-                            "voiceSampleCount": len(current_emb) if isinstance(current_emb[0], list) else 1,
-                            "lastVoiceUpdate": datetime.now().isoformat(),
-                            "lastCorrectionSource": meeting_id
-                        })
-                        reinforced = True
-                        print(f"[FeedbackLoop] Reinforced {correct_name}'s profile from correction")
-                        # Sync updated embedding to Supabase
-                        sync_embedding_to_supabase(correct_name, current_emb, correct_member_id or "", sample_source="correction")
+                    # Write directly to Supabase (primary store)
+                    from supabase_embeddings import add_embedding, get_embedding_count
+                    add_embedding(correct_name, new_embedding, correct_member_id or "", sample_source="correction")
+                    count = get_embedding_count(correct_name)
+                    # Update Firestore metadata only
+                    db.collection("members").document(correct_member_id).update({
+                        "voiceSampleCount": count,
+                        "lastVoiceUpdate": datetime.now().isoformat(),
+                        "lastCorrectionSource": meeting_id
+                    })
+                    reinforced = True
+                    print(f"[FeedbackLoop] Reinforced {correct_name}'s profile ({count} samples)")
             except Exception as e:
                 print(f"[FeedbackLoop] Reinforcement failed: {e}")
         
@@ -5790,15 +5726,8 @@ def closed_feedback_loop_http(req: https_fn.Request) -> https_fn.Response:
                         correction_source="user",
                     )
             
-            # Use active learning for weighted embedding update
-            if reinforced and correct_member_id and audio_url:
-                active_result = update_embedding_with_correction(
-                    db_client=db,
-                    member_id=correct_member_id,
-                    correct_embedding=new_embedding if 'new_embedding' in dir() else None,
-                    wrong_embedding=None,
-                    correction_weight=2.0,
-                )
+            # Active learning already handled above via Supabase-direct write
+            pass
         except Exception as al_err:
             print(f"[FeedbackLoop] Active learning integration skipped: {al_err}")
 
@@ -6333,35 +6262,11 @@ def apply_ai_suggestion(req: https_fn.Request) -> https_fn.Response:
         if not new_embedding:
             return https_fn.Response(json.dumps({"error": "Extraction failed"}), status=500)
         
-        member_ref = db.collection("members").document(member_id)
-        member_doc = member_ref.get()
-        if not member_doc.exists:
-            return https_fn.Response(json.dumps({"error": "Not found"}), status=404)
+        # Write directly to Supabase (primary store)
+        from supabase_embeddings import add_embedding, is_duplicate as emb_is_dup, get_embedding_count
         
-        member = member_doc.to_dict()
-        current_emb = member.get("embedding")
-        import json as json_lib
-        if current_emb and isinstance(current_emb, str):
-            try:
-                current_emb = json_lib.loads(current_emb)
-            except:
-                current_emb = None
-        
-        # DEDUPLICATION: Check if new embedding is too similar to existing ones
-        from speaker_identification import cosine_similarity as cos_sim
-        is_duplicate = False
-        if current_emb and isinstance(current_emb, list):
-            existing_vecs = current_emb if (isinstance(current_emb[0], list)) else [current_emb]
-            for existing_vec in existing_vecs:
-                if len(existing_vec) == len(new_embedding):
-                    sim = cos_sim(new_embedding, existing_vec)
-                    if sim > 0.95:
-                        is_duplicate = True
-                        print(f"[ApplySuggestion] Duplicate embedding detected (sim={sim:.3f}), skipping")
-                        break
-        
-        if is_duplicate:
-            count = member.get("voiceSampleCount", 1)
+        if emb_is_dup(member_name, new_embedding, threshold=0.95):
+            count = get_embedding_count(member_name)
             return https_fn.Response(json.dumps({
                 "success": True,
                 "memberName": member_name,
@@ -6369,19 +6274,12 @@ def apply_ai_suggestion(req: https_fn.Request) -> https_fn.Response:
                 "message": f"⚠️ Échantillon trop similaire à un existant. Profil inchangé ({count} samples)"
             }), status=200, content_type="application/json")
         
-        if current_emb and isinstance(current_emb, list):
-            if isinstance(current_emb[0], list):
-                current_emb.append(new_embedding)
-                if len(current_emb) > 20:
-                    current_emb = current_emb[-20:]
-            else:
-                current_emb = [current_emb, new_embedding]
-        else:
-            current_emb = [new_embedding]
+        add_embedding(member_name, new_embedding, member_id, sample_source="ml_auto")
+        count = get_embedding_count(member_name)
         
-        count = len(current_emb) if isinstance(current_emb[0], list) else 1
+        # Update Firestore metadata only
+        member_ref = db.collection("members").document(member_id)
         member_ref.update({
-            "embedding": json_lib.dumps(current_emb),
             "voiceSampleCount": count,
             "lastVoiceUpdate": datetime.now().isoformat(),
             "lastUpdateSource": "ai_suggestion"
@@ -6391,9 +6289,6 @@ def apply_ai_suggestion(req: https_fn.Request) -> https_fn.Response:
             "memberId": member_id, "memberName": member_name,
             "timestamp": datetime.now().isoformat()
         })
-        
-        # Sync to Supabase speakers table
-        sync_embedding_to_supabase(member_name, current_emb, member_id, sample_source="ml_auto")
         return https_fn.Response(json.dumps({
             "success": True,
             "memberName": member_name,
@@ -6513,49 +6408,22 @@ def autonomous_ml_loop(req: https_fn.Request) -> https_fn.Response:
                                                     audio_url, best_seg["start"], best_seg["end"]
                                                 )
                                                 if new_emb:
-                                                    # DEDUPLICATION: Check if this embedding is too similar to existing ones
-                                                    from speaker_identification import cosine_similarity as cos_sim
-                                                    current_emb = member.get("embedding")
-                                                    import json as jlib
-                                                    if current_emb and isinstance(current_emb, str):
-                                                        try:
-                                                            current_emb = jlib.loads(current_emb)
-                                                        except:
-                                                            current_emb = None
-                                                    
-                                                    is_duplicate = False
-                                                    if current_emb and isinstance(current_emb, list):
-                                                        existing_vecs = current_emb if isinstance(current_emb[0], list) else [current_emb]
-                                                        for existing_vec in existing_vecs:
-                                                            if len(existing_vec) == len(new_emb):
-                                                                sim = cos_sim(new_emb, existing_vec)
-                                                                if sim > 0.95:  # Too similar — skip
-                                                                    is_duplicate = True
-                                                                    print(f"[AutonomousML] Skipping duplicate embedding for {name} (sim={sim:.3f})")
-                                                                    break
-                                                    
-                                                    if not is_duplicate:
-                                                        # Update profile with new diverse embedding
-                                                        if current_emb and isinstance(current_emb, list):
-                                                            if isinstance(current_emb[0], list):
-                                                                current_emb.append(new_emb)
-                                                                current_emb = current_emb[-15:]
-                                                            else:
-                                                                current_emb = [current_emb, new_emb]
-                                                        else:
-                                                            current_emb = [new_emb]
-                                                        
-                                                        new_count = len(current_emb) if isinstance(current_emb[0], list) else 1
+                                                    # Write directly to Supabase (primary store)
+                                                    from supabase_embeddings import add_embedding, is_duplicate as emb_is_duplicate
+                                                    if not emb_is_duplicate(name, new_emb, threshold=0.95):
+                                                        add_embedding(name, new_emb, member_doc.id, sample_source="ml_auto")
+                                                        from supabase_embeddings import get_embedding_count
+                                                        new_count = get_embedding_count(name)
+                                                        # Update Firestore metadata only
                                                         db.collection("members").document(member_doc.id).update({
-                                                            "embedding": jlib.dumps(current_emb),
                                                             "voiceSampleCount": new_count,
                                                             "lastVoiceUpdate": datetime.now().isoformat(),
                                                             "lastUpdateSource": "autonomous_ml"
                                                         })
                                                         results["autoLearned"] += 1
                                                         results["actions"].append(f"Auto-learned: {name} ({new_count} samples)")
-                                                        # Sync to Supabase
-                                                        sync_embedding_to_supabase(name, current_emb, member_doc.id, sample_source="ml_auto")
+                                                    else:
+                                                        print(f"[AutonomousML] Skipping duplicate embedding for {name}")
                                             except Exception as e:
                                                 print(f"[AutonomousML] Auto-learn failed for {name}: {e}")
                         
@@ -6760,7 +6628,6 @@ from recommendation_engine import (
 )
 
 from active_learning import (
-    update_embedding_with_correction,
     analyze_embedding_quality,
     build_style_memory,
     inject_style_memory_into_prompt,
@@ -7433,8 +7300,7 @@ def learn_resolution(req: https_fn.CallableRequest) -> dict:
 def closed_feedback_loop(req: https_fn.CallableRequest) -> dict:
     """
     Actively update voice embeddings using correction signals (Amelioration Loop).
-    Corrections get 2x weight compared to auto-learned embeddings.
-    Wrong embeddings are identified and removed.
+    Writes directly to Supabase (primary embedding store).
     """
     if not req.auth:
         raise https_fn.HttpsError(
@@ -7443,12 +7309,12 @@ def closed_feedback_loop(req: https_fn.CallableRequest) -> dict:
         )
 
     data = req.data
-    # Frontend sends correctMemberId, we map it to memberId
     member_id = data.get("memberId") or data.get("correctMemberId", "")
+    correct_name = data.get("correctName", "")
+    wrong_name = data.get("wrongName", "")
     audio_url = data.get("audioUrl", "")
     start_time = data.get("start", 0)
     end_time = data.get("end", 0)
-    wrong_member_id = data.get("wrongMemberId", "")
 
     if not member_id:
         raise https_fn.HttpsError(
@@ -7456,21 +7322,22 @@ def closed_feedback_loop(req: https_fn.CallableRequest) -> dict:
             message="Missing key: memberId"
         )
 
-    print(f"[ActiveLearning] Updating embedding for member {member_id}")
+    print(f"[ActiveLearning] Updating embedding for member {member_id}, correct={correct_name}")
 
     try:
         global db
         if db is None:
             db = firestore.client()
 
-        correct_embedding = None
-        wrong_embedding = None
+        # Get member name if not provided
+        if not correct_name:
+            member_doc = db.collection("members").document(member_id).get()
+            if member_doc.exists:
+                correct_name = member_doc.to_dict().get("displayName", "")
 
+        correct_embedding = None
         if audio_url and end_time > start_time:
             correct_embedding = extract_audio_segment_embedding(audio_url, start_time, end_time)
-
-        if wrong_member_id and audio_url and end_time > start_time:
-            wrong_embedding = correct_embedding
 
         if not correct_embedding:
             return {
@@ -7478,14 +7345,25 @@ def closed_feedback_loop(req: https_fn.CallableRequest) -> dict:
                 "message": "Could not extract embedding from audio",
             }
 
-        result = update_embedding_with_correction(
-            db_client=db,
+        # Write directly to Supabase (primary store)
+        from supabase_embeddings import update_with_correction
+        result = update_with_correction(
+            speaker_name=correct_name,
+            correct_vec=correct_embedding,
             member_id=member_id,
-            correct_embedding=correct_embedding,
-            wrong_embedding=wrong_embedding,
-            correction_weight=2.0,
+            wrong_speaker_name=wrong_name,
+            wrong_vec=correct_embedding if wrong_name else None,
+            correction_weight=2,
         )
 
+        # Update Firestore metadata only (not embeddings)
+        db.collection("members").document(member_id).update({
+            "voiceSampleCount": result.get("newSampleCount", 0),
+            "lastVoiceUpdate": datetime.now().isoformat(),
+            "lastUpdateSource": "active_learning_correction",
+        })
+
+        # Reward signal
         compute_embedding_reward(
             db_client=db,
             member_id=member_id,
@@ -7493,15 +7371,6 @@ def closed_feedback_loop(req: https_fn.CallableRequest) -> dict:
             confidence=1.0,
             correction_source="user",
         )
-
-        if wrong_member_id:
-            compute_embedding_reward(
-                db_client=db,
-                member_id=wrong_member_id,
-                was_correct=False,
-                confidence=0.0,
-                correction_source="user",
-            )
 
         return {"success": True, **result}
 
