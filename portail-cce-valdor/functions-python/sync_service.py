@@ -84,9 +84,22 @@ def sync_embedding_to_supabase(member_name: str, embedding_data, member_id: str 
         except Exception as e:
             print(f"[SupabaseSync Phase 2] Error looking up speaker_id: {e}")
 
+        # *** DEDUPLICATION: Delete existing embeddings for this speaker before inserting ***
+        try:
+            existing = supabase.table("speaker_embeddings").select("id").eq("speaker_name", member_name).execute()
+            if existing.data and len(existing.data) > 0:
+                for row in existing.data:
+                    supabase.table("speaker_embeddings").delete().eq("id", row["id"]).execute()
+                print(f"[SupabaseSync Phase 2] Cleaned {len(existing.data)} old embeddings for {member_name} before re-insert")
+        except Exception as cleanup_err:
+            print(f"[SupabaseSync Phase 2] Pre-insert cleanup error (non-fatal): {cleanup_err}")
+
         # Insert embedding
         if isinstance(embedding_data[0], list) and isinstance(embedding_data[0][0], (int, float)):
             vectors = embedding_data
+            # Cap at 20 vectors max
+            if len(vectors) > 20:
+                vectors = vectors[-20:]
             inserted_count = 0
             for vec in vectors:
                 if len(vec) in [512, 768]:
@@ -132,23 +145,6 @@ def sync_embedding_to_supabase(member_name: str, embedding_data, member_id: str 
         else:
             print(f"[SupabaseSync Phase 2] Invalid embedding format for {member_name}")
             return False
-        
-        # Cleanup old embeddings
-        try:
-            count_result = supabase.table("speaker_embeddings").select("id", count="exact").eq("speaker_name", member_name).execute()
-            count = count_result.count if hasattr(count_result, 'count') else len(count_result.data)
-            
-            if count > 20:
-                all_result = supabase.table("speaker_embeddings").select("id").eq("speaker_name", member_name).order("created_at", desc=True).execute()
-                ids_to_keep = [row["id"] for row in all_result.data[:20]]
-                ids_to_delete = [row["id"] for row in all_result.data[20:]]
-                
-                for id_to_delete in ids_to_delete:
-                    supabase.table("speaker_embeddings").delete().eq("id", id_to_delete).execute()
-                
-                print(f"[SupabaseSync Phase 2] Cleaned up {len(ids_to_delete)} old embeddings for {member_name}")
-        except Exception as e:
-            print(f"[SupabaseSync Phase 2] Cleanup error (non-fatal): {e}")
         
         return True
         
