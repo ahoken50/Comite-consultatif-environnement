@@ -9,57 +9,7 @@ import json
 from datetime import datetime
 
 
-@https_fn.on_request(
-    timeout_sec=60,
-    memory=options.MemoryOption.MB_128,
-    cors=options.CorsOptions(cors_origins="*", cors_methods=["GET", "POST", "OPTIONS"])
-)
-def api_get_migration_status(req: https_fn.Request) -> https_fn.Response:
-    """
-    Get the current status of Phase 2 migration (REST API endpoint).
-    
-    Usage:
-        curl https://us-central1-comite-cce.cloudfunctions.net/api_get_migration_status
-    
-    Returns:
-        {
-            "migration_completed": bool,
-            "migration_timestamp": str|null,
-            "supabase_ready": bool,
-            "firestore_migration_flag": bool
-        }
-    """
-    if req.method != "GET":
-        return https_fn.Response(
-            json.dumps({"error": "Method not allowed. Use GET."}),
-            status=405,
-            content_type="application/json"
-        )
-    
-    try:
-        from auto_migration import get_migration_status
-        status = get_migration_status()
-        
-        return https_fn.Response(
-            json.dumps({
-                "success": True,
-                "status": status,
-                "timestamp": datetime.now().isoformat()
-            }),
-            status=200,
-            content_type="application/json"
-        )
-    except Exception as e:
-        import traceback
-        return https_fn.Response(
-            json.dumps({
-                "success": False,
-                "error": str(e),
-                "traceback": traceback.format_exc()
-            }),
-            status=500,
-            content_type="application/json"
-        )
+
 
 
 @https_fn.on_request(
