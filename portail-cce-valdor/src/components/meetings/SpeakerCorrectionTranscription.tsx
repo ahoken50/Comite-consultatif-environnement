@@ -192,6 +192,8 @@ export const SpeakerCorrectionTranscription: React.FC<SpeakerCorrectionTranscrip
         oldName: string,
         position: number
     ) => {
+        console.log('[SpeakerCorrection] triggerLearning called', { newName, oldName, audioUrl, audioDuration });
+
         if (audioUrl && audioDuration > 0) {
 
             // Update local state to show loading
@@ -212,16 +214,19 @@ export const SpeakerCorrectionTranscription: React.FC<SpeakerCorrectionTranscrip
                 );
 
                 const segmentDuration = end - start;
+                console.log('[SpeakerCorrection] Segment timing', { start, end, segmentDuration });
 
                 // Only trigger ML if segment is long enough (>5 seconds)
                 if (segmentDuration >= 5) {
                     // Find member IDs
                     const correctMember = members.find(m => m.displayName === newName);
+                    console.log('[SpeakerCorrection] correctMember found:', !!correctMember, correctMember?.id);
                     if (correctMember) {
                         // Call closed_feedback_loop
                         const { getFunctions, httpsCallable } = await import('firebase/functions');
                         const functions = getFunctions();
 
+                        console.log('[SpeakerCorrection] Calling closed_feedback_loop...');
                         const feedbackFn = httpsCallable(functions, 'closed_feedback_loop');
                         await feedbackFn({
                             meetingId,
@@ -234,13 +239,17 @@ export const SpeakerCorrectionTranscription: React.FC<SpeakerCorrectionTranscrip
                             end,
                             originalConfidence: 0.5,
                         });
+                        console.log('[SpeakerCorrection] closed_feedback_loop SUCCESS');
 
                         setSnackMessage(
                             `✅ Correction appliquée: ${oldName} → ${newName}. ` +
                             `Profil vocal renforcé (${Math.round(segmentDuration)}s d'audio).`
                         );
+                    } else {
+                        console.warn('[SpeakerCorrection] Member not found in members list for:', newName);
                     }
                 } else {
+                    console.log('[SpeakerCorrection] Segment too short:', segmentDuration);
                     setSnackMessage(
                         `✅ Correction appliquée: ${oldName} → ${newName}. ` +
                         `⚠️ Segment trop court (${Math.round(segmentDuration)}s) pour l'apprentissage vocal.`
@@ -255,6 +264,8 @@ export const SpeakerCorrectionTranscription: React.FC<SpeakerCorrectionTranscrip
                 ));
                 setLearningStatus(null);
             }
+        } else {
+            console.warn('[SpeakerCorrection] Skipped: audioUrl=', audioUrl, 'audioDuration=', audioDuration);
         }
     };
 

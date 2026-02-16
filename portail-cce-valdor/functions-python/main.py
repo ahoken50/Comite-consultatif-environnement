@@ -5673,7 +5673,7 @@ def voice_signature_hash(req: https_fn.Request) -> https_fn.Response:
     memory=options.MemoryOption.GB_1,
     cors=options.CorsOptions(cors_origins="*", cors_methods=["GET", "POST"])
 )
-def closed_feedback_loop(req: https_fn.Request) -> https_fn.Response:
+def closed_feedback_loop_http(req: https_fn.Request) -> https_fn.Response:
     """
     When a user corrects a speaker identification, automatically:
     1. Log the correction for future learning
