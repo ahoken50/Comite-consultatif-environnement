@@ -1495,7 +1495,7 @@ def match_speakers_with_pgvector(segment_embedding: list, enrolled_speakers: lis
             # Exécuter la requête SQL
             query = f"""
                 SELECT speaker_name, similarity, match_count, avg_similarity, sample_sources
-                FROM match_speakers('[{embedding_str}]'::vector(768), {limit})
+                FROM match_speakers('[{embedding_str}]'::vector(512), {limit})
             """
             
             result = supabase.rpc('match_speakers', {

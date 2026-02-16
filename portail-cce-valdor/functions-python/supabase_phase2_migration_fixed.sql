@@ -11,7 +11,7 @@ CREATE TABLE speaker_embeddings (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
     speaker_name TEXT NOT NULL,
     speaker_id UUID REFERENCES speakers(id) ON DELETE SET NULL,
-    embedding vector(768) NOT NULL,
+    embedding vector(512) NOT NULL,
     sample_source TEXT NOT NULL CHECK (sample_source IN ('enrollment', 'correction', 'ml_auto', 'batch_import')),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     metadata JSONB DEFAULT '{}'::jsonb
@@ -32,7 +32,7 @@ CREATE INDEX IF NOT EXISTS speaker_embeddings_source_idx
 ON speaker_embeddings(sample_source);
 
 -- 5. Créer la fonction match_speakers pour la similarité vectorielle
-CREATE OR REPLACE FUNCTION match_speakers(target_embedding vector(768), limit_count INTEGER DEFAULT 10)
+CREATE OR REPLACE FUNCTION match_speakers(target_embedding vector(512), limit_count INTEGER DEFAULT 10)
 RETURNS TABLE (
     speaker_name TEXT,
     speaker_id UUID,
@@ -61,7 +61,7 @@ $$ LANGUAGE plpgsql;
 -- 6. Créer la fonction pour insérer un embedding (simplifiée - sans contrainte speaker_id)
 CREATE OR REPLACE FUNCTION insert_speaker_embedding(
     p_speaker_name TEXT,
-    p_embedding vector(768),
+    p_embedding vector(512),
     p_sample_source TEXT DEFAULT 'ml_auto',
     p_metadata JSONB DEFAULT '{}'::jsonb
 )
