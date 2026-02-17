@@ -37,7 +37,7 @@ ${odjList}
 ${speakerInfo}
 
 TRANSCRIPTION NETTOYÉE:
-${cleanedTranscription.substring(0, 100000)}
+${cleanedTranscription.substring(0, 400000)}
 
 TÂCHE:
 Associe chaque segment de la transcription à un point de l'ordre du jour.
@@ -243,7 +243,7 @@ ${classificationContext}
 ${analysisContext}
 
 ## TRANSCRIPTION COMPLÈTE (SOURCE DE VÉRITÉ)
-${cleanedTranscription.substring(0, 100000)}
+${cleanedTranscription.substring(0, 400000)}
 
 ## MISSION
 Génère le Procès-Verbal officiel complet en respectant STRICTEMENT :
@@ -272,10 +272,10 @@ export const getReflectionPrompt = (
   return `Tu es un réviseur expert de procès-verbaux municipaux. C'est l'itération #${iterationNumber} de la révision.
 
 BROUILLON DU PV À RÉVISER:
-${pvDraft.substring(0, 60000)}
+${pvDraft.substring(0, 200000)}
 
 TRANSCRIPTION ORIGINALE (SOURCE DE VÉRITÉ):
-${transcription.substring(0, 60000)}
+${transcription.substring(0, 200000)}
 ${previousContext}
 
 TÂCHE:
@@ -330,7 +330,7 @@ export const getComparisonPrompt = (
   return `Tu es un expert en contrôle qualité de procès-verbaux municipaux.
 
 PV ACTUEL (Assemblée #${meetingNumber}):
-${currentPV.substring(0, 30000)}
+${currentPV.substring(0, 100000)}
 
 PV HISTORIQUES POUR COMPARAISON:
 ${historicalContext}
@@ -382,7 +382,7 @@ export const getDraftingExtractionPrompt = (
   return `Analyse le procès-verbal suivant et extrais les données structurées.
 
 PV:
-${pvContent.substring(0, 60000)}
+${pvContent.substring(0, 200000)}
 
 NUMÉROTATION: Assemblée #${numbering.assemblyNumber}
 
