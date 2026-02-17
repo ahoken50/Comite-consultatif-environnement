@@ -35,7 +35,7 @@ import type {
     ComparisonResult,
     LearningResult,
     CCENumbering,
-    } from '../types/pvAgent.types';
+} from '../types/pvAgent.types';
 import {
     getODJAnalysisPrompt,
     getClassificationPrompt,
@@ -381,7 +381,12 @@ export const runCleaningStep = async (
     text = cleanedLines.join('\n');
 
     // 2. Apply speaker mapping (replace labels with real names)
+    // Only remap generic labels like "Speaker 1", "Locuteur A" — NOT already-named speakers
     for (const [label, name] of Object.entries(identification.speakerMapping)) {
+        // Skip if the label is already a real name (contains letters and spaces, not a generic label)
+        const isGenericLabel = /^(Speaker|Locuteur|Intervenant)\s*(\d+|[A-Z])$/i.test(label.trim());
+        if (!isGenericLabel) continue;
+
         const escapedLabel = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         const regex = new RegExp(`\\[?${escapedLabel}\\]?\\s*:`, 'gi');
         text = text.replace(regex, `${name} :`);
@@ -535,7 +540,7 @@ export const runDraftingStep = async (
     numbering: CCENumbering
 ): Promise<DraftingResult> => {
     // Use Cloud Function for Claude (server-side API key)
-    const generateMinutes = httpsCallable(functions, 'generate_minutes_claude');
+    const generateMinutes = httpsCallable(functions, 'generate_minutes_claude', { timeout: 540000 });
 
     const systemPrompt = getDraftingSystemPrompt();
     const userMessage = getDraftingUserPrompt(
@@ -644,7 +649,7 @@ export const runReflectionStep = async (
     for (let i = 1; i <= maxIterations; i++) {
         config.onProgress?.('reflection', Math.round((i / maxIterations) * 100));
 
-        const generateMinutes = httpsCallable(functions, 'chat_claude');
+        const generateMinutes = httpsCallable(functions, 'chat_claude', { timeout: 540000 });
 
         const prompt = getReflectionPrompt(
             currentContent,
@@ -755,7 +760,7 @@ export const runComparisonStep = async (
     }
 
     // 2. Run comparison via Claude
-    const chatClaude = httpsCallable(functions, 'chat_claude');
+    const chatClaude = httpsCallable(functions, 'chat_claude', { timeout: 540000 });
 
     const prompt = getComparisonPrompt(
         currentPVContent,
@@ -989,7 +994,7 @@ export const runLearningStep = async (
         // 7. Trigger RLHF policy re-optimization (async, non-blocking)
         try {
             const rlhfOptimize = httpsCallable(functions, 'rlhf_get_optimized_params');
-            rlhfOptimize({ forceReoptimize: true }).catch(() => {});
+            rlhfOptimize({ forceReoptimize: true }).catch(() => { });
             // Fire and forget — don't block the pipeline
         } catch {
             // Non-critical

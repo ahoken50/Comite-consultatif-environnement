@@ -7,9 +7,9 @@
 
 import type { Meeting } from '../types/meeting.types';
 import type {
-    ODJAnalysisResult,
-    ClassificationResult,
-    CCENumbering,
+  ODJAnalysisResult,
+  ClassificationResult,
+  CCENumbering,
 } from '../types/pvAgent.types';
 import { formatAttendeesList, formatAgendaList } from './minutesDraftPrompt';
 
@@ -18,26 +18,26 @@ import { formatAttendeesList, formatAgendaList } from './minutesDraftPrompt';
 // ============================================================================
 
 export const getODJAnalysisPrompt = (
-    meeting: Meeting,
-    cleanedTranscription: string,
-    speakerMapping?: Record<string, string>
+  meeting: Meeting,
+  cleanedTranscription: string,
+  speakerMapping?: Record<string, string>
 ): string => {
-    const odjList = meeting.agendaItems?.map((item, i) =>
-        `${i + 1}. [ID: ${item.id}] ${item.title}${item.objective ? ` [Objectif: ${item.objective}]` : ''}${item.presenter ? ` [Resp: ${item.presenter}]` : ''}`
-    ).join('\n') || 'Aucun ordre du jour défini';
+  const odjList = meeting.agendaItems?.map((item, i) =>
+    `${i + 1}. [ID: ${item.id}] ${item.title}${item.objective ? ` [Objectif: ${item.objective}]` : ''}${item.presenter ? ` [Resp: ${item.presenter}]` : ''}`
+  ).join('\n') || 'Aucun ordre du jour défini';
 
-    const speakerInfo = speakerMapping
-        ? `\n\nMAPPING DES LOCUTEURS:\n${Object.entries(speakerMapping).map(([label, name]) => `- ${label} → ${name}`).join('\n')}`
-        : '';
+  const speakerInfo = speakerMapping
+    ? `\n\nMAPPING DES LOCUTEURS:\n${Object.entries(speakerMapping).map(([label, name]) => `- ${label} → ${name}`).join('\n')}`
+    : '';
 
-    return `Tu es un expert en analyse de procès-verbaux municipaux québécois.
+  return `Tu es un expert en analyse de procès-verbaux municipaux québécois.
 
 ORDRE DU JOUR DE LA RÉUNION:
 ${odjList}
 ${speakerInfo}
 
 TRANSCRIPTION NETTOYÉE:
-${cleanedTranscription.substring(0, 40000)}
+${cleanedTranscription.substring(0, 100000)}
 
 TÂCHE:
 Associe chaque segment de la transcription à un point de l'ordre du jour.
@@ -77,14 +77,14 @@ Réponds UNIQUEMENT avec le JSON, sans markdown ni commentaires.`;
 // ============================================================================
 
 export const getClassificationPrompt = (
-    meeting: Meeting,
-    odjAnalysis: ODJAnalysisResult
+  meeting: Meeting,
+  odjAnalysis: ODJAnalysisResult
 ): string => {
-    const itemsSummary = odjAnalysis.mappedItems.map(item =>
-        `- [${item.odjItemId}] ${item.odjTitle}: ${item.transcriptSegments.join(' | ').substring(0, 300)}`
-    ).join('\n');
+  const itemsSummary = odjAnalysis.mappedItems.map(item =>
+    `- [${item.odjItemId}] ${item.odjTitle}: ${item.transcriptSegments.join(' | ').substring(0, 300)}`
+  ).join('\n');
 
-    return `Tu es un analyste spécialisé en gouvernance municipale et environnement au Québec.
+  return `Tu es un analyste spécialisé en gouvernance municipale et environnement au Québec.
 
 CONTEXTE: Réunion du Comité Consultatif en Environnement (CCE) de Val-d'Or
 DATE: ${meeting.date}
@@ -201,24 +201,24 @@ IL EST RÉSOLU DE recommander au conseil...
 `;
 
 export const getDraftingUserPrompt = (
-    meeting: Meeting,
-    odjAnalysis: ODJAnalysisResult,
-    classification: ClassificationResult,
-    numbering: CCENumbering,
-    cleanedTranscription: string
+  meeting: Meeting,
+  odjAnalysis: ODJAnalysisResult,
+  classification: ClassificationResult,
+  numbering: CCENumbering,
+  cleanedTranscription: string
 ): string => {
-    const attendeesList = formatAttendeesList(meeting);
-    const agendaList = formatAgendaList(meeting);
+  const attendeesList = formatAttendeesList(meeting);
+  const agendaList = formatAgendaList(meeting);
 
-    const classificationContext = classification.items.map(item =>
-        `- ${item.odjTitle}: Type=${item.issueType}, Sentiment=${item.sentiment}, Priorité=${item.priority}`
-    ).join('\n');
+  const classificationContext = classification.items.map(item =>
+    `- ${item.odjTitle}: Type=${item.issueType}, Sentiment=${item.sentiment}, Priorité=${item.priority}`
+  ).join('\n');
 
-    const analysisContext = odjAnalysis.mappedItems.map(item =>
-        `\n### ${item.odjOrder}. ${item.odjTitle}\nIntervenants: ${item.speakers.join(', ')}\nContenu:\n${item.transcriptSegments.join('\n')}`
-    ).join('\n');
+  const analysisContext = odjAnalysis.mappedItems.map(item =>
+    `\n### ${item.odjOrder}. ${item.odjTitle}\nIntervenants: ${item.speakers.join(', ')}\nContenu:\n${item.transcriptSegments.join('\n')}`
+  ).join('\n');
 
-    return `## INFORMATIONS DE LA RÉUNION
+  return `## INFORMATIONS DE LA RÉUNION
 Titre: ${meeting.title}
 Date: ${meeting.date}
 Lieu: ${meeting.location || 'Salle de conférence'}
@@ -241,7 +241,7 @@ ${classificationContext}
 ${analysisContext}
 
 ## TRANSCRIPTION COMPLÈTE (SOURCE DE VÉRITÉ)
-${cleanedTranscription.substring(0, 50000)}
+${cleanedTranscription.substring(0, 100000)}
 
 ## MISSION
 Génère le Procès-Verbal officiel complet en respectant STRICTEMENT :
@@ -258,22 +258,22 @@ Retourne le PV complet en texte brut (pas de JSON).`;
 // ============================================================================
 
 export const getReflectionPrompt = (
-    pvDraft: string,
-    transcription: string,
-    iterationNumber: number,
-    previousIssues?: string
+  pvDraft: string,
+  transcription: string,
+  iterationNumber: number,
+  previousIssues?: string
 ): string => {
-    const previousContext = previousIssues
-        ? `\n\nPROBLÈMES CORRIGÉS LORS DES ITÉRATIONS PRÉCÉDENTES:\n${previousIssues}\nNe répète PAS ces corrections. Cherche de NOUVEAUX problèmes.`
-        : '';
+  const previousContext = previousIssues
+    ? `\n\nPROBLÈMES CORRIGÉS LORS DES ITÉRATIONS PRÉCÉDENTES:\n${previousIssues}\nNe répète PAS ces corrections. Cherche de NOUVEAUX problèmes.`
+    : '';
 
-    return `Tu es un réviseur expert de procès-verbaux municipaux. C'est l'itération #${iterationNumber} de la révision.
+  return `Tu es un réviseur expert de procès-verbaux municipaux. C'est l'itération #${iterationNumber} de la révision.
 
 BROUILLON DU PV À RÉVISER:
-${pvDraft.substring(0, 40000)}
+${pvDraft.substring(0, 60000)}
 
 TRANSCRIPTION ORIGINALE (SOURCE DE VÉRITÉ):
-${transcription.substring(0, 30000)}
+${transcription.substring(0, 60000)}
 ${previousContext}
 
 TÂCHE:
@@ -317,15 +317,15 @@ Réponds UNIQUEMENT avec le JSON.`;
 // ============================================================================
 
 export const getComparisonPrompt = (
-    currentPV: string,
-    historicalPVs: Array<{ date: string; content: string }>,
-    meetingNumber: number
+  currentPV: string,
+  historicalPVs: Array<{ date: string; content: string }>,
+  meetingNumber: number
 ): string => {
-    const historicalContext = historicalPVs.map((pv, i) =>
-        `\n--- PV HISTORIQUE #${i + 1} (${pv.date}) ---\n${pv.content.substring(0, 5000)}`
-    ).join('\n');
+  const historicalContext = historicalPVs.map((pv, i) =>
+    `\n--- PV HISTORIQUE #${i + 1} (${pv.date}) ---\n${pv.content.substring(0, 5000)}`
+  ).join('\n');
 
-    return `Tu es un expert en contrôle qualité de procès-verbaux municipaux.
+  return `Tu es un expert en contrôle qualité de procès-verbaux municipaux.
 
 PV ACTUEL (Assemblée #${meetingNumber}):
 ${currentPV.substring(0, 30000)}
@@ -374,13 +374,13 @@ Réponds UNIQUEMENT avec le JSON.`;
 // ============================================================================
 
 export const getDraftingExtractionPrompt = (
-    pvContent: string,
-    numbering: CCENumbering
+  pvContent: string,
+  numbering: CCENumbering
 ): string => {
-    return `Analyse le procès-verbal suivant et extrais les données structurées.
+  return `Analyse le procès-verbal suivant et extrais les données structurées.
 
 PV:
-${pvContent.substring(0, 40000)}
+${pvContent.substring(0, 60000)}
 
 NUMÉROTATION: Assemblée #${numbering.assemblyNumber}
 
