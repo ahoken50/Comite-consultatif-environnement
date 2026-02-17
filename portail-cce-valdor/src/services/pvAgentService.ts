@@ -481,93 +481,201 @@ export const runODJAnalysisStep = async (
     cleaning: CleaningResult
 ): Promise<ODJAnalysisResult> => {
     const groq = getGroq();
+    const text = cleaning.cleanedText;
 
-    const prompt = getODJAnalysisPrompt(
-        config.meeting,
-        cleaning.cleanedText,
-    );
+    // Batch processing configuration
+    const CHUNK_SIZE = 100000; // 100k chars ~ 25k tokens (forces batching for 2h+ meetings)
+    const OVERLAP = 5000;      // 5k chars overlap to avoid cutting sentences/context
 
-    console.log(`[ODJ] Starting analysis — agendaItems: ${config.meeting.agendaItems?.length ?? 0}, transcription length: ${cleaning.cleanedText.length} chars`);
-    console.log(`[ODJ] Agenda items:`, config.meeting.agendaItems?.map(a => `${a.id}: ${a.title}`));
+    const chunks: string[] = [];
 
-    // Retry up to 2 times if JSON parsing fails
-    const maxAttempts = 2;
-    let lastError: Error | null = null;
+    if (text.length <= CHUNK_SIZE) {
+        chunks.push(text);
+    } else {
+        console.log(`[ODJ] Text length ${text.length} > ${CHUNK_SIZE}, splitting into batches...`);
+        let currentPos = 0;
+        while (currentPos < text.length) {
+            let endPos = Math.min(currentPos + CHUNK_SIZE, text.length);
 
-    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-        const { text: rawResult } = await generateText({
-            model: groq('qwen/qwen3-32b'),
-            prompt,
-            temperature: attempt === 1 ? 0.3 : 0.1, // Lower temp on retry
-            maxTokens: 60000,
-        } as any);
-
-        try {
-            // Clean response (remove <think> block and code fences)
-            let cleaned = rawResult.replace(/<think>[\s\S]*?<\/think>/g, '');
-            cleaned = cleaned.replace(/```(?:json)?/g, '').replace(/```/g, '');
-
-            const start = cleaned.indexOf('{');
-            const end = cleaned.lastIndexOf('}');
-            if (start !== -1 && end !== -1 && end > start) {
-                cleaned = cleaned.substring(start, end + 1);
+            // Try to break at a newline to avoid cutting words
+            if (endPos < text.length) {
+                const lastNewline = text.lastIndexOf('\n', endPos);
+                if (lastNewline > currentPos + (CHUNK_SIZE / 2)) {
+                    endPos = lastNewline;
+                }
             }
 
-            // Try direct parse first
-            let parsed: any;
+            chunks.push(text.substring(currentPos, endPos));
+
+            if (endPos >= text.length) break;
+            currentPos = endPos - OVERLAP;
+        }
+        console.log(`[ODJ] Created ${chunks.length} batches.`);
+    }
+
+    // Process chunks
+    const allMappedResults: any[] = [];
+    const allUnmappedSegments: string[] = [];
+
+    for (let batchIdx = 0; batchIdx < chunks.length; batchIdx++) {
+        const chunk = chunks[batchIdx];
+        console.log(`[ODJ] Processing batch ${batchIdx + 1}/${chunks.length} (${chunk.length} chars)...`);
+
+        const prompt = getODJAnalysisPrompt(
+            config.meeting,
+            chunk,
+        );
+
+        // Retry logic per batch
+        const maxAttempts = 2;
+        let success = false;
+
+        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
             try {
-                parsed = JSON.parse(cleaned);
-            } catch {
-                // If direct parse fails, try repairing the JSON
-                console.warn(`[ODJ] JSON parse failed on attempt ${attempt}, trying repair...`);
-                console.log(`[ODJ] Cleaned output start:`, cleaned.substring(0, 1000));
-                const repaired = repairJSON(cleaned);
-                console.log(`[ODJ] Repaired JSON:`, repaired.substring(0, 1000));
-                parsed = JSON.parse(repaired);
-                console.log('[ODJ] JSON repair successful!');
+                const { text: rawResult } = await generateText({
+                    model: groq('qwen/qwen3-32b'),
+                    prompt,
+                    temperature: attempt === 1 ? 0.3 : 0.1,
+                    maxTokens: 60000,
+                } as any);
+
+                // Clean response
+                let cleaned = rawResult.replace(/<think>[\s\S]*?<\/think>/g, '');
+                cleaned = cleaned.replace(/```(?:json)?/g, '').replace(/```/g, '');
+
+                const start = cleaned.indexOf('{');
+                const end = cleaned.lastIndexOf('}');
+                if (start !== -1 && end !== -1 && end > start) {
+                    cleaned = cleaned.substring(start, end + 1);
+                }
+
+                let parsed: any;
+                try {
+                    parsed = JSON.parse(cleaned);
+                } catch {
+                    console.warn(`[ODJ] Batch ${batchIdx + 1} JSON parse failed, repairing...`);
+                    const repaired = repairJSON(cleaned);
+                    parsed = JSON.parse(repaired);
+                }
+
+                // Extract valid items
+                const rawItems = parsed.mappedItems || parsed.mappedMap || parsed.items || parsed.agendaItems || parsed.mappedItem || [];
+
+                if (Array.isArray(rawItems)) {
+                    allMappedResults.push(...rawItems);
+                }
+                if (Array.isArray(parsed.unmappedSegments)) {
+                    allUnmappedSegments.push(...parsed.unmappedSegments);
+                }
+
+                success = true;
+                break; // Batch success
+
+            } catch (e) {
+                console.error(`[ODJ] Batch ${batchIdx + 1} attempt ${attempt} failed:`, e);
             }
+        }
 
-            // Validate and enrich with actual ODJ item IDs
-            // Handle common hallucinations: mappedMap, items, agendaItems, mappedItem
-            const rawItems = parsed.mappedItems || parsed.mappedMap || parsed.items || parsed.agendaItems || parsed.mappedItem || [];
-
-            const mappedItems = Array.isArray(rawItems) ? rawItems.map((item: any) => {
-                const odjItem = config.meeting.agendaItems?.find(
-                    a => a.id === item.odjItemId || a.title === item.odjTitle
-                );
-                return {
-                    odjItemId: odjItem?.id || item.odjItemId || `odj-unknown`,
-                    odjTitle: item.odjTitle || odjItem?.title || 'Sans titre',
-                    odjOrder: item.odjOrder || odjItem?.order || 0,
-                    transcriptSegments: Array.isArray(item.transcriptSegments)
-                        ? item.transcriptSegments
-                        : [item.transcriptSegment || item.segment || ''],
-                    speakers: item.speakers || [],
-                    confidence: item.confidence || 0.5,
-                };
-            }) : [];
-
-            const odjCount = config.meeting.agendaItems?.length || 0;
-            const coveragePercent = odjCount > 0
-                ? (mappedItems.length / odjCount) * 100
-                : 100;
-
-            console.log(`[ODJ] Analysis complete: ${mappedItems.length} items mapped, coverage: ${parsed.coveragePercent}%`);
-            console.log(`[ODJ] Mapped items:`, mappedItems.map((i: any) => `${i.odjItemId} (${i.confidence})`));
-
-            return {
-                mappedItems,
-                unmappedSegments: parsed.unmappedSegments || [],
-                coveragePercent: parsed.coveragePercent || coveragePercent,
-            };
-        } catch (e) {
-            console.error(`[ODJ] Parse failed on attempt ${attempt}/${maxAttempts}:`, e);
-            console.error('[ODJ] Raw response (first 500 chars):', rawResult.substring(0, 500));
-            lastError = e as Error;
+        if (!success) {
+            console.error(`[ODJ] Batch ${batchIdx + 1} failed completely.`);
+            // Continue to next batch to salvage what we can
         }
     }
 
-    throw new Error(`Échec de l'analyse ODJ après ${maxAttempts} tentatives: ${lastError?.message}`);
+    // Merge results
+    console.log(`[ODJ] Merging ${allMappedResults.length} raw results...`);
+
+    // Map by ODJ Item ID to merge content
+    const mergedMap = new Map<string, any>();
+
+    // First initialize map with all ODJ items to ensure we track what we have
+    config.meeting.agendaItems?.forEach(item => {
+        mergedMap.set(item.id, {
+            odjItemId: item.id,
+            odjTitle: item.title,
+            odjOrder: item.order,
+            transcriptSegments: [],
+            speakers: new Set<string>(),
+            confidence: 0,
+            count: 0
+        });
+    });
+
+    // Merge AI results
+    allMappedResults.forEach(item => {
+        // Find matching ODJ item
+        const odjItem = config.meeting.agendaItems?.find(
+            a => a.id === item.odjItemId || a.title === item.odjTitle
+        );
+
+        const targetId = odjItem?.id || item.odjItemId;
+
+        if (!mergedMap.has(targetId)) {
+            // New item detected (should restrict to known items, but keep for robustness)
+            if (targetId) {
+                mergedMap.set(targetId, {
+                    odjItemId: targetId,
+                    odjTitle: item.odjTitle || odjItem?.title || 'Inconnu',
+                    odjOrder: item.odjOrder || odjItem?.order || 999,
+                    transcriptSegments: [],
+                    speakers: new Set<string>(),
+                    confidence: 0,
+                    count: 0
+                });
+            } else {
+                return; // Skip invalid items
+            }
+        }
+
+        const entry = mergedMap.get(targetId);
+
+        // Add segments
+        const segments = Array.isArray(item.transcriptSegments) ? item.transcriptSegments : [item.transcriptSegment || item.segment || ''];
+        segments.forEach((s: string) => {
+            if (s && typeof s === 'string' && s.length > 10) {
+                // Check if already exists (deduplication)
+                if (!entry.transcriptSegments.includes(s)) {
+                    entry.transcriptSegments.push(s);
+                }
+            }
+        });
+
+        // Add speakers
+        const speakers = Array.isArray(item.speakers) ? item.speakers : [];
+        speakers.forEach((s: string) => entry.speakers.add(s));
+
+        // Update confidence (average)
+        const conf = typeof item.confidence === 'number' ? item.confidence : 0.5;
+        // Weighted average based on number of merges? Or just max? Max is safer for detection.
+        entry.confidence = Math.max(entry.confidence, conf);
+        entry.count++;
+    });
+
+    // Convert back to array
+    const mappedItems = Array.from(mergedMap.values())
+        .filter(entry => entry.transcriptSegments.length > 0) // Only keep items with content
+        .map(entry => ({
+            odjItemId: entry.odjItemId,
+            odjTitle: entry.odjTitle,
+            odjOrder: entry.odjOrder,
+            transcriptSegments: entry.transcriptSegments,
+            speakers: Array.from(entry.speakers) as string[],
+            confidence: entry.confidence
+        }))
+        .sort((a, b) => a.odjOrder - b.odjOrder);
+
+    const odjCount = config.meeting.agendaItems?.length || 0;
+    const coveragePercent = odjCount > 0
+        ? (mappedItems.length / odjCount) * 100
+        : 100;
+
+    console.log(`[ODJ] Final merge: ${mappedItems.length}/${odjCount} items mapped (${coveragePercent.toFixed(1)}%)`);
+
+    return {
+        mappedItems,
+        unmappedSegments: allUnmappedSegments,
+        coveragePercent
+    };
 };
 
 // ============================================================================
