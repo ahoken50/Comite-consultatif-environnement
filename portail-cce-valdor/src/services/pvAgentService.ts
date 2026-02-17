@@ -492,8 +492,7 @@ export const runODJAnalysisStep = async (
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
         const { text: rawResult } = await generateText({
             model: groq('qwen/qwen3-32b'),
-            // Prepend /no_think to prevent qwen3 from using thinking tokens
-            prompt: `/no_think\n${prompt}`,
+            prompt,
             temperature: attempt === 1 ? 0.3 : 0.1, // Lower temp on retry
             maxTokens: 16000,
         } as any);
@@ -516,7 +515,9 @@ export const runODJAnalysisStep = async (
             } catch {
                 // If direct parse fails, try repairing the JSON
                 console.warn(`[ODJ] JSON parse failed on attempt ${attempt}, trying repair...`);
+                console.log(`[ODJ] Cleaned output start:`, cleaned.substring(0, 1000));
                 const repaired = repairJSON(cleaned);
+                console.log(`[ODJ] Repaired JSON:`, repaired.substring(0, 1000));
                 parsed = JSON.parse(repaired);
                 console.log('[ODJ] JSON repair successful!');
             }
@@ -580,8 +581,7 @@ export const runClassificationStep = async (
         try {
             const { text: rawResult } = await generateText({
                 model: groq('qwen/qwen3-32b'),
-                // Prepend /no_think to prevent qwen3 from using thinking tokens
-                prompt: `/no_think\n${prompt}`,
+                prompt,
                 temperature: attempt === 1 ? 0.3 : 0.1, // Lower temp on retry
                 maxTokens: 16000,
             } as any);
