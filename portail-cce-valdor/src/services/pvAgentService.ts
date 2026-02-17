@@ -353,15 +353,9 @@ export const runCleaningStep = async (
 ): Promise<CleaningResult> => {
     let text = transcription.text;
 
-    // Prefer reconstructing text from segments if available (contains user edits/speaker changes)
-    const txAny = transcription as any;
-    if (txAny.segments && txAny.segments.length > 0) {
-        console.log('[Cleaning] Reconstructing text from segments to respect user edits...');
-        text = txAny.segments.map((seg: any) => {
-            const speaker = seg.speaker || 'Inconnu';
-            return `${speaker} : ${seg.text}`;
-        }).join('\n\n');
-    }
+    // [REMOVED] Do NOT reconstruct from segments — they are often stale (original diarization)
+    // while transcription.text contains user edits (e.g. [Real Name]).
+    // Trust the text string as the source of truth.
 
     let removedDuplicates = 0;
     let mergedSegments = 0;
