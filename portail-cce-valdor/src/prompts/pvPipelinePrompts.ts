@@ -52,6 +52,7 @@ RÈGLES STRICTES:
 - Respecte l'ordre chronologique de la discussion
 - Ne déduis JAMAIS un contenu qui n'est pas explicitement dans la transcription
 - Le champ "transcriptSegments" doit contenir des RÉSUMÉS FIDÈLES, pas des citations brutes
+- La clé racine DOIT être "mappedItems" (pas "mappedMap" ou autre)
 
 FORMAT JSON ATTENDU:
 {

@@ -523,7 +523,10 @@ export const runODJAnalysisStep = async (
             }
 
             // Validate and enrich with actual ODJ item IDs
-            const mappedItems = (parsed.mappedItems || []).map((item: any) => {
+            // Handle common hallucinations: mappedMap, items, agendaItems
+            const rawItems = parsed.mappedItems || parsed.mappedMap || parsed.items || parsed.agendaItems || [];
+
+            const mappedItems = Array.isArray(rawItems) ? rawItems.map((item: any) => {
                 const odjItem = config.meeting.agendaItems?.find(
                     a => a.id === item.odjItemId || a.title === item.odjTitle
                 );
@@ -533,11 +536,11 @@ export const runODJAnalysisStep = async (
                     odjOrder: item.odjOrder || odjItem?.order || 0,
                     transcriptSegments: Array.isArray(item.transcriptSegments)
                         ? item.transcriptSegments
-                        : [item.transcriptSegment || ''],
+                        : [item.transcriptSegment || item.segment || ''],
                     speakers: item.speakers || [],
                     confidence: item.confidence || 0.5,
                 };
-            });
+            }) : [];
 
             const odjCount = config.meeting.agendaItems?.length || 0;
             const coveragePercent = odjCount > 0
