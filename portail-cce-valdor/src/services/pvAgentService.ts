@@ -352,6 +352,17 @@ export const runCleaningStep = async (
     identification: IdentificationResult
 ): Promise<CleaningResult> => {
     let text = transcription.text;
+
+    // Prefer reconstructing text from segments if available (contains user edits/speaker changes)
+    const txAny = transcription as any;
+    if (txAny.segments && txAny.segments.length > 0) {
+        console.log('[Cleaning] Reconstructing text from segments to respect user edits...');
+        text = txAny.segments.map((seg: any) => {
+            const speaker = seg.speaker || 'Inconnu';
+            return `${speaker} : ${seg.text}`;
+        }).join('\n\n');
+    }
+
     let removedDuplicates = 0;
     let mergedSegments = 0;
     const hallucinations: string[] = [];
@@ -523,8 +534,8 @@ export const runODJAnalysisStep = async (
             }
 
             // Validate and enrich with actual ODJ item IDs
-            // Handle common hallucinations: mappedMap, items, agendaItems
-            const rawItems = parsed.mappedItems || parsed.mappedMap || parsed.items || parsed.agendaItems || [];
+            // Handle common hallucinations: mappedMap, items, agendaItems, mappedItem
+            const rawItems = parsed.mappedItems || parsed.mappedMap || parsed.items || parsed.agendaItems || parsed.mappedItem || [];
 
             const mappedItems = Array.isArray(rawItems) ? rawItems.map((item: any) => {
                 const odjItem = config.meeting.agendaItems?.find(
