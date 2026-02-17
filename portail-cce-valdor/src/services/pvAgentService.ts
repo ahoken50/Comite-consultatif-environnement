@@ -424,6 +424,53 @@ export const runCleaningStep = async (
 // Step 4: ANALYSE ODJ — Map discussions → ODJ items
 // ============================================================================
 
+/**
+ * Attempt to repair malformed JSON from LLM output.
+ * Fixes: trailing commas, unclosed brackets/braces, truncated strings.
+ */
+const repairJSON = (raw: string): string => {
+    let s = raw.trim();
+
+    // Remove trailing commas before ] or }
+    s = s.replace(/,\s*([\]}])/g, '$1');
+
+    // If the string ends abruptly mid-value, try to close it
+    // Remove any trailing incomplete key-value pair (e.g. `"key": "val`)
+    // by finding the last complete value
+    let openBraces = 0;
+    let openBrackets = 0;
+    for (const ch of s) {
+        if (ch === '{') openBraces++;
+        if (ch === '}') openBraces--;
+        if (ch === '[') openBrackets++;
+        if (ch === ']') openBrackets--;
+    }
+
+    // If we have unclosed strings (odd number of unescaped quotes after last complete token),
+    // try to close the last string
+    const lastQuoteIdx = s.lastIndexOf('"');
+    if (lastQuoteIdx > 0) {
+        // Count unescaped quotes
+        let quoteCount = 0;
+        for (let i = 0; i < s.length; i++) {
+            if (s[i] === '"' && (i === 0 || s[i - 1] !== '\\')) quoteCount++;
+        }
+        if (quoteCount % 2 !== 0) {
+            // Odd quotes — close the dangling string
+            s += '"';
+        }
+    }
+
+    // Close unclosed brackets and braces
+    for (let i = 0; i < openBrackets; i++) s += ']';
+    for (let i = 0; i < openBraces; i++) s += '}';
+
+    // Final cleanup: remove trailing commas again after our additions
+    s = s.replace(/,\s*([\]}])/g, '$1');
+
+    return s;
+};
+
 export const runODJAnalysisStep = async (
     config: AgentConfig,
     cleaning: CleaningResult
@@ -435,56 +482,75 @@ export const runODJAnalysisStep = async (
         cleaning.cleanedText,
     );
 
-    const { text: rawResult } = await generateText({
-        model: groq('qwen/qwen3-32b'),
-        prompt,
-        temperature: 0.3,
-    });
+    // Retry up to 2 times if JSON parsing fails
+    const maxAttempts = 2;
+    let lastError: Error | null = null;
 
-    try {
-        // Clean response (remove <think> block and code fences)
-        let cleaned = rawResult.replace(/<think>[\s\S]*?<\/think>/g, '');
-        cleaned = cleaned.replace(/```(?:json)?/g, '').replace(/```/g, '');
-
-        const start = cleaned.indexOf('{');
-        const end = cleaned.lastIndexOf('}');
-        if (start !== -1 && end !== -1 && end > start) {
-            cleaned = cleaned.substring(start, end + 1);
-        }
-
-        const parsed = JSON.parse(cleaned);
-
-        // Validate and enrich with actual ODJ item IDs
-        const mappedItems = (parsed.mappedItems || []).map((item: any) => {
-            const odjItem = config.meeting.agendaItems?.find(
-                a => a.id === item.odjItemId || a.title === item.odjTitle
-            );
-            return {
-                odjItemId: odjItem?.id || item.odjItemId || `odj-unknown`,
-                odjTitle: item.odjTitle || odjItem?.title || 'Sans titre',
-                odjOrder: item.odjOrder || odjItem?.order || 0,
-                transcriptSegments: Array.isArray(item.transcriptSegments)
-                    ? item.transcriptSegments
-                    : [item.transcriptSegment || ''],
-                speakers: item.speakers || [],
-                confidence: item.confidence || 0.5,
-            };
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        const { text: rawResult } = await generateText({
+            model: groq('qwen/qwen3-32b'),
+            prompt,
+            temperature: attempt === 1 ? 0.3 : 0.1, // Lower temp on retry
         });
 
-        const odjCount = config.meeting.agendaItems?.length || 0;
-        const coveragePercent = odjCount > 0
-            ? (mappedItems.length / odjCount) * 100
-            : 100;
+        try {
+            // Clean response (remove <think> block and code fences)
+            let cleaned = rawResult.replace(/<think>[\s\S]*?<\/think>/g, '');
+            cleaned = cleaned.replace(/```(?:json)?/g, '').replace(/```/g, '');
 
-        return {
-            mappedItems,
-            unmappedSegments: parsed.unmappedSegments || [],
-            coveragePercent: parsed.coveragePercent || coveragePercent,
-        };
-    } catch (e) {
-        console.error('Failed to parse ODJ analysis result:', e);
-        throw new Error('Échec de l\'analyse de structure ODJ');
+            const start = cleaned.indexOf('{');
+            const end = cleaned.lastIndexOf('}');
+            if (start !== -1 && end !== -1 && end > start) {
+                cleaned = cleaned.substring(start, end + 1);
+            }
+
+            // Try direct parse first
+            let parsed: any;
+            try {
+                parsed = JSON.parse(cleaned);
+            } catch {
+                // If direct parse fails, try repairing the JSON
+                console.warn(`[ODJ] JSON parse failed on attempt ${attempt}, trying repair...`);
+                const repaired = repairJSON(cleaned);
+                parsed = JSON.parse(repaired);
+                console.log('[ODJ] JSON repair successful!');
+            }
+
+            // Validate and enrich with actual ODJ item IDs
+            const mappedItems = (parsed.mappedItems || []).map((item: any) => {
+                const odjItem = config.meeting.agendaItems?.find(
+                    a => a.id === item.odjItemId || a.title === item.odjTitle
+                );
+                return {
+                    odjItemId: odjItem?.id || item.odjItemId || `odj-unknown`,
+                    odjTitle: item.odjTitle || odjItem?.title || 'Sans titre',
+                    odjOrder: item.odjOrder || odjItem?.order || 0,
+                    transcriptSegments: Array.isArray(item.transcriptSegments)
+                        ? item.transcriptSegments
+                        : [item.transcriptSegment || ''],
+                    speakers: item.speakers || [],
+                    confidence: item.confidence || 0.5,
+                };
+            });
+
+            const odjCount = config.meeting.agendaItems?.length || 0;
+            const coveragePercent = odjCount > 0
+                ? (mappedItems.length / odjCount) * 100
+                : 100;
+
+            return {
+                mappedItems,
+                unmappedSegments: parsed.unmappedSegments || [],
+                coveragePercent: parsed.coveragePercent || coveragePercent,
+            };
+        } catch (e) {
+            console.error(`[ODJ] Parse failed on attempt ${attempt}/${maxAttempts}:`, e);
+            console.error('[ODJ] Raw response (first 500 chars):', rawResult.substring(0, 500));
+            lastError = e as Error;
+        }
     }
+
+    throw new Error(`Échec de l'analyse ODJ après ${maxAttempts} tentatives: ${lastError?.message}`);
 };
 
 // ============================================================================
