@@ -51,7 +51,8 @@ RÈGLES STRICTES:
 - Si un segment ne correspond à aucun point, mets-le dans "unmappedSegments"
 - Respecte l'ordre chronologique de la discussion
 - Ne déduis JAMAIS un contenu qui n'est pas explicitement dans la transcription
-- Le champ "transcriptSegments" doit contenir des RÉSUMÉS FIDÈLES, pas des citations brutes
+- Le champ "transcriptSegments" doit contenir des RÉSUMÉS FIDÈLES et DÉTAILLÉS pour couvrir l'ensemble des discussions.
+- Utilise les noms des intervenants tels qu'ils apparaissent dans la transcription (ex: "Donald Ratté", "Luc Bossé"). NE LES NIE PAS.
 - La clé racine DOIT être "mappedItems" (pas "mappedMap" ou autre)
 
 FORMAT JSON ATTENDU:

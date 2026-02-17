@@ -383,12 +383,12 @@ export const runCleaningStep = async (
     // 2. Apply speaker mapping (replace labels with real names)
     // Only remap generic labels like "Speaker 1", "Locuteur A" — NOT already-named speakers
     for (const [label, name] of Object.entries(identification.speakerMapping)) {
-        // Skip if the label is already a real name (contains letters and spaces, not a generic label)
-        const isGenericLabel = /^(Speaker|Locuteur|Intervenant)\s*(\d+|[A-Z])$/i.test(label.trim());
-        if (!isGenericLabel) continue;
+        // Trust user mapping for any label (even if it looks like a real name, user might be correcting a typo)
+        if (!label || !name || label === name) continue;
 
         const escapedLabel = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        const regex = new RegExp(`\\[?${escapedLabel}\\]?\\s*:`, 'gi');
+        // Match label optionally in brackets, optionally followed by (timestamp), then colon
+        const regex = new RegExp(`\\[?${escapedLabel}\\]?(?:\\s*\\(.*?\\))?\\s*:`, 'gi');
         text = text.replace(regex, `${name} :`);
         mergedSegments++;
     }
@@ -494,7 +494,7 @@ export const runODJAnalysisStep = async (
             model: groq('qwen/qwen3-32b'),
             prompt,
             temperature: attempt === 1 ? 0.3 : 0.1, // Lower temp on retry
-            maxTokens: 16000,
+            maxTokens: 60000,
         } as any);
 
         try {
@@ -586,7 +586,7 @@ export const runClassificationStep = async (
                 model: groq('qwen/qwen3-32b'),
                 prompt,
                 temperature: attempt === 1 ? 0.3 : 0.1, // Lower temp on retry
-                maxTokens: 16000,
+                maxTokens: 60000,
             } as any);
 
             // Clean response
