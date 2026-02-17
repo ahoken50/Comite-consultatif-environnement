@@ -482,6 +482,9 @@ export const runODJAnalysisStep = async (
         cleaning.cleanedText,
     );
 
+    console.log(`[ODJ] Starting analysis — agendaItems: ${config.meeting.agendaItems?.length ?? 0}, transcription length: ${cleaning.cleanedText.length} chars`);
+    console.log(`[ODJ] Agenda items:`, config.meeting.agendaItems?.map(a => `${a.id}: ${a.title}`));
+
     // Retry up to 2 times if JSON parsing fails
     const maxAttempts = 2;
     let lastError: Error | null = null;
@@ -489,9 +492,11 @@ export const runODJAnalysisStep = async (
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
         const { text: rawResult } = await generateText({
             model: groq('qwen/qwen3-32b'),
-            prompt,
+            // Prepend /no_think to prevent qwen3 from using thinking tokens
+            prompt: `/no_think\n${prompt}`,
             temperature: attempt === 1 ? 0.3 : 0.1, // Lower temp on retry
-        });
+            maxTokens: 16000,
+        } as any);
 
         try {
             // Clean response (remove <think> block and code fences)
@@ -538,6 +543,9 @@ export const runODJAnalysisStep = async (
                 ? (mappedItems.length / odjCount) * 100
                 : 100;
 
+            console.log(`[ODJ] Analysis complete: ${mappedItems.length} items mapped, coverage: ${parsed.coveragePercent}%`);
+            console.log(`[ODJ] Mapped items:`, mappedItems.map((i: any) => `${i.odjItemId} (${i.confidence})`));
+
             return {
                 mappedItems,
                 unmappedSegments: parsed.unmappedSegments || [],
@@ -565,33 +573,49 @@ export const runClassificationStep = async (
 
     const prompt = getClassificationPrompt(config.meeting, odjAnalysis);
 
-    const { text: rawResult } = await generateText({
-        model: groq('qwen/qwen3-32b'),
-        prompt,
-        temperature: 0.3,
-    });
+    // Retry logic for classification too
+    const maxAttempts = 2;
 
-    try {
-        let cleaned = rawResult.replace(/<think>[\s\S]*?<\/think>/g, '');
-        cleaned = cleaned.replace(/```(?:json)?/g, '').replace(/```/g, '');
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        try {
+            const { text: rawResult } = await generateText({
+                model: groq('qwen/qwen3-32b'),
+                // Prepend /no_think to prevent qwen3 from using thinking tokens
+                prompt: `/no_think\n${prompt}`,
+                temperature: attempt === 1 ? 0.3 : 0.1, // Lower temp on retry
+                maxTokens: 16000,
+            } as any);
 
-        const start = cleaned.indexOf('{');
-        const end = cleaned.lastIndexOf('}');
-        if (start !== -1 && end !== -1 && end > start) {
-            cleaned = cleaned.substring(start, end + 1);
+            // Clean response
+            let cleaned = rawResult.replace(/<think>[\s\S]*?<\/think>/g, '');
+            cleaned = cleaned.replace(/```(?:json)?/g, '').replace(/```/g, '');
+
+            const start = cleaned.indexOf('{');
+            const end = cleaned.lastIndexOf('}');
+            if (start !== -1 && end !== -1 && end > start) {
+                cleaned = cleaned.substring(start, end + 1);
+            }
+
+            let parsed: any;
+            try {
+                parsed = JSON.parse(cleaned);
+            } catch {
+                console.warn(`[Classif] JSON parse failed on attempt ${attempt}, repairing...`);
+                parsed = JSON.parse(repairJSON(cleaned));
+            }
+
+            return {
+                items: parsed.items || [],
+                globalThemes: parsed.globalThemes || [],
+                globalSentiment: parsed.globalSentiment || 'neutral',
+            };
+        } catch (e) {
+            console.error(`[Classif] Failed attempt ${attempt}:`, e);
+            if (attempt === maxAttempts) throw e;
         }
-
-        const parsed = JSON.parse(cleaned);
-
-        return {
-            items: parsed.items || [],
-            globalThemes: parsed.globalThemes || [],
-            globalSentiment: parsed.globalSentiment || 'neutral',
-        };
-    } catch (e) {
-        console.error('Failed to parse classification result:', e);
-        throw new Error('Échec de la classification thématique');
     }
+
+    throw new Error("Classification failed after retries");
 };
 
 // ============================================================================
