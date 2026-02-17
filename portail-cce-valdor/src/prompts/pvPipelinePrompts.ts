@@ -37,7 +37,7 @@ ${odjList}
 ${speakerInfo}
 
 TRANSCRIPTION NETTOYÉE:
-${cleanedTranscription.substring(0, 400000)}
+${cleanedTranscription.substring(0, 800000)}
 
 TÂCHE:
 Associe chaque segment de la transcription à un point de l'ordre du jour.
@@ -243,7 +243,7 @@ ${classificationContext}
 ${analysisContext}
 
 ## TRANSCRIPTION COMPLÈTE (SOURCE DE VÉRITÉ)
-${cleanedTranscription.substring(0, 400000)}
+${cleanedTranscription.substring(0, 800000)}
 
 ## MISSION
 Génère le Procès-Verbal officiel complet en respectant STRICTEMENT :
