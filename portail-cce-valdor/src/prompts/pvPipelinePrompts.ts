@@ -45,7 +45,8 @@ Réponds UNIQUEMENT avec le JSON.`;
 export const getODJMappingPrompt = (
   meeting: Meeting,
   extractedTopics: any[],
-  _speakerMapping?: Record<string, string>
+  _speakerMapping?: Record<string, string>,
+  maxDescriptionChars: number = 5000
 ): string => {
   const odjList = meeting.agendaItems?.map((item, i) =>
     `${i + 1}. [ID: ${item.id}] ${item.title}${item.objective ? ` [Objectif: ${item.objective}]` : ''}`
@@ -56,7 +57,7 @@ export const getODJMappingPrompt = (
     const speakers = Array.isArray(t.speakers) ? t.speakers : (typeof t.speakers === 'string' ? [t.speakers] : []);
 
     return `SUJET #${i + 1}: ${t.title || 'Sans titre'}
-     RESUMÉ: ${(t.description || '').substring(0, 7000)}
+     RESUMÉ: ${(t.description || '').substring(0, maxDescriptionChars)}
      INTERVENANTS: ${speakers.join(', ')}`;
   }).join('\n\n');
 

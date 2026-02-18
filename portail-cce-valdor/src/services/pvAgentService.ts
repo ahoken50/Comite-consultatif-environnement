@@ -564,9 +564,16 @@ export const runODJAnalysisStep = async (
     // --- PASS 2: MAPPING TO ODJ ---
     console.log(`[ODJ] PASS 2: Mapping ${allTopics.length} topics to Agenda...`);
 
+    // Limit to ~50k total characters for topics context
+    const MAX_TOTAL_CONTEXT = 50000;
+    const maxCharsPerTopic = allTopics.length > 0
+        ? Math.floor(MAX_TOTAL_CONTEXT / allTopics.length)
+        : 7000;
+    const finalLimit = Math.max(500, Math.min(7000, maxCharsPerTopic));
+
     let mappingPrompt = '';
     try {
-        mappingPrompt = getODJMappingPrompt(config.meeting, allTopics);
+        mappingPrompt = getODJMappingPrompt(config.meeting, allTopics, undefined, finalLimit);
     } catch (error: any) {
         console.error("[ODJ] Failed to generate mapping prompt:", error);
         return { mappedItems: [], unmappedSegments: [], coveragePercent: 0 };
@@ -625,10 +632,23 @@ export const runODJAnalysisStep = async (
     // Merge AI results
     const rawMappedItems = mappingResult.mappedItems || [];
     rawMappedItems.forEach((item: any) => {
-        // Find matching ODJ item
-        const odjItem = config.meeting.agendaItems?.find(
+        // 1. Direct match (ID or Exact Title)
+        let odjItem = config.meeting.agendaItems?.find(
             a => a.id === item.odjItemId || a.title === item.odjTitle
         );
+
+        // 2. Fuzzy match fallback
+        if (!odjItem && item.odjTitle && config.meeting.agendaItems) {
+            const clean = (s: string) => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+            const target = clean(item.odjTitle);
+
+            if (target.length > 4) { // Avoid short noise
+                odjItem = config.meeting.agendaItems.find(a => {
+                    const candidate = clean(a.title);
+                    return candidate.includes(target) || target.includes(candidate);
+                });
+            }
+        }
 
         const targetId = odjItem?.id || item.odjItemId;
 
