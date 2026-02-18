@@ -478,7 +478,38 @@ const repairJSON = (raw: string): string => {
 };
 
 // Helper: Extract textual anchors matching ODJ items with Confidence Levels
-const extractODJAnchors = (cleanedText: string, agendaItems: any[]): Map<string, { sentences: string[], confidence: 'exact' | 'strong' | 'weak' }> => {
+// ============================================================================
+// PROCEDURAL PATTERNS for standard meeting items
+// ============================================================================
+const PROCEDURAL_PATTERNS = [
+    {
+        keywords: ['adoption', 'ordre du jour', 'odj', 'adopter', 'ordre', 'jour'],
+        aliases: ['Adoption de l\'ordre du jour', 'Adoption ODJ'],
+        type: 'adoption_odj'
+    },
+    {
+        keywords: ['bienvenue', 'ouverture', 'mot d\'ouverture', 'accueil', 'début'],
+        aliases: ['Mot de bienvenue', 'Ouverture de la séance', 'Accueil'],
+        type: 'opening'
+    },
+    {
+        keywords: ['levée', 'clôture', 'ajournement', 'fin de la séance', 'termine'],
+        aliases: ['Levée de l\'assemblée', 'Clôture', 'Ajournement'],
+        type: 'closing'
+    },
+    {
+        keywords: ['approbation', 'procès-verbal', 'adoption', 'pv', 'précédent'],
+        aliases: ['Approbation du procès-verbal', 'Adoption du PV précédent'],
+        type: 'pv_approval'
+    },
+    {
+        keywords: ['varia', 'divers', 'autres sujets', 'questions diverses'],
+        aliases: ['Varia', 'Divers', 'Questions diverses'],
+        type: 'varia'
+    }
+];
+
+const extractODJAnchors = (cleanedText: string, agendaItems: any[]): Map<string, { sentences: string[], confidence: 'exact' | 'strong' | 'weak' | 'procedural' }> => {
     const anchors = new Map();
     const textLower = cleanedText.toLowerCase();
 
@@ -489,6 +520,45 @@ const extractODJAnchors = (cleanedText: string, agendaItems: any[]): Map<string,
     agendaItems.forEach(item => {
         const titleLower = item.title.toLowerCase();
         const titleNorm = normalize(titleLower);
+
+        // ========== PROCEDURAL DETECTION (PRIORITY) ==========
+        for (const pattern of PROCEDURAL_PATTERNS) {
+            // Check if item title matches a procedural pattern
+            const matchesPattern = pattern.keywords.some(kw => {
+                const regex = new RegExp(kw, 'i');
+                return regex.test(titleLower);
+            }) || pattern.aliases.some(alias =>
+                titleLower.includes(alias.toLowerCase()) || alias.toLowerCase().includes(titleLower)
+            );
+
+            if (matchesPattern) {
+                // Search for procedural phrases in text
+                const proceduralSentences: string[] = [];
+                const sentences = cleanedText.split(/(?<=[.!?])\s+/);
+
+                sentences.forEach(sentence => {
+                    const sentLower = sentence.toLowerCase();
+                    // More lenient matching for procedural items
+                    const matches = pattern.keywords.some(kw => {
+                        const regex = new RegExp(kw, 'i');
+                        return regex.test(sentLower);
+                    });
+
+                    if (matches && sentence.trim().length < 300) {
+                        proceduralSentences.push(sentence.trim());
+                    }
+                });
+
+                if (proceduralSentences.length > 0) {
+                    anchors.set(item.id, {
+                        sentences: proceduralSentences.slice(0, 3),
+                        confidence: 'procedural'
+                    });
+                    console.log(`[Anchor] PROCEDURAL match for "${item.title}" (${pattern.type})`);
+                    return; // Skip other detection methods
+                }
+            }
+        }
 
         // Level 1: EXACT - Titre complet présent
         if (textNorm.includes(titleNorm)) {
@@ -860,7 +930,10 @@ export const runODJAnalysisStep = async (
                     });
 
                     // Boost confidence
-                    const anchorConf = data.confidence === 'exact' ? 0.9 : data.confidence === 'strong' ? 0.75 : 0.6;
+                    const anchorConf =
+                        data.confidence === 'exact' ? 0.95 :
+                            data.confidence === 'procedural' ? 0.9 :
+                                data.confidence === 'strong' ? 0.75 : 0.6;
                     entry.confidence = Math.max(entry.confidence, anchorConf);
                     entry.count = Math.max(entry.count, 1);
                 }

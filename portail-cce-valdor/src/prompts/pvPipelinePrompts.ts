@@ -47,7 +47,7 @@ export const getODJMappingPrompt = (
   extractedTopics: any[],
   _speakerMapping?: Record<string, string>,
   maxDescriptionChars: number = 5000,
-  anchors?: Map<string, { sentences: string[], confidence: 'exact' | 'strong' | 'weak' }>
+  anchors?: Map<string, { sentences: string[], confidence: 'exact' | 'strong' | 'weak' | 'procedural' }>
 ): string => {
   const odjList = meeting.agendaItems?.map((item, i) =>
     `${i + 1}. [ID: ${item.id}] ${item.title}${item.objective ? ` [Objectif: ${item.objective}]` : ''}`
@@ -59,7 +59,10 @@ export const getODJMappingPrompt = (
     anchors.forEach((data, itemId) => {
       const item = meeting.agendaItems?.find((a: any) => a.id === itemId);
       if (item) {
-        const emoji = data.confidence === 'exact' ? '✅' : data.confidence === 'strong' ? '🟢' : '🟡';
+        const emoji =
+          data.confidence === 'exact' ? '✅' :
+            data.confidence === 'procedural' ? '📋' :
+              data.confidence === 'strong' ? '🟢' : '🟡';
         anchorsContext += `\n${emoji} **[Item ${item.id}] ${item.title}** (Confiance: ${data.confidence}) :\n`;
         data.sentences.forEach(s => anchorsContext += `  - "${s}"\n`);
       }
