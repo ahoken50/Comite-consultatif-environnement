@@ -477,10 +477,86 @@ const repairJSON = (raw: string): string => {
     return s;
 };
 
-// Helper: Extract textual anchors matching ODJ items
-const extractODJAnchors = (cleanedText: string, agendaItems: any[]): Map<string, string[]> => {
-    const anchors = new Map<string, string[]>();
+// Helper: Extract textual anchors matching ODJ items with Confidence Levels
+const extractODJAnchors = (cleanedText: string, agendaItems: any[]): Map<string, { sentences: string[], confidence: 'exact' | 'strong' | 'weak' }> => {
+    const anchors = new Map();
+    const textLower = cleanedText.toLowerCase();
 
+    // Normalize accents for better matching
+    const normalize = (s: string) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    const textNorm = normalize(textLower);
+
+    agendaItems.forEach(item => {
+        const titleLower = item.title.toLowerCase();
+        const titleNorm = normalize(titleLower);
+
+        // Level 1: EXACT - Titre complet présent
+        if (textNorm.includes(titleNorm)) {
+            const sentences = cleanedText.split(/(?<=[.!?])\s+/).filter(s =>
+                normalize(s.toLowerCase()).includes(titleNorm)
+            );
+            if (sentences.length > 0) {
+                anchors.set(item.id, {
+                    sentences: sentences.slice(0, 5),
+                    confidence: 'exact'
+                });
+                return;
+            }
+        }
+
+        // Level 2: STRONG - Mots-clés principaux (40% minimum)
+        const keywords = titleLower
+            .split(/[\s\-,()]+/)
+            .map((w: string) => w.replace(/[^\wÀ-ÿ]/g, ''))
+            .filter((w: string) => w.length > 3)
+            .map(normalize);
+
+        if (keywords.length === 0) return;
+
+        const sentences = cleanedText.split(/(?<=[.!?])\s+/);
+        const matchingSentences: string[] = [];
+
+        sentences.forEach(sentence => {
+            const sentenceNorm = normalize(sentence.toLowerCase());
+            const matchCount = keywords.filter((kw: string) => sentenceNorm.includes(kw)).length;
+            const matchRatio = matchCount / keywords.length;
+
+            if (matchRatio >= 0.4) {
+                const trimmed = sentence.trim();
+                if (trimmed.length < 500) matchingSentences.push(trimmed);
+            }
+        });
+
+        if (matchingSentences.length > 0) {
+            anchors.set(item.id, {
+                sentences: matchingSentences.slice(0, 5),
+                confidence: 'strong'
+            });
+            return;
+        }
+
+        // Level 3: WEAK
+        const importantKeywords = keywords.filter((kw: string) => kw.length > 4);
+        if (importantKeywords.length < 2) return;
+
+        const weakMatches = sentences.filter(sentence => {
+            const sentenceNorm = normalize(sentence.toLowerCase());
+            const matches = importantKeywords.filter((kw: string) => sentenceNorm.includes(kw)).length;
+            return matches >= Math.min(2, importantKeywords.length);
+        });
+
+        if (weakMatches.length > 0) {
+            anchors.set(item.id, {
+                sentences: weakMatches.slice(0, 3),
+                confidence: 'weak'
+            });
+        }
+    });
+
+    return anchors;
+};
+
+/*
     agendaItems.forEach(item => {
         // Tokenize title into significant keywords
         const keywords = item.title.toLowerCase().split(/\s+/)
@@ -515,6 +591,7 @@ const extractODJAnchors = (cleanedText: string, agendaItems: any[]): Map<string,
 
     return anchors;
 };
+*/
 
 export const runODJAnalysisStep = async (
     config: AgentConfig,
@@ -753,6 +830,43 @@ export const runODJAnalysisStep = async (
         entry.confidence = Math.max(entry.confidence, conf);
         entry.count++;
     });
+
+    // -----------------------------------------------------------------------
+    // RETRY STRATEGY: Force Map using Anchors if coverage isn't perfect
+    // -----------------------------------------------------------------------
+    const currentMappedCount = Array.from(mergedMap.values()).filter(e =>
+        e.transcriptSegments.length > 0 && !e.transcriptSegments[0].startsWith('[')
+    ).length;
+    const totalItems = config.meeting.agendaItems?.length || 1;
+    const currentCoverage = (currentMappedCount / totalItems) * 100;
+
+    if (currentCoverage < 80 && odjAnchors.size > 0) {
+        console.log(`[ODJ] Coverage ${currentCoverage.toFixed(1)}% < 80%, checking for unused anchors...`);
+        odjAnchors.forEach((data, itemId) => {
+            const entry = mergedMap.get(itemId);
+            if (entry) {
+                // Check if it has "real" content
+                const hasRealContent = entry.transcriptSegments.some((s: string) => !s.startsWith('['));
+
+                if (!hasRealContent && data.sentences.length > 0) {
+                    console.log(`[ODJ] 🔄 Force-mapping item "${entry.odjTitle}" using ${data.sentences.length} anchors`);
+
+                    // Clear placeholders (like "[Aucune discussion]")
+                    entry.transcriptSegments = entry.transcriptSegments.filter((s: string) => !s.startsWith('['));
+
+                    // Add anchor sentences
+                    data.sentences.forEach(s => {
+                        if (!entry.transcriptSegments.includes(s)) entry.transcriptSegments.push(s);
+                    });
+
+                    // Boost confidence
+                    const anchorConf = data.confidence === 'exact' ? 0.9 : data.confidence === 'strong' ? 0.75 : 0.6;
+                    entry.confidence = Math.max(entry.confidence, anchorConf);
+                    entry.count = Math.max(entry.count, 1);
+                }
+            }
+        });
+    }
 
     // Convert back to array
     const mappedItems = Array.from(mergedMap.values())
