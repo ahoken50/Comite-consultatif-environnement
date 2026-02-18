@@ -803,9 +803,18 @@ export const runODJAnalysisStep = async (
         try {
             const { text: rawResult } = await generateText({
                 model: groq('qwen/qwen3-32b'), // Correct API ID for Qwen 3 32B on Groq
-                prompt: mappingPrompt + "\n\nRéponds UNIQUEMENT avec le JSON valide, sans texte avant/après.",
-                temperature: 0.2, // ⬅️ Plus déterministe = moins de parsing errors
-                maxTokens: 80000,
+                prompt: mappingPrompt + `
+
+⚠️ INSTRUCTIONS CRITIQUES :
+1. Tu DOIS mapper TOUS les items de l'ODJ (même si données limitées).
+2. Retourne un JSON COMPLET ET VALIDE (ferme tous les crochets/accolades).
+3. Si aucun topic ne correspond : {"odjItemId": "...", "status": "no_content", "topicIndices": [], "reason": "Aucune discussion trouvée"}.
+4. INTERDICTION de tronquer la réponse. Termine TOUJOURS avec ]} valide.
+
+/think`,
+                temperature: 0.4,           // ← Plus de créativité pour finir
+                maxTokens: 50000,           // ← Limite réduite = plus de pression
+                maxRetries: 3,              // ← Ajouter retry automatique
                 timeout: 180000, // ⬅️ 3 minutes max
             } as any);
 
@@ -830,6 +839,25 @@ export const runODJAnalysisStep = async (
             cleaned = cleaned.substring(start, end + 1);
             console.log(`[ODJ] Extracted JSON length: ${cleaned.length} chars`);
             console.log(`[ODJ] Extracted JSON sample:\n${cleaned.substring(0, 500)}`);
+
+            // BONUS: Validate Structure BEFORE Parse
+            const validateJSONStructure = (jsonStr: string): boolean => {
+                const opens = (jsonStr.match(/\[/g) || []).length;
+                const closes = (jsonStr.match(/\]/g) || []).length;
+                const openBraces = (jsonStr.match(/\{/g) || []).length;
+                const closeBraces = (jsonStr.match(/\}/g) || []).length;
+
+                if (opens !== closes || openBraces !== closeBraces) {
+                    console.error(`[ODJ] ⚠️ JSON déséquilibré: ${opens} [ vs ${closes} ], ${openBraces} { vs ${closeBraces} }`);
+                    return false;
+                }
+                return true;
+            };
+
+            if (!validateJSONStructure(cleaned)) {
+                console.log('[ODJ] Tentative de réparation automatique (Brutal Close)...');
+                cleaned = cleaned + ']}';
+            }
 
             try {
                 mappingResult = JSON.parse(cleaned);
