@@ -805,24 +805,27 @@ export const runODJAnalysisStep = async (
             console.log(`[ODJ] 🔍 Prompt ends with: ${mappingPrompt.slice(-200)}`);
 
             const { text: rawResult } = await generateText({
-                model: groq('qwen/qwen3-32b'), // Correct API ID for Qwen 3 32B on Groq
+                model: groq('llama-3.3-70b-versatile'), // Switch to Llama 3.3 for better instruction following
                 prompt: mappingPrompt + `
 
-⚠️ RÈGLES ABSOLUES :
-1. INTERDICTION d'utiliser <think> ou tout commentaire.
-2. Réponds UNIQUEMENT avec le JSON valide (commence direct par {"mappedItems": [...]).
-3. Tu DOIS mapper les 15 items de l'ODJ (même avec "status": "no_content" si aucune discussion).
-4. Si tu ne trouves RIEN pour un item : {"odjItemId": "...", "status": "no_content", "topicIndices": [], "reason": "Pas discuté"}
-5. Termine TOUJOURS le JSON avec: ], "unmappedTopics": [] }
+⚠️ RÈGLES CRITIQUES :
+1. PAS de <think>, PAS de commentaire, JUSTE le JSON.
+2. Commence ta réponse directement par { "mappedItems": [
+3. Tu DOIS mapper les 15 items (même si "topicIndices": [] pour items non discutés).
+4. Format strict : {"mappedItems": [...15 objets...], "unmappedTopics": [...]}
+5. Ferme TOUJOURS le JSON complètement.
 
-FORMAT ATTENDU (ne rajoute RIEN avant ni après) :
-{
-  "mappedItems": [ ... 15 objets ... ],
-  "unmappedTopics": []
-}`,
-                temperature: 0.2,
-                maxTokens: 80000,
-                maxRetries: 3,
+🎯 CONSIGNES DE MAPPING :
+- Si un sujet parle de "règlement" → mapper à item #4 (Règlementation arbres)
+- Si un sujet parle de "balayures" ou "rue" → mapper à item #6 (Gestion balayures)
+- Si un sujet parle de "politique environnementale" → mapper à item #7
+- Si un sujet parle de "OASIS" → mapper à item #8
+- Si un sujet parle de "Varia" ou "questions diverses" → mapper à item #13
+
+NE PAS mettre "topicIndices": [] SAUF si l'item est vraiment absent de la transcription.`,
+                temperature: 0.3,           // ← Plus bas pour plus de précision
+                maxTokens: 100000,          // ← Plus haut pour Llama
+                maxRetries: 2,
                 timeout: 180000,
             } as any);
 
@@ -831,8 +834,11 @@ FORMAT ATTENDU (ne rajoute RIEN avant ni après) :
             console.log(`[ODJ] Raw response sample (first 500 chars):\n${rawResult.substring(0, 500)}`);
             console.log(`[ODJ] Raw response sample (last 500 chars):\n${rawResult.substring(Math.max(0, rawResult.length - 500))}`);
 
-            let cleaned = rawResult.replace(/<think>[\s\S]*?(?:<\/think>|$)/g, '')
-                .replace(/```(?:json)?/g, '').replace(/```/g, '');
+            let cleaned = rawResult.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+            console.log(`[ODJ] After <think> removal: ${cleaned.length} chars`);
+
+            // Further clean markdown code blocks just in case
+            cleaned = cleaned.replace(/```(?:json)?/g, '').replace(/```/g, '');
 
             const start = cleaned.indexOf('{');
             const end = cleaned.lastIndexOf('}');

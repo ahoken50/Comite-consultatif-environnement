@@ -99,6 +99,15 @@ INSTRUCTIONS :
    - Indique-le explicitement via le champ "status".
    - Status possibles: "discussed", "skipped", "postponed", "unknown".
 
+🎯 CONSIGNES DE MAPPING :
+- Si un sujet parle de "règlement" → mapper à item #4 (Réglementation arbres)
+- Si un sujet parle de "balayures" ou "rue" → mapper à item #6 (Gestion balayures)
+- Si un sujet parle de "politique environnementale" → mapper à item #7
+- Si un sujet parle de "OASIS" → mapper à item #8
+- Si un sujet parle de "Varia" ou "questions diverses" → mapper à item #13
+
+NE PAS mettre "topicIndices": [] SAUF si l'item est vraiment absent de la transcription.
+
 FORMAT JSON ATTENDU :
 {
   "mappedItems": [
