@@ -805,17 +805,17 @@ export const runODJAnalysisStep = async (
                 model: groq('qwen/qwen3-32b'), // Correct API ID for Qwen 3 32B on Groq
                 prompt: mappingPrompt + `
 
-⚠️ INSTRUCTIONS CRITIQUES :
-1. Tu DOIS mapper TOUS les items de l'ODJ (même si données limitées).
-2. Retourne un JSON COMPLET ET VALIDE (ferme tous les crochets/accolades).
-3. Si aucun topic ne correspond : {"odjItemId": "...", "status": "no_content", "topicIndices": [], "reason": "Aucune discussion trouvée"}.
-4. INTERDICTION de tronquer la réponse. Termine TOUJOURS avec ]} valide.
+⚠️ RÈGLES ABSOLUES :
+1. INTERDICTION d'utiliser <think> ou tout commentaire.
+2. Réponds UNIQUEMENT avec le JSON valide (commence par { "mappedItems": [...]).
+3. Tu DOIS mapper les 15 items (même avec "status": "no_content" si rien trouvé).
+4. Termine TOUJOURS avec: ], "unmappedTopics": [] }
 
-/think`,
-                temperature: 0.4,           // ← Plus de créativité pour finir
-                maxTokens: 50000,           // ← Limite réduite = plus de pression
-                maxRetries: 3,              // ← Ajouter retry automatique
-                timeout: 180000, // ⬅️ 3 minutes max
+JSON UNIQUEMENT, PAS DE TEXTE AVANT/APRÈS.`,
+                temperature: 0.2,
+                maxTokens: 80000,
+                maxRetries: 3,
+                timeout: 180000,
             } as any);
 
             // ========== DEBUG: LOG RAW RESULT ==========
@@ -855,8 +855,24 @@ export const runODJAnalysisStep = async (
             };
 
             if (!validateJSONStructure(cleaned)) {
-                console.log('[ODJ] Tentative de réparation automatique (Brutal Close)...');
-                cleaned = cleaned + ']}';
+                console.log('[ODJ] Tentative de réparation automatique (Smart Close)...');
+
+                // Compter les items déjà parsés
+                const itemCount = (cleaned.match(/"odjItemId":/g) || []).length;
+                console.log(`[ODJ] 🔧 Réparation: ${itemCount} items détectés, manque ${15 - itemCount}`);
+
+                // Fermer l'item en cours
+                if (!cleaned.endsWith('}')) {
+                    cleaned += '}';
+                }
+                // Fermer le tableau mappedItems
+                if (!cleaned.endsWith(']')) {
+                    cleaned += ']';
+                }
+                // Ajouter unmappedTopics et fermer l'objet racine
+                cleaned += ', "unmappedTopics": [] }';
+
+                console.log(`[ODJ] 🔧 JSON réparé: ${cleaned.length} chars`);
             }
 
             try {
@@ -1092,6 +1108,19 @@ export const runODJAnalysisStep = async (
         : 100;
 
     console.log(`[ODJ] Final merge: ${mappedItems.length}/${odjCount} items mapped (${coveragePercent.toFixed(1)}%)`);
+
+    // Validation Post-Merge
+    if (config.meeting.agendaItems) {
+        const unmappedTitles = config.meeting.agendaItems
+            .filter(item => !mergedMap.has(item.id))
+            .map(item => item.title);
+
+        if (unmappedTitles.length > 0) {
+            console.error(`[ODJ] ❌ ${unmappedTitles.length} items NON MAPPÉS:`, unmappedTitles);
+        } else {
+            console.log('[ODJ] ✅ 100% des items mappés avec succès !');
+        }
+    }
 
     return {
         mappedItems,
