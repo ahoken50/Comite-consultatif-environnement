@@ -809,12 +809,27 @@ export const runODJAnalysisStep = async (
                 timeout: 180000, // ⬅️ 3 minutes max
             } as any);
 
+            // ========== DEBUG: LOG RAW RESULT ==========
+            console.log(`[ODJ] Raw LLM response length: ${rawResult.length} chars`);
+            console.log(`[ODJ] Raw response sample (first 500 chars):\n${rawResult.substring(0, 500)}`);
+            console.log(`[ODJ] Raw response sample (last 500 chars):\n${rawResult.substring(Math.max(0, rawResult.length - 500))}`);
+
             let cleaned = rawResult.replace(/<think>[\s\S]*?(?:<\/think>|$)/g, '')
                 .replace(/```(?:json)?/g, '').replace(/```/g, '');
 
             const start = cleaned.indexOf('{');
             const end = cleaned.lastIndexOf('}');
-            if (start !== -1 && end !== -1) cleaned = cleaned.substring(start, end + 1);
+
+            if (start === -1 || end === -1 || end <= start) {
+                console.error(`[ODJ] ❌ No valid JSON boundaries found!`);
+                console.error(`[ODJ] start=${start}, end=${end}`);
+                console.error(`[ODJ] Full cleaned text:\n${cleaned}`);
+                throw new Error("No JSON object found in LLM response");
+            }
+
+            cleaned = cleaned.substring(start, end + 1);
+            console.log(`[ODJ] Extracted JSON length: ${cleaned.length} chars`);
+            console.log(`[ODJ] Extracted JSON sample:\n${cleaned.substring(0, 500)}`);
 
             try {
                 mappingResult = JSON.parse(cleaned);
@@ -842,6 +857,52 @@ export const runODJAnalysisStep = async (
             console.error(`[ODJ] Mapping attempt ${attempt} failed:`, e.message || e);
             if (attempt === 2) console.error("Full error:", e);
         }
+    } // Fin de la boucle for retry
+
+    // ========== EMERGENCY FALLBACK SI AUCUN MAPPING ==========
+    if (!mappingResult || !mappingResult.mappedItems || mappingResult.mappedItems.length === 0) {
+        console.warn(`[ODJ] ⚠️ LLM returned no mappings! Using TOPICS as fallback...`);
+
+        // Stratégie de secours : Mapper les topics directement aux items ODJ par similarité de mots-clés
+        const emergencyMappings: any[] = [];
+
+        config.meeting.agendaItems?.forEach(odjItem => {
+            const odjKeywords = new Set(
+                odjItem.title.toLowerCase()
+                    .split(/[\s\-,()]+/)
+                    .filter((w: string) => w.length > 3)
+            );
+
+            // Trouve les topics qui matchent cet item ODJ
+            const matchingTopics: number[] = [];
+            allTopics.forEach((topic, idx) => {
+                const topicText = ((topic.title || '') + ' ' + (topic.description || '')).toLowerCase();
+                const matches = [...odjKeywords].filter(kw => topicText.includes(kw)).length;
+
+                if (matches >= Math.min(2, odjKeywords.size * 0.3)) {
+                    matchingTopics.push(idx + 1); // 1-based
+                }
+            });
+
+            if (matchingTopics.length > 0) {
+                emergencyMappings.push({
+                    odjItemId: odjItem.id,
+                    odjTitle: odjItem.title,
+                    odjOrder: odjItem.order,
+                    topicIndices: matchingTopics,
+                    status: 'discussed',
+                    confidence: 0.4 // Low confidence = emergency fallback
+                });
+                console.log(`[ODJ] Emergency mapped "${odjItem.title}" to topics [${matchingTopics.join(', ')}]`);
+            }
+        });
+
+        mappingResult = {
+            mappedItems: emergencyMappings,
+            unmappedSegments: []
+        };
+
+        console.log(`[ODJ] Emergency fallback created ${emergencyMappings.length} mappings`);
     }
 
     const finalUnmappedSegments = mappingResult.unmappedSegments || [];
