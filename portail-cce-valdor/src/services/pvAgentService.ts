@@ -801,17 +801,25 @@ export const runODJAnalysisStep = async (
     // Retry logic for mapping
     for (let attempt = 1; attempt <= 2; attempt++) {
         try {
+            console.log(`[ODJ] 🔍 Prompt length: ${mappingPrompt.length} chars`);
+            console.log(`[ODJ] 🔍 Prompt ends with: ${mappingPrompt.slice(-200)}`);
+
             const { text: rawResult } = await generateText({
                 model: groq('qwen/qwen3-32b'), // Correct API ID for Qwen 3 32B on Groq
                 prompt: mappingPrompt + `
 
 ⚠️ RÈGLES ABSOLUES :
 1. INTERDICTION d'utiliser <think> ou tout commentaire.
-2. Réponds UNIQUEMENT avec le JSON valide (commence par { "mappedItems": [...]).
-3. Tu DOIS mapper les 15 items (même avec "status": "no_content" si rien trouvé).
-4. Termine TOUJOURS avec: ], "unmappedTopics": [] }
+2. Réponds UNIQUEMENT avec le JSON valide (commence direct par {"mappedItems": [...]).
+3. Tu DOIS mapper les 15 items de l'ODJ (même avec "status": "no_content" si aucune discussion).
+4. Si tu ne trouves RIEN pour un item : {"odjItemId": "...", "status": "no_content", "topicIndices": [], "reason": "Pas discuté"}
+5. Termine TOUJOURS le JSON avec: ], "unmappedTopics": [] }
 
-JSON UNIQUEMENT, PAS DE TEXTE AVANT/APRÈS.`,
+FORMAT ATTENDU (ne rajoute RIEN avant ni après) :
+{
+  "mappedItems": [ ... 15 objets ... ],
+  "unmappedTopics": []
+}`,
                 temperature: 0.2,
                 maxTokens: 80000,
                 maxRetries: 3,
@@ -1109,16 +1117,34 @@ JSON UNIQUEMENT, PAS DE TEXTE AVANT/APRÈS.`,
 
     console.log(`[ODJ] Final merge: ${mappedItems.length}/${odjCount} items mapped (${coveragePercent.toFixed(1)}%)`);
 
-    // Validation Post-Merge
-    if (config.meeting.agendaItems) {
-        const unmappedTitles = config.meeting.agendaItems
-            .filter(item => !mergedMap.has(item.id))
-            .map(item => item.title);
+    // Compter les items VRAIMENT mappés (pas juste force-mappés)
+    const reallyMapped = Array.from(mergedMap.values()).filter(entry => {
+        // Un item est "vraiment mappé" si :
+        // 1. Il a des segments de transcription réels (pas juste des anchors)
+        // 2. OU il a une confidence > 0.8 (= LLM a vraiment matché)
+        const hasRealContent = entry.transcriptSegments.some((seg: string) =>
+            seg.length > 50 && !seg.startsWith('[Anchor]')
+        );
+        return hasRealContent || entry.confidence > 0.8;
+    }).length;
 
-        if (unmappedTitles.length > 0) {
-            console.error(`[ODJ] ❌ ${unmappedTitles.length} items NON MAPPÉS:`, unmappedTitles);
-        } else {
-            console.log('[ODJ] ✅ 100% des items mappés avec succès !');
+    const forceMapOnly = mergedMap.size - reallyMapped;
+
+    console.log(`[ODJ] Résultat final:
+      ✅ Vraiment mappés: ${reallyMapped}/15 (${(reallyMapped / 15 * 100).toFixed(1)}%)
+      ⚠️ Force-mappés (anchors seulement): ${forceMapOnly}
+      📊 Total dans mergedMap: ${mergedMap.size}/15`);
+
+    if (reallyMapped < 15) {
+        if (config.meeting.agendaItems) {
+            const unmapped = config.meeting.agendaItems
+                .filter(item => {
+                    const entry = mergedMap.get(item.id);
+                    return !entry || entry.confidence < 0.6;
+                })
+                .map(item => item.title);
+
+            console.error(`[ODJ] ❌ Items manquants ou faibles:`, unmapped);
         }
     }
 
