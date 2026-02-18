@@ -564,7 +564,14 @@ export const runODJAnalysisStep = async (
     // --- PASS 2: MAPPING TO ODJ ---
     console.log(`[ODJ] PASS 2: Mapping ${allTopics.length} topics to Agenda...`);
 
-    const mappingPrompt = getODJMappingPrompt(config.meeting, allTopics);
+    let mappingPrompt = '';
+    try {
+        mappingPrompt = getODJMappingPrompt(config.meeting, allTopics);
+    } catch (error: any) {
+        console.error("[ODJ] Failed to generate mapping prompt:", error);
+        return { mappedItems: [], unmappedSegments: [], coveragePercent: 0 };
+    }
+
     let mappingResult: any = { mappedItems: [], unmappedSegments: [] };
 
     // Retry logic for mapping

@@ -52,11 +52,13 @@ export const getODJMappingPrompt = (
   ).join('\n') || 'Aucun ordre du jour défini';
 
   /* Safe truncation of topic descriptions to avoid context overflow */
-  const topicsContext = extractedTopics.map((t, i) =>
-    `SUJET #${i + 1}: ${t.title || 'Sans titre'}
-     RESUMÉ: ${(t.description || '').substring(0, 2000)}
-     INTERVENANTS: ${(t.speakers || []).join(', ')}`
-  ).join('\n\n');
+  const topicsContext = extractedTopics.map((t, i) => {
+    const speakers = Array.isArray(t.speakers) ? t.speakers : (typeof t.speakers === 'string' ? [t.speakers] : []);
+
+    return `SUJET #${i + 1}: ${t.title || 'Sans titre'}
+     RESUMÉ: ${(t.description || '').substring(0, 7000)}
+     INTERVENANTS: ${speakers.join(', ')}`;
+  }).join('\n\n');
 
   return `Tu es un expert en procès-verbaux.
 Voici l'ORDRE DU JOUR officiel de la réunion (${meeting.agendaItems?.length || 0} points) :
