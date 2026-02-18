@@ -483,29 +483,30 @@ const repairJSON = (raw: string): string => {
 // ============================================================================
 const PROCEDURAL_PATTERNS = [
     {
-        keywords: ['adoption', 'ordre du jour', 'odj', 'adopter', 'ordre', 'jour'],
-        aliases: ['Adoption de l\'ordre du jour', 'Adoption ODJ'],
-        type: 'adoption_odj'
+        // STRICT: Nécessite "ordre" ET "jour" dans la même phrase
+        keywords: [/\bordre\s+du\s+jour\b/i, /\bodj\b/i, /adopter?\s+.{0,30}\bordre/i],
+        type: 'adoption_odj',
+        minSentenceLength: 15  // Phrases trop courtes = bruit
     },
     {
-        keywords: ['bienvenue', 'ouverture', 'mot d\'ouverture', 'accueil', 'début'],
-        aliases: ['Mot de bienvenue', 'Ouverture de la séance', 'Accueil'],
-        type: 'opening'
+        keywords: [/\bbienvenue\b/i, /\bouverture\b/i, /\bmot\s+d['']ouverture\b/i, /\baccueil\b/i],
+        type: 'opening',
+        minSentenceLength: 10
     },
     {
-        keywords: ['levée', 'clôture', 'ajournement', 'fin de la séance', 'termine'],
-        aliases: ['Levée de l\'assemblée', 'Clôture', 'Ajournement'],
-        type: 'closing'
+        keywords: [/\blev[ée]e\s+de\s+.{0,20}assembl[ée]e\b/i, /\bcl[ôo]ture\b/i, /\bajournement\b/i],
+        type: 'closing',
+        minSentenceLength: 10
     },
     {
-        keywords: ['approbation', 'procès-verbal', 'adoption', 'pv', 'précédent'],
-        aliases: ['Approbation du procès-verbal', 'Adoption du PV précédent'],
-        type: 'pv_approval'
+        keywords: [/\bapprobation\s+.{0,30}proc[èe]s[-\s]verbal/i, /\badoption\s+.{0,30}\bpv\b/i],
+        type: 'pv_approval',
+        minSentenceLength: 15
     },
     {
-        keywords: ['varia', 'divers', 'autres sujets', 'questions diverses'],
-        aliases: ['Varia', 'Divers', 'Questions diverses'],
-        type: 'varia'
+        keywords: [/\bvaria\b/i, /\bdivers\b/i, /questions\s+diverses/i],
+        type: 'varia',
+        minSentenceLength: 5
     }
 ];
 
@@ -522,41 +523,61 @@ const extractODJAnchors = (cleanedText: string, agendaItems: any[]): Map<string,
         const titleNorm = normalize(titleLower);
 
         // ========== PROCEDURAL DETECTION (PRIORITY) ==========
+        // ========== PROCEDURAL DETECTION (PRIORITY) ==========
         for (const pattern of PROCEDURAL_PATTERNS) {
-            // Check if item title matches a procedural pattern
-            const matchesPattern = pattern.keywords.some(kw => {
-                const regex = new RegExp(kw, 'i');
-                return regex.test(titleLower);
-            }) || pattern.aliases.some(alias =>
-                titleLower.includes(alias.toLowerCase()) || alias.toLowerCase().includes(titleLower)
-            );
-
-            if (matchesPattern) {
-                // Search for procedural phrases in text
-                const proceduralSentences: string[] = [];
-                const sentences = cleanedText.split(/(?<=[.!?])\s+/);
-
-                sentences.forEach(sentence => {
-                    const sentLower = sentence.toLowerCase();
-                    // More lenient matching for procedural items
-                    const matches = pattern.keywords.some(kw => {
-                        const regex = new RegExp(kw, 'i');
-                        return regex.test(sentLower);
-                    });
-
-                    if (matches && sentence.trim().length < 300) {
-                        proceduralSentences.push(sentence.trim());
-                    }
-                });
-
-                if (proceduralSentences.length > 0) {
-                    anchors.set(item.id, {
-                        sentences: proceduralSentences.slice(0, 3),
-                        confidence: 'procedural'
-                    });
-                    console.log(`[Anchor] PROCEDURAL match for "${item.title}" (${pattern.type})`);
-                    return; // Skip other detection methods
+            // Check if item title matches THIS procedural type
+            const titleMatchesType = pattern.keywords.some(kw => {
+                if (kw instanceof RegExp) {
+                    return kw.test(titleLower);
                 }
+                return titleLower.includes((kw as string).toLowerCase());
+            });
+
+            if (!titleMatchesType) continue; // Skip if title doesn't match this pattern type
+
+            // Search for procedural phrases in text
+            const proceduralSentences: string[] = [];
+            const sentences = cleanedText.split(/(?<=[.!?])\s+/);
+
+            sentences.forEach(sentence => {
+                const trimmed = sentence.trim();
+
+                // Skip too short sentences (noise)
+                if (trimmed.length < (pattern.minSentenceLength || 10)) return;
+
+                const sentLower = trimmed.toLowerCase();
+
+                // STRICT: ALL keywords must match (not just one)
+                // Note: User prompt implies "keywords" array here acts as OR options for the pattern type? 
+                // Wait, "keywords: [regex1, regex2]" usually means ANY of these matches the concept.
+                // But user code said "pattern.keywords.filter(...).length" - check logic.
+                // User code: const matchCount = pattern.keywords.filter(...).length;
+                // User comment: "STRICT: ALL keywords must match (not just one)" -> This contradicts having multiple regexes for same concept?
+                // Actually looking at user snippet: "const matchCount = pattern.keywords.filter(...).length"
+                // Then "if (matchCount > 0 ...)"
+                // So it is OR logic (ANY match counts). The comment "ALL keywords" might be a copy-paste artifact or implies checking against the SET of keywords if they were separate words.
+                // But here keywords are regexes like /\bvaria\b/ OR /\bdivers\b/. We don't need BOTH Varia AND Divers.
+                // So "matchCount > 0" is correct for "Identify if this sentence matches the Procedural Type".
+
+                const matchCount = pattern.keywords.filter(kw => {
+                    if (kw instanceof RegExp) {
+                        return kw.test(sentLower);
+                    }
+                    return sentLower.includes((kw as string).toLowerCase());
+                }).length;
+
+                if (matchCount > 0 && trimmed.length < 300) {
+                    proceduralSentences.push(trimmed);
+                }
+            });
+
+            if (proceduralSentences.length > 0) {
+                anchors.set(item.id, {
+                    sentences: proceduralSentences.slice(0, 3),
+                    confidence: 'procedural'
+                });
+                console.log(`[Anchor] PROCEDURAL match for "${item.title}" (${pattern.type}) - ${proceduralSentences.length} sentences`);
+                return; // Skip other detection methods
             }
         }
 
@@ -776,9 +797,10 @@ export const runODJAnalysisStep = async (
         try {
             const { text: rawResult } = await generateText({
                 model: groq('qwen/qwen3-32b'), // Correct API ID for Qwen 3 32B on Groq
-                prompt: mappingPrompt + "\n\n/think",
-                temperature: 0.6,
-                maxTokens: 60000,
+                prompt: mappingPrompt + "\n\nRéponds UNIQUEMENT avec le JSON valide, sans texte avant/après.",
+                temperature: 0.2, // ⬅️ Plus déterministe = moins de parsing errors
+                maxTokens: 80000,
+                timeout: 180000, // ⬅️ 3 minutes max
             } as any);
 
             let cleaned = rawResult.replace(/<think>[\s\S]*?(?:<\/think>|$)/g, '')
