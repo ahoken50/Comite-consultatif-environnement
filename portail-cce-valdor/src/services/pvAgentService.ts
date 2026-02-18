@@ -1154,6 +1154,191 @@ NE PAS mettre "topicIndices": [] SAUF si l'item est vraiment absent de la transc
         }
     }
 
+    // ============================================================================
+    // 🆕 PASS 3: REFINEMENT - Auto-critique du mapping
+    // ============================================================================
+
+    // Filtre pré-refinement
+    const needsRefinement =
+        Array.from(mergedMap.values()).some(entry => entry.transcriptSegments.length > 5) || // Un item a >5 topics
+        Array.from(mergedMap.values()).filter(entry => entry.transcriptSegments.length === 0).length > 3; // >3 items vides
+
+    if (!needsRefinement) {
+        console.log('[ODJ] ✅ Mapping déjà optimal, skip refinement');
+    } else {
+        console.log('[ODJ] PASS 3: Refinement du mapping...');
+
+        // Define agendaItems for scope within prompt or usage
+        const agendaItemsList = config.meeting.agendaItems || [];
+
+        const refinementPrompt = `Tu es un expert en analyse de procès-verbaux municipaux.
+
+MISSION : Critiquer et corriger le mapping initial entre topics et items ODJ.
+
+ODJ ITEMS (${agendaItemsList.length} items) :
+${agendaItemsList.map((item, i) => `${i}. "${item.title}"`).join('\n')}
+
+MAPPING INITIAL :
+${JSON.stringify(
+            Array.from(mergedMap.entries()).map(([id, data]) => ({
+                odjItemId: id,
+                odjTitle: agendaItemsList.find(a => a.id === id)?.title,
+                topicCount: data.transcriptSegments.length,
+                topicsSample: data.transcriptSegments.slice(0, 2).map((s: string) => s.slice(0, 100))
+            })),
+            null,
+            2
+        )}
+
+TOPICS EXTRAITS (${allTopics.length} topics) :
+${allTopics.map((t, i) => `${i + 1}. "${t.title}" - ${t.description?.slice(0, 150)}...`).join('\n')}
+
+⚠️ PROBLÈMES À IDENTIFIER :
+1. **Varia surchargé** : Si l'item "Varia" contient >4 topics, déplacer les topics vers leurs items spécifiques.
+2. **Items vides par erreur** : Si un item est vide mais son titre correspond à un topic, l'associer.
+3. **Mauvais regroupements** : Si un topic est associé à un item dont le titre ne correspond pas, le déplacer.
+4. **Doublons** : Un même topic ne doit pas être dans plusieurs items.
+
+🎯 PROCESSUS DE RÉFLEXION :
+1. Pour chaque topic, vérifie s'il est dans le bon item ODJ
+2. Si un topic est mal placé, identifie le meilleur item cible
+3. Si "Varia" contient des topics spécifiques, redistribue-les
+4. Si un item ODJ n'a aucun topic mais devrait en avoir, cherche les topics manquants
+
+📋 FORMAT DE SORTIE (JSON strict) :
+{
+  "corrections": [
+    {
+      "topicIndex": 5,
+      "topicTitle": "...",
+      "action": "move",
+      "from": "item-13",
+      "to": "item-9",
+      "reason": "Le sujet 'forum eau potable' correspond mieux à 'Planification 2026' qu'à 'Varia'"
+    }
+  ],
+  "validation": {
+    "variaItemCount": 3,
+    "emptyItemsCount": 2,
+    "confidence": 0.85
+  }
+}
+
+Réponds UNIQUEMENT avec le JSON de corrections.`;
+
+        let refinementResult;
+        try {
+            const refineResponse = await generateText({
+                model: groq('llama-3.3-70b-versatile'),
+                prompt: refinementPrompt,
+                temperature: 0.4,
+                maxTokens: 80000,
+                maxRetries: 2,
+            } as any);
+
+            let cleaned = refineResponse.text.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+            const start = cleaned.indexOf('{');
+            const end = cleaned.lastIndexOf('}');
+            if (start !== -1 && end !== -1) {
+                const refinementJSON = cleaned.substring(start, end + 1);
+                refinementResult = JSON.parse(refinementJSON);
+                console.log(`[ODJ] ✅ Refinement: ${refinementResult.corrections.length} corrections identifiées`);
+            }
+        } catch (err: any) {
+            console.warn('[ODJ] ⚠️ Refinement pass failed, skipping:', err.message);
+        }
+
+        // ============================================================================
+        // 🆕 PASS 4: APPLICATION DES CORRECTIONS
+        // ============================================================================
+        if (refinementResult?.corrections?.length > 0) {
+            console.log('[ODJ] PASS 4: Application des corrections...');
+
+            for (const correction of refinementResult.corrections) {
+                if (correction.action === 'move') {
+                    const fromEntry = mergedMap.get(correction.from);
+                    const toEntry = mergedMap.get(correction.to);
+
+                    if (fromEntry && toEntry) {
+                        // Trouver le topic correspondant dans allTopics
+                        const topic = allTopics[correction.topicIndex - 1]; // -1 car topicIndex est 1-based
+
+                        if (topic) {
+                            // Trouver les segments de transcription correspondants
+                            const segmentsToMove = fromEntry.transcriptSegments.filter((seg: string) =>
+                                seg.toLowerCase().includes(topic.title.toLowerCase().slice(0, 30))
+                            );
+
+                            if (segmentsToMove.length > 0) {
+                                // Déplacer les segments
+                                toEntry.transcriptSegments.push(...segmentsToMove);
+                                fromEntry.transcriptSegments = fromEntry.transcriptSegments.filter(
+                                    (seg: string) => !segmentsToMove.includes(seg)
+                                );
+
+                                // Mettre à jour les speakers
+                                if (topic.speakers) {
+                                    const newSpeakers = Array.from(new Set([...toEntry.speakers, ...topic.speakers]));
+                                    toEntry.speakers = new Set(newSpeakers as string[]);
+                                }
+
+                                // Ajuster la confiance
+                                toEntry.confidence = Math.max(toEntry.confidence, 0.75);
+
+                                console.log(`[ODJ] ✅ Moved topic "${topic.title.slice(0, 40)}..." from ${correction.from} to ${correction.to}`);
+                                console.log(`[ODJ]    Reason: ${correction.reason}`);
+                            }
+                        }
+                    }
+                } else if (correction.action === 'add') {
+                    // Ajouter un topic manquant
+                    const toEntry = mergedMap.get(correction.to);
+                    const topic = allTopics[correction.topicIndex - 1];
+
+                    if (toEntry && topic && topic.description) {
+                        toEntry.transcriptSegments.push(topic.description);
+                        if (topic.speakers) {
+                            const newSpeakers = Array.from(new Set([...toEntry.speakers, ...topic.speakers]));
+                            toEntry.speakers = new Set(newSpeakers as string[]);
+                        }
+                        toEntry.confidence = Math.max(toEntry.confidence, 0.7);
+
+                        console.log(`[ODJ] ✅ Added topic "${topic.title.slice(0, 40)}..." to ${correction.to}`);
+                    }
+                }
+            }
+
+            // Recalculer la coverage et mappedItems après corrections
+            // Note: we need to update mappedItems and coveragePercent variables which are returned below
+            // However, mappedItems is const and defined above.
+            // We should ideally rebuild mappedItems or modify the array content. 
+            // Since mergedMap is the source of truth, we can re-generate mappedItems list.
+
+            const agendaItemsList = config.meeting.agendaItems || [];
+            const correctedMapped = Array.from(mergedMap.values()).filter(entry =>
+                entry.transcriptSegments.some((seg: string) => seg.length > 50)
+            ).length;
+
+            const newCoverage = (correctedMapped / agendaItemsList.length) * 100;
+            console.log(`[ODJ] 📊 Coverage après refinement: ${newCoverage.toFixed(1)}%`);
+
+            // RE-GENERATE mappedItems from mergedMap to reflect changes
+            mappedItems.length = 0; // Clear array
+            const newMappedItems = Array.from(mergedMap.values())
+                .filter(entry => entry.transcriptSegments.length > 0)
+                .map(entry => ({
+                    odjItemId: entry.odjItemId,
+                    odjTitle: entry.odjTitle,
+                    odjOrder: entry.odjOrder,
+                    transcriptSegments: entry.transcriptSegments,
+                    speakers: Array.from(entry.speakers) as string[],
+                    confidence: entry.confidence
+                }))
+                .sort((a, b) => a.odjOrder - b.odjOrder);
+            mappedItems.push(...newMappedItems);
+        }
+    }
+
     return {
         mappedItems,
         unmappedSegments: finalUnmappedSegments,
