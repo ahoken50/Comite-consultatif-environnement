@@ -483,30 +483,52 @@ const repairJSON = (raw: string): string => {
 // ============================================================================
 const PROCEDURAL_PATTERNS = [
     {
-        // STRICT: Nécessite "ordre" ET "jour" dans la même phrase
-        keywords: [/\bordre\s+du\s+jour\b/i, /\bodj\b/i, /adopter?\s+.{0,30}\bordre/i],
+        // STRICT: "ordre du jour" ou "ODJ" explicite
+        patterns: [
+            /\bordre\s+du\s+jour\b/i,
+            /\bodj\b/i,
+            /adopt(?:er|ion|é)\s+.{0,40}\bordre\s+du\s+jour/i
+        ],
         type: 'adoption_odj',
-        minSentenceLength: 15  // Phrases trop courtes = bruit
+        requireAll: false, // Au moins UN pattern doit matcher
+        minLength: 15
     },
     {
-        keywords: [/\bbienvenue\b/i, /\bouverture\b/i, /\bmot\s+d['']ouverture\b/i, /\baccueil\b/i],
+        // "bienvenue" ou "ouverture" explicite
+        patterns: [
+            /\bbienvenue\b/i,
+            /\bouverture\s+(?:de\s+)?(?:la\s+)?(?:s[ée]ance|assembl[ée]e)\b/i,
+            /\bmot\s+d['']ouverture\b/i
+        ],
         type: 'opening',
-        minSentenceLength: 10
+        requireAll: false, // Au moins UN pattern doit matcher
+        minLength: 10
     },
     {
-        keywords: [/\blev[ée]e\s+de\s+.{0,20}assembl[ée]e\b/i, /\bcl[ôo]ture\b/i, /\bajournement\b/i],
+        // STRICT: "levée de l'assemblée" ou "clôture de" quelque chose de pertinent
+        patterns: [
+            /\blev[ée]e\s+de\s+(?:la\s+|l[''])?assembl[ée]e\b/i,
+            /\bcl[ôo]ture\s+de\s+(?:la\s+|l[''])?(?:s[ée]ance|assembl[ée]e|r[ée]union)\b/i,
+            /\bajournement\b/i
+        ],
         type: 'closing',
-        minSentenceLength: 10
+        requireAll: false, // Match any closing phrase
+        minLength: 10
     },
     {
-        keywords: [/\bapprobation\s+.{0,30}proc[èe]s[-\s]verbal/i, /\badoption\s+.{0,30}\bpv\b/i],
+        patterns: [
+            /\bapprobation\s+(?:du\s+)?proc[èe]s[-\s]verbal/i,
+            /\badoption\s+(?:du\s+)?pv\b/i
+        ],
         type: 'pv_approval',
-        minSentenceLength: 15
+        requireAll: false, // Match any approval phrase
+        minLength: 15
     },
     {
-        keywords: [/\bvaria\b/i, /\bdivers\b/i, /questions\s+diverses/i],
+        patterns: [/\bvaria\b/i],
         type: 'varia',
-        minSentenceLength: 5
+        requireAll: true,
+        minLength: 3
     }
 ];
 
@@ -526,12 +548,7 @@ const extractODJAnchors = (cleanedText: string, agendaItems: any[]): Map<string,
         // ========== PROCEDURAL DETECTION (PRIORITY) ==========
         for (const pattern of PROCEDURAL_PATTERNS) {
             // Check if item title matches THIS procedural type
-            const titleMatchesType = pattern.keywords.some(kw => {
-                if (kw instanceof RegExp) {
-                    return kw.test(titleLower);
-                }
-                return titleLower.includes((kw as string).toLowerCase());
-            });
+            const titleMatchesType = pattern.patterns.some(regex => regex.test(titleLower));
 
             if (!titleMatchesType) continue; // Skip if title doesn't match this pattern type
 
@@ -543,30 +560,19 @@ const extractODJAnchors = (cleanedText: string, agendaItems: any[]): Map<string,
                 const trimmed = sentence.trim();
 
                 // Skip too short sentences (noise)
-                if (trimmed.length < (pattern.minSentenceLength || 10)) return;
+                if (trimmed.length < (pattern.minLength || 10)) return;
 
                 const sentLower = trimmed.toLowerCase();
 
-                // STRICT: ALL keywords must match (not just one)
-                // Note: User prompt implies "keywords" array here acts as OR options for the pattern type? 
-                // Wait, "keywords: [regex1, regex2]" usually means ANY of these matches the concept.
-                // But user code said "pattern.keywords.filter(...).length" - check logic.
-                // User code: const matchCount = pattern.keywords.filter(...).length;
-                // User comment: "STRICT: ALL keywords must match (not just one)" -> This contradicts having multiple regexes for same concept?
-                // Actually looking at user snippet: "const matchCount = pattern.keywords.filter(...).length"
-                // Then "if (matchCount > 0 ...)"
-                // So it is OR logic (ANY match counts). The comment "ALL keywords" might be a copy-paste artifact or implies checking against the SET of keywords if they were separate words.
-                // But here keywords are regexes like /\bvaria\b/ OR /\bdivers\b/. We don't need BOTH Varia AND Divers.
-                // So "matchCount > 0" is correct for "Identify if this sentence matches the Procedural Type".
+                // Count how many patterns match
+                const matchingPatterns = pattern.patterns.filter(regex => regex.test(sentLower));
 
-                const matchCount = pattern.keywords.filter(kw => {
-                    if (kw instanceof RegExp) {
-                        return kw.test(sentLower);
-                    }
-                    return sentLower.includes((kw as string).toLowerCase());
-                }).length;
+                // Decision: requireAll = all patterns must match, otherwise at least one
+                const meetsRequirement = pattern.requireAll
+                    ? matchingPatterns.length === pattern.patterns.length
+                    : matchingPatterns.length > 0;
 
-                if (matchCount > 0 && trimmed.length < 300) {
+                if (meetsRequirement && trimmed.length < 300) {
                     proceduralSentences.push(trimmed);
                 }
             });
@@ -812,9 +818,24 @@ export const runODJAnalysisStep = async (
 
             try {
                 mappingResult = JSON.parse(cleaned);
-            } catch {
-                console.warn(`[ODJ] Mapping JSON failed parse, repairing...`);
-                mappingResult = JSON.parse(repairJSON(cleaned));
+                console.log(`[ODJ] ✅ Direct JSON parse success`);
+                console.log(`[ODJ] Parsed ${mappingResult.mappedItems?.length || 0} items from JSON`);
+                break; // Success
+            } catch (e1) {
+                console.warn(`[ODJ] Direct parse failed, trying repair...`);
+                console.error(`[ODJ] Parse error:`, e1);
+                console.log(`[ODJ] Failed JSON sample (first 1000 chars):\n${cleaned.substring(0, 1000)}`);
+
+                try {
+                    const repaired = repairJSON(cleaned);
+                    mappingResult = JSON.parse(repaired);
+                    console.log(`[ODJ] ✅ Repaired JSON parse success`);
+                    console.log(`[ODJ] Parsed ${mappingResult.mappedItems?.length || 0} items after repair`);
+                    break;
+                } catch (e2) {
+                    console.error(`[ODJ] Repair also failed:`, e2);
+                    // Continue to aggressive extraction...
+                }
             }
             break; // Success
         } catch (e: any) {
