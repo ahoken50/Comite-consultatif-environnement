@@ -17,6 +17,84 @@ import { formatAttendeesList, formatAgendaList } from './minutesDraftPrompt';
 // STEP 4 — ANALYSE ODJ : Mapping discussions → Points ordre du jour
 // ============================================================================
 
+export const getTopicExtractionPrompt = (
+  transcriptionChunk: string
+): string => {
+  return `Tu es un assistant expert en analyse de réunions.
+TÂCHE : Analyse ce segment de transcription et extrais TOUS les sujets distincts discutés.
+Ne cherche pas à les faire correspondre à un ordre du jour précis pour l'instant. Contente-toi de lister ce qui se dit.
+
+TRANSCRIPTION (extrait) :
+${transcriptionChunk.substring(0, 100000)}
+
+FORMAT JSON ATTENDU :
+{
+  "topics": [
+    {
+      "title": "Titre du sujet discuté",
+      "description": "Résumé détaillé de la discussion (arguments, décisions, points clés)",
+      "speakers": ["Nom 1", "Nom 2"],
+      "keywords": ["mot1", "mot2"]
+    }
+  ]
+}
+
+Réponds UNIQUEMENT avec le JSON.`;
+};
+
+export const getODJMappingPrompt = (
+  meeting: Meeting,
+  extractedTopics: any[],
+  _speakerMapping?: Record<string, string>
+): string => {
+  const odjList = meeting.agendaItems?.map((item, i) =>
+    `${i + 1}. [ID: ${item.id}] ${item.title}${item.objective ? ` [Objectif: ${item.objective}]` : ''}`
+  ).join('\n') || 'Aucun ordre du jour défini';
+
+  const topicsContext = extractedTopics.map((t, i) =>
+    `SUJET #${i + 1}: ${t.title}
+     RESUMÉ: ${t.description}
+     INTERVENANTS: ${t.speakers.join(', ')}`
+  ).join('\n\n');
+
+  return `Tu es un expert en procès-verbaux.
+Voici l'ORDRE DU JOUR officiel de la réunion :
+${odjList}
+
+Voici la LISTE DES SUJETS discutés (extraits de la transcription) :
+${topicsContext}
+
+TÂCHE :
+Associe les sujets discutés aux points de l'ordre du jour.
+RÈGLE D'OR : CHAQUE point de l'ordre du jour DOIT avoir du contenu.
+
+INSTRUCTIONS :
+1. Parcours TOUS les points de l'ODJ un par un.
+2. Si le point a été discuté : Fusionne les résumés pertinents dans "transcriptSegments".
+3. Si le point n'a PAS été discuté, a été sauté, ou reporté :
+   - Tu DOIS ajouter un segment explicite entre crochets dans "transcriptSegments".
+   - Exemples : "[Aucune discussion détectée sur ce point]", "[Point reporté à la prochaine séance]", "[Point retiré de l'ordre du jour]".
+   - NE LAISSE JAMAIS "transcriptSegments" vide.
+4. Si un sujet discuté ne correspond à aucun point ODJ, mets-le dans "unmappedSegments".
+
+FORMAT JSON ATTENDU :
+{
+  "mappedItems": [
+    {
+      "odjItemId": "id-du-point",
+      "odjTitle": "Titre du point",
+      "transcriptSegments": ["Synthèse détaillée...", "[Point reporté]"],
+      "speakers": ["Nom 1", "Nom 2"],
+      "confidence": 0.95
+    }
+  ],
+  "unmappedSegments": ["Sujets non classés..."]
+}
+
+Réponds UNIQUEMENT avec le JSON.`;
+};
+
+// DEPRECATED - Kept for backward compatibility if needed, but replaced by 2-pass system
 export const getODJAnalysisPrompt = (
   meeting: Meeting,
   cleanedTranscription: string,

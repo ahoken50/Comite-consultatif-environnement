@@ -37,7 +37,8 @@ import type {
     CCENumbering,
 } from '../types/pvAgent.types';
 import {
-    getODJAnalysisPrompt,
+    getTopicExtractionPrompt,
+    getODJMappingPrompt,
     getClassificationPrompt,
     getDraftingSystemPrompt,
     getDraftingUserPrompt,
@@ -513,77 +514,89 @@ export const runODJAnalysisStep = async (
         console.log(`[ODJ] Created ${chunks.length} batches.`);
     }
 
-    // Process chunks
-    const allMappedResults: any[] = [];
-    const allUnmappedSegments: string[] = [];
+    // --- PASS 1: TOPIC EXTRACTION ---
+    const allTopics: any[] = [];
+
+    console.log(`[ODJ] PASS 1: Extracting topics from ${chunks.length} chunks...`);
 
     for (let batchIdx = 0; batchIdx < chunks.length; batchIdx++) {
         const chunk = chunks[batchIdx];
-        console.log(`[ODJ] Processing batch ${batchIdx + 1}/${chunks.length} (${chunk.length} chars)...`);
+        const prompt = getTopicExtractionPrompt(chunk);
 
-        const prompt = getODJAnalysisPrompt(
-            config.meeting,
-            chunk,
-        );
-
-        // Retry logic per batch
-        const maxAttempts = 2;
-        let success = false;
-
-        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        // Retry logic
+        for (let attempt = 1; attempt <= 2; attempt++) {
             try {
                 const { text: rawResult } = await generateText({
                     model: groq('qwen/qwen3-32b'),
                     prompt,
-                    temperature: attempt === 1 ? 0.3 : 0.1,
+                    temperature: 0.3,
                     maxTokens: 60000,
                 } as any);
 
-                // Clean response
-                let cleaned = rawResult.replace(/<think>[\s\S]*?<\/think>/g, '');
-                cleaned = cleaned.replace(/```(?:json)?/g, '').replace(/```/g, '');
+                let cleaned = rawResult.replace(/<think>[\s\S]*?<\/think>/g, '')
+                    .replace(/```(?:json)?/g, '').replace(/```/g, '');
 
                 const start = cleaned.indexOf('{');
                 const end = cleaned.lastIndexOf('}');
-                if (start !== -1 && end !== -1 && end > start) {
-                    cleaned = cleaned.substring(start, end + 1);
-                }
+                if (start !== -1 && end !== -1) cleaned = cleaned.substring(start, end + 1);
 
                 let parsed: any;
                 try {
                     parsed = JSON.parse(cleaned);
                 } catch {
-                    console.warn(`[ODJ] Batch ${batchIdx + 1} JSON parse failed, repairing...`);
-                    const repaired = repairJSON(cleaned);
-                    parsed = JSON.parse(repaired);
+                    console.warn(`[ODJ] Extraction Batch ${batchIdx + 1} failed parse, repairing...`);
+                    parsed = JSON.parse(repairJSON(cleaned));
                 }
 
-                // Extract valid items
-                const rawItems = parsed.mappedItems || parsed.mappedMap || parsed.items || parsed.agendaItems || parsed.mappedItem || [];
-
-                if (Array.isArray(rawItems)) {
-                    allMappedResults.push(...rawItems);
+                if (Array.isArray(parsed.topics)) {
+                    console.log(`[ODJ] Batch ${batchIdx + 1}: Found ${parsed.topics.length} topics.`);
+                    allTopics.push(...parsed.topics);
                 }
-                if (Array.isArray(parsed.unmappedSegments)) {
-                    allUnmappedSegments.push(...parsed.unmappedSegments);
-                }
-
-                success = true;
-                break; // Batch success
-
+                break; // Success
             } catch (e) {
-                console.error(`[ODJ] Batch ${batchIdx + 1} attempt ${attempt} failed:`, e);
+                console.error(`[ODJ] Extraction Batch ${batchIdx + 1} attempt ${attempt} failed:`, e);
             }
-        }
-
-        if (!success) {
-            console.error(`[ODJ] Batch ${batchIdx + 1} failed completely.`);
-            // Continue to next batch to salvage what we can
         }
     }
 
-    // Merge results
-    console.log(`[ODJ] Merging ${allMappedResults.length} raw results...`);
+    console.log(`[ODJ] PASS 1 Complete. Total topics found: ${allTopics.length}`);
+
+    // --- PASS 2: MAPPING TO ODJ ---
+    console.log(`[ODJ] PASS 2: Mapping ${allTopics.length} topics to Agenda...`);
+
+    const mappingPrompt = getODJMappingPrompt(config.meeting, allTopics);
+    let mappingResult: any = { mappedItems: [], unmappedSegments: [] };
+
+    // Retry logic for mapping
+    for (let attempt = 1; attempt <= 2; attempt++) {
+        try {
+            const { text: rawResult } = await generateText({
+                model: groq('qwen/qwen3-32b'),
+                prompt: mappingPrompt,
+                temperature: 0.1,
+                maxTokens: 60000,
+            } as any);
+
+            let cleaned = rawResult.replace(/<think>[\s\S]*?<\/think>/g, '')
+                .replace(/```(?:json)?/g, '').replace(/```/g, '');
+
+            const start = cleaned.indexOf('{');
+            const end = cleaned.lastIndexOf('}');
+            if (start !== -1 && end !== -1) cleaned = cleaned.substring(start, end + 1);
+
+            try {
+                mappingResult = JSON.parse(cleaned);
+            } catch {
+                console.warn(`[ODJ] Mapping JSON failed parse, repairing...`);
+                mappingResult = JSON.parse(repairJSON(cleaned));
+            }
+            break; // Success
+        } catch (e) {
+            console.error(`[ODJ] Mapping attempt ${attempt} failed:`, e);
+        }
+    }
+
+    const finalUnmappedSegments = mappingResult.unmappedSegments || [];
 
     // Map by ODJ Item ID to merge content
     const mergedMap = new Map<string, any>();
@@ -602,7 +615,8 @@ export const runODJAnalysisStep = async (
     });
 
     // Merge AI results
-    allMappedResults.forEach(item => {
+    const rawMappedItems = mappingResult.mappedItems || [];
+    rawMappedItems.forEach((item: any) => {
         // Find matching ODJ item
         const odjItem = config.meeting.agendaItems?.find(
             a => a.id === item.odjItemId || a.title === item.odjTitle
@@ -673,7 +687,7 @@ export const runODJAnalysisStep = async (
 
     return {
         mappedItems,
-        unmappedSegments: allUnmappedSegments,
+        unmappedSegments: finalUnmappedSegments,
         coveragePercent
     };
 };
