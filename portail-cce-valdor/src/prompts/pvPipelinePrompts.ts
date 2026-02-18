@@ -46,11 +46,24 @@ export const getODJMappingPrompt = (
   meeting: Meeting,
   extractedTopics: any[],
   _speakerMapping?: Record<string, string>,
-  maxDescriptionChars: number = 5000
+  maxDescriptionChars: number = 5000,
+  anchors?: Map<string, string[]>
 ): string => {
   const odjList = meeting.agendaItems?.map((item, i) =>
     `${i + 1}. [ID: ${item.id}] ${item.title}${item.objective ? ` [Objectif: ${item.objective}]` : ''}`
   ).join('\n') || 'Aucun ordre du jour défini';
+
+  let anchorsContext = "";
+  if (anchors && anchors.size > 0) {
+    anchorsContext = "\n\n## ANCRES TEXTUELLES DÉTECTÉES (phrases exactes mentionnant chaque point ODJ) :\n";
+    anchors.forEach((sentences, itemId) => {
+      const item = meeting.agendaItems?.find((a: any) => a.id === itemId);
+      if (item) {
+        anchorsContext += `\n**[Item ${item.id}] ${item.title}** :\n`;
+        sentences.forEach(s => anchorsContext += `  - "${s}"\n`);
+      }
+    });
+  }
 
   /* Safe truncation of topic descriptions to avoid context overflow */
   const topicsContext = extractedTopics.map((t, i) => {
@@ -61,9 +74,10 @@ export const getODJMappingPrompt = (
      INTERVENANTS: ${speakers.join(', ')}`;
   }).join('\n\n');
 
-  return `Tu es un expert en procès-verbaux.
+  return `Tu es un expert en procès-verba ux.
 Voici l'ORDRE DU JOUR officiel de la réunion (${meeting.agendaItems?.length || 0} points) :
 ${odjList}
+${anchorsContext}
 
 Voici la LISTE DE ${extractedTopics.length} SUJETS discutés (extraits de la transcription) :
 ${topicsContext}
@@ -76,12 +90,10 @@ RÈGLE D'OR : CHAQUE point de l'ordre du jour DOIT avoir du contenu.
 
 INSTRUCTIONS :
 1. Parcours TOUS les points de l'ODJ un par un.
-2. Si le point a été discuté : Fusionne les résumés pertinents dans "transcriptSegments".
+2. Identifie les numéros des SUJETS (ex: Sujet #1, Sujet #5) qui correspondent à ce point.
 3. Si le point n'a PAS été discuté, a été sauté, ou reporté :
-   - Tu DOIS ajouter un segment explicite entre crochets dans "transcriptSegments".
-   - Exemples : "[Aucune discussion détectée sur ce point]", "[Point reporté à la prochaine séance]", "[Point retiré de l'ordre du jour]".
-   - NE LAISSE JAMAIS "transcriptSegments" vide.
-4. Si un sujet discuté ne correspond à aucun point ODJ, mets-le dans "unmappedSegments".
+   - Indique-le explicitement via le champ "status".
+   - Status possibles: "discussed", "skipped", "postponed", "unknown".
 
 FORMAT JSON ATTENDU :
 {
@@ -89,12 +101,12 @@ FORMAT JSON ATTENDU :
     {
       "odjItemId": "id-du-point",
       "odjTitle": "Titre du point",
-      "transcriptSegments": ["Synthèse détaillée...", "[Point reporté]"],
-      "speakers": ["Nom 1", "Nom 2"],
-      "confidence": 0.95
+      "status": "discussed", // ou "skipped", "postponed"
+      "topicIndices": [1, 5], // Liste des numéros des sujets associés (1-based)
+      "reason": "Explication si sauté ou reporté"
     }
   ],
-  "unmappedSegments": ["Sujets non classés..."]
+  "unmappedTopics": [2, 4] // Ids des sujets non utilisés
 }
 
 Réponds UNIQUEMENT avec le JSON.`;

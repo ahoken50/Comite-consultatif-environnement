@@ -477,6 +477,45 @@ const repairJSON = (raw: string): string => {
     return s;
 };
 
+// Helper: Extract textual anchors matching ODJ items
+const extractODJAnchors = (cleanedText: string, agendaItems: any[]): Map<string, string[]> => {
+    const anchors = new Map<string, string[]>();
+
+    agendaItems.forEach(item => {
+        // Tokenize title into significant keywords
+        const keywords = item.title.toLowerCase().split(/\s+/)
+            .map((w: string) => w.replace(/[^\wÀ-ÿ]/g, '')) // Remove punctuation
+            .filter((w: string) => w.length > 3); // Ignore short words
+
+        if (keywords.length === 0) return;
+
+        // Split text into sentences (rough approximation)
+        const sentences = cleanedText.split(/(?<=[.!?])\s+/);
+        const matchingSentences: string[] = [];
+
+        sentences.forEach(sentence => {
+            const lowerSentence = sentence.toLowerCase();
+            const matchCount = keywords.filter((kw: string) => lowerSentence.includes(kw)).length;
+
+            // If at least 50% of keywords are present
+            if (matchCount >= Math.ceil(keywords.length * 0.5)) {
+                // Limit sentence length to avoid massive context
+                const trimmed = sentence.trim();
+                if (trimmed.length < 500) {
+                    matchingSentences.push(trimmed);
+                }
+            }
+        });
+
+        // Keep top 5 matches to save context
+        if (matchingSentences.length > 0) {
+            anchors.set(item.id, matchingSentences.slice(0, 5));
+        }
+    });
+
+    return anchors;
+};
+
 export const runODJAnalysisStep = async (
     config: AgentConfig,
     cleaning: CleaningResult
@@ -561,6 +600,10 @@ export const runODJAnalysisStep = async (
 
     console.log(`[ODJ] PASS 1 Complete. Total topics found: ${allTopics.length}`);
 
+    // NEW: Extract Text Anchors
+    const odjAnchors = extractODJAnchors(text, config.meeting.agendaItems || []);
+    console.log(`[ODJ] Found anchors for ${odjAnchors.size}/${config.meeting.agendaItems?.length} items`);
+
     // --- PASS 2: MAPPING TO ODJ ---
     console.log(`[ODJ] PASS 2: Mapping ${allTopics.length} topics to Agenda...`);
 
@@ -573,7 +616,7 @@ export const runODJAnalysisStep = async (
 
     let mappingPrompt = '';
     try {
-        mappingPrompt = getODJMappingPrompt(config.meeting, allTopics, undefined, finalLimit);
+        mappingPrompt = getODJMappingPrompt(config.meeting, allTopics, undefined, finalLimit, odjAnchors);
     } catch (error: any) {
         console.error("[ODJ] Failed to generate mapping prompt:", error);
         return { mappedItems: [], unmappedSegments: [], coveragePercent: 0 };
@@ -671,22 +714,40 @@ export const runODJAnalysisStep = async (
 
         const entry = mergedMap.get(targetId);
 
-        // Add segments
-        const segments = Array.isArray(item.transcriptSegments) ? item.transcriptSegments : [item.transcriptSegment || item.segment || ''];
-        segments.forEach((s: string) => {
-            if (s && typeof s === 'string' && s.length > 10) {
-                // Check if already exists (deduplication)
-                if (!entry.transcriptSegments.includes(s)) {
+        // NEW: Map-Only Logic (Indices -> Content)
+        if (item.topicIndices && Array.isArray(item.topicIndices)) {
+            item.topicIndices.forEach((idx: number) => {
+                const topic = allTopics[idx - 1]; // 1-based index from prompt
+                if (topic) {
+                    // Add Description
+                    if (topic.description && !entry.transcriptSegments.includes(topic.description)) {
+                        entry.transcriptSegments.push(topic.description);
+                    }
+                    // Add Speakers
+                    if (topic.speakers) {
+                        const speakers = Array.isArray(topic.speakers) ? topic.speakers : [topic.speakers];
+                        speakers.forEach((s: string) => entry.speakers.add(s));
+                    }
+                }
+            });
+        }
+
+        // Handle Status / Empty items
+        if (item.status === 'skipped' || item.status === 'postponed' || (item.topicIndices?.length === 0 && item.reason)) {
+            const reason = item.reason || (item.status === 'postponed' ? "Point reporté" : "Aucune discussion détectée");
+            const msg = `[${reason}]`;
+            if (!entry.transcriptSegments.includes(msg)) entry.transcriptSegments.push(msg);
+        }
+
+        // Legacy/Fallback for direct text (if model ignores instructions)
+        if ((!item.topicIndices || item.topicIndices.length === 0) && (item.transcriptSegments || item.transcriptSegment)) {
+            const segments = Array.isArray(item.transcriptSegments) ? item.transcriptSegments : [item.transcriptSegment || ''];
+            segments.forEach((s: string) => {
+                if (s && typeof s === 'string' && s.length > 5 && !entry.transcriptSegments.includes(s)) {
                     entry.transcriptSegments.push(s);
                 }
-            }
-        });
-
-        // Add speakers
-        const speakers = Array.isArray(item.speakers) ? item.speakers : [];
-        speakers.forEach((s: string) => entry.speakers.add(s));
-
-        // Update confidence (average)
+            });
+        }
         const conf = typeof item.confidence === 'number' ? item.confidence : 0.5;
         // Weighted average based on number of merges? Or just max? Max is safer for detection.
         entry.confidence = Math.max(entry.confidence, conf);
