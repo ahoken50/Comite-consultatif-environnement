@@ -705,13 +705,13 @@ export const runODJAnalysisStep = async (
     for (let attempt = 1; attempt <= 2; attempt++) {
         try {
             const { text: rawResult } = await generateText({
-                model: groq('qwen/qwen3-32b'),
-                prompt: mappingPrompt,
-                temperature: 0.1,
+                model: groq('qwen/qwen3-32b'), // Correct API ID for Qwen 3 32B on Groq
+                prompt: mappingPrompt + "\n\n/think",
+                temperature: 0.6,
                 maxTokens: 60000,
             } as any);
 
-            let cleaned = rawResult.replace(/<think>[\s\S]*?<\/think>/g, '')
+            let cleaned = rawResult.replace(/<think>[\s\S]*?(?:<\/think>|$)/g, '')
                 .replace(/```(?:json)?/g, '').replace(/```/g, '');
 
             const start = cleaned.indexOf('{');
