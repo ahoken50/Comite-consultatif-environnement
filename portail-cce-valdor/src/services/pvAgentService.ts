@@ -591,8 +591,9 @@ export const runODJAnalysisStep = async (
                 mappingResult = JSON.parse(repairJSON(cleaned));
             }
             break; // Success
-        } catch (e) {
-            console.error(`[ODJ] Mapping attempt ${attempt} failed:`, e);
+        } catch (e: any) {
+            console.error(`[ODJ] Mapping attempt ${attempt} failed:`, e.message || e);
+            if (attempt === 2) console.error("Full error:", e);
         }
     }
 

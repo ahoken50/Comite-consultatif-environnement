@@ -51,21 +51,24 @@ export const getODJMappingPrompt = (
     `${i + 1}. [ID: ${item.id}] ${item.title}${item.objective ? ` [Objectif: ${item.objective}]` : ''}`
   ).join('\n') || 'Aucun ordre du jour défini';
 
+  /* Safe truncation of topic descriptions to avoid context overflow */
   const topicsContext = extractedTopics.map((t, i) =>
-    `SUJET #${i + 1}: ${t.title}
-     RESUMÉ: ${t.description}
-     INTERVENANTS: ${t.speakers.join(', ')}`
+    `SUJET #${i + 1}: ${t.title || 'Sans titre'}
+     RESUMÉ: ${(t.description || '').substring(0, 2000)}
+     INTERVENANTS: ${(t.speakers || []).join(', ')}`
   ).join('\n\n');
 
   return `Tu es un expert en procès-verbaux.
-Voici l'ORDRE DU JOUR officiel de la réunion :
+Voici l'ORDRE DU JOUR officiel de la réunion (${meeting.agendaItems?.length || 0} points) :
 ${odjList}
 
-Voici la LISTE DES SUJETS discutés (extraits de la transcription) :
+Voici la LISTE DE ${extractedTopics.length} SUJETS discutés (extraits de la transcription) :
 ${topicsContext}
 
 TÂCHE :
 Associe les sujets discutés aux points de l'ordre du jour.
+Tu as ${extractedTopics.length} sujets identifiés pour ${meeting.agendaItems?.length || 0} points à l'ODJ.
+Tu DOIS regrouper les sujets qui concernent le même point.
 RÈGLE D'OR : CHAQUE point de l'ordre du jour DOIT avoir du contenu.
 
 INSTRUCTIONS :
