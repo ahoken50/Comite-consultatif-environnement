@@ -22,7 +22,13 @@ export const getTopicExtractionPrompt = (
 ): string => {
   return `Tu es un assistant expert en analyse de réunions.
 TÂCHE : Analyse ce segment de transcription et extrais TOUS les sujets distincts discutés.
-Ne cherche pas à les faire correspondre à un ordre du jour précis pour l'instant. Contente-toi de lister ce qui se dit.
+IMPORTANT : Sois GRANULAIRE. Si plusieurs sujets sont discutés à la suite, sépare-les en items distincts.
+Ne regroupe PAS des discussions différentes sous un titre générique.
+
+RÈGLES D'EXTRACTION :
+1. Préserve les termes techniques exacts (numéros de règlements, montants, dates, noms de lieux).
+2. Si un sujet change (ex: on passe des arbres à l'eau potable), crée un NOUVEAU topic.
+3. Évite les titres vagues comme "Discussion diverse". Donne un titre précis.
 
 TRANSCRIPTION (extrait) :
 ${transcriptionChunk.substring(0, 100000)}
@@ -99,12 +105,18 @@ INSTRUCTIONS :
    - Indique-le explicitement via le champ "status".
    - Status possibles: "discussed", "skipped", "postponed", "unknown".
 
-🎯 CONSIGNES DE MAPPING :
-- Si un sujet parle de "règlement" → mapper à item #4 (Réglementation arbres)
-- Si un sujet parle de "balayures" ou "rue" → mapper à item #6 (Gestion balayures)
-- Si un sujet parle de "politique environnementale" → mapper à item #7
-- Si un sujet parle de "OASIS" → mapper à item #8
-- Si un sujet parle de "Varia" ou "questions diverses" → mapper à item #13
+🎯 CONSIGNES DE MAPPING (Agnostique):
+- Si un sujet parle de "règlement", "normes" ou "zonage" → cherche un item dont le titre contient ces mots.
+- Si un sujet parle de "balayures", "neige" ou "voirie" → cherche un item de gestion ou travaux publics.
+- Si un sujet parle de "politique", "stratégie" ou "plan" → cherche un item de planification ou politique générale.
+- Si un sujet parle de "projets spécifiques" (ex: OASIS, parc) → cherche le nom du projet dans les titres.
+- Si un sujet parle de "mandat" ou "renouvellement" → cherche un item "Administration" ou "Membres".
+
+INTERDICTION : Ne mets PAS de sujets dans l'item "Varia" sauf s'ils sont explicitement introduits comme "Varia" ou s'ils ne fitent NULLE PART AILLEURS.
+Si un sujet semble "proche" d'un item existant (ex: un aménagement spécifique), map-le à l'item de réglementation ou de projet correspondant, PAS à Varia.
+
+INTERDICTION : Ne mets PAS de sujets dans l'item "Varia" sauf s'ils sont explicitement introduits comme "Varia" ou s'ils ne fitent NULLE PART AILLEURS.
+Si un sujet semble "proche" d'un item existant (ex: aménagement -> réglementation), map-le à cet item, PAS à Varia.
 
 NE PAS mettre "topicIndices": [] SAUF si l'item est vraiment absent de la transcription.
 
