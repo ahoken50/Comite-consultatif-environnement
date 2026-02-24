@@ -1138,11 +1138,11 @@ export const runODJAnalysisStep = async (
 
     // Filtre pré-refinement
     const needsRefinement =
-        Array.from(mergedMap.values()).some(entry => entry.transcriptSegments.length > 5) || // Un item a >5 topics
+        Array.from(mergedMap.values()).some(entry => entry.transcriptSegments.length > 3) || // Un item a >3 topics
         Array.from(mergedMap.values()).filter(entry =>
             entry.transcriptSegments.length === 0 ||
             (entry.transcriptSegments.length === 1 && entry.transcriptSegments[0].startsWith('['))
-        ).length >= 2; // >=2 items vides (ou avec seulement un placeholder) déclenchent la Pass 3 (Refinement)
+        ).length >= 1; // >= 1 item vide déclenche la Pass 3 (Refinement)
 
     if (!needsRefinement) {
         console.log('[ODJ] ✅ Mapping déjà optimal, skip refinement');

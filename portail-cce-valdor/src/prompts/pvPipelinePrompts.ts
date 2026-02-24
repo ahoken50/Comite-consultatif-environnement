@@ -117,7 +117,9 @@ Un sujet (topicIndex) ne doit être associé qu'à UN SEUL point de l'ordre du j
 INTERDICTION STRICTE : L'item 'Varia' ou 'Questions diverses' NE DOIT contenir QUE les sujets explicitement introduits comme tels à la fin de la réunion. TOUT AUTRE SUJET orphelin ou incertain DOIT aller dans le tableau "unmappedTopics". Si tu mets un sujet technique (règlement, aménagement, etc.) dans Varia, c'est une FAUTE GRAVE.
 Si un sujet concerne un item existant (même vaguement, ex: aménagement d'un parc -> item réglementation ou item parc), map-le à cet item spécifique, PAS à Varia.
 
-Si un point n'a pas de correspondance claire et évidente, laisse "topicIndices": []. N'invente pas d'associations par défaut. Laisse l'item vide plutôt que de faire une mauvaise association.
+Si le texte d'un topic ne correspond PAS CLAIREMENT au titre d'un point de l'ODJ (ex: les points 10, 11, 12), NE FORCE PAS l'association ! Laisse "topicIndices": [] et indique le "status" comme "skipped" ou "postponed".
+Il VAUT MIEUX laisser un item complètement vide plutôt que de lui assigner un sujet hors-sujet (ex: mettre un sujet de politique environnementale dans un point sur les piézomètres). L'absence d'association est une BONNE réponse si le point n'a pas été abordé.
+🛑 RÈGLE ANTI-CHRONOLOGIE : Ne déduis JAMAIS qu'un sujet correspond à l'item N sous prétexte qu'il a été discuté après l'item N-1. Base-toi UNIQUEMENT sur la sémantique (le sens du texte).
 
 ⚠️ RÈGLES CRITIQUES SUR LE FORMAT :
 1. PAS de <think>, PAS de commentaire, JUSTE le JSON.
