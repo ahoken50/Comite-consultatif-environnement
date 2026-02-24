@@ -1193,9 +1193,9 @@ ${allTopics.map((t, i) => `${i + 1}. "${t.title}" - ${t.description?.slice(0, 15
       "topicIndex": 5,
       "topicTitle": "...",
       "action": "move",
+      "reason": "Le sujet 'forum eau potable' correspond mieux à 'Planification 2026' qu'à 'Varia'",
       "from": "item-13",
-      "to": "item-9",
-      "reason": "Le sujet 'forum eau potable' correspond mieux à 'Planification 2026' qu'à 'Varia'"
+      "to": "item-9"
     }
   ],
   "validation": {

@@ -135,8 +135,8 @@ FORMAT JSON ATTENDU :
       "odjItemId": "id-du-point",
       "odjTitle": "Titre du point",
       "status": "discussed", // ou "skipped", "postponed"
-      "topicIndices": [1, 5], // Liste des numéros des sujets associés (1-based)
-      "reason": "Explication si sauté ou reporté"
+      "reason": "PRÉ-ANALYSE OBLIGATOIRE : Explique ici pourquoi ce point correspond à ces sujets EXTRÊMEMENT précis, ou pourquoi l'item doit rester vide.",
+      "topicIndices": [1, 5] // Liste des numéros des sujets associés (1-based)
     }
   ],
   "unmappedTopics": [2, 4] // Ids des sujets non utilisés
