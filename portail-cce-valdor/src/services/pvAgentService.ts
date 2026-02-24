@@ -1042,9 +1042,53 @@ export const runODJAnalysisStep = async (
             });
         }
         const conf = typeof item.confidence === 'number' ? item.confidence : 0.5;
-        // Weighted average based on number of merges? Or just max? Max is safer for detection.
         entry.confidence = Math.max(entry.confidence, conf);
         entry.count++;
+    });
+
+    // -----------------------------------------------------------------------
+    // RESCUE STRATEGY: Find topics for items the LLM left completely empty
+    // -----------------------------------------------------------------------
+    console.log(`[ODJ] 🔍 Checking for empty items to rescue...`);
+    Array.from(mergedMap.values()).forEach(entry => {
+        // If the item has no content yet OR has the generic "Skipped" text
+        if (entry.transcriptSegments.length === 0 || entry.transcriptSegments[0].startsWith('[')) {
+            const cleanStr = (s: string) => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+            const odjTitleClean = cleanStr(entry.odjTitle);
+            const odjKeywords = new Set(
+                odjTitleClean.split(/[\s\-,()']+/).filter((w: string) => w.length > 3 && !['pour', 'dans', 'avec', 'les', 'des', 'sur', 'aux'].includes(w))
+            );
+
+            // Find ALL topics that match this item's keywords or title
+            allTopics.forEach((topic) => {
+                const topicTitleClean = cleanStr(topic.title || '');
+                const topicDescClean = cleanStr(topic.description || '');
+                const topicText = `${topicTitleClean} ${topicDescClean}`;
+
+                let matches = 0;
+                odjKeywords.forEach(kw => {
+                    if (topicText.includes(kw)) matches++;
+                });
+
+                const isDirectMatch = topicTitleClean.includes(odjTitleClean) || odjTitleClean.includes(topicTitleClean);
+
+                // Strong semantic match criteria
+                if (odjKeywords.size > 0 && (isDirectMatch || matches >= Math.max(1, Math.floor(odjKeywords.size * 0.4)))) {
+                    // Add Description
+                    entry.transcriptSegments = entry.transcriptSegments.filter((s: string) => !s.startsWith('[')); // Clean placeholders
+                    if (topic.description && !entry.transcriptSegments.includes(topic.description)) {
+                        entry.transcriptSegments.push(topic.description);
+                    }
+                    // Add Speakers
+                    if (topic.speakers) {
+                        const speakers = Array.isArray(topic.speakers) ? topic.speakers : [topic.speakers];
+                        speakers.forEach((s: string) => entry.speakers.add(s));
+                    }
+                    entry.confidence = Math.max(entry.confidence, 0.65);
+                    console.log(`[ODJ] 🚑 Rescued item "${entry.odjTitle}" using semantic match with topic "${topic.title.substring(0, 30)}..."`);
+                }
+            });
+        }
     });
 
     // -----------------------------------------------------------------------
@@ -1140,7 +1184,7 @@ export const runODJAnalysisStep = async (
     // Filtre pré-refinement
     const needsRefinement =
         Array.from(mergedMap.values()).some(entry => entry.transcriptSegments.length > 5) || // Un item a >5 topics
-        Array.from(mergedMap.values()).filter(entry => entry.transcriptSegments.length === 0).length > 3; // >3 items vides
+        Array.from(mergedMap.values()).filter(entry => entry.transcriptSegments.length === 0).length >= 2; // >=2 items vides déclenchent la Pass 3 (Refinement)
 
     if (!needsRefinement) {
         console.log('[ODJ] ✅ Mapping déjà optimal, skip refinement');
