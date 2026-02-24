@@ -806,23 +806,7 @@ export const runODJAnalysisStep = async (
 
             const { text: rawResult } = await generateText({
                 model: groq('llama-3.3-70b-versatile'), // Switch to Llama 3.3 for better instruction following
-                prompt: mappingPrompt + `
-
-⚠️ RÈGLES CRITIQUES :
-1. PAS de <think>, PAS de commentaire, JUSTE le JSON.
-2. Commence ta réponse directement par { "mappedItems": [
-3. Tu DOIS mapper les 15 items (même si "topicIndices": [] pour items non discutés).
-4. Format strict : {"mappedItems": [...15 objets...], "unmappedTopics": [...]}
-5. Ferme TOUJOURS le JSON complètement.
-
-🎯 CONSIGNES DE MAPPING :
-- Si un sujet parle de "règlement" → mapper à item #4 (Règlementation arbres)
-- Si un sujet parle de "balayures" ou "rue" → mapper à item #6 (Gestion balayures)
-- Si un sujet parle de "politique environnementale" → mapper à item #7
-- Si un sujet parle de "OASIS" → mapper à item #8
-- Si un sujet parle de "Varia" ou "questions diverses" → mapper à item #13
-
-NE PAS mettre "topicIndices": [] SAUF si l'item est vraiment absent de la transcription.`,
+                prompt: mappingPrompt,
                 temperature: 0.3,           // ← Plus bas pour plus de précision
                 maxTokens: 100000,          // ← Plus haut pour Llama
                 maxRetries: 2,

@@ -117,6 +117,13 @@ Si un sujet concerne un item existant (même vaguement, ex: aménagement d'un pa
 
 NE PAS mettre "topicIndices": [] SAUF si l'item est vraiment absent de la transcription.
 
+⚠️ RÈGLES CRITIQUES SUR LE FORMAT :
+1. PAS de <think>, PAS de commentaire, JUSTE le JSON.
+2. Commence ta réponse directement par { "mappedItems": [
+3. Tu DOIS mapper TOUS les items de l'ODJ (même si "topicIndices": [] pour items non discutés).
+4. Format strict : {"mappedItems": [...objets...], "unmappedTopics": [...]}
+5. Ferme TOUJOURS le JSON complètement.
+
 FORMAT JSON ATTENDU :
 {
   "mappedItems": [
