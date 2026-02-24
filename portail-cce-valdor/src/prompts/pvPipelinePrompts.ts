@@ -112,11 +112,8 @@ INSTRUCTIONS :
 - Si un sujet parle de "projets spécifiques" (ex: OASIS, parc) → cherche le nom du projet dans les titres.
 - Si un sujet parle de "mandat" ou "renouvellement" → cherche un item "Administration" ou "Membres".
 
-INTERDICTION : Ne mets PAS de sujets dans l'item "Varia" sauf s'ils sont explicitement introduits comme "Varia" ou s'ils ne fitent NULLE PART AILLEURS.
-Si un sujet semble "proche" d'un item existant (ex: un aménagement spécifique), map-le à l'item de réglementation ou de projet correspondant, PAS à Varia.
-
-INTERDICTION : Ne mets PAS de sujets dans l'item "Varia" sauf s'ils sont explicitement introduits comme "Varia" ou s'ils ne fitent NULLE PART AILLEURS.
-Si un sujet semble "proche" d'un item existant (ex: aménagement -> réglementation), map-le à cet item, PAS à Varia.
+INTERDICTION : Ne mets PAS de sujets dans l'item "Varia" ou "Questions diverses" sauf s'ils y appartiennent explicitement. S'ils sont orphelins, utilise le tableau "unmappedTopics". N'essaie pas de tout forcer.
+Si un sujet concerne un item existant (même vaguement, ex: aménagement d'un parc -> item réglementation ou item parc), map-le à cet item spécifique, PAS à Varia.
 
 NE PAS mettre "topicIndices": [] SAUF si l'item est vraiment absent de la transcription.
 

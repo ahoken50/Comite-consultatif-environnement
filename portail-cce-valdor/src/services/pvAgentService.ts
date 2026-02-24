@@ -1194,16 +1194,15 @@ TOPICS EXTRAITS (${allTopics.length} topics) :
 ${allTopics.map((t, i) => `${i + 1}. "${t.title}" - ${t.description?.slice(0, 150)}...`).join('\n')}
 
 ⚠️ PROBLÈMES À IDENTIFIER :
-1. **Varia surchargé** : Si l'item "Varia" contient >4 topics, déplacer les topics vers leurs items spécifiques.
-2. **Items vides par erreur** : Si un item est vide mais son titre correspond à un topic, l'associer.
-3. **Mauvais regroupements** : Si un topic est associé à un item dont le titre ne correspond pas, le déplacer.
+1. **Varia surchargé** : Si l'item "Varia" contient des topics spécifiques (qui ne sont pas des questions diverses), déplace-les vers l'item ODJ pertinent.
+2. **Items vides par erreur** : Si un item est vide ET qu'un topic existant correspond CLAIREMENT à cet item, associe-le. ATTENTION : NE FORCE PAS d'association juste pour "remplir un trou". Si un item n'a pas été abordé, laisse-le vide !
+3. **Mauvais regroupements** : Si un topic est associé à un item dont le titre/thème ne correspond pas du tout, déplace-le.
 4. **Doublons** : Un même topic ne doit pas être dans plusieurs items.
 
 🎯 PROCESSUS DE RÉFLEXION :
-1. Pour chaque topic, vérifie s'il est dans le bon item ODJ
-2. Si un topic est mal placé, identifie le meilleur item cible
-3. Si "Varia" contient des topics spécifiques, redistribue-les
-4. Si un item ODJ n'a aucun topic mais devrait en avoir, cherche les topics manquants
+1. Pour chaque topic, vérifie s'il est logiquement lié à son item ODJ actuel. Sinon, déplace-le vers un meilleur item.
+2. Si "Varia" contient des topics techniques (ex: discussion sur un règlement, un parc), sors-les de Varia.
+3. RAPPEL CRITIQUE : Il VAUT MIEUX laisser un item ODJ vide que de lui inventer un sujet non pertinent. Ne fais une correction que si elle est ÉVIDENTE.
 
 📋 FORMAT DE SORTIE (JSON strict) :
 {
@@ -1266,7 +1265,7 @@ Réponds UNIQUEMENT avec le JSON de corrections.`;
                         if (topic) {
                             // Trouver les segments de transcription correspondants
                             const segmentsToMove = fromEntry.transcriptSegments.filter((seg: string) =>
-                                seg.toLowerCase().includes(topic.title.toLowerCase().slice(0, 30))
+                                seg === topic.description
                             );
 
                             if (segmentsToMove.length > 0) {
