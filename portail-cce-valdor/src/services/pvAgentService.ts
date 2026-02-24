@@ -1184,6 +1184,7 @@ ${allTopics.map((t, i) => `${i + 1}. "${t.title}" - ${t.description?.slice(0, 15
 1. Pour chaque topic, vérifie s'il est logiquement lié à son item ODJ actuel. Sinon, déplace-le vers un meilleur item.
 2. Si "Varia" contient des topics techniques (ex: discussion sur un règlement, un parc), sors-les de Varia.
 3. RAPPEL CRITIQUE : Il VAUT MIEUX laisser un item ODJ vide que de lui inventer un sujet non pertinent. Ne fais une correction que si elle est ÉVIDENTE.
+4. RÈGLE DE NON-DUPLICATION : Si un topic est très similaire à un autre, regroupe-les dans le MÊME item ODJ (le plus spécifique). Un sujet de réglementation environnementale va avec l'item de réglementation, pas dans Varia ni dans "Renouvellement des mandats".
 
 📋 FORMAT DE SORTIE (JSON strict) :
 {
@@ -1249,14 +1250,21 @@ Réponds UNIQUEMENT avec le JSON de corrections.`;
                         const topic = allTopics[correction.topicIndex - 1]; // -1 car topicIndex est 1-based
 
                         if (topic) {
-                            // Trouver les segments de transcription correspondants
+                            // Chercher le segment de texte qui ressemble à la description du topic
+                            const topicText = topic.description || '';
                             const segmentsToMove = fromEntry.transcriptSegments.filter((seg: string) =>
-                                seg === topic.description
+                                seg.includes(topicText.slice(0, 50)) || topicText.includes(seg.slice(0, 50))
                             );
 
                             if (segmentsToMove.length > 0) {
                                 // Déplacer les segments
-                                toEntry.transcriptSegments.push(...segmentsToMove);
+                                toEntry.transcriptSegments = toEntry.transcriptSegments.filter((s: string) => !s.startsWith('['));
+                                segmentsToMove.forEach((seg: string) => {
+                                    if (!toEntry.transcriptSegments.includes(seg)) {
+                                        toEntry.transcriptSegments.push(seg);
+                                    }
+                                });
+
                                 fromEntry.transcriptSegments = fromEntry.transcriptSegments.filter(
                                     (seg: string) => !segmentsToMove.includes(seg)
                                 );
