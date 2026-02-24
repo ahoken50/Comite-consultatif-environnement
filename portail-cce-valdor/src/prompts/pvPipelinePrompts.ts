@@ -21,9 +21,9 @@ export const getTopicExtractionPrompt = (
   transcriptionChunk: string
 ): string => {
   return `Tu es un assistant expert en analyse de réunions.
-TÂCHE : Analyse ce segment de transcription et extrais TOUS les sujets distincts discutés.
-IMPORTANT : Sois GRANULAIRE. Si plusieurs sujets sont discutés à la suite, sépare-les en items distincts.
-Ne regroupe PAS des discussions différentes sous un titre générique.
+TÂCHE : Analyse ce segment de transcription et extrais les GRANDS SUJETS distincts discutés.
+IMPORTANT : Regroupe les discussions autour d'un même grand thème (ex: un projet, un règlement) en un SEUL sujet riche et détaillé. 
+Ne fragmente pas la conversation en de multiples micro-sujets s'ils concernent le même point global.
 
 RÈGLES D'EXTRACTION :
 1. Préserve les termes techniques exacts (numéros de règlements, montants, dates, noms de lieux).
@@ -112,7 +112,7 @@ INSTRUCTIONS :
 - Si un sujet parle de "projets spécifiques" (ex: OASIS, parc) → cherche le nom du projet dans les titres.
 - Si un sujet parle de "mandat" ou "renouvellement" → cherche un item "Administration" ou "Membres".
 
-INTERDICTION : Ne mets PAS de sujets dans l'item "Varia" ou "Questions diverses" sauf s'ils y appartiennent explicitement. S'ils sont orphelins, utilise le tableau "unmappedTopics". N'essaie pas de tout forcer.
+INTERDICTION STRICTE : L'item 'Varia' ou 'Questions diverses' NE DOIT contenir QUE les sujets explicitement introduits comme tels à la fin de la réunion. TOUT AUTRE SUJET orphelin ou incertain DOIT aller dans le tableau "unmappedTopics". Si tu mets un sujet technique (règlement, aménagement, etc.) dans Varia, c'est une FAUTE GRAVE.
 Si un sujet concerne un item existant (même vaguement, ex: aménagement d'un parc -> item réglementation ou item parc), map-le à cet item spécifique, PAS à Varia.
 
 NE PAS mettre "topicIndices": [] SAUF si l'item est vraiment absent de la transcription.

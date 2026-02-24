@@ -1048,16 +1048,10 @@ export const runODJAnalysisStep = async (
     });
 
     // -----------------------------------------------------------------------
-    // RETRY STRATEGY: Force Map using Anchors if coverage isn't perfect
+    // RETRY STRATEGY: Force Map using Anchors to fill empty items
     // -----------------------------------------------------------------------
-    const currentMappedCount = Array.from(mergedMap.values()).filter(e =>
-        e.transcriptSegments.length > 0 && !e.transcriptSegments[0].startsWith('[')
-    ).length;
-    const totalItems = config.meeting.agendaItems?.length || 1;
-    const currentCoverage = (currentMappedCount / totalItems) * 100;
-
-    if (currentCoverage < 80 && odjAnchors.size > 0) {
-        console.log(`[ODJ] Coverage ${currentCoverage.toFixed(1)}% < 80%, checking for unused anchors...`);
+    if (odjAnchors.size > 0) {
+        console.log(`[ODJ] Checking for unused anchors to fill empty items...`);
         odjAnchors.forEach((data, itemId) => {
             const entry = mergedMap.get(itemId);
             if (entry) {
@@ -1130,7 +1124,8 @@ export const runODJAnalysisStep = async (
             const unmapped = config.meeting.agendaItems
                 .filter(item => {
                     const entry = mergedMap.get(item.id);
-                    return !entry || entry.confidence < 0.6;
+                    // items are weak if they have no text
+                    return (!entry || entry.transcriptSegments.length === 0 || entry.transcriptSegments[0].startsWith('['));
                 })
                 .map(item => item.title);
 
