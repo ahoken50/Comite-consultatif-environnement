@@ -1046,52 +1046,7 @@ export const runODJAnalysisStep = async (
         entry.count++;
     });
 
-    // -----------------------------------------------------------------------
-    // RESCUE STRATEGY: Find topics for items the LLM left completely empty
-    // -----------------------------------------------------------------------
-    console.log(`[ODJ] 🔍 Checking for empty items to rescue...`);
-    Array.from(mergedMap.values()).forEach(entry => {
-        // If the item has no content yet OR has the generic "Skipped" text
-        if (entry.transcriptSegments.length === 0 || entry.transcriptSegments[0].startsWith('[')) {
-            const cleanStr = (s: string) => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-            const odjTitleClean = cleanStr(entry.odjTitle);
-            const odjKeywords = new Set(
-                odjTitleClean.split(/[\s\-,()']+/).filter((w: string) => w.length > 3 && !['pour', 'dans', 'avec', 'les', 'des', 'sur', 'aux'].includes(w))
-            );
 
-            // Find ALL topics that match this item's keywords or title
-            allTopics.forEach((topic) => {
-                const topicTitleClean = cleanStr(topic.title || '');
-                const topicDescClean = cleanStr(topic.description || '');
-                const topicText = `${topicTitleClean} ${topicDescClean}`;
-
-                let matches = 0;
-                odjKeywords.forEach(kw => {
-                    if (topicText.includes(kw)) matches++;
-                });
-
-                const isDirectMatch = topicTitleClean.includes(odjTitleClean) || odjTitleClean.includes(topicTitleClean);
-
-                // Strong semantic match criteria
-                if (odjKeywords.size > 0 && (isDirectMatch || matches >= Math.max(1, Math.floor(odjKeywords.size * 0.4)))) {
-                    // Add Description
-                    entry.transcriptSegments = entry.transcriptSegments.filter((s: string) => !s.startsWith('[')); // Clean placeholders
-                    if (topic.description && !entry.transcriptSegments.includes(topic.description)) {
-                        entry.transcriptSegments.push(topic.description);
-                    }
-                    // Add Speakers
-                    if (topic.speakers) {
-                        const speakers = Array.isArray(topic.speakers) ? topic.speakers : [topic.speakers];
-                        speakers.forEach((s: string) => entry.speakers.add(s));
-                    }
-                    entry.confidence = Math.max(entry.confidence, 0.65);
-                    console.log(`[ODJ] 🚑 Rescued item "${entry.odjTitle}" using semantic match with topic "${topic.title.substring(0, 30)}..."`);
-                }
-            });
-        }
-    });
-
-    // -----------------------------------------------------------------------
     // RETRY STRATEGY: Force Map using Anchors to fill empty items
     // -----------------------------------------------------------------------
     if (odjAnchors.size > 0) {

@@ -111,6 +111,8 @@ INSTRUCTIONS :
 - Si un sujet parle de "politique", "stratégie" ou "plan" → cherche un item de planification ou politique générale.
 - Si un sujet parle de "projets spécifiques" (ex: OASIS, parc) → cherche le nom du projet dans les titres.
 - Si un sujet parle de "mandat" ou "renouvellement" → cherche un item "Administration" ou "Membres".
+⚠️ RÈGLE DE NON-DUPLICATION :
+Un sujet (topicIndex) ne doit être associé qu'à UN SEUL point de l'ordre du jour. Ne place JAMAIS le même topicIndex dans plusieurs items. Choisis le PLUS pertinent.
 
 INTERDICTION STRICTE : L'item 'Varia' ou 'Questions diverses' NE DOIT contenir QUE les sujets explicitement introduits comme tels à la fin de la réunion. TOUT AUTRE SUJET orphelin ou incertain DOIT aller dans le tableau "unmappedTopics". Si tu mets un sujet technique (règlement, aménagement, etc.) dans Varia, c'est une FAUTE GRAVE.
 Si un sujet concerne un item existant (même vaguement, ex: aménagement d'un parc -> item réglementation ou item parc), map-le à cet item spécifique, PAS à Varia.
