@@ -1139,7 +1139,10 @@ export const runODJAnalysisStep = async (
     // Filtre pré-refinement
     const needsRefinement =
         Array.from(mergedMap.values()).some(entry => entry.transcriptSegments.length > 5) || // Un item a >5 topics
-        Array.from(mergedMap.values()).filter(entry => entry.transcriptSegments.length === 0).length >= 2; // >=2 items vides déclenchent la Pass 3 (Refinement)
+        Array.from(mergedMap.values()).filter(entry =>
+            entry.transcriptSegments.length === 0 ||
+            (entry.transcriptSegments.length === 1 && entry.transcriptSegments[0].startsWith('['))
+        ).length >= 2; // >=2 items vides (ou avec seulement un placeholder) déclenchent la Pass 3 (Refinement)
 
     if (!needsRefinement) {
         console.log('[ODJ] ✅ Mapping déjà optimal, skip refinement');
@@ -1214,12 +1217,17 @@ Réponds UNIQUEMENT avec le JSON de corrections.`;
             } as any);
 
             let cleaned = refineResponse.text.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+            // Remove markdown format if LLM includes it
+            cleaned = cleaned.replace(/```(?:json)?/g, '').replace(/```/g, '');
+
             const start = cleaned.indexOf('{');
             const end = cleaned.lastIndexOf('}');
             if (start !== -1 && end !== -1) {
                 const refinementJSON = cleaned.substring(start, end + 1);
                 refinementResult = JSON.parse(refinementJSON);
-                console.log(`[ODJ] ✅ Refinement: ${refinementResult.corrections.length} corrections identifiées`);
+                console.log(`[ODJ] ✅ Refinement: ${refinementResult?.corrections?.length || 0} corrections identifiées`);
+            } else {
+                throw new Error("No JSON object found in Refinement response");
             }
         } catch (err: any) {
             console.warn('[ODJ] ⚠️ Refinement pass failed, skipping:', err.message);

@@ -21,9 +21,9 @@ export const getTopicExtractionPrompt = (
   transcriptionChunk: string
 ): string => {
   return `Tu es un assistant expert en analyse de réunions.
-TÂCHE : Analyse ce segment de transcription et extrais les GRANDS SUJETS distincts discutés.
-IMPORTANT : Regroupe les discussions autour d'un même grand thème (ex: un projet, un règlement) en un SEUL sujet riche et détaillé. 
-Ne fragmente pas la conversation en de multiples micro-sujets s'ils concernent le même point global.
+TÂCHE : Analyse ce segment de transcription et extrais TOUS les sujets distincts discutés.
+IMPORTANT : Sois GRANULAIRE. Si plusieurs sujets sont discutés à la suite, sépare-les en items distincts.
+Ne regroupe PAS des discussions différentes sous un titre générique.
 
 RÈGLES D'EXTRACTION :
 1. Préserve les termes techniques exacts (numéros de règlements, montants, dates, noms de lieux).
@@ -96,7 +96,7 @@ TÂCHE :
 Associe les sujets discutés aux points de l'ordre du jour.
 Tu as ${extractedTopics.length} sujets identifiés pour ${meeting.agendaItems?.length || 0} points à l'ODJ.
 Tu DOIS regrouper les sujets qui concernent le même point.
-RÈGLE D'OR : CHAQUE point de l'ordre du jour DOIT avoir du contenu.
+IMPORTANT : Il est TRÈS FRÉQUENT que des points de l'ordre du jour soient ignorés ou discutés rapidement. Ne force JAMAIS une association juste pour remplir un item. S'il n'y a pas de sujet clair, laisse l'item VIDE.
 
 INSTRUCTIONS :
 1. Parcours TOUS les points de l'ODJ un par un.
@@ -117,7 +117,7 @@ Un sujet (topicIndex) ne doit être associé qu'à UN SEUL point de l'ordre du j
 INTERDICTION STRICTE : L'item 'Varia' ou 'Questions diverses' NE DOIT contenir QUE les sujets explicitement introduits comme tels à la fin de la réunion. TOUT AUTRE SUJET orphelin ou incertain DOIT aller dans le tableau "unmappedTopics". Si tu mets un sujet technique (règlement, aménagement, etc.) dans Varia, c'est une FAUTE GRAVE.
 Si un sujet concerne un item existant (même vaguement, ex: aménagement d'un parc -> item réglementation ou item parc), map-le à cet item spécifique, PAS à Varia.
 
-NE PAS mettre "topicIndices": [] SAUF si l'item est vraiment absent de la transcription.
+Si un point n'a pas de correspondance claire et évidente, laisse "topicIndices": []. N'invente pas d'associations par défaut. Laisse l'item vide plutôt que de faire une mauvaise association.
 
 ⚠️ RÈGLES CRITIQUES SUR LE FORMAT :
 1. PAS de <think>, PAS de commentaire, JUSTE le JSON.
