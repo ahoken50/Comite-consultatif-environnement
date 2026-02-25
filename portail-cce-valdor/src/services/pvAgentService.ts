@@ -811,7 +811,7 @@ export const runODJAnalysisStep = async (
 
             const google = getGoogle();
             const { text: rawResult } = await generateText({
-                model: google('gemini-1.5-pro'), // Use Gemini 1.5 Pro for advanced logic/mapping
+                model: google('gemini-2.5-flash-lite-preview-09-2025'), // Update strictly to user requested model
                 prompt: mappingPrompt,
                 temperature: 0.2,           // Very low for structured precision
                 maxTokens: 8192,            // Gemini 1.5 output limit
@@ -1217,7 +1217,7 @@ Réponds UNIQUEMENT avec le JSON de corrections.`;
         try {
             const google = getGoogle();
             const refineResponse = await generateText({
-                model: google('gemini-1.5-pro'),
+                model: google('gemini-2.5-flash-lite-preview-09-2025'),
                 prompt: refinementPrompt,
                 temperature: 0.2,
                 maxTokens: 8192,
