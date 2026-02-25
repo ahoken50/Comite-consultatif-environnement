@@ -2060,46 +2060,7 @@ export const runPVAgent = async (
         onStateChange(currentState);
 
         // ================================================================
-        // STEP 8: VALIDATION USER
-        // ================================================================
-        currentState = updateStepStatus(currentState, 'user_validation', 'awaiting');
-        onStateChange(currentState);
-
-        let userValidation: UserValidationResult = {
-            approved: true,
-            validatedAt: new Date().toISOString(),
-        };
-
-        if (config.onValidationRequired) {
-            const validationResult = await config.onValidationRequired('user_validation', {
-                pvContent: reflection.finalContent,
-                qualityScore: reflection.qualityScore,
-                drafting,
-                reflection,
-            });
-
-            if (validationResult === false) {
-                throw new Error('PV rejeté par l\'utilisateur');
-            }
-
-            if (typeof validationResult === 'object' && validationResult !== null) {
-                userValidation = {
-                    approved: true,
-                    userEdits: (validationResult as any).userEdits,
-                    userComments: (validationResult as any).userComments,
-                    validatedAt: new Date().toISOString(),
-                };
-            }
-        }
-
-        currentState = updateStepResult(currentState, 'user_validation', userValidation, 'completed');
-        onStateChange(currentState);
-
-        // Use user-edited content if provided
-        const finalPVContent = userValidation.userEdits || reflection.finalContent;
-
-        // ================================================================
-        // STEP 9: COMPARAISON (optional)
+        // STEP 8: COMPARAISON (optional)
         // ================================================================
         let comparison: ComparisonResult;
 
@@ -2109,7 +2070,7 @@ export const runPVAgent = async (
 
             comparison = await runComparisonStep(
                 config,
-                finalPVContent,
+                reflection.finalContent, // Pass the output of reflection into comparison
                 currentState.meetingNumber
             );
 
@@ -2121,12 +2082,52 @@ export const runPVAgent = async (
                 consistencyChecks: [],
                 formatScore: 100,
                 corrections: [],
-                finalContent: finalPVContent,
+                finalContent: reflection.finalContent,
             };
             currentState = updateStepStatus(currentState, 'comparison', 'skipped');
             currentState = updateStepResult(currentState, 'comparison', comparison, 'skipped');
             onStateChange(currentState);
         }
+
+        // ================================================================
+        // STEP 9: VALIDATION USER
+        // ================================================================
+        currentState = updateStepStatus(currentState, 'user_validation', 'awaiting');
+        onStateChange(currentState);
+
+        let userValidation: UserValidationResult = {
+            approved: true,
+            validatedAt: new Date().toISOString(),
+        };
+
+        if (config.onValidationRequired) {
+            const validationResult = await config.onValidationRequired('user_validation', {
+                pvContent: comparison.finalContent,
+                qualityScore: reflection.qualityScore,
+                formatScore: comparison.formatScore,
+                drafting,
+                reflection,
+                comparison
+            });
+
+            if (validationResult === false) {
+                throw new Error('PV rejeté par l\'utilisateur');
+            }
+
+            if (typeof validationResult === 'object' && validationResult !== null) {
+                userValidation = {
+                    approved: true,
+                    userEdits: (validationResult as any).userEdits, // This holds the final text the user edited/approved
+                    userComments: (validationResult as any).userComments,
+                    validatedAt: new Date().toISOString(),
+                };
+            }
+        }
+
+        currentState = updateStepResult(currentState, 'user_validation', userValidation, 'completed');
+        onStateChange(currentState);
+
+        // Content is finalized after user validation
 
         // ================================================================
         // STEP 10: APPRENTISSAGE (optional)

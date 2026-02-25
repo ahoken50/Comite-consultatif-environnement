@@ -387,6 +387,7 @@ const PVAgentWizard: React.FC<PVAgentWizardProps> = ({
             case 'user_validation': {
                 const isAwaitingValidation = step.status === 'awaiting';
                 const reflectionResult = state?.results.reflection;
+                const comparisonResult = state?.results.comparison;
                 const draftingResult = state?.results.drafting;
 
                 if (isAwaitingValidation) {
@@ -394,18 +395,26 @@ const PVAgentWizard: React.FC<PVAgentWizardProps> = ({
                         <Box>
                             <Alert severity="info" sx={{ mb: 2 }}>
                                 <Typography variant="body2" fontWeight="bold">
-                                    Révisez le PV ci-dessous. Vous pouvez modifier le texte ou ajouter des commentaires.
+                                    Révisez le PV FINAL ci-dessous (après corrections et comparaison historique). Vous pouvez modifier le texte ou ajouter des commentaires avant l'application.
                                 </Typography>
                             </Alert>
 
                             {reflectionResult && (
                                 <Box sx={{ mb: 2 }}>
                                     <Chip
-                                        label={`Score qualité: ${reflectionResult.qualityScore}/100`}
+                                        label={`Score qualité initial: ${reflectionResult.qualityScore}/100`}
                                         color={reflectionResult.qualityScore >= 90 ? 'success' : reflectionResult.qualityScore >= 70 ? 'warning' : 'error'}
                                         size="small"
-                                        sx={{ mb: 1 }}
+                                        sx={{ mb: 1, mr: 1 }}
                                     />
+                                    {comparisonResult && (
+                                        <Chip
+                                            label={`Cohérence format: ${comparisonResult.formatScore}/100`}
+                                            color={comparisonResult.formatScore >= 90 ? 'success' : comparisonResult.formatScore >= 70 ? 'warning' : 'error'}
+                                            size="small"
+                                            sx={{ mb: 1 }}
+                                        />
+                                    )}
                                 </Box>
                             )}
 
@@ -414,8 +423,8 @@ const PVAgentWizard: React.FC<PVAgentWizardProps> = ({
                                 multiline
                                 minRows={10}
                                 maxRows={20}
-                                label="Contenu du PV (modifiable)"
-                                value={userEdits || reflectionResult?.finalContent || draftingResult?.pvContent || ''}
+                                label="Contenu du PV FINAL (modifiable)"
+                                value={userEdits || comparisonResult?.finalContent || reflectionResult?.finalContent || draftingResult?.pvContent || ''}
                                 onChange={(e) => setUserEdits(e.target.value)}
                                 variant="outlined"
                                 sx={{ mb: 2 }}

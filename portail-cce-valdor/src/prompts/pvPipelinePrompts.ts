@@ -417,11 +417,12 @@ Effectue une auto-critique rigoureuse du brouillon en vérifiant:
 5. **HALLUCINATIONS** : Le PV contient-il des informations inventées?
 6. **STYLE** : Le ton est-il conforme au style administratif québécois?
 
-RÈGLES:
+RÈGLES ABSOLUES:
 - Sois IMPITOYABLE dans ta critique
 - Chaque problème doit avoir une correction concrète
 - Si le PV est correct, retourne une liste vide d'issues
-- Applique les corrections et retourne le contenu corrigé
+- Tu DOIS IMPÉRATIVEMENT retourner le document COMPLET du début à la fin dans \`correctedContent\`.
+- INTERDICTION FORMELLE d'utiliser des raccourcis comme "[Le reste du document demeure identique]". Le texte retourné remplacera le PV actuel en totalité.
 - Attribue un score de qualité de 0 à 100
 
 FORMAT JSON ATTENDU:
@@ -474,6 +475,8 @@ Compare le PV actuel avec les PV historiques et vérifie:
 5. **STYLE DE RÉSOLUTION** : Les résolutions suivent-elles le même patron (CONSIDÉRANT... IL EST RÉSOLU...)?
 
 Pour chaque incohérence trouvée, propose une correction.
+Tu DOIS IMPÉRATIVEMENT retourner le document COMPLET corrigé dans \`finalContent\`.
+INTERDICTION FORMELLE d'utiliser des raccourcis comme "[Le reste du document demeure identique]". Le texte retourné remplacera le PV actuel en totalité.
 
 FORMAT JSON ATTENDU:
 {
