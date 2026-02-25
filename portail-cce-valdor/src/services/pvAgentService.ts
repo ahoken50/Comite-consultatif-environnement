@@ -15,6 +15,7 @@
  */
 
 import { createGroq } from '@ai-sdk/groq';
+import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { generateText } from 'ai';
 import { httpsCallable } from 'firebase/functions';
 import { collection, query, orderBy, limit, getDocs } from 'firebase/firestore';
@@ -53,6 +54,10 @@ import {
 
 const getGroq = () => createGroq({
     apiKey: import.meta.env.VITE_GROQ_API_KEY,
+});
+
+const getGoogle = () => createGoogleGenerativeAI({
+    apiKey: import.meta.env.VITE_GOOGLE_AI_API,
 });
 
 // ============================================================================
@@ -804,11 +809,12 @@ export const runODJAnalysisStep = async (
             console.log(`[ODJ] 🔍 Prompt length: ${mappingPrompt.length} chars`);
             console.log(`[ODJ] 🔍 Prompt ends with: ${mappingPrompt.slice(-200)}`);
 
+            const google = getGoogle();
             const { text: rawResult } = await generateText({
-                model: groq('llama-3.3-70b-versatile'), // Switch to Llama 3.3 for better instruction following
+                model: google('gemini-1.5-pro'), // Use Gemini 1.5 Pro for advanced logic/mapping
                 prompt: mappingPrompt,
-                temperature: 0.3,           // ← Plus bas pour plus de précision
-                maxTokens: 100000,          // ← Plus haut pour Llama
+                temperature: 0.2,           // Very low for structured precision
+                maxTokens: 8192,            // Gemini 1.5 output limit
                 maxRetries: 2,
                 timeout: 180000,
             } as any);
@@ -1209,11 +1215,12 @@ Réponds UNIQUEMENT avec le JSON de corrections.`;
 
         let refinementResult;
         try {
+            const google = getGoogle();
             const refineResponse = await generateText({
-                model: groq('llama-3.3-70b-versatile'),
+                model: google('gemini-1.5-pro'),
                 prompt: refinementPrompt,
-                temperature: 0.4,
-                maxTokens: 80000,
+                temperature: 0.2,
+                maxTokens: 8192,
                 maxRetries: 2,
             } as any);
 
