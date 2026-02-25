@@ -1375,8 +1375,9 @@ export const runClassificationStep = async (
                 maxTokens: 60000,
             } as any);
 
-            // Clean response
+            console.log(`[Classif] Raw LLM response length: ${rawResult.length} chars`);
             let cleaned = rawResult.replace(/<think>[\s\S]*?<\/think>/g, '');
+            console.log(`[Classif] After <think> removal: ${cleaned.length} chars`);
             cleaned = cleaned.replace(/```(?:json)?/g, '').replace(/```/g, '');
 
             const start = cleaned.indexOf('{');
@@ -1443,7 +1444,9 @@ export const runDraftingStep = async (
     }
 
     // Now extract structured data from the generated PV
+    console.log(`[Drafting] Cloud function returned draft of length ${data.content.length}`);
     const extractionResult = await extractStructuredData(data.content, numbering);
+    console.log(`[Drafting] Extracted ${extractionResult.resolutions.length} resolutions and ${extractionResult.comments.length} comments.`);
 
     return {
         pvContent: data.content,

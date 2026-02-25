@@ -157,7 +157,8 @@ const PVAgentWizard: React.FC<PVAgentWizardProps> = ({
     // ========================================================================
 
     const renderStepResult = (step: AgentStep): React.ReactNode => {
-        if (!step.result) return null;
+        // user_validation step rendering depends on state.results, not step.result initially
+        if (!step.result && step.id !== 'user_validation') return null;
 
         switch (step.id) {
             case 'transcription': {
@@ -282,8 +283,8 @@ const PVAgentWizard: React.FC<PVAgentWizardProps> = ({
                         <Typography variant="body2">
                             Sentiment global: {
                                 r.globalSentiment === 'positive' ? '😊 Positif' :
-                                r.globalSentiment === 'negative' ? '😟 Négatif' :
-                                r.globalSentiment === 'mixed' ? '🤔 Mixte' : '😐 Neutre'
+                                    r.globalSentiment === 'negative' ? '😟 Négatif' :
+                                        r.globalSentiment === 'mixed' ? '🤔 Mixte' : '😐 Neutre'
                             }
                         </Typography>
                         {r.items.map((item, i) => (
@@ -293,8 +294,8 @@ const PVAgentWizard: React.FC<PVAgentWizardProps> = ({
                                 </Typography>
                                 <Typography variant="caption" color="text.secondary">
                                     {item.issueType === 'resolution' ? '📜 Résolution' :
-                                     item.issueType === 'comment' ? '💬 Commentaire' :
-                                     item.issueType === 'decision' ? '✅ Décision' : 'ℹ️ Information'}
+                                        item.issueType === 'comment' ? '💬 Commentaire' :
+                                            item.issueType === 'decision' ? '✅ Décision' : 'ℹ️ Information'}
                                     {' • '}{item.priority === 'high' ? '🔴' : item.priority === 'medium' ? '🟡' : '🟢'} {item.priority}
                                     {' • '}{item.summary}
                                 </Typography>
@@ -363,8 +364,8 @@ const PVAgentWizard: React.FC<PVAgentWizardProps> = ({
                                                 <ListItem key={j} sx={{ py: 0 }}>
                                                     <ListItemIcon sx={{ minWidth: 28 }}>
                                                         {issue.severity === 'critical' ? <ErrorIcon color="error" fontSize="small" /> :
-                                                         issue.severity === 'major' ? <WarningIcon color="warning" fontSize="small" /> :
-                                                         <InfoIcon color="info" fontSize="small" />}
+                                                            issue.severity === 'major' ? <WarningIcon color="warning" fontSize="small" /> :
+                                                                <InfoIcon color="info" fontSize="small" />}
                                                     </ListItemIcon>
                                                     <ListItemText
                                                         primary={issue.description}
@@ -478,8 +479,8 @@ const PVAgentWizard: React.FC<PVAgentWizardProps> = ({
                                     <ListItem key={i} sx={{ py: 0 }}>
                                         <ListItemIcon sx={{ minWidth: 28 }}>
                                             {check.status === 'fail' ? <ErrorIcon color="error" fontSize="small" /> :
-                                             check.status === 'warning' ? <WarningIcon color="warning" fontSize="small" /> :
-                                             <CheckCircleIcon color="success" fontSize="small" />}
+                                                check.status === 'warning' ? <WarningIcon color="warning" fontSize="small" /> :
+                                                    <CheckCircleIcon color="success" fontSize="small" />}
                                         </ListItemIcon>
                                         <ListItemText
                                             primary={check.message}
