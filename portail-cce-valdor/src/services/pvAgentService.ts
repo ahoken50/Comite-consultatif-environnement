@@ -1218,8 +1218,13 @@ Réponds UNIQUEMENT avec le JSON de corrections.`;
             } as any);
 
             let cleaned = refineResponse.text.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
-            // Remove markdown format if LLM includes it
-            cleaned = cleaned.replace(/```(?:json)?/g, '').replace(/```/g, '');
+
+            console.log(`[ODJ] PASS 3 Raw LLM Response length: ${cleaned.length}`);
+            console.log(`[ODJ] PASS 3 Raw LLM Response:`);
+            console.log(cleaned.substring(0, 3000)); // Log details to debug
+
+            // Handle markdown ```json``` wrapping
+            if (cleaned.startsWith('```')) { cleaned = cleaned.replace(/```(?:json)?/g, '').replace(/```/g, ''); }
 
             const start = cleaned.indexOf('{');
             const end = cleaned.lastIndexOf('}');
