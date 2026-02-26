@@ -76,8 +76,9 @@ const MeetingDetailPage: React.FC = () => {
 
     const dispatch = useDispatch<AppDispatch>();
     const { showInfo, showSuccess, showError } = useToast();
-    const meetingRedux = useSelector((state: RootState) =>
-        state.meetings.items.find(m => m.id === id)
+    const meetingRedux = useSelector(
+        (state: RootState) => state.meetings.items.find(m => m.id === id),
+        (a, b) => JSON.stringify(a) === JSON.stringify(b)
     );
     const userRedux = useSelector(
         (state: RootState) => state.auth.user,
@@ -97,7 +98,8 @@ const MeetingDetailPage: React.FC = () => {
         (state: RootState) => {
             const members = state.members.items;
             const authUser = state.auth.user;
-            return members.find(m => m.id === (authUser?.id || authUser?.uid) || m.email === authUser?.email) || null;
+            if (!authUser) return null;
+            return members.find(m => m.id === (authUser.id || authUser.uid) || m.email === authUser.email) || null;
         },
         (a, b) => a?.id === b?.id
     );
@@ -250,25 +252,7 @@ const MeetingDetailPage: React.FC = () => {
         }
     }, [dispatch, id]);
 
-    // Patch: Convert old unstable "patched-*" IDs to new stable IDs
-    useEffect(() => {
-        if (meeting && meeting.agendaItems && meeting.agendaItems.length > 0) {
-            // Check if any items have old "patched-*" IDs or no IDs
-            const needsConversion = meeting.agendaItems.some((item: AgendaItem) =>
-                !item.id || item.id.startsWith('patched-')
-            );
-
-            if (needsConversion && isCoordinator) {
-                console.log('⚠️ Converting agenda item IDs to stable format...');
-                const patchedItems = meeting.agendaItems.map((item: AgendaItem, index: number) => ({
-                    ...item,
-                    // Use stable ID based on meeting ID + index (not Date.now()!)
-                    id: `${meeting.id}-item-${index}`
-                }));
-                dispatch(updateMeeting({ id: meeting.id, updates: { agendaItems: patchedItems } }));
-            }
-        }
-    }, [meeting, dispatch, isCoordinator]);
+    // Cleaned up unstable legacy agenda ID patching script that caused infinite loops
 
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
     const [isConvocationDialogOpen, setIsConvocationDialogOpen] = useState(false);
@@ -302,8 +286,6 @@ const MeetingDetailPage: React.FC = () => {
             dispatch(updateMeeting({ id: meeting.id, updates: {} }));
         }
     }, [dispatch, meeting?.id]);
-
-    const NOOP = useCallback(() => { }, []);
 
     const breadcrumbItems = useMemo(() => [
         { label: 'Accueil', to: '/dashboard' },
@@ -512,7 +494,7 @@ const MeetingDetailPage: React.FC = () => {
                     <Typography variant="h6" gutterBottom>Présences</Typography>
                     <AttendanceManager
                         meeting={meeting}
-                        onUpdate={isCoordinator ? handleMeetingUpdate : NOOP}
+                        onUpdate={handleMeetingUpdate}
                         readOnly={!isCoordinator}
                         members={members}
                     />
