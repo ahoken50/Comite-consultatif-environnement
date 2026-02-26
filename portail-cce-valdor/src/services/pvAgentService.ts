@@ -1840,24 +1840,43 @@ export const runUserRevisionStep = async (
 ): Promise<UserRevisionResult> => {
     try {
         const chatClaude = httpsCallable(functions, 'chat_claude', { timeout: 540000 });
-        const prompt = getUserRevisionPrompt(currentPVContent, userComments);
+        const userMessage = getUserRevisionPrompt(currentPVContent, userComments);
+        const systemPrompt = "Tu es un secrétaire municipal expert. Ton unique tâche est de réviser un procès-verbal en te basant STRICTEMENT sur les commentaires de l'utilisateur. Tu dois répondre UNIQUEMENT en format JSON valide.";
 
-        const response = await chatClaude({ prompt });
-        let dataStr = response.data as string;
+        const response = await chatClaude({ systemPrompt, userMessage });
+        const responseData = response.data as { success: boolean; content: string };
+
+        if (!responseData.success || !responseData.content) {
+            throw new Error('Échec de la révision utilisateur par Claude');
+        }
 
         // Clean markdown JSON formatting if necessary
-        dataStr = dataStr.replace(/```(?:json)?/g, '').replace(/```/g, '').trim();
+        let cleaned = responseData.content.replace(/```(?:json)?/g, '').replace(/```/g, '').trim();
 
-        const data = JSON.parse(dataStr);
+        const start = cleaned.indexOf('{');
+        const end = cleaned.lastIndexOf('}');
+        if (start !== -1 && end !== -1 && end >= start) {
+            cleaned = cleaned.substring(start, end + 1);
+        } else {
+            throw new Error("No JSON boundaries found in user revision response");
+        }
 
-        if (data && typeof data === 'object' && data.finalContent) {
+        let parsed: any;
+        try {
+            parsed = JSON5.parse(cleaned);
+        } catch (e) {
+            console.warn(`[UserRevision] JSON5 parse failed, attempting repair...`);
+            parsed = JSON5.parse(repairJSON(cleaned));
+        }
+
+        if (parsed && typeof parsed === 'object' && parsed.finalContent) {
             return {
-                finalContent: data.finalContent,
-                qualityScore: data.qualityScore || 90,
+                finalContent: parsed.finalContent,
+                qualityScore: parsed.qualityScore || 90,
             };
         }
 
-        throw new Error("Invalid response format from Claude for user revision.");
+        throw new Error("Invalid response format from Claude for user revision: finalContent missing.");
     } catch (e) {
         console.error('Failed to run user revision step:', e);
         throw e;
