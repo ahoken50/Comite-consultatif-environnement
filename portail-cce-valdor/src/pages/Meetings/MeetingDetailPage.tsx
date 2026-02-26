@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useTransition } from 'react';
 import { useParams, useLocation } from 'react-router-dom';
 import { useMeetingSubscription } from '../../hooks/useMeetingSubscription';
 import {
@@ -86,6 +86,7 @@ const MeetingDetailPage: React.FC = () => {
     const isCoordinator = user?.role === 'coordinator';
 
     const [tabValue, setTabValue] = useState(0);
+    const [isPending, startTransition] = useTransition();
     const [visitedTabs, setVisitedTabs] = useState<Set<number>>(new Set([0])); // Tab 0 visited by default
     const [hasConvocation, setHasConvocation] = useState<boolean | undefined>(undefined);
 
@@ -369,12 +370,19 @@ const MeetingDetailPage: React.FC = () => {
                 )}
 
                 <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
-                    <Tabs value={tabValue} onChange={(_, v) => setTabValue(v)}>
+                    <Tabs value={tabValue} onChange={(_, v) => {
+                        startTransition(() => setTabValue(v));
+                    }}>
                         <Tab label="Ordre du jour" />
                         <Tab label="Procès-verbal" />
                         <Tab label="Présences" />
                         <Tab label="Documents" />
                     </Tabs>
+                    {isPending && (
+                        <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}>
+                            <Typography variant="body2" color="text.secondary">Chargement...</Typography>
+                        </Box>
+                    )}
                 </Box>
 
                 <TabPanel value={tabValue} index={0} hasBeenActive={visitedTabs.has(0)}>
