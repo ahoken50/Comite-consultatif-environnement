@@ -19,7 +19,11 @@ const initialState: MembersState = {
 export const fetchMembers = createAsyncThunk(
     'members/fetchMembers',
     async () => {
-        return await membersAPI.fetchMembers();
+        const result = await membersAPI.fetchMembers();
+        // Yield to event loop so the fulfilled dispatch doesn't
+        // block the WebSocket message handler with a synchronous React render
+        await new Promise(resolve => setTimeout(resolve, 0));
+        return result;
     }
 );
 
