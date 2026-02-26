@@ -105,7 +105,7 @@ const SortableItem = ({ item, onDelete, onEdit, linkedDocuments, readOnly }: { i
     );
 };
 
-const AgendaBuilder: React.FC<AgendaBuilderProps> = ({ items, onItemsChange, meetingId, meeting, documents = [], onDocumentUpload, initialAgendaItemId, onDocumentUnlink, onDocumentDelete, readOnly = false, canPropose = false }) => {
+const AgendaBuilder: React.FC<AgendaBuilderProps> = ({ items, onItemsChange, meetingId, meeting, documents = [], onDocumentUpload, initialAgendaItemId, onDocumentUnlink, onDocumentDelete, readOnly = false, canPropose = false, members = [] }) => {
     const [editingItem, setEditingItem] = useState<AgendaItem | null>(null);
     const [isEditOpen, setIsEditOpen] = useState(false);
     const [previewDoc, setPreviewDoc] = useState<Document | null>(null);
