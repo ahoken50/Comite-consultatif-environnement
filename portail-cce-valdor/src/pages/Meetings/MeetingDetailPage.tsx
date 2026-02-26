@@ -79,12 +79,25 @@ const MeetingDetailPage: React.FC = () => {
     const meetingRedux = useSelector((state: RootState) =>
         state.meetings.items.find(m => m.id === id)
     );
-    const { user } = useSelector((state: RootState) => state.auth);
+    const userRedux = useSelector(
+        (state: RootState) => state.auth.user,
+        (a, b) => a?.id === b?.id && a?.role === b?.role && a?.email === b?.email
+    );
 
     // Narrow selector: only re-renders when THIS meeting's documents change
     const meetingDocumentsRedux = useSelector(
         (state: RootState) => state.documents.items.filter(d => d.linkedEntityId === id),
         (a, b) => a.length === b.length && a.every((doc, i) => doc.id === b[i]?.id)
+    );
+
+    // Narrow selector: only re-renders when the current member identity changes
+    const currentMemberRedux = useSelector(
+        (state: RootState) => {
+            const members = state.members.items;
+            const authUser = state.auth.user;
+            return members.find(m => m.id === (authUser?.id || authUser?.uid) || m.email === authUser?.email) || null;
+        },
+        (a, b) => a?.id === b?.id
     );
 
     // DECOUPLE EXPENSIVE UI FROM REDUX FAST UPDATES
@@ -93,23 +106,17 @@ const MeetingDetailPage: React.FC = () => {
     // leaving the main thread free to process incoming WebSocket messages immediately.
     const [meeting, setMeeting] = useState<Meeting | undefined>(meetingRedux);
     const [meetingDocuments, setMeetingDocuments] = useState<any[]>(meetingDocumentsRedux);
+    const [currentMember, setCurrentMember] = useState<any>(currentMemberRedux);
+    const [user, setUser] = useState<any>(userRedux);
 
     useEffect(() => {
         startTransition(() => {
             setMeeting(meetingRedux);
             setMeetingDocuments(meetingDocumentsRedux);
+            setCurrentMember(currentMemberRedux);
+            setUser(userRedux);
         });
-    }, [meetingRedux, meetingDocumentsRedux]);
-
-    // Narrow selector: only re-renders when the current member identity changes
-    const currentMember = useSelector(
-        (state: RootState) => {
-            const members = state.members.items;
-            const authUser = state.auth.user;
-            return members.find(m => m.id === (authUser?.id || authUser?.uid) || m.email === authUser?.email) || null;
-        },
-        (a, b) => a?.id === b?.id
-    );
+    }, [meetingRedux, meetingDocumentsRedux, currentMemberRedux, userRedux]);
 
     const isCoordinator = user?.role === 'coordinator';
 
