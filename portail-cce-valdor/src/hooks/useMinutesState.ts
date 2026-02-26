@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSelector } from 'react-redux';
 import type { Meeting, AgendaItem } from '../types/meeting.types';
 import type { RootState } from '../store/rootReducer';
@@ -23,17 +23,35 @@ export const useMinutesState = ({ meeting, onUpdate }: UseMinutesStateProps) => 
     const [isSaving, setIsSaving] = useState(false);
     const [showSaveSuccess, setShowSaveSuccess] = useState(false);
 
-    // Sync state when meeting changes (initial load or external update)
-    useEffect(() => {
-        setGlobalNotes(meeting.minutes || '');
-        setLocalAgendaItems(meeting.agendaItems || []);
+    // Track meeting ID to detect actual navigation vs Firestore echo
+    const prevMeetingIdRef = useRef(meeting.id);
+    // Track whether we initiated the save (to suppress Firestore echo re-sync)
+    const selfSaveRef = useRef(false);
 
-        const decisions: Record<string, string> = {};
-        meeting.agendaItems?.forEach(item => {
-            if (item.decision) decisions[item.id] = item.decision;
-        });
-        setItemDecisions(decisions);
-        setHasUnsavedChanges(false);
+    // Sync state when meeting changes (initial load or navigation to different meeting)
+    useEffect(() => {
+        // If we initiated the save, skip the re-sync (Firestore echo)
+        if (selfSaveRef.current) {
+            selfSaveRef.current = false;
+            return;
+        }
+
+        const isMeetingChange = prevMeetingIdRef.current !== meeting.id;
+        prevMeetingIdRef.current = meeting.id;
+
+        if (isMeetingChange) {
+            // Full reset — navigated to a different meeting
+            setGlobalNotes(meeting.minutes || '');
+            setLocalAgendaItems(meeting.agendaItems || []);
+
+            const decisions: Record<string, string> = {};
+            meeting.agendaItems?.forEach(item => {
+                if (item.decision) decisions[item.id] = item.decision;
+            });
+            setItemDecisions(decisions);
+            setHasUnsavedChanges(false);
+        }
+        // If same meeting, do NOT overwrite local state — the user is editing
     }, [meeting.id, meeting.minutes, meeting.agendaItems]);
 
     const handleGlobalNotesChange = useCallback((value: string) => {
@@ -118,6 +136,9 @@ export const useMinutesState = ({ meeting, onUpdate }: UseMinutesStateProps) => 
                     };
                 }
             });
+
+            // Flag to suppress re-sync from Firestore echo
+            selfSaveRef.current = true;
 
             onUpdate({
                 minutes: globalNotes,
