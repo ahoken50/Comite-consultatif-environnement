@@ -79,14 +79,23 @@ const MeetingDetailPage: React.FC = () => {
     const meeting = useSelector((state: RootState) =>
         state.meetings.items.find(m => m.id === id)
     );
-    const { items: documents } = useSelector((state: RootState) => state.documents);
     const { user } = useSelector((state: RootState) => state.auth);
-    const { items: members } = useSelector((state: RootState) => state.members);
 
-    // Memoize the current member to prevent new object references on every render
-    const currentMember = useMemo(() =>
-        members.find(m => m.id === (user?.id || user?.uid) || m.email === user?.email),
-        [members, user?.id, user?.uid, user?.email]);
+    // Narrow selector: only re-renders when THIS meeting's documents change
+    const meetingDocuments = useSelector(
+        (state: RootState) => state.documents.items.filter(d => d.linkedEntityId === id),
+        (a, b) => a.length === b.length && a.every((doc, i) => doc.id === b[i]?.id)
+    );
+
+    // Narrow selector: only re-renders when the current member identity changes
+    const currentMember = useSelector(
+        (state: RootState) => {
+            const members = state.members.items;
+            const authUser = state.auth.user;
+            return members.find(m => m.id === (authUser?.id || authUser?.uid) || m.email === authUser?.email) || null;
+        },
+        (a, b) => a?.id === b?.id
+    );
 
     const isCoordinator = user?.role === 'coordinator';
 
@@ -213,10 +222,6 @@ const MeetingDetailPage: React.FC = () => {
             dispatch(fetchDocumentsByEntity({ entityId: id, entityType: 'meeting' }));
         }
     }, [dispatch, id]);
-
-    const meetingDocuments = useMemo(() =>
-        documents.filter(d => d.linkedEntityId === meeting?.id),
-        [documents, meeting?.id]);
 
     // Patch: Convert old unstable "patched-*" IDs to new stable IDs
     useEffect(() => {
