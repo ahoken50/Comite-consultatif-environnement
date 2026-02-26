@@ -558,3 +558,42 @@ FORMAT JSON ATTENDU:
 
 Réponds UNIQUEMENT avec le JSON.`;
 };
+
+// ============================================================================
+// STEP 8.5 — RÉVISION FINALE (User Comments)
+// ============================================================================
+
+export const getUserRevisionPrompt = (
+  currentPVContent: string,
+  userComments: string
+): string => {
+  return `Tu es le secrétaire général d'une municipalité au Québec, responsable de la rédaction finale du procès-verbal (PV).
+Un relecteur humain a laissé des commentaires et instructions pour modifier le PV actuel.
+
+TA MISSION:
+Appliquer RIGOUREUSEMENT et INTÉGRALEMENT les commentaires de l'utilisateur au document fourni.
+
+INSTRUCTIONS DE L'UTILISATEUR:
+"""
+${userComments}
+"""
+
+PV ACTUEL:
+"""
+${currentPVContent.substring(0, 200000)}
+"""
+
+RÈGLES ABSOLUES:
+1. Tu DOIS IMPÉRATIVEMENT retourner le document COMPLET corrigé dans \`finalContent\`.
+2. INTERDICTION FORMELLE d'utiliser des raccourcis comme "[Le reste du document demeure identique]". Le texte retourné remplacera le PV actuel en totalité.
+3. Si une instruction demande de supprimer ou d'ajouter une information spécifique, fais-le tout en préservant le ton formel et institutionnel.
+4. Attribue un nouveau score de qualité (0 à 100) en sachant que les corrections de l'utilisateur améliorent la qualité générale.
+
+FORMAT JSON ATTENDU:
+{
+  "qualityScore": 95,
+  "finalContent": "Le PV complet, intégrant toutes les corrections demandées par l'utilisateur, du début à la fin..."
+}
+
+Réponds UNIQUEMENT avec le JSON.`;
+};

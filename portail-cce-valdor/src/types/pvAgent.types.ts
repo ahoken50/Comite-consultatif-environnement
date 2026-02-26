@@ -29,6 +29,7 @@ export type AgentStepId =
     | 'drafting'            // Step 6: Generate PV draft (resolutions, comments)
     | 'reflection'          // Step 7: Self-critique + auto-corrections (loop)
     | 'user_validation'     // Step 8: Human checkpoint
+    | 'user_revision'       // Step 8.5: Final AI pass based on user comments
     | 'comparison'          // Step 9: Historical PV consistency check (loop)
     | 'learning';           // Step 10: Update models with corrections
 
@@ -46,6 +47,7 @@ export interface AgentStep {
     description: string;
     status: AgentStepStatus;
     progress?: number;    // 0-100
+    statusMessage?: string; // Live detail of what the agent is currently doing
     result?: unknown;     // Step-specific result
     error?: string;
     icon?: string;        // Emoji icon for UI
@@ -171,6 +173,12 @@ export interface UserValidationResult {
     validatedBy?: string;              // User ID
 }
 
+/** Step 8.5: Final AI Revision (only runs if user leaves comments) */
+export interface UserRevisionResult {
+    finalContent: string;              // Fully corrected text
+    qualityScore: number;              // New quality post-revision
+}
+
 /** Step 9: Historical Comparison */
 export interface ComparisonResult {
     historicalPVs: Array<{
@@ -263,6 +271,7 @@ export interface AgentState {
         drafting?: DraftingResult;
         reflection?: ReflectionResult;
         user_validation?: UserValidationResult;
+        user_revision?: UserRevisionResult;
         comparison?: ComparisonResult;
         learning?: LearningResult;
     };
@@ -292,7 +301,7 @@ export interface AgentConfig {
     onStepComplete?: (stepId: AgentStepId, result: unknown) => void;
     onValidationRequired?: (stepId: AgentStepId, result: unknown) => Promise<boolean | unknown>;
     onError?: (stepId: AgentStepId, error: Error) => void;
-    onProgress?: (stepId: AgentStepId, progress: number) => void;
+    onProgress?: (stepId: AgentStepId, progress: number, message?: string) => void;
 }
 
 // ============================================================================
@@ -395,6 +404,14 @@ export const PIPELINE_STEPS_META: Record<AgentStepId, {
         isLoop: false,
         requiresUserInput: true,
         canSkip: false,
+    },
+    user_revision: {
+        label: 'Révision finale',
+        description: 'Application des commentaires par l\'IA',
+        icon: '🤖',
+        isLoop: false,
+        requiresUserInput: false,
+        canSkip: true,
     },
     comparison: {
         label: 'Comparaison',

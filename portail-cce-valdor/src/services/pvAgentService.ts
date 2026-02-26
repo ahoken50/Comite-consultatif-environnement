@@ -19,6 +19,7 @@ import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { generateText } from 'ai';
 import { httpsCallable } from 'firebase/functions';
 import { collection, query, orderBy, limit, getDocs } from 'firebase/firestore';
+import JSON5 from 'json5';
 import { functions, db } from './firebase';
 import type {
     AgentConfig,
@@ -33,6 +34,7 @@ import type {
     DraftingResult,
     ReflectionResult,
     UserValidationResult,
+    UserRevisionResult,
     ComparisonResult,
     LearningResult,
     CCENumbering,
@@ -46,6 +48,7 @@ import {
     getDraftingExtractionPrompt,
     getReflectionPrompt,
     getComparisonPrompt,
+    getUserRevisionPrompt,
 } from '../prompts/pvPipelinePrompts';
 
 // ============================================================================
@@ -109,9 +112,15 @@ export const AGENT_STEPS: Omit<AgentStep, 'status' | 'result' | 'error'>[] = [
     },
     {
         id: 'user_validation',
-        label: '✅ Validation',
+        label: 'Validation',
         description: 'Point de contrôle humain — révision et approbation',
         icon: '✅',
+    },
+    {
+        id: 'user_revision',
+        label: 'Révision finale',
+        description: 'Application des commentaires par l\'IA',
+        icon: '🤖',
     },
     {
         id: 'comparison',
@@ -697,7 +706,8 @@ const extractODJAnchors = (cleanedText: string, agendaItems: any[]): Map<string,
 
 export const runODJAnalysisStep = async (
     config: AgentConfig,
-    cleaning: CleaningResult
+    cleaning: CleaningResult,
+    onProgress?: (msg: string, pct?: number) => void
 ): Promise<ODJAnalysisResult> => {
     const groq = getGroq();
     const text = cleaning.cleanedText;
@@ -736,8 +746,10 @@ export const runODJAnalysisStep = async (
     const allTopics: any[] = [];
 
     console.log(`[ODJ] PASS 1: Extracting topics from ${chunks.length} chunks...`);
+    onProgress?.(`Pass 1: Extraction des sujets (0/${chunks.length})`, 10);
 
     for (let batchIdx = 0; batchIdx < chunks.length; batchIdx++) {
+        onProgress?.(`Pass 1: Extraction des sujets (${batchIdx + 1}/${chunks.length})...`, 10 + (30 * (batchIdx / chunks.length)));
         const chunk = chunks[batchIdx];
         const prompt = getTopicExtractionPrompt(chunk);
 
@@ -1357,11 +1369,14 @@ Réponds UNIQUEMENT avec le JSON de corrections.`;
 
 export const runClassificationStep = async (
     config: AgentConfig,
-    odjAnalysis: ODJAnalysisResult
+    odjAnalysis: ODJAnalysisResult,
+    onProgress?: (msg: string, pct?: number) => void
 ): Promise<ClassificationResult> => {
     const groq = getGroq();
 
     const prompt = getClassificationPrompt(config.meeting, odjAnalysis);
+
+    onProgress?.('Analyse thématique et extraction des sentiments...', 20);
 
     // Retry logic for classification too
     const maxAttempts = 2;
@@ -1417,9 +1432,11 @@ export const runDraftingStep = async (
     odjAnalysis: ODJAnalysisResult,
     classification: ClassificationResult,
     cleaning: CleaningResult,
-    numbering: CCENumbering
+    numbering: CCENumbering,
+    onProgress?: (msg: string, pct?: number) => void
 ): Promise<DraftingResult> => {
     // Use Cloud Function for Claude (server-side API key)
+    onProgress?.("Analyse du contexte pour la rédaction (Claude)...", 10);
     const generateMinutes = httpsCallable(functions, 'generate_minutes_claude', { timeout: 540000 });
 
     const systemPrompt = getDraftingSystemPrompt();
@@ -1445,6 +1462,7 @@ export const runDraftingStep = async (
 
     // Now extract structured data from the generated PV
     console.log(`[Drafting] Cloud function returned draft of length ${data.content.length}`);
+    onProgress?.("Extraction des éléments structurés du brouillon...", 80);
     const extractionResult = await extractStructuredData(data.content, numbering);
     console.log(`[Drafting] Extracted ${extractionResult.resolutions.length} resolutions and ${extractionResult.comments.length} comments.`);
 
@@ -1463,52 +1481,96 @@ const extractStructuredData = async (
 
     const prompt = getDraftingExtractionPrompt(pvContent, numbering);
 
-    const { text: rawResult } = await generateText({
-        model: groq('qwen/qwen3-32b'),
-        prompt,
-        temperature: 0.1,
-    });
+    const maxAttempts = 2;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        try {
+            const { text: rawResult } = await generateText({
+                model: groq('qwen/qwen3-32b'),
+                prompt,
+                temperature: 0.1,
+            });
 
-    try {
-        let cleaned = rawResult.replace(/<think>[\s\S]*?<\/think>/g, '');
-        cleaned = cleaned.replace(/```(?:json)?/g, '').replace(/```/g, '');
+            let cleaned = rawResult.replace(/<think>[\s\S]*?<\/think>/g, '');
+            cleaned = cleaned.replace(/```(?:json)?/g, '').replace(/```/g, '');
 
-        const start = cleaned.indexOf('{');
-        const end = cleaned.lastIndexOf('}');
-        if (start !== -1 && end !== -1 && end > start) {
-            cleaned = cleaned.substring(start, end + 1);
+            const start = cleaned.indexOf('{');
+            const end = cleaned.lastIndexOf('}');
+            if (start !== -1 && end !== -1 && end > start) {
+                cleaned = cleaned.substring(start, end + 1);
+            }
+
+            try {
+                // Use JSON5 which is much more lenient with trailing commas, unescaped newlines, etc.
+                const parsed = JSON5.parse(cleaned);
+                return {
+                    resolutions: parsed.resolutions || [],
+                    comments: parsed.comments || [],
+                    attendees: parsed.attendees || { present: [], absent: [], guests: [] },
+                    header: parsed.header || {
+                        assemblyNumber: numbering.assemblyNumber,
+                        assemblyType: 'ordinaire',
+                        date: '',
+                        time: '',
+                        location: '',
+                    },
+                };
+            } catch (parseError) {
+                console.warn(`[Drafting] JSON5 parse failed on attempt ${attempt}, repairing...`);
+                // Auto-repair: Escape unescaped quotes within string values
+                let repaired = cleaned.replace(/(?<=[a-zA-Z0-9À-ÿ\s])"(?=[a-zA-Z0-9À-ÿ\s])/g, '\\"');
+
+                // Auto-repair: Replace literal newlines within strings with \n
+                repaired = repaired.replace(/[\n\r]+/g, ' ');
+
+                const parsed = JSON5.parse(repaired);
+                return {
+                    resolutions: parsed.resolutions || [],
+                    comments: parsed.comments || [],
+                    attendees: parsed.attendees || { present: [], absent: [], guests: [] },
+                    header: parsed.header || {
+                        assemblyNumber: numbering.assemblyNumber,
+                        assemblyType: 'ordinaire',
+                        date: '',
+                        time: '',
+                        location: '',
+                    },
+                };
+            }
+
+        } catch (e) {
+            console.error(`[Drafting] Failed to extract structured data (attempt ${attempt}):`, e);
+            if (attempt === maxAttempts) {
+                console.error('[Drafting] Max attempts reached, returning minimal structure.');
+                // Return minimal structure if extraction fails
+                return {
+                    resolutions: [],
+                    comments: [],
+                    attendees: { present: [], absent: [], guests: [] },
+                    header: {
+                        assemblyNumber: numbering.assemblyNumber,
+                        assemblyType: 'ordinaire',
+                        date: '',
+                        time: '',
+                        location: '',
+                    },
+                };
+            }
         }
-
-        const parsed = JSON.parse(cleaned);
-
-        return {
-            resolutions: parsed.resolutions || [],
-            comments: parsed.comments || [],
-            attendees: parsed.attendees || { present: [], absent: [], guests: [] },
-            header: parsed.header || {
-                assemblyNumber: numbering.assemblyNumber,
-                assemblyType: 'ordinaire',
-                date: '',
-                time: '',
-                location: '',
-            },
-        };
-    } catch (e) {
-        console.error('Failed to extract structured data:', e);
-        // Return minimal structure if extraction fails
-        return {
-            resolutions: [],
-            comments: [],
-            attendees: { present: [], absent: [], guests: [] },
-            header: {
-                assemblyNumber: numbering.assemblyNumber,
-                assemblyType: 'ordinaire',
-                date: '',
-                time: '',
-                location: '',
-            },
-        };
     }
+
+    // Fallback
+    return {
+        resolutions: [],
+        comments: [],
+        attendees: { present: [], absent: [], guests: [] },
+        header: {
+            assemblyNumber: numbering.assemblyNumber,
+            assemblyType: 'ordinaire',
+            date: '',
+            time: '',
+            location: '',
+        },
+    };
 };
 
 // ============================================================================
@@ -1519,7 +1581,8 @@ export const runReflectionStep = async (
     config: AgentConfig,
     drafting: DraftingResult,
     cleaning: CleaningResult,
-    maxIterations: number = 3
+    maxIterations: number = 3,
+    onProgress?: (msg: string, pct?: number) => void
 ): Promise<ReflectionResult> => {
     const iterations: ReflectionResult['iterations'] = [];
     let currentContent = drafting.pvContent;
@@ -1530,6 +1593,7 @@ export const runReflectionStep = async (
 
     for (let i = 1; i <= maxIterations; i++) {
         config.onProgress?.('reflection', Math.round((i / maxIterations) * 100));
+        onProgress?.(`Itération ${i}/${maxIterations} - Analyse par Claude AI...`, Math.round((i / maxIterations) * 100));
 
         const generateMinutes = httpsCallable(functions, 'chat_claude', { timeout: 540000 });
 
@@ -1621,9 +1685,11 @@ export const runReflectionStep = async (
 export const runComparisonStep = async (
     config: AgentConfig,
     currentPVContent: string,
-    meetingNumber: number
+    meetingNumber: number,
+    onProgress?: (msg: string, pct?: number) => void
 ): Promise<ComparisonResult> => {
     // 1. Fetch historical PVs from Firestore
+    onProgress?.("Recherche des PVs historiques pour comparaison...", 10);
     const historicalPVs = await fetchHistoricalPVs(config.meeting.id, 3);
 
     if (historicalPVs.length === 0) {
@@ -1735,6 +1801,40 @@ const fetchHistoricalPVs = async (
     } catch (e) {
         console.error('Failed to fetch historical PVs:', e);
         return [];
+    }
+};
+
+// ============================================================================
+// Step 8.5: RÉVISION FINALE — Apply user comments
+// ============================================================================
+
+export const runUserRevisionStep = async (
+    currentPVContent: string,
+    userComments: string
+): Promise<UserRevisionResult> => {
+    try {
+        const chatClaude = httpsCallable(functions, 'chat_claude', { timeout: 540000 });
+        const prompt = getUserRevisionPrompt(currentPVContent, userComments);
+
+        const response = await chatClaude({ prompt });
+        let dataStr = response.data as string;
+
+        // Clean markdown JSON formatting if necessary
+        dataStr = dataStr.replace(/```(?:json)?/g, '').replace(/```/g, '').trim();
+
+        const data = JSON.parse(dataStr);
+
+        if (data && typeof data === 'object' && data.finalContent) {
+            return {
+                finalContent: data.finalContent,
+                qualityScore: data.qualityScore || 90,
+            };
+        }
+
+        throw new Error("Invalid response format from Claude for user revision.");
+    } catch (e) {
+        console.error('Failed to run user revision step:', e);
+        throw e;
     }
 };
 
@@ -1908,6 +2008,17 @@ export const runPVAgent = async (
     let currentState: AgentState = { ...state, startedAt: new Date() };
     const startTime = Date.now();
 
+    const createOnProgress = (stepId: AgentStepId) => (msg: string, pct?: number) => {
+        currentState = updateStepStatus(currentState, stepId, 'running', msg);
+        if (pct !== undefined) {
+            currentState.steps = currentState.steps.map(s => s.id === stepId ? { ...s, progress: pct } : s);
+        }
+        if (config.onProgress) {
+            config.onProgress(stepId, pct ?? 0, msg);
+        }
+        onStateChange(currentState);
+    };
+
     const numbering: CCENumbering = {
         assemblyNumber: currentState.meetingNumber,
         nextResolution: 1,
@@ -1996,7 +2107,7 @@ export const runPVAgent = async (
         currentState = updateStepStatus(currentState, 'odj_analysis', 'running');
         onStateChange(currentState);
 
-        const odjAnalysis = await runODJAnalysisStep(config, cleaning);
+        const odjAnalysis = await runODJAnalysisStep(config, cleaning, createOnProgress('odj_analysis'));
 
         currentState = updateStepResult(currentState, 'odj_analysis', odjAnalysis, 'awaiting');
         onStateChange(currentState);
@@ -2021,7 +2132,7 @@ export const runPVAgent = async (
         currentState = updateStepStatus(currentState, 'classification', 'running');
         onStateChange(currentState);
 
-        const classification = await runClassificationStep(config, finalODJAnalysis);
+        const classification = await runClassificationStep(config, finalODJAnalysis, createOnProgress('classification'));
 
         currentState = updateStepResult(currentState, 'classification', classification, 'completed');
         onStateChange(currentState);
@@ -2037,7 +2148,8 @@ export const runPVAgent = async (
             finalODJAnalysis,
             classification,
             cleaning,
-            numbering
+            numbering,
+            createOnProgress('drafting')
         );
 
         currentState = updateStepResult(currentState, 'drafting', drafting, 'completed');
@@ -2053,7 +2165,8 @@ export const runPVAgent = async (
             config,
             drafting,
             cleaning,
-            maxReflectionIterations
+            maxReflectionIterations,
+            createOnProgress('reflection')
         );
 
         currentState = updateStepResult(currentState, 'reflection', reflection, 'completed');
@@ -2071,7 +2184,8 @@ export const runPVAgent = async (
             comparison = await runComparisonStep(
                 config,
                 reflection.finalContent, // Pass the output of reflection into comparison
-                currentState.meetingNumber
+                currentState.meetingNumber,
+                createOnProgress('comparison')
             );
 
             currentState = updateStepResult(currentState, 'comparison', comparison, 'completed');
@@ -2127,8 +2241,31 @@ export const runPVAgent = async (
         currentState = updateStepResult(currentState, 'user_validation', userValidation, 'completed');
         onStateChange(currentState);
 
-        // Content is finalized after user validation
+        // ================================================================
+        // STEP 9.5: RÉVISION FINALE (User Comments)
+        // ================================================================
+        let userRevision: UserRevisionResult | undefined;
 
+        if (userValidation.userComments && userValidation.userComments.trim().length > 0) {
+            currentState = updateStepStatus(currentState, 'user_revision', 'running');
+            onStateChange(currentState);
+
+            // Use the baseline content (either comparison or user manual edits)
+            const baselineContent = userValidation.userEdits || comparison.finalContent;
+
+            userRevision = await runUserRevisionStep(
+                baselineContent,
+                userValidation.userComments
+            );
+
+            currentState = updateStepResult(currentState, 'user_revision', userRevision, 'completed');
+            onStateChange(currentState);
+        } else {
+            currentState = updateStepStatus(currentState, 'user_revision', 'skipped');
+            onStateChange(currentState);
+        }
+
+        // Content is finalized after user validation/revision
         // ================================================================
         // STEP 10: APPRENTISSAGE (optional)
         // ================================================================
@@ -2186,10 +2323,13 @@ export const runPVAgent = async (
 const updateStepStatus = (
     state: AgentState,
     stepId: AgentStepId,
-    status: AgentStep['status']
+    status: AgentStep['status'],
+    message?: string
 ): AgentState => ({
     ...state,
-    steps: state.steps.map(s => s.id === stepId ? { ...s, status } : s),
+    steps: state.steps.map(s => s.id === stepId
+        ? { ...s, status, ...(message !== undefined ? { statusMessage: message } : {}) }
+        : s),
     currentStepIndex: state.steps.findIndex(s => s.id === stepId),
 });
 

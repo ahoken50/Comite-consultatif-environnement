@@ -59,6 +59,7 @@ import type {
     DraftingResult,
     ReflectionResult,
     UserValidationResult,
+    UserRevisionResult,
     ComparisonResult,
     LearningResult,
 } from '../../types/pvAgent.types';
@@ -460,6 +461,28 @@ const PVAgentWizard: React.FC<PVAgentWizardProps> = ({
                 );
             }
 
+            case 'user_revision': {
+                const r = step.result as UserRevisionResult;
+                return (
+                    <Box>
+                        <Typography variant="body2">
+                            🤖 Les commentaires ont été appliqués avec succès.
+                        </Typography>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 1 }}>
+                            <Typography variant="body2">
+                                Nouveau score de qualité: {r.qualityScore}/100
+                            </Typography>
+                            <LinearProgress
+                                variant="determinate"
+                                value={r.qualityScore}
+                                sx={{ flexGrow: 1, height: 8, borderRadius: 4 }}
+                                color={r.qualityScore >= 90 ? 'success' : r.qualityScore >= 70 ? 'warning' : 'error'}
+                            />
+                        </Box>
+                    </Box>
+                );
+            }
+
             case 'comparison': {
                 const r = step.result as ComparisonResult;
                 return (
@@ -677,7 +700,19 @@ const PVAgentWizard: React.FC<PVAgentWizardProps> = ({
 
                                 {/* Running indicator */}
                                 {step.status === 'running' && (
-                                    <LinearProgress sx={{ mb: 2 }} />
+                                    <Box sx={{ mb: 2 }}>
+                                        <LinearProgress
+                                            variant={step.progress !== undefined ? "determinate" : "indeterminate"}
+                                            value={step.progress}
+                                            sx={{ mb: 1 }}
+                                        />
+                                        {step.statusMessage && (
+                                            <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic', display: 'flex', alignItems: 'center', gap: 1 }}>
+                                                <PendingIcon fontSize="inherit" />
+                                                {step.statusMessage}
+                                            </Typography>
+                                        )}
+                                    </Box>
                                 )}
                             </StepContent>
                         </Step>

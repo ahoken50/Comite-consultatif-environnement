@@ -830,9 +830,13 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate, readOn
                     const draftingResult = pvAgent.state?.results.drafting;
                     const reflectionResult = pvAgent.state?.results.reflection;
                     const comparisonResult = pvAgent.state?.results.comparison;
+                    const userValidationResult = pvAgent.state?.results.user_validation;
+                    const userRevisionResult = pvAgent.state?.results.user_revision;
 
-                    // Use the final content from comparison (if available), reflection, or drafting
-                    const finalContent = comparisonResult?.finalContent
+                    // Prioritize final AI revision, then manual edits, then standard flow
+                    const finalContent = userRevisionResult?.finalContent
+                        || userValidationResult?.userEdits
+                        || comparisonResult?.finalContent
                         || reflectionResult?.finalContent
                         || draftingResult?.pvContent;
 
