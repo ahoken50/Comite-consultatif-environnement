@@ -31,8 +31,7 @@ import DocumentUpload from '../documents/DocumentUpload';
 import DocumentPreviewModal from '../documents/DocumentPreviewModal';
 import type { Meeting } from '../../types/meeting.types';
 import { generateAgendaPDF } from '../../services/pdfServiceAgenda';
-import { useSelector } from 'react-redux';
-import type { RootState } from '../../store/rootReducer';
+import { generateAgendaPDF } from '../../services/pdfServiceAgenda';
 
 interface AgendaBuilderProps {
     items: AgendaItem[];
@@ -46,6 +45,7 @@ interface AgendaBuilderProps {
     onDocumentDelete?: (docId: string, storagePath: string) => void;
     readOnly?: boolean;
     canPropose?: boolean;
+    members?: any[]; // Passed down from parent to decouple from Redux updates
 }
 
 const SortableItem = ({ item, onDelete, onEdit, linkedDocuments, readOnly }: { item: AgendaItem; onDelete: (id: string) => void; onEdit: (item: AgendaItem) => void; linkedDocuments?: Document[]; readOnly?: boolean }) => {

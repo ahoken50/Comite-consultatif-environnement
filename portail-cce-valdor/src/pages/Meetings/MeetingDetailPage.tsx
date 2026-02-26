@@ -90,6 +90,8 @@ const MeetingDetailPage: React.FC = () => {
         (a, b) => a.length === b.length && a.every((doc, i) => doc.id === b[i]?.id)
     );
 
+    const membersRedux = useSelector((state: RootState) => state.members.items);
+
     // Narrow selector: only re-renders when the current member identity changes
     const currentMemberRedux = useSelector(
         (state: RootState) => {
@@ -108,6 +110,7 @@ const MeetingDetailPage: React.FC = () => {
     const [meetingDocuments, setMeetingDocuments] = useState<any[]>(meetingDocumentsRedux);
     const [currentMember, setCurrentMember] = useState<any>(currentMemberRedux);
     const [user, setUser] = useState<any>(userRedux);
+    const [members, setMembers] = useState<any[]>(membersRedux);
 
     useEffect(() => {
         startTransition(() => {
@@ -115,8 +118,9 @@ const MeetingDetailPage: React.FC = () => {
             setMeetingDocuments(meetingDocumentsRedux);
             setCurrentMember(currentMemberRedux);
             setUser(userRedux);
+            setMembers(membersRedux);
         });
-    }, [meetingRedux, meetingDocumentsRedux, currentMemberRedux, userRedux]);
+    }, [meetingRedux, meetingDocumentsRedux, currentMemberRedux, userRedux, membersRedux]);
 
     const isCoordinator = user?.role === 'coordinator';
 
@@ -378,7 +382,7 @@ const MeetingDetailPage: React.FC = () => {
                             Convoquer
                         </Button>
                     </AccessControl>
-                    <ProjectExtractor meeting={meeting} />
+                    <ProjectExtractor meeting={meeting} user={user} />
                     <AccessControl allowedRoles={['coordinator']}>
                         <Button
                             variant="contained"
@@ -419,7 +423,7 @@ const MeetingDetailPage: React.FC = () => {
 
                 {/* #3.1 Meeting Preparation Checklist */}
                 {meeting.status === 'scheduled' && (
-                    <MeetingChecklist meeting={meeting} hasConvocation={hasConvocation} />
+                    <MeetingChecklist meeting={meeting} hasConvocation={hasConvocation} members={members} />
                 )}
 
                 <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
@@ -461,6 +465,7 @@ const MeetingDetailPage: React.FC = () => {
                         onDocumentDelete={handleDocumentDelete}
                         readOnly={!isCoordinator}
                         canPropose={true}
+                        members={members}
                     />
                 </TabPanel>
 
@@ -484,6 +489,7 @@ const MeetingDetailPage: React.FC = () => {
                             meeting={meeting}
                             onUpdate={handleMeetingUpdate}
                             readOnly={!isCoordinator}
+                            members={members}
                         />
                     ) : (
                         <Alert severity="info" sx={{ mt: 2 }}>
@@ -497,6 +503,8 @@ const MeetingDetailPage: React.FC = () => {
                         <ConvocationDashboard
                             meeting={meeting}
                             onUpdate={handleConvocationDashboardUpdate}
+                            user={user}
+                            members={members}
                         />
                         <Divider sx={{ my: 4 }} />
                     </AccessControl>
@@ -506,6 +514,7 @@ const MeetingDetailPage: React.FC = () => {
                         meeting={meeting}
                         onUpdate={isCoordinator ? handleMeetingUpdate : NOOP}
                         readOnly={!isCoordinator}
+                        members={members}
                     />
                 </TabPanel>
 

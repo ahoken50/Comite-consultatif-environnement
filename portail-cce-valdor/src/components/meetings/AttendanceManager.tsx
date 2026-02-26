@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
     Box,
     Typography,
@@ -21,32 +21,21 @@ import {
 } from '@mui/material';
 import { Delete, Add, AutoAwesome } from '@mui/icons-material';
 import type { Attendee, Meeting } from '../../types/meeting.types';
-import { useSelector, useDispatch } from 'react-redux';
-import type { AppDispatch } from '../../store/store';
-import type { RootState } from '../../store/rootReducer';
-import { fetchMembers } from '../../features/members/membersSlice';
+// Removed unused dispatch import
 import { getRoleLabel } from '../../constants';
 
 interface AttendanceManagerProps {
     meeting: Meeting;
     onUpdate: (updates: Partial<Meeting>) => void;
     readOnly?: boolean;
+    members?: any[];
 }
 
-const AttendanceManager: React.FC<AttendanceManagerProps> = ({ meeting, onUpdate, readOnly = false }) => {
-    const dispatch = useDispatch<AppDispatch>();
-    const { items: members } = useSelector((state: RootState) => state.members);
-
+const AttendanceManager: React.FC<AttendanceManagerProps> = ({ meeting, onUpdate, readOnly = false, members = [] }) => {
     const [selectedMemberId, setSelectedMemberId] = useState('');
     const [customName, setCustomName] = useState(''); // For non-members (guests)
     const [newAttendeeRole, setNewAttendeeRole] = useState('');
     const [isGuest, setIsGuest] = useState(false);
-
-    useEffect(() => {
-        if (members.length === 0) {
-            dispatch(fetchMembers());
-        }
-    }, [dispatch, members.length]);
 
     // --- Quorum Calculation (Rules approved by Client) ---
     // 1. Quorum is based on TOTAL active members with voting rights.

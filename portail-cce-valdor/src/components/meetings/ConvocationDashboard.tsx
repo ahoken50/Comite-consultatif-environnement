@@ -26,24 +26,23 @@ import type { Meeting } from '../../types/meeting.types';
 import { getLatestConvocation, type Convocation, type ConvocationRecipient, resendConvocationEmails } from '../../services/convocationService';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '../../services/firebase';
-import { useSelector } from 'react-redux';
-import type { RootState } from '../../store/rootReducer';
+import { db } from '../../services/firebase';
 
 interface ConvocationDashboardProps {
     meeting: Meeting;
     onUpdate?: () => void;
+    user?: any;
+    members?: any[];
 }
 
-const ConvocationDashboard: React.FC<ConvocationDashboardProps> = ({ meeting, onUpdate }) => {
+const ConvocationDashboard: React.FC<ConvocationDashboardProps> = ({ meeting, onUpdate, user, members = [] }) => {
     const [convocation, setConvocation] = useState<Convocation | null>(null);
     const [loading, setLoading] = useState(false);
     const [syncing, setSyncing] = useState(false);
     const [resending, setResending] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
-    const { user } = useSelector((state: RootState) => state.auth);
-    const { items: members } = useSelector((state: RootState) => state.members);
-    const currentMember = members.find(m => m.id === user?.uid || m.email === user?.email);
+    const currentMember = members.find(m => m.id === user?.uid || m.id === user?.id || m.email === user?.email);
 
     const loadData = async () => {
         setLoading(true);

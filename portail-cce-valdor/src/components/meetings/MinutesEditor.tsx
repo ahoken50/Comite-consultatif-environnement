@@ -28,8 +28,7 @@ import { useToast } from '../../hooks/useToast';
 import { useTranscriptionProcessor } from '../../hooks/useTranscriptionProcessor';
 import { useMinutesState } from '../../hooks/useMinutesState';
 import { usePVAgent } from '../../hooks/usePVAgent';
-import { useSelector } from 'react-redux';
-import type { RootState } from '../../store/rootReducer';
+import { usePVAgent } from '../../hooks/usePVAgent';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 // Note: parseAgendaDOCX is imported dynamically when needed
@@ -38,6 +37,7 @@ interface MinutesEditorProps {
     meeting: Meeting;
     onUpdate: (updates: Partial<Meeting>) => void;
     readOnly?: boolean;
+    members?: any[];
 }
 
 /**
@@ -86,9 +86,6 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate, readOn
     const [isApprovalDialogOpen, setIsApprovalDialogOpen] = useState(false);
     const [isModeSelectorOpen, setIsModeSelectorOpen] = useState(false);
     const [isAgentWizardOpen, setIsAgentWizardOpen] = useState(false);
-
-    // Get members for SmartPV Agent
-    const { items: members } = useSelector((state: RootState) => state.members);
 
     // SmartPV Agent hook
     const pvAgent = usePVAgent({

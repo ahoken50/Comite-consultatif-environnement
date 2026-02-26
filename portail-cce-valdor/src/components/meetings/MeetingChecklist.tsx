@@ -25,6 +25,7 @@ import type { Meeting } from '../../types/meeting.types';
 interface MeetingChecklistProps {
     meeting: Meeting;
     hasConvocation?: boolean; // Optional: pass true if convocation has been sent
+    members?: any[];
 }
 
 interface ChecklistItem {
@@ -36,25 +37,9 @@ interface ChecklistItem {
     importance: 'critical' | 'important' | 'nice-to-have';
 }
 
-import { useSelector, useDispatch } from 'react-redux';
-import type { AppDispatch } from '../../store/store';
-import type { RootState } from '../../store/rootReducer';
-import { fetchMembers } from '../../features/members/membersSlice';
-import { useEffect } from 'react';
+// Removed redux imports
 
-/**
- * Meeting Preparation Checklist (#3.1)
- * Shows a checklist of items to verify before a meeting
- */
-const MeetingChecklist: React.FC<MeetingChecklistProps> = ({ meeting, hasConvocation }) => {
-    const dispatch = useDispatch<AppDispatch>();
-    const { items: members } = useSelector((state: RootState) => state.members);
-
-    useEffect(() => {
-        if (members.length === 0) {
-            dispatch(fetchMembers());
-        }
-    }, [dispatch, members.length]);
+const MeetingChecklist: React.FC<MeetingChecklistProps> = ({ meeting, hasConvocation, members = [] }) => {
 
     const checklistItems: ChecklistItem[] = useMemo(() => {
         const items: ChecklistItem[] = [];

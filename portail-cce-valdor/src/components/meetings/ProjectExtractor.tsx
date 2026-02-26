@@ -16,9 +16,8 @@ import {
     Paper
 } from '@mui/material';
 import { AutoAwesome, CheckCircle } from '@mui/icons-material';
-import { useDispatch, useSelector } from 'react-redux';
+import { useDispatch } from 'react-redux';
 import type { AppDispatch } from '../../store/store';
-import type { RootState } from '../../store/rootReducer';
 import type { Meeting } from '../../types/meeting.types';
 import type { Project } from '../../types/project.types';
 import { aiService } from '../../services/ai/UnifiedAIService';
@@ -28,6 +27,7 @@ import { createProject } from '../../features/projects/projectsSlice';
 interface ProjectExtractorProps {
     meeting: Meeting;
     onComplete?: () => void;
+    user?: any;
 }
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -48,9 +48,8 @@ const PRIORITY_LABELS: Record<string, { label: string; color: 'default' | 'warni
     critical: { label: 'Critique', color: 'error' }
 };
 
-const ProjectExtractor: React.FC<ProjectExtractorProps> = ({ meeting, onComplete }) => {
+const ProjectExtractor: React.FC<ProjectExtractorProps> = ({ meeting, onComplete, user }) => {
     const dispatch = useDispatch<AppDispatch>();
-    const { user } = useSelector((state: RootState) => state.auth);
 
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
