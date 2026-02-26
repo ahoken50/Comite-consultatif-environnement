@@ -14,7 +14,7 @@ interface MinuteEntryEditorProps {
     entryIndex: number;
     itemId: string;
     onChange: (itemId: string, entryIndex: number, field: string, value: any) => void;
-    onDelete?: () => void;
+    onDelete?: (itemId: string, entryIndex: number) => void;
     readOnly?: boolean;
     itemTitle: string;
     itemDescription: string;
@@ -229,7 +229,7 @@ const MinuteEntryEditor: React.FC<MinuteEntryEditorProps> = ({
             {!readOnly && onDelete && (
                 <IconButton
                     size="small"
-                    onClick={onDelete}
+                    onClick={() => onDelete(itemId, entryIndex)}
                     sx={{ position: 'absolute', top: 4, right: 4 }}
                     color="error"
                     title="Supprimer cette entrée"
@@ -445,4 +445,4 @@ const MinuteEntryEditor: React.FC<MinuteEntryEditorProps> = ({
     );
 };
 
-export default MinuteEntryEditor;
+export default React.memo(MinuteEntryEditor);

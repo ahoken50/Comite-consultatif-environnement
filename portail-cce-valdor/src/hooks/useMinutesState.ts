@@ -85,6 +85,20 @@ export const useMinutesState = ({ meeting, onUpdate }: UseMinutesStateProps) => 
         setHasUnsavedChanges(true);
     }, [meeting.date]);
 
+    const handleDeleteMinuteEntry = useCallback((itemId: string, entryIndex: number) => {
+        if (window.confirm("Voulez-vous vraiment supprimer cette entrée ?")) {
+            setLocalAgendaItems(prev => prev.map(i => {
+                if (i.id === itemId) {
+                    const newEntries = [...(i.minuteEntries || [])];
+                    newEntries.splice(entryIndex, 1);
+                    return { ...i, minuteEntries: newEntries };
+                }
+                return i;
+            }));
+            setHasUnsavedChanges(true);
+        }
+    }, []);
+
     // Unified Save Handler
     const handleSave = useCallback(async (createVersion: boolean = false) => {
         setIsSaving(true);
@@ -186,6 +200,7 @@ export const useMinutesState = ({ meeting, onUpdate }: UseMinutesStateProps) => 
         handleAgendaItemChange,
         handleMinuteEntryChange,
         handleAddMinuteEntry,
+        handleDeleteMinuteEntry,
         handleSave,
         handleClearAll,
         setItemDecisions,

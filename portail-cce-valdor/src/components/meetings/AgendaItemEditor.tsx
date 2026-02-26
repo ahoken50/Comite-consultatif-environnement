@@ -63,7 +63,7 @@ const AgendaItemEditor: React.FC<AgendaItemEditorProps> = ({
                             entryIndex={entryIndex}
                             itemId={item.id}
                             onChange={onMinuteEntryChange}
-                            onDelete={() => onDeleteMinuteEntry(item.id, entryIndex)}
+                            onDelete={onDeleteMinuteEntry}
                             readOnly={readOnly}
                             itemTitle={item.title}
                             itemDescription={item.description || ''}
@@ -164,4 +164,4 @@ const AgendaItemEditor: React.FC<AgendaItemEditorProps> = ({
         </Box>
     );
 };
-export default AgendaItemEditor;
+export default React.memo(AgendaItemEditor);

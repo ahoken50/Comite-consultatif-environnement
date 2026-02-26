@@ -52,12 +52,25 @@ const CrossValidationPanel: React.FC<CrossValidationPanelProps> = ({
     const issues = React.useMemo(() => {
         const result: ValidationIssue[] = [];
 
+        const pvTitleMap = new Map<string, AgendaItem>();
+        const pvOrderMap = new Map<number, AgendaItem>();
+        pvItems.forEach(pv => {
+            if (pv.title) pvTitleMap.set(pv.title.toLowerCase().trim(), pv);
+            if (pv.order !== undefined) pvOrderMap.set(pv.order, pv);
+        });
+
+        const odjTitleMap = new Map<string, AgendaItem>();
+        odjItems.forEach(odj => {
+            if (odj.title) odjTitleMap.set(odj.title.toLowerCase().trim(), odj);
+        });
+
         // Check for items in ODJ but not in PV
         odjItems.forEach((odjItem) => {
-            const matchingPV = pvItems.find(pv =>
-                pv.title.toLowerCase().trim() === odjItem.title.toLowerCase().trim() ||
-                pv.order === odjItem.order
-            );
+            let matchingPV = odjItem.title ? pvTitleMap.get(odjItem.title.toLowerCase().trim()) : undefined;
+            if (!matchingPV && odjItem.order !== undefined) {
+                const byOrder = pvOrderMap.get(odjItem.order);
+                if (byOrder) matchingPV = byOrder;
+            }
 
             if (!matchingPV) {
                 result.push({
@@ -79,9 +92,7 @@ const CrossValidationPanel: React.FC<CrossValidationPanelProps> = ({
 
         // Check for items in PV but not in ODJ
         pvItems.forEach(pvItem => {
-            const matchingODJ = odjItems.find(odj =>
-                odj.title.toLowerCase().trim() === pvItem.title.toLowerCase().trim()
-            );
+            const matchingODJ = pvItem.title ? odjTitleMap.get(pvItem.title.toLowerCase().trim()) : undefined;
 
             if (!matchingODJ) {
                 result.push({
@@ -231,4 +242,4 @@ const CrossValidationPanel: React.FC<CrossValidationPanelProps> = ({
     );
 };
 
-export default CrossValidationPanel;
+export default React.memo(CrossValidationPanel);
