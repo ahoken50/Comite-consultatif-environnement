@@ -253,22 +253,36 @@ const MeetingDetailPage: React.FC = () => {
         }
     }, [id, dispatch]);
 
-    // Early return moved to after all hooks to satisfy Rules of Hooks
-    if (!meeting) {
-        return <Typography>Réunion non trouvée</Typography>;
-    }
-
-    const handleConvocationSuccess = (sentCount: number, type: 'avis' | 'confirmation') => {
+    const handleConvocationSuccess = useCallback((sentCount: number, type: 'avis' | 'confirmation') => {
         const message = type === 'avis'
             ? `✅ Avis de convocation envoyé à ${sentCount} membre${sentCount !== 1 ? 's' : ''}!`
             : `✅ Ordre du jour et RSVP envoyés à ${sentCount} membre${sentCount !== 1 ? 's' : ''}!`;
         showInfo(message);
-        setHasConvocation(true); // Update checklist immediately
-    };
+        setHasConvocation(true);
+    }, [showInfo]);
 
-    const handleConvocationError = (error: string) => {
+    const handleConvocationError = useCallback((error: string) => {
         showInfo(`❌ Erreur: ${error}`);
-    };
+    }, [showInfo]);
+
+    const handleConvocationDashboardUpdate = useCallback(() => {
+        if (meeting?.id) {
+            dispatch(updateMeeting({ id: meeting.id, updates: {} }));
+        }
+    }, [dispatch, meeting?.id]);
+
+    const NOOP = useCallback(() => { }, []);
+
+    const breadcrumbItems = useMemo(() => [
+        { label: 'Accueil', to: '/dashboard' },
+        { label: 'Réunions', to: '/meetings' },
+        { label: meeting?.title || 'Détail de la réunion' }
+    ], [meeting?.title]);
+
+    // Early return moved to after all hooks to satisfy Rules of Hooks
+    if (!meeting) {
+        return <Typography>Réunion non trouvée</Typography>;
+    }
 
     const handleApproval = useCallback((role: 'president' | 'elected_official' | 'coordinator') => {
         if (!id || !currentMember) return;
@@ -311,11 +325,7 @@ const MeetingDetailPage: React.FC = () => {
     return (
         <Box>
             <Breadcrumbs
-                items={[
-                    { label: 'Accueil', to: '/dashboard' },
-                    { label: 'Réunions', to: '/meetings' },
-                    { label: meeting.title || 'Détail de la réunion' }
-                ]}
+                items={breadcrumbItems}
             />
             <Box sx={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', mb: 2 }}>
                 <Box sx={{ display: 'flex', gap: 2 }}>
@@ -458,7 +468,7 @@ const MeetingDetailPage: React.FC = () => {
                     <AccessControl allowedRoles={['coordinator']}>
                         <ConvocationDashboard
                             meeting={meeting}
-                            onUpdate={() => dispatch(updateMeeting({ id: meeting.id, updates: { ...meeting } }))}
+                            onUpdate={handleConvocationDashboardUpdate}
                         />
                         <Divider sx={{ my: 4 }} />
                     </AccessControl>
@@ -466,7 +476,7 @@ const MeetingDetailPage: React.FC = () => {
                     <Typography variant="h6" gutterBottom>Présences</Typography>
                     <AttendanceManager
                         meeting={meeting}
-                        onUpdate={isCoordinator ? handleMeetingUpdate : () => { }}
+                        onUpdate={isCoordinator ? handleMeetingUpdate : NOOP}
                         readOnly={!isCoordinator}
                     />
                 </TabPanel>
@@ -496,7 +506,7 @@ const MeetingDetailPage: React.FC = () => {
                             <DocumentUpload
                                 linkedEntityId={meeting.id}
                                 linkedEntityType="meeting"
-                                onUploadComplete={() => dispatch(fetchDocumentsByEntity({ entityId: meeting.id, entityType: 'meeting' }))}
+                                onUploadComplete={handleDocumentUpload}
                             />
                         </Grid>
                     </Grid>

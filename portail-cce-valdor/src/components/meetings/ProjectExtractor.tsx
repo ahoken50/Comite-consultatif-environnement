@@ -309,4 +309,4 @@ const ProjectExtractor: React.FC<ProjectExtractorProps> = ({ meeting, onComplete
     );
 };
 
-export default ProjectExtractor;
+export default React.memo(ProjectExtractor);

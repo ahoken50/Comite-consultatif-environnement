@@ -59,6 +59,18 @@ const meetingsSlice = createSlice({
         upsertMeeting: (state, action) => {
             const index = state.items.findIndex(m => m.id === action.payload.id);
             if (index !== -1) {
+                const existing = state.items[index];
+                // Skip if same version — prevents unnecessary re-renders
+                // when Firestore echoes back data we just wrote
+                if (
+                    existing.dateUpdated === action.payload.dateUpdated &&
+                    existing.agendaItems?.length === action.payload.agendaItems?.length &&
+                    existing.minutes === action.payload.minutes &&
+                    existing.status === action.payload.status &&
+                    existing.approvalStatus === action.payload.approvalStatus
+                ) {
+                    return; // Data unchanged, keep existing reference stable
+                }
                 state.items[index] = action.payload;
             } else {
                 state.items.push(action.payload);

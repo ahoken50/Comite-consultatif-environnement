@@ -285,4 +285,4 @@ const ConvocationDashboard: React.FC<ConvocationDashboardProps> = ({ meeting, on
     );
 };
 
-export default ConvocationDashboard;
+export default React.memo(ConvocationDashboard);

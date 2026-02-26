@@ -360,4 +360,4 @@ const AttendanceManager: React.FC<AttendanceManagerProps> = ({ meeting, onUpdate
     );
 };
 
-export default AttendanceManager;
+export default React.memo(AttendanceManager);
