@@ -1,8 +1,6 @@
 import React, { useState } from 'react';
 import { Box, Grid, TextField, MenuItem, IconButton, Tooltip, CircularProgress, InputAdornment, Typography, Dialog, DialogTitle, DialogContent, DialogActions, Button } from '@mui/material';
 import { AutoMode, Link, Shield, CheckCircle, Warning, HelpOutline, AutoAwesome, Delete } from '@mui/icons-material';
-import { useSelector } from 'react-redux';
-import type { RootState } from '../../store/rootReducer';
 import type { MinuteEntry } from '../../types/meeting.types';
 import { searchMeetings, searchRegulations } from '../../services/supabaseSearchService';
 import { aiService } from '../../services/ai/UnifiedAIService';
@@ -21,6 +19,7 @@ interface MinuteEntryEditorProps {
     meetingId?: string;
     meetingDate?: string;
     siblingEntries?: MinuteEntry[];
+    userRole?: string;
 }
 
 /**
@@ -38,13 +37,13 @@ const MinuteEntryEditor: React.FC<MinuteEntryEditorProps> = ({
     itemDescription,
     meetingId,
     meetingDate,
-    siblingEntries = []
+    siblingEntries = [],
+    userRole
 }) => {
     const navigate = useNavigate();
     const [isExpanded, setIsExpanded] = useState(false);
     const [isDrafting, setIsDrafting] = useState(false);
     const [showChat, setShowChat] = useState(false);
-    const { user } = useSelector((state: RootState) => state.auth);
 
     const handleFieldChange = (field: string, value: any) => {
         onChange(itemId, entryIndex, field, value);
@@ -179,13 +178,17 @@ const MinuteEntryEditor: React.FC<MinuteEntryEditorProps> = ({
         }
     };
 
-    const borderColor = entry.type === 'resolution' ? 'primary.main' : 'warning.main';
+    const borderColor = entry.type === 'resolution' ? 'primary.main' : entry.type === 'note' ? 'grey.500' : 'warning.main';
     const contentLabel = entry.type === 'resolution'
         ? "Contenu de la résolution"
-        : "Contenu du commentaire";
+        : entry.type === 'note'
+            ? "Contenu de la note"
+            : "Contenu du commentaire";
     const contentPlaceholder = entry.type === 'resolution'
         ? "CONSIDÉRANT que...\n\nIL EST RÉSOLU..."
-        : "Saisir le commentaire...";
+        : entry.type === 'note'
+            ? "Saisir la note simple..."
+            : "Saisir le commentaire...";
 
     const handleCreateRecommendation = () => {
         if (!meetingId || !meetingDate) {
@@ -250,6 +253,7 @@ const MinuteEntryEditor: React.FC<MinuteEntryEditorProps> = ({
                     >
                         <MenuItem value="resolution">📋 Résolution</MenuItem>
                         <MenuItem value="comment">💬 Commentaire</MenuItem>
+                        <MenuItem value="note">📝 Note simple</MenuItem>
                     </TextField>
                 </Grid>
                 <Grid size={{ xs: 12, sm: 4 }}>
@@ -262,7 +266,7 @@ const MinuteEntryEditor: React.FC<MinuteEntryEditorProps> = ({
                         disabled={readOnly}
                     />
                 </Grid>
-                {entry.type === 'resolution' && meetingId && (user?.role === 'coordinator') && (
+                {entry.type === 'resolution' && meetingId && (userRole === 'coordinator') && (
                     <Grid size={{ xs: 12, sm: 4 }} sx={{ display: 'flex', alignItems: 'flex-end', pb: 0.5 }}>
                         <Button
                             variant="outlined"

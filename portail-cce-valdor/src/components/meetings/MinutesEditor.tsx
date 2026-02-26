@@ -78,7 +78,8 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate, readOn
         itemDecisions,
         showSaveSuccess,
         setShowSaveSuccess,
-        handleDecisionChange
+        handleDecisionChange,
+        userRole
     } = useMinutesState({ meeting, onUpdate });
 
     const [isImportOpen, setIsImportOpen] = useState(false);
@@ -911,6 +912,7 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate, readOn
                                 onDecisionChange={handleDecisionChange}
                                 meetingId={meeting.id}
                                 meetingDate={meeting.date}
+                                userRole={userRole}
                             />
                         </Grid>
                     ))}

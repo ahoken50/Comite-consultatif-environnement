@@ -40,7 +40,7 @@ export interface AgendaItem {
 
 // NEW: Interface for individual minute entry (resolution or comment)
 export interface MinuteEntry {
-    type: 'resolution' | 'comment';
+    type: 'resolution' | 'comment' | 'note';
     number: string;      // e.g., "09-35" or "09-A"
     content: string;     // The decision/comment text (CONSIDÉRANT, IL EST RÉSOLU, etc.)
     proposer?: string;

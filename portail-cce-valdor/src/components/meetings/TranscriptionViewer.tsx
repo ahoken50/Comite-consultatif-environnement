@@ -86,9 +86,15 @@ const TranscriptionViewer: React.FC<TranscriptionViewerProps> = ({
     const [verificationQueue, setVerificationQueue] = useState<Array<any>>([]);
     const [showVerificationQueue, setShowVerificationQueue] = useState(false);
 
-    // Get past meetings and members
-    const allMeetings = useSelector(selectAllMeetings);
-    const { items: members } = useSelector((state: RootState) => state.members);
+    // PERF: Stable selectors — only re-render when actual data changes, not on every Redux update
+    const allMeetings = useSelector(
+        selectAllMeetings,
+        (a, b) => a.length === b.length && a.every((m, i) => m.id === b[i]?.id && m.date === b[i]?.date)
+    );
+    const members = useSelector(
+        (state: RootState) => state.members.items,
+        (a, b) => a.length === b.length && a.every((m, i) => m.id === b[i]?.id)
+    );
     const pastMeetings = allMeetings.filter(m => m.id !== meeting.id && m.date < meeting.date);
 
     const transcription = meeting.audioRecording?.transcription;

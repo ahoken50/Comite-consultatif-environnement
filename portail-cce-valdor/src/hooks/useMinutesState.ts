@@ -13,7 +13,8 @@ interface UseMinutesStateProps {
 
 export const useMinutesState = ({ meeting, onUpdate }: UseMinutesStateProps) => {
     const { showSuccess, showError } = useToast();
-    const { user } = useSelector((state: RootState) => state.auth);
+    const user = useSelector((state: RootState) => state.auth.user);
+    const userRole = user?.role;
 
     const [globalNotes, setGlobalNotes] = useState(meeting.minutes || '');
     const [itemDecisions, setItemDecisions] = useState<Record<string, string>>({});
@@ -228,6 +229,7 @@ export const useMinutesState = ({ meeting, onUpdate }: UseMinutesStateProps) => 
         itemDecisions,
         showSaveSuccess,
         setShowSaveSuccess,
-        handleDecisionChange
+        handleDecisionChange,
+        userRole
     };
 };
