@@ -935,4 +935,10 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate, readOn
     );
 };
 
-export default MinutesEditor;
+export default React.memo(MinutesEditor, (prevProps, nextProps) => {
+    return (
+        prevProps.meeting === nextProps.meeting &&
+        prevProps.onUpdate === nextProps.onUpdate &&
+        prevProps.readOnly === nextProps.readOnly
+    );
+});

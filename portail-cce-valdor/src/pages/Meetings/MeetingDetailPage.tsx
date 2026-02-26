@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useLocation } from 'react-router-dom';
 import { useMeetingSubscription } from '../../hooks/useMeetingSubscription';
 import {
@@ -56,13 +56,12 @@ function TabPanel(props: TabPanelProps) {
             hidden={value !== index}
             id={`meeting-tabpanel-${index}`}
             aria-labelledby={`meeting-tab-${index}`}
+            style={{ display: value === index ? 'block' : 'none' }}
             {...other}
         >
-            {value === index && (
-                <Box sx={{ p: 3 }}>
-                    {children}
-                </Box>
-            )}
+            <Box sx={{ p: 3 }}>
+                {children}
+            </Box>
         </div>
     );
 }
@@ -209,12 +208,7 @@ const MeetingDetailPage: React.FC = () => {
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
     const [isConvocationDialogOpen, setIsConvocationDialogOpen] = useState(false);
 
-    // Early return moved to after all hooks to satisfy Rules of Hooks
-    if (!meeting) {
-        return <Typography>Réunion non trouvée</Typography>;
-    }
-
-    const handleMeetingUpdate = (updatedData: any) => {
+    const handleMeetingUpdate = useCallback((updatedData: any) => {
         if (id) {
             dispatch(updateMeeting({
                 id,
@@ -224,7 +218,12 @@ const MeetingDetailPage: React.FC = () => {
             }));
             setIsEditModalOpen(false);
         }
-    };
+    }, [id, dispatch]);
+
+    // Early return moved to after all hooks to satisfy Rules of Hooks
+    if (!meeting) {
+        return <Typography>Réunion non trouvée</Typography>;
+    }
 
     const handleConvocationSuccess = (sentCount: number, type: 'avis' | 'confirmation') => {
         const message = type === 'avis'
