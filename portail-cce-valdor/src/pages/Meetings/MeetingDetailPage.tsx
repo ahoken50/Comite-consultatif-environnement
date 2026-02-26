@@ -76,16 +76,30 @@ const MeetingDetailPage: React.FC = () => {
 
     const dispatch = useDispatch<AppDispatch>();
     const { showInfo, showSuccess, showError } = useToast();
-    const meeting = useSelector((state: RootState) =>
+    const meetingRedux = useSelector((state: RootState) =>
         state.meetings.items.find(m => m.id === id)
     );
     const { user } = useSelector((state: RootState) => state.auth);
 
     // Narrow selector: only re-renders when THIS meeting's documents change
-    const meetingDocuments = useSelector(
+    const meetingDocumentsRedux = useSelector(
         (state: RootState) => state.documents.items.filter(d => d.linkedEntityId === id),
         (a, b) => a.length === b.length && a.every((doc, i) => doc.id === b[i]?.id)
     );
+
+    // DECOUPLE EXPENSIVE UI FROM REDUX FAST UPDATES
+    // When Firestore WebSocket resolves, Redux updates synchronously.
+    // By syncing the local state inside startTransition, React renders the UI in the background as a low-priority task,
+    // leaving the main thread free to process incoming WebSocket messages immediately.
+    const [meeting, setMeeting] = useState<Meeting | undefined>(meetingRedux);
+    const [meetingDocuments, setMeetingDocuments] = useState<any[]>(meetingDocumentsRedux);
+
+    useEffect(() => {
+        startTransition(() => {
+            setMeeting(meetingRedux);
+            setMeetingDocuments(meetingDocumentsRedux);
+        });
+    }, [meetingRedux, meetingDocumentsRedux]);
 
     // Narrow selector: only re-renders when the current member identity changes
     const currentMember = useSelector(
@@ -108,14 +122,10 @@ const MeetingDetailPage: React.FC = () => {
 
     useEffect(() => {
         if (id) {
-            // By wrapping the dispatch in startTransition, we tell React that any resulting
-            // state changes (e.g. from the thunk's fulfilled action triggering useSelector)
-            // are non-urgent transitions. This prevents the React render from synchronously
-            // blocking the Firebase WebSocket message handler when the getDocs() Promise resolves.
-            startTransition(() => {
-                dispatch(fetchDocumentsByEntity({ entityId: id, entityType: 'meeting' }));
-                dispatch(fetchMembers());
-            });
+            // Dispatch Redux thunks purely. The state updates will hit the selectors,
+            // which will sync to our deferred local state via startTransition.
+            dispatch(fetchDocumentsByEntity({ entityId: id, entityType: 'meeting' }));
+            dispatch(fetchMembers());
 
             // Check if convocation has been sent (uses same source as dashboard)
             getLatestConvocation(id).then(conv => {
@@ -225,9 +235,7 @@ const MeetingDetailPage: React.FC = () => {
 
     const handleDocumentUpload = useCallback(() => {
         if (id) {
-            startTransition(() => {
-                dispatch(fetchDocumentsByEntity({ entityId: id, entityType: 'meeting' }));
-            });
+            dispatch(fetchDocumentsByEntity({ entityId: id, entityType: 'meeting' }));
         }
     }, [dispatch, id]);
 
