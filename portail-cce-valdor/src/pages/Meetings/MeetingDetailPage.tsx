@@ -27,7 +27,7 @@ import DocumentList from '../../components/documents/DocumentList';
 import DocumentUpload from '../../components/documents/DocumentUpload';
 import ProjectExtractor from '../../components/meetings/ProjectExtractor';
 import BulkUploadModal from '../../components/documents/BulkUploadModal';
-import type { AgendaItem } from '../../types/meeting.types';
+import type { AgendaItem, Meeting } from '../../types/meeting.types';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { useToast } from '../../hooks/useToast';
@@ -207,7 +207,7 @@ const MeetingDetailPage: React.FC = () => {
                     linkedEntityType: 'meeting',
                     uploadedBy: user?.id,
                     agendaItemId: assignments[file.name]
-                        ? meeting.agendaItems?.find(i => i.title === assignments[file.name])?.id
+                        ? meeting.agendaItems?.find((i: AgendaItem) => i.title === assignments[file.name])?.id
                         : undefined
                 })).unwrap();
             } catch (e) {
@@ -243,13 +243,13 @@ const MeetingDetailPage: React.FC = () => {
     useEffect(() => {
         if (meeting && meeting.agendaItems && meeting.agendaItems.length > 0) {
             // Check if any items have old "patched-*" IDs or no IDs
-            const needsConversion = meeting.agendaItems.some(item =>
+            const needsConversion = meeting.agendaItems.some((item: AgendaItem) =>
                 !item.id || item.id.startsWith('patched-')
             );
 
             if (needsConversion && isCoordinator) {
                 console.log('⚠️ Converting agenda item IDs to stable format...');
-                const patchedItems = meeting.agendaItems.map((item, index) => ({
+                const patchedItems = meeting.agendaItems.map((item: AgendaItem, index: number) => ({
                     ...item,
                     // Use stable ID based on meeting ID + index (not Date.now()!)
                     id: `${meeting.id}-item-${index}`
@@ -317,14 +317,14 @@ const MeetingDetailPage: React.FC = () => {
 
         const currentSignatures = meeting.approvalSignatures || [];
         // Prevent duplicate signatures for same role
-        if (currentSignatures.some(s => s.role === role)) return;
+        if (currentSignatures.some((s: any) => s.role === role)) return;
 
         const updatedSignatures = [...currentSignatures, newSignature];
 
         let newStatus = meeting.approvalStatus || 'draft';
         // If both roles have signed (checking new list)
-        const hasPresident = updatedSignatures.some(s => s.role === 'president');
-        const hasElected = updatedSignatures.some(s => s.role === 'elected_official');
+        const hasPresident = updatedSignatures.some((s: any) => s.role === 'president');
+        const hasElected = updatedSignatures.some((s: any) => s.role === 'elected_official');
 
         if (role === 'coordinator') {
             newStatus = 'approved';
