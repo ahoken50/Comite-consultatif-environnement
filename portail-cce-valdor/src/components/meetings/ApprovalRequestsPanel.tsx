@@ -343,4 +343,6 @@ const ApprovalRequestsPanel: React.FC<ApprovalRequestsPanelProps> = ({ meetingId
     );
 };
 
-export default ApprovalRequestsPanel;
+export default React.memo(ApprovalRequestsPanel, (prevProps, nextProps) => {
+    return prevProps.meetingId === nextProps.meetingId;
+});

@@ -292,4 +292,13 @@ const MeetingChecklist: React.FC<MeetingChecklistProps> = ({ meeting, hasConvoca
     );
 };
 
-export default MeetingChecklist;
+export default React.memo(MeetingChecklist, (prevProps, nextProps) => {
+    return (
+        prevProps.meeting.id === nextProps.meeting.id &&
+        prevProps.meeting.agendaItems === nextProps.meeting.agendaItems &&
+        prevProps.meeting.attendees === nextProps.meeting.attendees &&
+        prevProps.meeting.rsvps === nextProps.meeting.rsvps &&
+        prevProps.meeting.status === nextProps.meeting.status &&
+        prevProps.hasConvocation === nextProps.hasConvocation
+    );
+});
