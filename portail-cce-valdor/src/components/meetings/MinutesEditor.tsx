@@ -129,6 +129,34 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate, readOn
         generateMinutesPDF(meetingForPdf, globalNotes);
     };
 
+    const handleDraftGenerated = React.useCallback((draft: MinutesDraft) => {
+        onUpdate({ minutesDraft: draft });
+    }, [onUpdate]);
+
+    const handleTranscriptionUpdate = React.useCallback((newTranscription: string) => {
+        if (meeting.audioRecording) {
+            const updatedRecording = {
+                ...meeting.audioRecording,
+                transcription: newTranscription
+            };
+
+            // Also update the array if it exists to ensure SmartPV gets the latest version
+            let updatedRecordings = meeting.audioRecordings;
+            if (Array.isArray(meeting.audioRecordings)) {
+                updatedRecordings = meeting.audioRecordings.map(r =>
+                    r.storagePath === meeting.audioRecording!.storagePath
+                        ? updatedRecording
+                        : r
+                );
+            }
+
+            onUpdate({
+                audioRecording: updatedRecording,
+                audioRecordings: updatedRecordings as any
+            });
+        }
+    }, [meeting.audioRecording, meeting.audioRecordings, onUpdate]);
+
     const handleSanitize = async () => {
         // Validation: Check if there is content to anonymize
         if (!globalNotes && (!localAgendaItems || localAgendaItems.length === 0)) {
@@ -716,37 +744,12 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate, readOn
                     />
 
 
-                    {/* Transcription Viewer and Draft Generator */}
                     {meeting.audioRecording?.transcription && (
                         <TranscriptionViewer
                             meeting={meeting}
-                            onDraftGenerated={(draft: MinutesDraft) => {
-                                onUpdate({ minutesDraft: draft });
-                            }}
+                            onDraftGenerated={handleDraftGenerated}
                             onApplyToMinutes={handleApplyTranscription}
-                            onTranscriptionUpdate={(newTranscription: string) => {
-                                if (meeting.audioRecording) {
-                                    const updatedRecording = {
-                                        ...meeting.audioRecording,
-                                        transcription: newTranscription
-                                    };
-
-                                    // Also update the array if it exists to ensure SmartPV gets the latest version
-                                    let updatedRecordings = meeting.audioRecordings;
-                                    if (Array.isArray(meeting.audioRecordings)) {
-                                        updatedRecordings = meeting.audioRecordings.map(r =>
-                                            r.storagePath === meeting.audioRecording!.storagePath
-                                                ? updatedRecording
-                                                : r
-                                        );
-                                    }
-
-                                    onUpdate({
-                                        audioRecording: updatedRecording,
-                                        audioRecordings: updatedRecordings as any
-                                    });
-                                }
-                            }}
+                            onTranscriptionUpdate={handleTranscriptionUpdate}
                         />
                     )}
                 </Paper>

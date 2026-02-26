@@ -921,4 +921,11 @@ Exemple:
     );
 };
 
-export default TranscriptionViewer;
+export default React.memo(TranscriptionViewer, (prevProps, nextProps) => {
+    return (
+        prevProps.meeting.id === nextProps.meeting.id &&
+        prevProps.meeting.audioRecording?.transcription === nextProps.meeting.audioRecording?.transcription &&
+        prevProps.meeting.minutesDraft?.content === nextProps.meeting.minutesDraft?.content &&
+        prevProps.meeting.minutesDraft?.status === nextProps.meeting.minutesDraft?.status
+    );
+});

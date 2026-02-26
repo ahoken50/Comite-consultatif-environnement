@@ -59,7 +59,7 @@ interface SpeakerCorrectionTranscriptionProps {
     onCorrectionMade?: (original: string, corrected: string) => void;
 }
 
-export const SpeakerCorrectionTranscription: React.FC<SpeakerCorrectionTranscriptionProps> = ({
+export const SpeakerCorrectionTranscription: React.FC<SpeakerCorrectionTranscriptionProps> = React.memo(({
     transcription,
     members,
     meetingId,
@@ -509,7 +509,7 @@ export const SpeakerCorrectionTranscription: React.FC<SpeakerCorrectionTranscrip
             />
         </Box>
     );
-};
+});
 
 // =============================================================================
 // HELPERS
