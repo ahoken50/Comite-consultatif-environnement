@@ -422,4 +422,17 @@ const AgendaBuilder: React.FC<AgendaBuilderProps> = ({ items, onItemsChange, mee
     );
 };
 
-export default AgendaBuilder;
+export default React.memo(AgendaBuilder, (prevProps, nextProps) => {
+    return (
+        prevProps.items === nextProps.items &&
+        prevProps.meetingId === nextProps.meetingId &&
+        prevProps.meeting === nextProps.meeting &&
+        prevProps.documents === nextProps.documents &&
+        prevProps.readOnly === nextProps.readOnly &&
+        prevProps.canPropose === nextProps.canPropose &&
+        prevProps.onItemsChange === nextProps.onItemsChange &&
+        prevProps.onDocumentUpload === nextProps.onDocumentUpload &&
+        prevProps.onDocumentUnlink === nextProps.onDocumentUnlink &&
+        prevProps.onDocumentDelete === nextProps.onDocumentDelete
+    );
+});

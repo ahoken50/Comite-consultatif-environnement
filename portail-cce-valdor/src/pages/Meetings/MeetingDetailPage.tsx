@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useTransition } from 'react';
+import React, { useState, useEffect, useCallback, useTransition, useMemo } from 'react';
 import { useParams, useLocation } from 'react-router-dom';
 import { useMeetingSubscription } from '../../hooks/useMeetingSubscription';
 import {
@@ -189,19 +189,29 @@ const MeetingDetailPage: React.FC = () => {
         dispatch(fetchDocumentsByEntity({ entityId: meeting.id, entityType: 'meeting' }));
     };
 
-    const handleAgendaUpdate = (newItems: AgendaItem[]) => {
+    const handleAgendaUpdate = useCallback((newItems: AgendaItem[]) => {
         if (id) {
             dispatch(updateMeeting({ id, updates: { agendaItems: newItems } }));
         }
-    };
+    }, [id, dispatch]);
 
-    const handleDocumentUnlink = (docId: string) => {
+    const handleDocumentUnlink = useCallback((docId: string) => {
         dispatch(updateDocument({ id: docId, updates: { agendaItemId: null as any } }));
-    };
+    }, [dispatch]);
 
-    const handleDocumentDelete = (docId: string, storagePath: string) => {
+    const handleDocumentDelete = useCallback((docId: string, storagePath: string) => {
         dispatch(deleteDocument({ id: docId, storagePath }));
-    };
+    }, [dispatch]);
+
+    const handleDocumentUpload = useCallback(() => {
+        if (id) {
+            dispatch(fetchDocumentsByEntity({ entityId: id, entityType: 'meeting' }));
+        }
+    }, [dispatch, id]);
+
+    const meetingDocuments = useMemo(() =>
+        documents.filter(d => d.linkedEntityId === meeting?.id),
+        [documents, meeting?.id]);
 
     // Patch: Convert old unstable "patched-*" IDs to new stable IDs
     useEffect(() => {
@@ -401,8 +411,8 @@ const MeetingDetailPage: React.FC = () => {
                         onItemsChange={handleAgendaUpdate}
                         meetingId={meeting.id}
                         meeting={meeting}
-                        documents={documents.filter(d => d.linkedEntityId === meeting.id)}
-                        onDocumentUpload={() => dispatch(fetchDocumentsByEntity({ entityId: meeting.id, entityType: 'meeting' }))}
+                        documents={meetingDocuments}
+                        onDocumentUpload={handleDocumentUpload}
                         initialAgendaItemId={(location.state as any)?.agendaItemId}
                         onDocumentUnlink={handleDocumentUnlink}
                         onDocumentDelete={handleDocumentDelete}
@@ -471,8 +481,8 @@ const MeetingDetailPage: React.FC = () => {
                                 </Button>
                             </Box>
                             <DocumentList
-                                documents={documents.filter(d => d.linkedEntityId === meeting.id)}
-                                onDelete={(docId, path) => dispatch(deleteDocument({ id: docId, storagePath: path }))}
+                                documents={meetingDocuments}
+                                onDelete={handleDocumentDelete}
                                 agendaItems={meeting.agendaItems}
                             />
                         </Grid>
