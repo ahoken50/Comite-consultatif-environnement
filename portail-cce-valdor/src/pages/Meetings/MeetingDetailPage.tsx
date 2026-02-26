@@ -82,7 +82,12 @@ const MeetingDetailPage: React.FC = () => {
     const { items: documents } = useSelector((state: RootState) => state.documents);
     const { user } = useSelector((state: RootState) => state.auth);
     const { items: members } = useSelector((state: RootState) => state.members);
-    const currentMember = members.find(m => m.id === (user?.id || user?.uid) || m.email === user?.email);
+
+    // Memoize the current member to prevent new object references on every render
+    const currentMember = useMemo(() =>
+        members.find(m => m.id === (user?.id || user?.uid) || m.email === user?.email),
+        [members, user?.id, user?.uid, user?.email]);
+
     const isCoordinator = user?.role === 'coordinator';
 
     const [tabValue, setTabValue] = useState(0);
@@ -265,7 +270,7 @@ const MeetingDetailPage: React.FC = () => {
         showInfo(`❌ Erreur: ${error}`);
     };
 
-    const handleApproval = (role: 'president' | 'elected_official' | 'coordinator') => {
+    const handleApproval = useCallback((role: 'president' | 'elected_official' | 'coordinator') => {
         if (!id || !currentMember) return;
 
         const newSignature = {
@@ -301,7 +306,7 @@ const MeetingDetailPage: React.FC = () => {
                 approvalStatus: newStatus as any
             }
         }));
-    };
+    }, [id, currentMember, meeting.approvalSignatures, meeting.approvalStatus, dispatch]);
 
     return (
         <Box>
