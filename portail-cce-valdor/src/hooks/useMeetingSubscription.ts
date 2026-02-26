@@ -12,10 +12,21 @@ export const useMeetingSubscription = (meetingId?: string) => {
     const lastDispatchRef = useRef(0);
     const pendingRef = useRef<Meeting | null>(null);
     const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const rafRef = useRef<number | null>(null);
 
     useEffect(() => {
         if (!meetingId) return;
+
+        // Flush pending data — dispatches in a separate browser macro-task
+        // so the React render never blocks WebSocket message handlers.
+        const flushPending = () => {
+            if (pendingRef.current) {
+                const meeting = pendingRef.current;
+                pendingRef.current = null;
+                // setTimeout(0) creates a new macro-task, guaranteeing
+                // the browser processes any queued messages first.
+                setTimeout(() => dispatch(upsertMeeting(meeting)), 0);
+            }
+        };
 
         const unsubscribe = onSnapshot(
             doc(db, 'meetings', meetingId),
@@ -35,33 +46,16 @@ export const useMeetingSubscription = (meetingId?: string) => {
                     const elapsed = now - lastDispatchRef.current;
 
                     if (elapsed >= THROTTLE_MS) {
-                        // Enough time has passed — defer dispatch to next animation frame
-                        // so the rendering doesn't block the WebSocket message handler
                         lastDispatchRef.current = now;
                         pendingRef.current = meeting;
-                        if (!rafRef.current) {
-                            rafRef.current = requestAnimationFrame(() => {
-                                if (pendingRef.current) {
-                                    dispatch(upsertMeeting(pendingRef.current));
-                                    pendingRef.current = null;
-                                }
-                                rafRef.current = null;
-                            });
-                        }
+                        flushPending();
                     } else {
-                        // Too soon — store the latest and schedule a deferred dispatch
+                        // Too soon — store latest and schedule deferred flush
                         pendingRef.current = meeting;
                         if (!timerRef.current) {
                             timerRef.current = setTimeout(() => {
                                 lastDispatchRef.current = Date.now();
-                                if (pendingRef.current) {
-                                    requestAnimationFrame(() => {
-                                        if (pendingRef.current) {
-                                            dispatch(upsertMeeting(pendingRef.current));
-                                            pendingRef.current = null;
-                                        }
-                                    });
-                                }
+                                flushPending();
                                 timerRef.current = null;
                             }, THROTTLE_MS - elapsed);
                         }
@@ -78,10 +72,6 @@ export const useMeetingSubscription = (meetingId?: string) => {
             if (timerRef.current) {
                 clearTimeout(timerRef.current);
                 timerRef.current = null;
-            }
-            if (rafRef.current) {
-                cancelAnimationFrame(rafRef.current);
-                rafRef.current = null;
             }
         };
     }, [meetingId, dispatch]);
