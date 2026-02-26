@@ -108,8 +108,14 @@ const MeetingDetailPage: React.FC = () => {
 
     useEffect(() => {
         if (id) {
-            dispatch(fetchDocumentsByEntity({ entityId: id, entityType: 'meeting' }));
-            dispatch(fetchMembers());
+            // By wrapping the dispatch in startTransition, we tell React that any resulting
+            // state changes (e.g. from the thunk's fulfilled action triggering useSelector)
+            // are non-urgent transitions. This prevents the React render from synchronously
+            // blocking the Firebase WebSocket message handler when the getDocs() Promise resolves.
+            startTransition(() => {
+                dispatch(fetchDocumentsByEntity({ entityId: id, entityType: 'meeting' }));
+                dispatch(fetchMembers());
+            });
 
             // Check if convocation has been sent (uses same source as dashboard)
             getLatestConvocation(id).then(conv => {
@@ -219,7 +225,9 @@ const MeetingDetailPage: React.FC = () => {
 
     const handleDocumentUpload = useCallback(() => {
         if (id) {
-            dispatch(fetchDocumentsByEntity({ entityId: id, entityType: 'meeting' }));
+            startTransition(() => {
+                dispatch(fetchDocumentsByEntity({ entityId: id, entityType: 'meeting' }));
+            });
         }
     }, [dispatch, id]);
 

@@ -19,22 +19,14 @@ const initialState: DocumentsState = {
 export const fetchDocuments = createAsyncThunk(
     'documents/fetchAll',
     async () => {
-        const result = await documentsAPI.fetchAll();
-        // Yield to event loop so the fulfilled dispatch doesn't
-        // block the WebSocket message handler with a synchronous React render
-        await new Promise(resolve => setTimeout(resolve, 0));
-        return result;
+        return await documentsAPI.fetchAll();
     }
 );
 
 export const fetchDocumentsByEntity = createAsyncThunk(
     'documents/fetchByEntity',
     async ({ entityId, entityType }: { entityId: string; entityType: 'project' | 'meeting' }) => {
-        const result = await documentsAPI.fetchByEntity(entityId, entityType);
-        // Yield to event loop so the fulfilled dispatch doesn't
-        // block the WebSocket message handler with a synchronous React render
-        await new Promise(resolve => setTimeout(resolve, 0));
-        return result;
+        return await documentsAPI.fetchByEntity(entityId, entityType);
     }
 );
 
