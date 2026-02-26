@@ -127,7 +127,14 @@ jobs:
     - name: Deploy to Firebase (Hosting, Functions, Rules & Indexes)
       if: github.ref == 'refs/heads/main'
       working-directory: portail-cce-valdor
-      run: firebase deploy --except extensions --force
+      run: |
+        firebase deploy --only functions,hosting,firestore:rules,firestore:indexes,storage --force 2>&1 || {
+          echo "::warning::Full deploy failed, trying individual deploys..."
+          firebase deploy --only hosting --force
+          firebase deploy --only functions --force
+          firebase deploy --only firestore:rules,firestore:indexes --force
+          firebase deploy --only storage --force
+        }
       env:
         GOOGLE_APPLICATION_CREDENTIALS: ../service-account-key.json
         OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
