@@ -28,7 +28,6 @@ import { useToast } from '../../hooks/useToast';
 import { useTranscriptionProcessor } from '../../hooks/useTranscriptionProcessor';
 import { useMinutesState } from '../../hooks/useMinutesState';
 import { usePVAgent } from '../../hooks/usePVAgent';
-import { usePVAgent } from '../../hooks/usePVAgent';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 // Note: parseAgendaDOCX is imported dynamically when needed
@@ -57,7 +56,7 @@ interface MinutesEditorProps {
  * @param onUpdate - Callback to update the meeting in Firestore/State.
  * @param readOnly - If true, disables editing (defaults to false).
  */
-const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate, readOnly = false }) => {
+const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate, readOnly = false, members = [] }) => {
     const { showSuccess, showError } = useToast();
     const {
         globalNotes,

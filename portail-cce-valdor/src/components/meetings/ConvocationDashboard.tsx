@@ -26,7 +26,6 @@ import type { Meeting } from '../../types/meeting.types';
 import { getLatestConvocation, type Convocation, type ConvocationRecipient, resendConvocationEmails } from '../../services/convocationService';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '../../services/firebase';
-import { db } from '../../services/firebase';
 
 interface ConvocationDashboardProps {
     meeting: Meeting;

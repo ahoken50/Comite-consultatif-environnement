@@ -31,7 +31,6 @@ import DocumentUpload from '../documents/DocumentUpload';
 import DocumentPreviewModal from '../documents/DocumentPreviewModal';
 import type { Meeting } from '../../types/meeting.types';
 import { generateAgendaPDF } from '../../services/pdfServiceAgenda';
-import { generateAgendaPDF } from '../../services/pdfServiceAgenda';
 
 interface AgendaBuilderProps {
     items: AgendaItem[];
@@ -113,9 +112,8 @@ const AgendaBuilder: React.FC<AgendaBuilderProps> = ({ items, onItemsChange, mee
     const [documentToAction, setDocumentToAction] = useState<Document | null>(null);
 
     // Get members for presenter dropdown
-    const { items: members } = useSelector((state: RootState) => state.members);
     const presenterOptions = [
-        ...members.map(m => m.displayName),
+        ...(members || []).map((m: any) => m.displayName),
         'Invité(e)'
     ];
 
