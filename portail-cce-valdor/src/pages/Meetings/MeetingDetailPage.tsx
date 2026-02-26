@@ -47,13 +47,17 @@ interface TabPanelProps {
     value: number;
 }
 
-function TabPanel(props: TabPanelProps) {
-    const { children, value, index, ...other } = props;
+function TabPanel(props: TabPanelProps & { hasBeenActive?: boolean }) {
+    const { children, value, index, hasBeenActive, ...other } = props;
+
+    // Don't render children until tab has been active at least once
+    if (!hasBeenActive && value !== index) {
+        return null;
+    }
 
     return (
         <div
             role="tabpanel"
-            hidden={value !== index}
             id={`meeting-tabpanel-${index}`}
             aria-labelledby={`meeting-tab-${index}`}
             style={{ display: value === index ? 'block' : 'none' }}
@@ -82,6 +86,7 @@ const MeetingDetailPage: React.FC = () => {
     const isCoordinator = user?.role === 'coordinator';
 
     const [tabValue, setTabValue] = useState(0);
+    const [visitedTabs, setVisitedTabs] = useState<Set<number>>(new Set([0])); // Tab 0 visited by default
     const [hasConvocation, setHasConvocation] = useState<boolean | undefined>(undefined);
 
     const location = useLocation();
@@ -140,7 +145,19 @@ const MeetingDetailPage: React.FC = () => {
                 }
             }, 600);
         }
-    }, [location.state, location.hash, meeting]);
+    }, [location.state, location.hash]); // eslint-disable-line react-hooks/exhaustive-deps
+    // NOTE: `meeting` intentionally excluded — this effect only needs to run on navigation changes,
+    // not on every Firestore echo. The 600ms setTimeout already handles post-render scrolling.
+
+    // Track visited tabs for lazy mounting
+    useEffect(() => {
+        setVisitedTabs(prev => {
+            if (prev.has(tabValue)) return prev;
+            const next = new Set(prev);
+            next.add(tabValue);
+            return next;
+        });
+    }, [tabValue]);
 
     // Bulk Upload State and Handler
     const [isBulkUploadOpen, setIsBulkUploadOpen] = useState(false);
@@ -360,7 +377,7 @@ const MeetingDetailPage: React.FC = () => {
                     </Tabs>
                 </Box>
 
-                <TabPanel value={tabValue} index={0}>
+                <TabPanel value={tabValue} index={0} hasBeenActive={visitedTabs.has(0)}>
                     <Box sx={{ mb: 2, display: 'flex', justifyContent: 'flex-end' }}>
                         <Button
                             startIcon={<CloudUpload />}
@@ -386,7 +403,7 @@ const MeetingDetailPage: React.FC = () => {
                     />
                 </TabPanel>
 
-                <TabPanel value={tabValue} index={1}>
+                <TabPanel value={tabValue} index={1} hasBeenActive={visitedTabs.has(1)}>
                     <MeetingApprovalCard
                         meeting={meeting}
                         currentUser={currentMember || null}
@@ -414,7 +431,7 @@ const MeetingDetailPage: React.FC = () => {
                     )}
                 </TabPanel>
 
-                <TabPanel value={tabValue} index={2}>
+                <TabPanel value={tabValue} index={2} hasBeenActive={visitedTabs.has(2)}>
                     <AccessControl allowedRoles={['coordinator']}>
                         <ConvocationDashboard
                             meeting={meeting}
@@ -431,7 +448,7 @@ const MeetingDetailPage: React.FC = () => {
                     />
                 </TabPanel>
 
-                <TabPanel value={tabValue} index={3}>
+                <TabPanel value={tabValue} index={3} hasBeenActive={visitedTabs.has(3)}>
                     <Grid container spacing={3}>
                         <Grid size={{ xs: 12, md: 8 }}>
                             <Typography variant="h6" gutterBottom>Documents de la réunion</Typography>
