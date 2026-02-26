@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
     Box,
     Typography,
@@ -110,6 +110,24 @@ const AgendaBuilder: React.FC<AgendaBuilderProps> = ({ items, onItemsChange, mee
     const [isEditOpen, setIsEditOpen] = useState(false);
     const [previewDoc, setPreviewDoc] = useState<Document | null>(null);
     const [documentToAction, setDocumentToAction] = useState<Document | null>(null);
+
+    // PERF: Progressive rendering — render items in batches to avoid 270+ MUI components at once
+    const BATCH_SIZE = 5;
+    const [visibleCount, setVisibleCount] = useState(Math.min(BATCH_SIZE, items.length));
+
+    useEffect(() => {
+        // Reset visible count when items change (e.g. new data load)
+        setVisibleCount(Math.min(BATCH_SIZE, items.length));
+    }, [items.length]);
+
+    useEffect(() => {
+        if (visibleCount < items.length) {
+            const frame = requestAnimationFrame(() => {
+                setVisibleCount(prev => Math.min(prev + BATCH_SIZE, items.length));
+            });
+            return () => cancelAnimationFrame(frame);
+        }
+    }, [visibleCount, items.length]);
 
     // Get members for presenter dropdown
     const presenterOptions = [
@@ -232,7 +250,7 @@ const AgendaBuilder: React.FC<AgendaBuilderProps> = ({ items, onItemsChange, mee
                     strategy={verticalListSortingStrategy}
                 >
                     <List>
-                        {items.map((item) => (
+                        {items.slice(0, visibleCount).map((item) => (
                             <SortableItem
                                 key={item.id}
                                 item={item}

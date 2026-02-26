@@ -89,7 +89,12 @@ const documentsSlice = createSlice({
             })
             .addCase(fetchDocumentsByEntity.fulfilled, (state, action) => {
                 state.loading = false;
-                state.items = action.payload;
+                // PERF: Only replace items if data actually changed (prevents unnecessary selector triggers)
+                const newIds = action.payload.map(d => d.id).sort().join(',');
+                const oldIds = state.items.map(d => d.id).sort().join(',');
+                if (newIds !== oldIds) {
+                    state.items = action.payload;
+                }
             })
             // Upload
             .addCase(uploadDocument.pending, (state) => {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useTransition, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useTransition, useMemo, useDeferredValue } from 'react';
 import { useParams, useLocation } from 'react-router-dom';
 import { useMeetingSubscription } from '../../hooks/useMeetingSubscription';
 import {
@@ -114,6 +114,16 @@ const MeetingDetailPage: React.FC = () => {
     const [currentMember, setCurrentMember] = useState<any>(currentMemberRedux);
     const [user, setUser] = useState<any>(userRedux);
     const [members, setMembers] = useState<any[]>(membersRedux);
+
+    // PERF: useDeferredValue makes the document render interruptible by React
+    const deferredDocuments = useDeferredValue(meetingDocuments);
+
+    // PERF: Defer MeetingChecklist render to next animation frame
+    const [showChecklist, setShowChecklist] = useState(false);
+    useEffect(() => {
+        const frame = requestAnimationFrame(() => setShowChecklist(true));
+        return () => cancelAnimationFrame(frame);
+    }, []);
 
     useEffect(() => {
         startTransition(() => {
@@ -394,8 +404,8 @@ const MeetingDetailPage: React.FC = () => {
 
                 <Divider sx={{ my: 2 }} />
 
-                {/* #3.1 Meeting Preparation Checklist */}
-                {meeting.status === 'scheduled' && (
+                {/* #3.1 Meeting Preparation Checklist - deferred to avoid blocking initial render */}
+                {showChecklist && meeting.status === 'scheduled' && (
                     <MeetingChecklist meeting={meeting} hasConvocation={hasConvocation} members={members} />
                 )}
 
@@ -431,7 +441,7 @@ const MeetingDetailPage: React.FC = () => {
                         onItemsChange={handleAgendaUpdate}
                         meetingId={meeting.id}
                         meeting={meeting}
-                        documents={meetingDocuments}
+                        documents={deferredDocuments}
                         onDocumentUpload={handleDocumentUpload}
                         initialAgendaItemId={(location.state as any)?.agendaItemId}
                         onDocumentUnlink={handleDocumentUnlink}
@@ -506,7 +516,7 @@ const MeetingDetailPage: React.FC = () => {
                                 </Button>
                             </Box>
                             <DocumentList
-                                documents={meetingDocuments}
+                                documents={deferredDocuments}
                                 onDelete={handleDocumentDelete}
                                 agendaItems={meeting.agendaItems}
                             />
