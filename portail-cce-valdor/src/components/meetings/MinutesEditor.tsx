@@ -936,8 +936,19 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate, readOn
 };
 
 export default React.memo(MinutesEditor, (prevProps, nextProps) => {
+    // Compare the fields that MinutesEditor actually uses
     return (
-        prevProps.meeting === nextProps.meeting &&
+        prevProps.meeting.id === nextProps.meeting.id &&
+        prevProps.meeting.minutes === nextProps.meeting.minutes &&
+        prevProps.meeting.meetingNumber === nextProps.meeting.meetingNumber &&
+        prevProps.meeting.date === nextProps.meeting.date &&
+        prevProps.meeting.audioRecording?.transcription === nextProps.meeting.audioRecording?.transcription &&
+        prevProps.meeting.audioRecording?.transcriptionStatus === nextProps.meeting.audioRecording?.transcriptionStatus &&
+        prevProps.meeting.audioRecording?.storagePath === nextProps.meeting.audioRecording?.storagePath &&
+        prevProps.meeting.audioRecordings === nextProps.meeting.audioRecordings &&
+        prevProps.meeting.minutesDraft === nextProps.meeting.minutesDraft &&
+        prevProps.meeting.minutesFileUrl === nextProps.meeting.minutesFileUrl &&
+        prevProps.meeting.agendaItems === nextProps.meeting.agendaItems &&
         prevProps.onUpdate === nextProps.onUpdate &&
         prevProps.readOnly === nextProps.readOnly
     );

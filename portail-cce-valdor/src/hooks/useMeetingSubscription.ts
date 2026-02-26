@@ -1,12 +1,17 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { useDispatch } from 'react-redux';
 import { db } from '../services/firebase';
 import { upsertMeeting } from '../features/meetings/meetingsSlice';
 import type { Meeting } from '../types/meeting.types';
 
+const THROTTLE_MS = 2000; // Only process one snapshot per 2 seconds
+
 export const useMeetingSubscription = (meetingId?: string) => {
     const dispatch = useDispatch();
+    const lastDispatchRef = useRef(0);
+    const pendingRef = useRef<Meeting | null>(null);
+    const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     useEffect(() => {
         if (!meetingId) return;
@@ -25,7 +30,27 @@ export const useMeetingSubscription = (meetingId?: string) => {
                         dateUpdated: (data.dateUpdated?.toDate ? data.dateUpdated.toDate().toISOString() : data.dateUpdated),
                     } as Meeting;
 
-                    dispatch(upsertMeeting(meeting));
+                    const now = Date.now();
+                    const elapsed = now - lastDispatchRef.current;
+
+                    if (elapsed >= THROTTLE_MS) {
+                        // Enough time has passed, dispatch immediately
+                        lastDispatchRef.current = now;
+                        dispatch(upsertMeeting(meeting));
+                    } else {
+                        // Too soon — store the latest and schedule a deferred dispatch
+                        pendingRef.current = meeting;
+                        if (!timerRef.current) {
+                            timerRef.current = setTimeout(() => {
+                                if (pendingRef.current) {
+                                    lastDispatchRef.current = Date.now();
+                                    dispatch(upsertMeeting(pendingRef.current));
+                                    pendingRef.current = null;
+                                }
+                                timerRef.current = null;
+                            }, THROTTLE_MS - elapsed);
+                        }
+                    }
                 }
             },
             (error) => {
@@ -33,6 +58,12 @@ export const useMeetingSubscription = (meetingId?: string) => {
             }
         );
 
-        return () => unsubscribe();
+        return () => {
+            unsubscribe();
+            if (timerRef.current) {
+                clearTimeout(timerRef.current);
+                timerRef.current = null;
+            }
+        };
     }, [meetingId, dispatch]);
 };
