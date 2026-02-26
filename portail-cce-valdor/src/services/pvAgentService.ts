@@ -757,18 +757,22 @@ export const runODJAnalysisStep = async (
         for (let attempt = 1; attempt <= 2; attempt++) {
             try {
                 const { text: rawResult } = await generateText({
-                    model: groq('qwen/qwen3-32b'),
+                    model: groq('llama-3.3-70b-versatile'),
                     prompt,
                     temperature: 0.3,
                     maxTokens: 60000,
                 } as any);
 
-                let cleaned = rawResult.replace(/<think>[\s\S]*?<\/think>/g, '')
+                let cleaned = rawResult.replace(/<think>[\s\S]*?<\/think>/gi, '')
                     .replace(/```(?:json)?/g, '').replace(/```/g, '');
 
                 const start = cleaned.indexOf('{');
                 const end = cleaned.lastIndexOf('}');
-                if (start !== -1 && end !== -1) cleaned = cleaned.substring(start, end + 1);
+                if (start !== -1 && end !== -1 && end >= start) {
+                    cleaned = cleaned.substring(start, end + 1);
+                } else {
+                    throw new Error("No JSON boundaries found in topic extraction response");
+                }
 
                 let parsed: any;
                 try {
@@ -1384,21 +1388,23 @@ export const runClassificationStep = async (
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
         try {
             const { text: rawResult } = await generateText({
-                model: groq('qwen/qwen3-32b'),
+                model: groq('llama-3.3-70b-versatile'),
                 prompt,
                 temperature: attempt === 1 ? 0.3 : 0.1, // Lower temp on retry
                 maxTokens: 60000,
             } as any);
 
             console.log(`[Classif] Raw LLM response length: ${rawResult.length} chars`);
-            let cleaned = rawResult.replace(/<think>[\s\S]*?<\/think>/g, '');
+            let cleaned = rawResult.replace(/<think>[\s\S]*?<\/think>/gi, '');
             console.log(`[Classif] After <think> removal: ${cleaned.length} chars`);
             cleaned = cleaned.replace(/```(?:json)?/g, '').replace(/```/g, '');
 
             const start = cleaned.indexOf('{');
             const end = cleaned.lastIndexOf('}');
-            if (start !== -1 && end !== -1 && end > start) {
+            if (start !== -1 && end !== -1 && end >= start) {
                 cleaned = cleaned.substring(start, end + 1);
+            } else {
+                throw new Error("No JSON boundaries found in classification response");
             }
 
             let parsed: any;
@@ -1485,18 +1491,21 @@ const extractStructuredData = async (
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
         try {
             const { text: rawResult } = await generateText({
-                model: groq('qwen/qwen3-32b'),
+                model: groq('llama-3.3-70b-versatile'),
                 prompt,
                 temperature: 0.1,
             });
 
-            let cleaned = rawResult.replace(/<think>[\s\S]*?<\/think>/g, '');
+            console.log(`[Drafting] Raw extraction response length: ${rawResult.length} chars`);
+            let cleaned = rawResult.replace(/<think>[\s\S]*?<\/think>/gi, '');
             cleaned = cleaned.replace(/```(?:json)?/g, '').replace(/```/g, '');
 
             const start = cleaned.indexOf('{');
             const end = cleaned.lastIndexOf('}');
-            if (start !== -1 && end !== -1 && end > start) {
+            if (start !== -1 && end !== -1 && end >= start) {
                 cleaned = cleaned.substring(start, end + 1);
+            } else {
+                throw new Error("No JSON boundaries found in drafting extraction response");
             }
 
             try {
@@ -1620,11 +1629,20 @@ export const runReflectionStep = async (
             let cleaned = data.content.replace(/```(?:json)?/g, '').replace(/```/g, '');
             const start = cleaned.indexOf('{');
             const end = cleaned.lastIndexOf('}');
-            if (start !== -1 && end !== -1 && end > start) {
+            if (start !== -1 && end !== -1 && end >= start) {
                 cleaned = cleaned.substring(start, end + 1);
+            } else {
+                throw new Error("No JSON boundaries found in reflection response");
             }
 
-            const parsed = JSON.parse(cleaned);
+            let parsed: any;
+            try {
+                parsed = JSON5.parse(cleaned);
+            } catch (e) {
+                console.warn(`[Reflection] JSON5 parse failed on iteration ${i}, attempting repair...`);
+                parsed = JSON5.parse(repairJSON(cleaned));
+            }
+
             const issues = (parsed.issues || []).map((issue: any) => ({
                 ...issue,
                 applied: issue.applied ?? true,
@@ -1731,11 +1749,19 @@ export const runComparisonStep = async (
         let cleaned = data.content.replace(/```(?:json)?/g, '').replace(/```/g, '');
         const start = cleaned.indexOf('{');
         const end = cleaned.lastIndexOf('}');
-        if (start !== -1 && end !== -1 && end > start) {
+        if (start !== -1 && end !== -1 && end >= start) {
             cleaned = cleaned.substring(start, end + 1);
+        } else {
+            throw new Error("No JSON boundaries found in comparison response");
         }
 
-        const parsed = JSON.parse(cleaned);
+        let parsed: any;
+        try {
+            parsed = JSON5.parse(cleaned);
+        } catch (e) {
+            console.warn(`[Comparison] JSON5 parse failed, attempting repair...`);
+            parsed = JSON5.parse(repairJSON(cleaned));
+        }
 
         return {
             historicalPVs: historicalPVs.map(pv => ({
