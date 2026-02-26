@@ -7,7 +7,7 @@ interface ParsedPVSection {
     content: string;
     entryType: 'resolution' | 'comment' | 'none';
     minuteEntries: MinuteEntry[];
-    minuteType?: 'resolution' | 'comment';
+    minuteType?: 'resolution' | 'comment' | 'note';
     minuteNumber?: string;
     decision?: string;
     proposer?: string;

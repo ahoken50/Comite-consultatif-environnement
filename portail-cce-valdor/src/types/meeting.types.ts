@@ -28,7 +28,7 @@ export interface AgendaItem {
     decision?: string; // PV content: actual resolution/decision made during meeting (legacy - kept for backward compatibility)
     linkedProjectId?: string;
     // Legacy minutes fields (kept for backward compatibility)
-    minuteType?: 'resolution' | 'comment' | 'other';
+    minuteType?: 'resolution' | 'comment' | 'note' | 'other';
     minuteNumber?: string; // e.g. "09-35" or "09-A"
     proposer?: string;
     seconder?: string;

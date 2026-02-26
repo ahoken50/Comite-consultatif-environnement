@@ -43,7 +43,7 @@ export interface LinkedResolution {
     agendaItemId: string;                    // Agenda item ID
     agendaItemTitle: string;                 // Agenda item title
     entryIndex: number;                      // Index in minuteEntries array
-    entryType: 'resolution' | 'comment';     // Type of entry
+    entryType: 'resolution' | 'comment' | 'note';     // Type of entry
     entryNumber: string;                     // Number (e.g., "13-A")
     entryContent: string;                    // Content preview (first 200 chars)
     linkedAt: string;                        // When the link was created
