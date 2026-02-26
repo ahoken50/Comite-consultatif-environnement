@@ -48,10 +48,12 @@ interface TabPanelProps {
 }
 
 function TabPanel(props: TabPanelProps & { hasBeenActive?: boolean }) {
-    const { children, value, index, hasBeenActive, ...other } = props;
+    const { children, value, index, ...other } = props;
 
-    // Don't render children until tab has been active at least once
-    if (!hasBeenActive && value !== index) {
+    // PERF: Only render children of the ACTIVE tab.
+    // Previously, visited tabs stayed in the DOM with display:none,
+    // causing ALL their children to re-render on every state update.
+    if (value !== index) {
         return null;
     }
 
@@ -60,7 +62,6 @@ function TabPanel(props: TabPanelProps & { hasBeenActive?: boolean }) {
             role="tabpanel"
             id={`meeting-tabpanel-${index}`}
             aria-labelledby={`meeting-tab-${index}`}
-            style={{ display: value === index ? 'block' : 'none' }}
             {...other}
         >
             <Box sx={{ p: 3 }}>
@@ -128,7 +129,6 @@ const MeetingDetailPage: React.FC = () => {
 
     const [tabValue, setTabValue] = useState(0);
     const [isPending, startTransition] = useTransition();
-    const [visitedTabs, setVisitedTabs] = useState<Set<number>>(new Set([0])); // Tab 0 visited by default
     const [hasConvocation, setHasConvocation] = useState<boolean | undefined>(undefined);
 
     const location = useLocation();
@@ -193,15 +193,6 @@ const MeetingDetailPage: React.FC = () => {
     // NOTE: `meeting` intentionally excluded — this effect only needs to run on navigation changes,
     // not on every Firestore echo. The 600ms setTimeout already handles post-render scrolling.
 
-    // Track visited tabs for lazy mounting
-    useEffect(() => {
-        setVisitedTabs(prev => {
-            if (prev.has(tabValue)) return prev;
-            const next = new Set(prev);
-            next.add(tabValue);
-            return next;
-        });
-    }, [tabValue]);
 
     // Bulk Upload State and Handler
     const [isBulkUploadOpen, setIsBulkUploadOpen] = useState(false);
@@ -424,7 +415,7 @@ const MeetingDetailPage: React.FC = () => {
                     )}
                 </Box>
 
-                <TabPanel value={tabValue} index={0} hasBeenActive={visitedTabs.has(0)}>
+                <TabPanel value={tabValue} index={0}>
                     <Box sx={{ mb: 2, display: 'flex', justifyContent: 'flex-end' }}>
                         <Button
                             startIcon={<CloudUpload />}
@@ -451,7 +442,7 @@ const MeetingDetailPage: React.FC = () => {
                     />
                 </TabPanel>
 
-                <TabPanel value={tabValue} index={1} hasBeenActive={visitedTabs.has(1)}>
+                <TabPanel value={tabValue} index={1}>
                     <MeetingApprovalCard
                         meeting={meeting}
                         currentUser={currentMember || null}
@@ -480,7 +471,7 @@ const MeetingDetailPage: React.FC = () => {
                     )}
                 </TabPanel>
 
-                <TabPanel value={tabValue} index={2} hasBeenActive={visitedTabs.has(2)}>
+                <TabPanel value={tabValue} index={2}>
                     <AccessControl allowedRoles={['coordinator']}>
                         <ConvocationDashboard
                             meeting={meeting}
@@ -498,9 +489,9 @@ const MeetingDetailPage: React.FC = () => {
                         readOnly={!isCoordinator}
                         members={members}
                     />
-                </TabPanel>
+                </TabPanel >
 
-                <TabPanel value={tabValue} index={3} hasBeenActive={visitedTabs.has(3)}>
+                <TabPanel value={tabValue} index={3}>
                     <Grid container spacing={3}>
                         <Grid size={{ xs: 12, md: 8 }}>
                             <Typography variant="h6" gutterBottom>Documents de la réunion</Typography>
@@ -529,8 +520,8 @@ const MeetingDetailPage: React.FC = () => {
                             />
                         </Grid>
                     </Grid>
-                </TabPanel>
-            </Paper>
+                </TabPanel >
+            </Paper >
 
             {isEditModalOpen && (
                 <MeetingForm
@@ -542,27 +533,31 @@ const MeetingDetailPage: React.FC = () => {
             )}
 
             {/* Convocation Dialog */}
-            {currentMember && (
-                <ConvocationDialog
-                    open={isConvocationDialogOpen}
-                    meeting={meeting}
-                    currentMember={currentMember}
-                    onClose={() => setIsConvocationDialogOpen(false)}
-                    onSuccess={handleConvocationSuccess}
-                    onError={handleConvocationError}
-                />
-            )}
+            {
+                currentMember && (
+                    <ConvocationDialog
+                        open={isConvocationDialogOpen}
+                        meeting={meeting}
+                        currentMember={currentMember}
+                        onClose={() => setIsConvocationDialogOpen(false)}
+                        onSuccess={handleConvocationSuccess}
+                        onError={handleConvocationError}
+                    />
+                )
+            }
 
             {/* Bulk Upload Modal */}
-            {meeting && (
-                <BulkUploadModal
-                    open={isBulkUploadOpen}
-                    onClose={() => setIsBulkUploadOpen(false)}
-                    meeting={meeting}
-                    onUploadComplete={handleBulkUploadComplete}
-                />
-            )}
-        </Box>
+            {
+                meeting && (
+                    <BulkUploadModal
+                        open={isBulkUploadOpen}
+                        onClose={() => setIsBulkUploadOpen(false)}
+                        meeting={meeting}
+                        onUploadComplete={handleBulkUploadComplete}
+                    />
+                )
+            }
+        </Box >
     );
 };
 
