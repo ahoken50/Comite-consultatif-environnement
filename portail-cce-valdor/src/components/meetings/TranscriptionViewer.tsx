@@ -43,6 +43,29 @@ interface TranscriptionViewerProps {
 import type { RootState } from '../../store/rootReducer';
 import { useToast } from '../../hooks/useToast';
 
+// ========================================================================
+// Helper Component: Isolated TextField to prevent parent re-renders on typing
+// ========================================================================
+const IsolatedTextField: React.FC<any> = ({ initialValue, onChange, ...props }) => {
+    const [localValue, setLocalValue] = React.useState(initialValue || '');
+
+    // Only update from parent if we're dealing with a truly new initialValue
+    React.useEffect(() => {
+        if (initialValue !== undefined && initialValue !== localValue) {
+            setLocalValue(initialValue);
+        }
+    }, [initialValue]);
+
+    return (
+        <TextField
+            {...props}
+            value={localValue}
+            onChange={(e) => setLocalValue(e.target.value)}
+            onBlur={() => onChange(localValue)}
+        />
+    );
+};
+
 const TranscriptionViewer: React.FC<TranscriptionViewerProps> = ({
     meeting,
     onDraftGenerated,
@@ -879,7 +902,7 @@ const TranscriptionViewer: React.FC<TranscriptionViewerProps> = ({
                             <Typography variant="subtitle2" gutterBottom>
                                 Corrections et ajustements :
                             </Typography>
-                            <TextField
+                            <IsolatedTextField
                                 fullWidth
                                 multiline
                                 rows={4}
@@ -888,8 +911,8 @@ Exemple:
 - Le nom du proposeur de la résolution 09-35 est M. Tremblay, pas M. Bouchard
 - Ajouter la mention 'à l'unanimité' pour la résolution 09-36
 - Corriger la date de la prochaine réunion"
-                                value={feedback}
-                                onChange={(e) => setFeedback(e.target.value)}
+                                initialValue={feedback}
+                                onChange={(val: string) => setFeedback(val)}
                                 sx={{ mb: 2 }}
                             />
                             <Box sx={{ display: 'flex', gap: 2, justifyContent: 'flex-end' }}>
