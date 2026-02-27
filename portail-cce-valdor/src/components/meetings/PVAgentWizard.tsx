@@ -93,6 +93,34 @@ const getStepIcon = (status: AgentStep['status']) => {
     }
 };
 
+// ========================================================================
+// Helper Component: Isolated TextField to prevent parent re-renders on typing
+// ========================================================================
+const IsolatedTextField: React.FC<any> = ({ initialValue, onChange, ...props }) => {
+    const [localValue, setLocalValue] = React.useState(initialValue || '');
+
+    // Only update from parent if we're dealing with a truly new initialValue (like step changes)
+    React.useEffect(() => {
+        if (initialValue !== undefined && !localValue && initialValue !== '') {
+            setLocalValue(initialValue);
+        }
+    }, [initialValue]);
+
+    // Send the final value to parent on blur (when user clicks outside)
+    const handleBlur = () => {
+        onChange(localValue);
+    };
+
+    return (
+        <TextField
+            {...props}
+            value={localValue}
+            onChange={(e) => setLocalValue(e.target.value)}
+            onBlur={handleBlur}
+        />
+    );
+};
+
 const PVAgentWizard: React.FC<PVAgentWizardProps> = ({
     open,
     state,
@@ -419,26 +447,26 @@ const PVAgentWizard: React.FC<PVAgentWizardProps> = ({
                                 </Box>
                             )}
 
-                            <TextField
+                            <IsolatedTextField
                                 fullWidth
                                 multiline
                                 minRows={10}
                                 maxRows={20}
                                 label="Contenu du PV FINAL (modifiable)"
-                                value={userEdits || comparisonResult?.finalContent || reflectionResult?.finalContent || draftingResult?.pvContent || ''}
-                                onChange={(e) => setUserEdits(e.target.value)}
+                                initialValue={userEdits || comparisonResult?.finalContent || reflectionResult?.finalContent || draftingResult?.pvContent || ''}
+                                onChange={(val: string) => setUserEdits(val)}
                                 variant="outlined"
                                 sx={{ mb: 2 }}
                             />
 
-                            <TextField
+                            <IsolatedTextField
                                 fullWidth
                                 multiline
                                 minRows={2}
                                 maxRows={5}
                                 label="Commentaires / Instructions supplémentaires (optionnel)"
-                                value={userComments}
-                                onChange={(e) => setUserComments(e.target.value)}
+                                initialValue={userComments}
+                                onChange={(val: string) => setUserComments(val)}
                                 variant="outlined"
                                 placeholder="Ex: Corriger le nom de M. Tremblay, ajouter la mention du quorum..."
                             />
