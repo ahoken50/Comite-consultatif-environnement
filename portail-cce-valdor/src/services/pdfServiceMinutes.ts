@@ -204,12 +204,13 @@ const generateHTMLDocument = (meeting: Meeting, _globalNotes?: string): string =
     const othersPresent = meeting.attendees?.filter(a => a.isPresent && !isMemberRole(a.role)) || [];
 
     // Role label mapping for PDF display
-    const getRoleLabelPDF = (role: string): string => {
+    const getRoleLabelPDF = (role: string, name: string = ''): string => {
         const labels: Record<string, string> = {
             president: 'présidente',
             vice_president: 'vice-président',
             coordinator: 'coordonnateur',
-            elected_official: 'conseiller responsable',
+            elected_official: name.includes('Sylvie') || name.includes('Hébert') ? 'conseillère responsable' : 'conseiller responsable',
+            advisor: name.includes('Sylvie') || name.includes('Hébert') ? 'conseillère responsable' : 'conseiller responsable',
             guest: 'invité',
             member: 'membre',
             observer: 'observateur'
@@ -218,7 +219,7 @@ const generateHTMLDocument = (meeting: Meeting, _globalNotes?: string): string =
     };
 
     const formatName = (a: typeof presents[0]) => {
-        const roleLabel = getRoleLabelPDF(a.role);
+        const roleLabel = getRoleLabelPDF(a.role, a.name);
         return roleLabel ? `${a.name} (${roleLabel})` : a.name;
     };
 
