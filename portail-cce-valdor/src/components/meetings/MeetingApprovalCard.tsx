@@ -313,13 +313,4 @@ const MeetingApprovalCard: React.FC<MeetingApprovalCardProps> = ({ meeting, curr
     );
 };
 
-export default React.memo(MeetingApprovalCard, (prevProps, nextProps) => {
-    return (
-        prevProps.meeting.id === nextProps.meeting.id &&
-        prevProps.meeting.approvalSignatures === nextProps.meeting.approvalSignatures &&
-        prevProps.meeting.isApprovalAvailable === nextProps.meeting.isApprovalAvailable &&
-        prevProps.meeting.status === nextProps.meeting.status &&
-        prevProps.currentUser?.id === nextProps.currentUser?.id &&
-        prevProps.onApprove === nextProps.onApprove
-    );
-});
+export default MeetingApprovalCard;
