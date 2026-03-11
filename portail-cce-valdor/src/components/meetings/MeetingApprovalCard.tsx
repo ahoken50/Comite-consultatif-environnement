@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
     Box, Paper, Typography, Button, Stepper, Step, StepLabel, Chip,
     Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions, FormControlLabel, Switch, Alert
@@ -19,6 +19,8 @@ const APPROVAL_ROLES: MemberRole[] = ['coordinator', 'president', 'vice_presiden
 import { updateMeeting } from '../../features/meetings/meetingsSlice';
 import { useDispatch } from 'react-redux';
 import type { AppDispatch } from '../../store/store';
+import { collection, query, where, onSnapshot } from 'firebase/firestore';
+import { db } from '../../services/firebase';
 
 // ... (existing helper functions)
 
@@ -50,10 +52,24 @@ const MeetingApprovalCard: React.FC<MeetingApprovalCardProps> = ({ meeting, curr
     const [warningOpen, setWarningOpen] = useState(false);
     const [pendingAction, setPendingAction] = useState<'president' | 'elected_official' | null>(null);
 
+    // Fetch approved tokens from subcollection
+    const [approvedTokens, setApprovedTokens] = useState<any[]>([]);
+
+    useEffect(() => {
+        if (!meeting.id) return;
+        const approvalsRef = collection(db, 'meetings', meeting.id, 'approval_tokens');
+        const q = query(approvalsRef, where('status', '==', 'approved'));
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            const tokens = snapshot.docs.map(doc => doc.data());
+            setApprovedTokens(tokens);
+        });
+        return () => unsubscribe();
+    }, [meeting.id]);
+
     const signatures = meeting.approvalSignatures || [];
-    const hasPresidentSigned = signatures.some(s => s.role === 'president');
-    const hasElectedSigned = signatures.some(s => s.role === 'elected_official');
-    const hasCoordinatorSigned = signatures.some(s => s.role === 'coordinator');
+    const hasPresidentSigned = signatures.some(s => s.role === 'president') || approvedTokens.some(t => t.role === 'president');
+    const hasElectedSigned = signatures.some(s => s.role === 'elected_official') || approvedTokens.some(t => t.role === 'elected_official');
+    const hasCoordinatorSigned = signatures.some(s => s.role === 'coordinator') || approvedTokens.some(t => t.role === 'coordinator');
 
     // Default to false if undefined
     const isApprovalAvailable = meeting.isApprovalAvailable || false;
