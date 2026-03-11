@@ -19,7 +19,7 @@ const APPROVAL_ROLES: MemberRole[] = ['coordinator', 'president', 'vice_presiden
 import { updateMeeting } from '../../features/meetings/meetingsSlice';
 import { useDispatch } from 'react-redux';
 import type { AppDispatch } from '../../store/store';
-import { collection, query, where, onSnapshot } from 'firebase/firestore';
+import { collection, onSnapshot } from 'firebase/firestore';
 import { db } from '../../services/firebase';
 
 // ... (existing helper functions)
@@ -58,16 +58,19 @@ const MeetingApprovalCard: React.FC<MeetingApprovalCardProps> = ({ meeting, curr
     useEffect(() => {
         if (!meeting.id) return;
         const approvalsRef = collection(db, 'meetings', meeting.id, 'approval_tokens');
-        const q = query(approvalsRef, where('status', '==', 'approved'));
-        const unsubscribe = onSnapshot(q, (snapshot) => {
+        const unsubscribe = onSnapshot(approvalsRef, (snapshot) => {
             const tokens = snapshot.docs.map(doc => doc.data());
-            setApprovedTokens(tokens);
+            const approved = tokens.filter(t => t.status === 'approved');
+            console.log("Tokens approved:", approved);
+            setApprovedTokens(approved);
+        }, (error) => {
+            console.error("Error fetching approval tokens:", error);
         });
         return () => unsubscribe();
     }, [meeting.id]);
 
     const signatures = meeting.approvalSignatures || [];
-    const hasPresidentSigned = signatures.some(s => s.role === 'president') || approvedTokens.some(t => t.role === 'president');
+    const hasPresidentSigned = signatures.some(s => s.role === 'president' || (s.role as string) === 'vice_president') || approvedTokens.some(t => t.role === 'president' || t.role === 'vice_president');
     const hasElectedSigned = signatures.some(s => s.role === 'elected_official') || approvedTokens.some(t => t.role === 'elected_official');
     const hasCoordinatorSigned = signatures.some(s => s.role === 'coordinator') || approvedTokens.some(t => t.role === 'coordinator');
 
@@ -75,7 +78,7 @@ const MeetingApprovalCard: React.FC<MeetingApprovalCardProps> = ({ meeting, curr
     const isApprovalAvailable = meeting.isApprovalAvailable || false;
 
     let activeStep = 0;
-    if (signatures.length > 0) activeStep = 1;
+    if (signatures.length > 0 || approvedTokens.length > 0) activeStep = 1;
     if (hasPresidentSigned && hasElectedSigned) activeStep = 3;
     if (hasCoordinatorSigned) activeStep = 3;
 
