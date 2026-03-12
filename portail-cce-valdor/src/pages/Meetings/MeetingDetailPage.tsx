@@ -316,16 +316,15 @@ const MeetingDetailPage: React.FC = () => {
         const updatedSignatures = [...currentSignatures, newSignature];
 
         let newStatus = meeting.approvalStatus || 'draft';
-        // If all roles have signed (checking new list)
-        const hasPresident = updatedSignatures.some((s: any) => s.role === 'president');
-        const hasElected = updatedSignatures.some((s: any) => s.role === 'elected_official');
+        // Check if required roles are present
+        const hasPresidency = updatedSignatures.some((s: any) => s.role === 'president' || s.role === 'elected_official');
         const hasCoordinator = updatedSignatures.some((s: any) => s.role === 'coordinator');
 
         if (role === 'admin_bypass') {
             newStatus = 'approved';
-        } else if (hasPresident && hasElected && hasCoordinator) {
-            newStatus = 'approved';
-        } else if (hasPresident || hasElected || hasCoordinator) {
+        } else if (hasPresidency && hasCoordinator) {
+            newStatus = 'approved'; // Devient officiel quand Prez/Élu ET Secrétaire ont signé
+        } else if (hasPresidency || hasCoordinator) {
             newStatus = 'waiting_approval';
         }
 

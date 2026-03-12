@@ -81,7 +81,8 @@ const MeetingApprovalCard: React.FC<MeetingApprovalCardProps> = ({ meeting, curr
 
     let activeStep = 0;
     if (signatures.length > 0 || approvedTokens.length > 0) activeStep = 1;
-    if (hasPresidentSigned && hasElectedSigned && hasCoordinatorSigned) activeStep = 3;
+    // Approbation officielle dès que (Président OU Élu) ET Secrétaire ont signé
+    if ((hasPresidentSigned || hasElectedSigned) && hasCoordinatorSigned) activeStep = 3;
     if (hasAdminBypass) activeStep = 3;
 
     const isCoordinator = currentUser?.role === 'coordinator';
