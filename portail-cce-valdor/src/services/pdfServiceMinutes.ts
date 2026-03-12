@@ -1,6 +1,8 @@
 import type { Meeting } from '../types/meeting.types';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
+import { collection, getDocs, doc, getDoc, query, where } from 'firebase/firestore';
+import { db } from './firebase';
 
 export interface PDFGenerationResult {
     success: boolean;
@@ -174,7 +176,7 @@ const formatContentHTML = (text: string): string => {
 /**
  * Generate the complete HTML document for the PV
  */
-const generateHTMLDocument = (meeting: Meeting, _globalNotes?: string): string => {
+const generateHTMLDocument = (meeting: Meeting, _globalNotes?: string, enrichedSignatures: any[] = []): string => {
     const meetingNum = extractMeetingNumber(meeting.title);
 
     // Format date
@@ -707,15 +709,18 @@ const generateHTMLDocument = (meeting: Meeting, _globalNotes?: string): string =
             <div class="signature-block">
                 <div class="signature-line">
                 ${(() => {
-            const sig = meeting.approvalSignatures?.find(s => s.role === 'president' || s.role === 'elected_official');
+            const sig = enrichedSignatures.find(s => s.role === 'president' || s.role === 'elected_official' || s.role === 'vice_president');
             if (sig) {
+                if (sig.signatureUrl) {
+                    return `<img src="${sig.signatureUrl}" crossorigin="anonymous" style="max-width: 200px; max-height: 80px; object-fit: contain; position: absolute; bottom: 0; left: 50%; transform: translateX(-50%);" />`;
+                }
                 return `<div class="digital-signature">Signé numériquement<br>${new Date(sig.signedAt).toLocaleDateString('fr-CA')}</div>`;
             }
             return '';
         })()}
                 </div>
                 <div class="signature-name">${(() => {
-            const sig = meeting.approvalSignatures?.find(s => s.role === 'president' || s.role === 'elected_official');
+            const sig = enrichedSignatures.find(s => s.role === 'president' || s.role === 'elected_official' || s.role === 'vice_president');
             return sig ? sig.signedByName : presidentName;
         })()}</div>
                 <div class="signature-role">Président(e) / Élu(e) Responsable</div>
@@ -723,14 +728,20 @@ const generateHTMLDocument = (meeting: Meeting, _globalNotes?: string): string =
             <div class="signature-block">
                 <div class="signature-line">
                      ${(() => {
-            const sig = meeting.approvalSignatures?.find(s => s.role === 'coordinator'); // Assuming coordinator signs as secretary for now, or validation
+            const sig = enrichedSignatures.find(s => s.role === 'coordinator'); 
             if (sig) {
+                if (sig.signatureUrl) {
+                    return `<img src="${sig.signatureUrl}" crossorigin="anonymous" style="max-width: 200px; max-height: 80px; object-fit: contain; position: absolute; bottom: 0; left: 50%; transform: translateX(-50%);" />`;
+                }
                 return `<div class="digital-signature">Validé administrativement<br>${new Date(sig.signedAt).toLocaleDateString('fr-CA')}</div>`;
             }
             return '';
         })()}
                 </div>
-                <div class="signature-name">${secretaryName}</div>
+                <div class="signature-name">${(() => {
+            const sig = enrichedSignatures.find(s => s.role === 'coordinator');
+            return sig ? sig.signedByName : secretaryName;
+        })()}</div>
                 <div class="signature-role">Secrétaire / Coordonnateur</div>
             </div>
         </section>
@@ -743,13 +754,70 @@ const generateHTMLDocument = (meeting: Meeting, _globalNotes?: string): string =
  * Generate PDF from HTML using native browser print
  * This approach respects CSS page-break rules for resolution blocks
  */
-/**
- * Generate PDF from HTML using native browser print
- * This approach respects CSS page-break rules for resolution blocks
- * @param windowRef Optional existing window reference (to avoid popup blockers on async calls)
- */
 export const generateMinutesPDF = async (meeting: Meeting, globalNotes?: string, windowRef?: Window | null): Promise<PDFGenerationResult> => {
-    const html = generateHTMLDocument(meeting, globalNotes);
+    
+    // 1. Prepare enriched signatures
+    const enrichedSignatures: any[] = [];
+    
+    // From manual approvalSignatures in meeting
+    for (const sig of meeting.approvalSignatures || []) {
+        let signatureUrl = '';
+        if (sig.signedBy) {
+            try {
+                const memberDoc = await getDoc(doc(db, 'members', sig.signedBy));
+                if (memberDoc.exists() && memberDoc.data().signatureUrl) {
+                    signatureUrl = memberDoc.data().signatureUrl;
+                }
+            } catch (e) {
+                console.error('Error fetching member signature:', e);
+            }
+        }
+        enrichedSignatures.push({
+            role: sig.role,
+            signedByName: sig.signedByName,
+            signedAt: sig.signedAt,
+            signatureUrl
+        });
+    }
+
+    // From email approval tokens
+    try {
+        const tokensRef = collection(db, 'meetings', meeting.id, 'approval_tokens');
+        const tokensSnap = await getDocs(tokensRef);
+        for (const d of tokensSnap.docs) {
+            const t = d.data();
+            if (t.status === 'approved') {
+                let signatureUrl = '';
+                if (t.userId) {
+                    try {
+                        const memberDoc = await getDoc(doc(db, 'members', t.userId));
+                        if (memberDoc.exists() && memberDoc.data().signatureUrl) {
+                            signatureUrl = memberDoc.data().signatureUrl;
+                        }
+                    } catch (e) {
+                        console.error('Error fetching token member signature:', e);
+                    }
+                } else if (t.email) {
+                     const q = query(collection(db, 'members'), where('email', '==', t.email));
+                     const memSnap = await getDocs(q);
+                     if (!memSnap.empty && memSnap.docs[0].data().signatureUrl) {
+                         signatureUrl = memSnap.docs[0].data().signatureUrl;
+                     }
+                }
+
+                enrichedSignatures.push({
+                    role: t.role,
+                    signedByName: t.name || 'Signataire',
+                    signedAt: t.approvedAt || t.updatedAt || new Date().toISOString(),
+                    signatureUrl
+                });
+            }
+        }
+    } catch (e) {
+        console.error('Error fetching approval tokens:', e);
+    }
+    
+    const html = generateHTMLDocument(meeting, globalNotes, enrichedSignatures);
 
     // Use provided window or open a new one
     let printWindow = windowRef;
