@@ -109,6 +109,53 @@ const TranscriptionViewer: React.FC<TranscriptionViewerProps> = ({
     const [verificationQueue, setVerificationQueue] = useState<Array<any>>([]);
     const [showVerificationQueue, setShowVerificationQueue] = useState(false);
 
+    // Audio Playback for AI Suggestions
+    const [playingSegmentId, setPlayingSegmentId] = useState<string | null>(null);
+    const audioRef = React.useRef<HTMLAudioElement | null>(null);
+
+    const playAudioSegment = (url: string | undefined, start: number | undefined, end: number | undefined, segId: string) => {
+        if (!url) {
+            showToast?.('Aucun fichier audio lié à cet extrait', 'error');
+            return;
+        }
+        
+        // Stop current
+        if (audioRef.current) {
+            audioRef.current.pause();
+        }
+
+        const audio = new Audio(url);
+        audioRef.current = audio;
+        
+        if (start !== undefined) {
+             audio.currentTime = start;
+        }
+
+        setPlayingSegmentId(segId);
+        
+        audio.play().catch(e => {
+            console.error("Audio play error", e);
+            setPlayingSegmentId(null);
+            showToast?.("Erreur lors de la lecture de l'audio", 'error');
+        });
+
+        const checkTime = () => {
+             if (end !== undefined && audio.currentTime >= end) {
+                 audio.pause();
+                 setPlayingSegmentId(null);
+                 audio.removeEventListener('timeupdate', checkTime);
+             }
+        };
+
+        if (end !== undefined) {
+             audio.addEventListener('timeupdate', checkTime);
+        }
+
+        audio.onended = () => {
+            setPlayingSegmentId(null);
+        };
+    };
+
     // PERF: Stable selectors — only re-render when actual data changes, not on every Redux update
     const allMeetings = useSelector(
         selectAllMeetings,
@@ -668,18 +715,39 @@ const TranscriptionViewer: React.FC<TranscriptionViewerProps> = ({
                                     {suggestion.aiMessage}
                                 </Typography>
                                 <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
-                                    {suggestion.segments?.map((seg: any, segIdx: number) => (
-                                        <Button
-                                            key={segIdx}
-                                            size="small"
-                                            variant="contained"
-                                            color="success"
-                                            onClick={() => handleApplyAiSuggestion(suggestion, seg)}
-                                            sx={{ fontSize: '0.7rem' }}
-                                        >
-                                            ✓ Appliquer ({seg.duration}s)
-                                        </Button>
-                                    ))}
+                                    {suggestion.segments?.map((seg: any, segIdx: number) => {
+                                        const segId = `${suggestion.memberId}-${segIdx}`;
+                                        const isPlaying = playingSegmentId === segId;
+                                        
+                                        return (
+                                        <Box key={segIdx} sx={{ display: 'flex', gap: 0.5, alignItems: 'center', bgcolor: 'background.paper', p: 0.5, borderRadius: 1 }}>
+                                            <Button
+                                                size="small"
+                                                variant="outlined"
+                                                color="primary"
+                                                onClick={() => {
+                                                    if (isPlaying && audioRef.current) {
+                                                        audioRef.current.pause();
+                                                        setPlayingSegmentId(null);
+                                                    } else {
+                                                        playAudioSegment(seg.audioUrl || meeting.audioRecording?.fileUrl, seg.start, seg.end, segId);
+                                                    }
+                                                }}
+                                                sx={{ minWidth: 'unset', p: '2px 8px' }}
+                                            >
+                                                {isPlaying ? '⏹' : '▶'}
+                                            </Button>
+                                            <Button
+                                                size="small"
+                                                variant="contained"
+                                                color="success"
+                                                onClick={() => handleApplyAiSuggestion(suggestion, seg)}
+                                                sx={{ fontSize: '0.7rem' }}
+                                            >
+                                                ✓ Valider ({seg.duration}s)
+                                            </Button>
+                                        </Box>
+                                    )})}
                                 </Box>
                             </Paper>
                         ))}

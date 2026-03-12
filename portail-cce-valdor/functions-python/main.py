@@ -5166,7 +5166,6 @@ def reinforce_speaker_voice(req: https_fn.Request) -> https_fn.Response:
         })
         
         # Feedback Logic
-        count = len(updated_embedding)
         msg = "Profil mis à jour."
         
         # Dynamic Limit: We allow up to 20 samples to ensure robustness.
