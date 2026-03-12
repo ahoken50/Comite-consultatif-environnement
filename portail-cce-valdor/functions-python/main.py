@@ -1,4 +1,4 @@
-﻿"""
+"""
 Cloud Functions Python pour CCE Val-d'Or
 Transcription audio avec OpenAI Whisper + GÃ©nÃ©ration PV avec Claude
 """
@@ -1466,7 +1466,7 @@ def get_meeting_attendees(meeting_id: str) -> list:
         return []
 
 
-def match_speakers_with_pgvector(segment_embedding: list, enrolled_speakers: list = None, limit: int = 10) -> dict:
+def compare_embedding_with_speakers(segment_embedding: list, enrolled_speakers: list = None, limit: int = 10) -> dict:
     """
     Match a segment embedding with speakers using pgvector (Phase 2 - Primary).
     
