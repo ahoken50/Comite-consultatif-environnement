@@ -10,7 +10,7 @@ import type { Meeting } from '../../types/meeting.types';
 interface MeetingApprovalCardProps {
     meeting: Meeting;
     currentUser: Member | null;
-    onApprove: (role: 'president' | 'elected_official' | 'coordinator') => void;
+    onApprove: (role: 'president' | 'elected_official' | 'coordinator' | 'admin_bypass') => void;
 }
 
 // Roles authorized to approve PVs
@@ -50,7 +50,7 @@ const MeetingApprovalCard: React.FC<MeetingApprovalCardProps> = ({ meeting, curr
 
     // Warning dialog state
     const [warningOpen, setWarningOpen] = useState(false);
-    const [pendingAction, setPendingAction] = useState<'president' | 'elected_official' | null>(null);
+    const [pendingAction, setPendingAction] = useState<'president' | 'elected_official' | 'coordinator' | 'admin_bypass' | null>(null);
 
     // Fetch approved tokens from subcollection
     const [approvedTokens, setApprovedTokens] = useState<any[]>([]);
@@ -74,13 +74,15 @@ const MeetingApprovalCard: React.FC<MeetingApprovalCardProps> = ({ meeting, curr
     const hasElectedSigned = signatures.some(s => s.role === 'elected_official') || approvedTokens.some(t => t.role === 'elected_official');
     const hasCoordinatorSigned = signatures.some(s => s.role === 'coordinator') || approvedTokens.some(t => t.role === 'coordinator');
 
+    const hasAdminBypass = signatures.some(s => s.role === 'admin_bypass') || approvedTokens.some(t => t.role === 'admin_bypass');
+
     // Default to false if undefined
     const isApprovalAvailable = meeting.isApprovalAvailable || false;
 
     let activeStep = 0;
     if (signatures.length > 0 || approvedTokens.length > 0) activeStep = 1;
-    if (hasPresidentSigned && hasElectedSigned) activeStep = 3;
-    if (hasCoordinatorSigned) activeStep = 3;
+    if (hasPresidentSigned && hasElectedSigned && hasCoordinatorSigned) activeStep = 3;
+    if (hasAdminBypass) activeStep = 3;
 
     const isCoordinator = currentUser?.role === 'coordinator';
 
@@ -91,14 +93,15 @@ const MeetingApprovalCard: React.FC<MeetingApprovalCardProps> = ({ meeting, curr
     };
 
     // Check if a signature slot is available
-    const isSlotAvailable = (signRole: 'president' | 'elected_official' | 'coordinator') => {
+    const isSlotAvailable = (signRole: 'president' | 'elected_official' | 'coordinator' | 'admin_bypass') => {
         if (activeStep === 3) return false;
 
         // If approval is NOT available, only Coordinator sees buttons (as admin)
-        if (!isApprovalAvailable && signRole !== 'coordinator') return false;
+        if (!isApprovalAvailable && signRole !== 'admin_bypass' && signRole !== 'coordinator') return false;
 
         switch (signRole) {
-            case 'coordinator': return true; // Admin bypass always available
+            case 'admin_bypass': return true; // Admin bypass always available
+            case 'coordinator': return !hasCoordinatorSigned;
             case 'president': return !hasPresidentSigned;
             case 'elected_official': return !hasElectedSigned;
             default: return false;
@@ -117,8 +120,8 @@ const MeetingApprovalCard: React.FC<MeetingApprovalCardProps> = ({ meeting, curr
     };
 
     // Handle button click with warning for coordinator signing as other roles
-    const handleSignClick = (role: 'president' | 'elected_official' | 'coordinator') => {
-        if (isCoordinator && role !== 'coordinator') {
+    const handleSignClick = (role: 'president' | 'elected_official' | 'coordinator' | 'admin_bypass') => {
+        if (isCoordinator && role !== 'coordinator' && role !== 'admin_bypass') {
             // Show warning before signing as another role
             setPendingAction(role);
             setWarningOpen(true);
@@ -217,10 +220,22 @@ const MeetingApprovalCard: React.FC<MeetingApprovalCardProps> = ({ meeting, curr
                         <Typography variant="caption" color="text.secondary">En attente de signature</Typography>
                     )}
                 </Paper>
+
+                <Paper variant="outlined" sx={{ p: 2, display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: 200, bgcolor: hasCoordinatorSigned ? '#e8f5e9' : 'transparent' }}>
+                    <Typography variant="subtitle2" gutterBottom>Secrétaire / Coordonnateur</Typography>
+                    {hasCoordinatorSigned ? (
+                        <Box sx={{ color: 'success.main', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                            <VerifiedUser fontSize="large" sx={{ mb: 1 }} />
+                            <Typography variant="caption">Signé</Typography>
+                        </Box>
+                    ) : (
+                        <Typography variant="caption" color="text.secondary">En attente de signature</Typography>
+                    )}
+                </Paper>
             </Box>
 
             {/* ... (Coordinator Override Section) */}
-            {hasCoordinatorSigned && (
+            {hasAdminBypass && (
                 <Paper variant="outlined" sx={{ mt: 2, p: 2, bgcolor: '#fff3e0', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 2 }}>
                     <AdminPanelSettings color="warning" />
                     <Box>
@@ -235,15 +250,29 @@ const MeetingApprovalCard: React.FC<MeetingApprovalCardProps> = ({ meeting, curr
                 <Box sx={{ mt: 3, display: 'flex', justifyContent: 'center', gap: 2, flexWrap: 'wrap' }}>
 
                     {/* Coordinator: Admin Bypass Button */}
-                    {isCoordinator && (
+                    {isCoordinator && isSlotAvailable('admin_bypass') && (
                         <Button
-                            variant="contained"
+                            variant="outlined"
                             color="warning"
-                            size="large"
-                            onClick={() => handleSignClick('coordinator')}
+                            size="small"
+                            onClick={() => handleSignClick('admin_bypass')}
                             startIcon={<AdminPanelSettings />}
+                            sx={{ order: 99 }}
                         >
                             Bypass Admin (Finaliser)
+                        </Button>
+                    )}
+
+                    {/* Coordinator: Normal Signature Button */}
+                    {isSlotAvailable('coordinator') && (hasNaturalRole('coordinator') || isCoordinator) && (
+                        <Button
+                            variant={isCoordinator && !hasNaturalRole('coordinator') ? "outlined" : "contained"}
+                            color="info"
+                            size="large"
+                            onClick={() => handleSignClick('coordinator')}
+                            startIcon={<VerifiedUser />}
+                        >
+                            Signer (Secrétaire)
                         </Button>
                     )}
 

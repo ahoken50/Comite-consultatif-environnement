@@ -299,7 +299,7 @@ const MeetingDetailPage: React.FC = () => {
         return <Typography>Réunion non trouvée</Typography>;
     }
 
-    const handleApproval = useCallback((role: 'president' | 'elected_official' | 'coordinator') => {
+    const handleApproval = useCallback((role: 'president' | 'elected_official' | 'coordinator' | 'admin_bypass') => {
         if (!id || !currentMember) return;
 
         const newSignature = {
@@ -316,15 +316,16 @@ const MeetingDetailPage: React.FC = () => {
         const updatedSignatures = [...currentSignatures, newSignature];
 
         let newStatus = meeting.approvalStatus || 'draft';
-        // If both roles have signed (checking new list)
+        // If all roles have signed (checking new list)
         const hasPresident = updatedSignatures.some((s: any) => s.role === 'president');
         const hasElected = updatedSignatures.some((s: any) => s.role === 'elected_official');
+        const hasCoordinator = updatedSignatures.some((s: any) => s.role === 'coordinator');
 
-        if (role === 'coordinator') {
+        if (role === 'admin_bypass') {
             newStatus = 'approved';
-        } else if (hasPresident && hasElected) {
+        } else if (hasPresident && hasElected && hasCoordinator) {
             newStatus = 'approved';
-        } else if (hasPresident || hasElected) {
+        } else if (hasPresident || hasElected || hasCoordinator) {
             newStatus = 'waiting_approval';
         }
 

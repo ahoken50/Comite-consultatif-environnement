@@ -728,7 +728,7 @@ const generateHTMLDocument = (meeting: Meeting, _globalNotes?: string, enrichedS
             <div class="signature-block">
                 <div class="signature-line">
                      ${(() => {
-            const sig = enrichedSignatures.find(s => s.role === 'coordinator'); 
+            const sig = enrichedSignatures.find(s => s.role === 'coordinator' || s.role === 'admin_bypass'); 
             if (sig) {
                 if (sig.signatureUrl) {
                     return `<img src="${sig.signatureUrl}" crossorigin="anonymous" style="max-width: 200px; max-height: 80px; object-fit: contain; position: absolute; bottom: 0; left: 50%; transform: translateX(-50%);" />`;
@@ -739,7 +739,7 @@ const generateHTMLDocument = (meeting: Meeting, _globalNotes?: string, enrichedS
         })()}
                 </div>
                 <div class="signature-name">${(() => {
-            const sig = enrichedSignatures.find(s => s.role === 'coordinator');
+            const sig = enrichedSignatures.find(s => s.role === 'coordinator' || s.role === 'admin_bypass');
             return sig ? sig.signedByName : secretaryName;
         })()}</div>
                 <div class="signature-role">Secrétaire / Coordonnateur</div>
