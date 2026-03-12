@@ -36,6 +36,9 @@ export interface AgendaItem {
     // NEW: Array of resolutions/comments for this agenda item
     // Allows multiple resolutions AND comments per item
     minuteEntries?: MinuteEntry[];
+    // NEW: Council Recommendation settings
+    isRecommendationToCouncil?: boolean;
+    councilIncludedEntryIndices?: number[]; // indices of `minuteEntries` to include. If undefined, all are included.
 }
 
 // NEW: Interface for individual minute entry (resolution or comment)

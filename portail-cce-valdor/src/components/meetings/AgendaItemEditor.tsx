@@ -1,5 +1,6 @@
 import React from 'react';
-import { Box, Grid, TextField, MenuItem, Typography, Button } from '@mui/material';
+import { Box, Grid, TextField, MenuItem, Typography, Button, Switch, FormControlLabel, Checkbox, FormGroup } from '@mui/material';
+import { useNavigate } from 'react-router-dom';
 import { Add } from '@mui/icons-material';
 import type { AgendaItem } from '../../types/meeting.types';
 import MinuteEntryEditor from './MinuteEntryEditor';
@@ -37,6 +38,8 @@ const AgendaItemEditor: React.FC<AgendaItemEditorProps> = ({
     meetingDate,
     userRole
 }) => {
+    const navigate = useNavigate();
+    
     return (
         <Box sx={{ bgcolor: 'background.default', p: 2, borderRadius: 1 }}>
             <Typography variant="subtitle2" gutterBottom>
@@ -88,6 +91,122 @@ const AgendaItemEditor: React.FC<AgendaItemEditorProps> = ({
                 >
                     Ajouter entrée
                 </Button>
+            )}
+
+            {/* Recommendation Settings */}
+            {item.minuteEntries && item.minuteEntries.length > 0 && (
+                <Box sx={{ mt: 3, p: 2, bgcolor: 'warning.50', borderRadius: 1, border: '1px solid', borderColor: 'warning.main' }}>
+                    <FormControlLabel
+                        control={
+                            <Switch
+                                checked={!!item.isRecommendationToCouncil}
+                                onChange={(e) => onAgendaItemChange(item.id, 'isRecommendationToCouncil', e.target.checked)}
+                                disabled={readOnly}
+                                color="warning"
+                            />
+                        }
+                        label={
+                            <Typography variant="subtitle2" fontWeight="bold" color="warning.dark">
+                                Créer une recommandation au conseil basée sur ce sujet
+                            </Typography>
+                        }
+                    />
+
+                    {item.isRecommendationToCouncil && (
+                        <Box sx={{ mt: 2, ml: 2 }}>
+                            <Typography variant="body2" gutterBottom color="text.secondary">
+                                Sélectionnez les éléments à inclure dans le rapport de recommandation :
+                            </Typography>
+                            <FormGroup>
+                                {item.minuteEntries.map((entry, idx) => {
+                                    // If undefined, we assume all are included by default, or none? 
+                                    // Let's assume if it's undefined, we start with an empty array or all selected.
+                                    const includedSet = new Set(item.councilIncludedEntryIndices || []);
+                                    // Let's default to newly checked if we just toggled it, but if user explicitly unchecks, it's removed.
+                                    // Actually better: If undefined, all are included.
+                                    const isIncluded = item.councilIncludedEntryIndices 
+                                        ? includedSet.has(idx) 
+                                        : true;
+
+                                    return (
+                                        <FormControlLabel
+                                            key={idx}
+                                            control={
+                                                <Checkbox
+                                                    checked={isIncluded}
+                                                    onChange={(e) => {
+                                                        const current = item.councilIncludedEntryIndices 
+                                                            ? [...item.councilIncludedEntryIndices] 
+                                                            : item.minuteEntries!.map((_, i) => i);
+                                                        
+                                                        let next;
+                                                        if (e.target.checked) {
+                                                            next = [...current, idx];
+                                                        } else {
+                                                            next = current.filter(i => i !== idx);
+                                                        }
+                                                        onAgendaItemChange(item.id, 'councilIncludedEntryIndices', next);
+                                                    }}
+                                                    disabled={readOnly}
+                                                    size="small"
+                                                />
+                                            }
+                                            label={
+                                                <Typography variant="body2" sx={{ 
+                                                    whiteSpace: 'nowrap', 
+                                                    overflow: 'hidden', 
+                                                    textOverflow: 'ellipsis', 
+                                                    maxWidth: '500px' 
+                                                }}>
+                                                    {entry.type === 'resolution' ? 'Résolution' : entry.type === 'comment' ? 'Commentaire' : 'Note'} : {entry.content || '(Vide)'}
+                                                </Typography>
+                                            }
+                                        />
+                                    );
+                                })}
+                            </FormGroup>
+                            
+                            {!readOnly && (
+                                <Button
+                                    variant="contained"
+                                    color="warning"
+                                    size="small"
+                                    sx={{ mt: 2 }}
+                                    onClick={() => {
+                                        if (!meetingId || !meetingDate) {
+                                            alert("Erreur: Informations de réunion manquantes");
+                                            return;
+                                        }
+
+                                        const includedSet = new Set(item.councilIncludedEntryIndices || item.minuteEntries!.map((_, i) => i));
+                                        const selectedEntries = item.minuteEntries!.filter((_, i) => includedSet.has(i));
+                                        
+                                        const resolutions = selectedEntries.filter(e => e.type === 'resolution').map(e => e.content).join('\n\n');
+                                        const notesComments = selectedEntries.filter(e => e.type !== 'resolution').map(e => `[${e.type === 'comment' ? 'Commentaire' : 'Note'}]: ${e.content}`).join('\n\n');
+                                        const descriptionText = [item.description, resolutions].filter(Boolean).join('\n\n');
+
+                                        navigate('/recommendations', {
+                                            state: {
+                                                createRecommendation: {
+                                                    meetingId: meetingId,
+                                                    meetingDate: meetingDate,
+                                                    sourceResolutionNumber: item.minuteNumber || '',
+                                                    sourceResolutionContent: resolutions || '',
+                                                    projectName: item.title,
+                                                    description: descriptionText,
+                                                    notes: notesComments,
+                                                    considerants: [] 
+                                                }
+                                            }
+                                        });
+                                    }}
+                                >
+                                    Rédiger la recommandation (Ouvrir)
+                                </Button>
+                            )}
+                        </Box>
+                    )}
+                </Box>
             )}
 
             {/* Legacy form fields - only show if no minuteEntries */}

@@ -554,6 +554,16 @@ const RecommendationBuilder: React.FC<RecommendationBuilderProps> = ({ onClose, 
                             margin="normal"
                             helperText="Le texte principal de la recommandation (Il est résolu de...)"
                         />
+                        <TextField
+                            fullWidth
+                            multiline
+                            rows={4}
+                            label="Notes de contexte (Commentaires du PV, Historique)"
+                            value={formData.notes || ''}
+                            onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                            margin="normal"
+                            helperText="Informations pertinentes pour la recommandation. Vous pouvez modifier ou retirer le contenu."
+                        />
                     </Box>
                 );
             case 1:
