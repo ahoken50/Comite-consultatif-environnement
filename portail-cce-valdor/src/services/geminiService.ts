@@ -228,7 +228,7 @@ export const reinforceSpeaker = async (
     try {
         console.log(`[ActiveLearning] Reinforcing ${speakerLabel} -> ${memberId} ${startTime ? `(${startTime}s)` : ''}`);
 
-        const reinforceFunction = httpsCallable(functions, 'reinforce_speaker_voice', { timeout: 300000 });
+        const reinforceFunction = httpsCallable(functions, 'reinforce_speaker_voice', { timeout: 540000 });
 
         const result = await reinforceFunction({
             meetingId,

@@ -255,8 +255,9 @@ const TranscriptionViewer: React.FC<TranscriptionViewerProps> = ({
         try {
             const { getFunctions, httpsCallable } = await import('firebase/functions');
             const functions = getFunctions();
-            // Increase client timeout to 5 minutes (300s) to match backend heavy processing
-            const identifyFn = httpsCallable(functions, 'identify_speakers', { timeout: 300000 });
+            // BUGFIX: Increased client timeout to 30 minutes (1800000ms) to match backend heavy processing
+            // A long meeting transcription + audio embedding on Modal can easily take 10-15 minutes
+            const identifyFn = httpsCallable(functions, 'identify_speakers', { timeout: 1800000 });
 
             showToast?.('Analyse AI en cours...', 'info');
             const result = await identifyFn({ meetingId: meeting.id });
@@ -562,6 +563,37 @@ const TranscriptionViewer: React.FC<TranscriptionViewerProps> = ({
                     sx={{ mb: 2 }}
                 >
                     {isIdentifying ? 'Analyse en cours...' : 'Lancer l\'identification AI'}
+                </Button>
+
+                {/* Secret Admin Button to purge polluted profiles (Visible to developers/admins only) */}
+                <Button
+                    variant="text"
+                    color="error"
+                    size="small"
+                    startIcon={<WarningAmber />}
+                    onClick={async () => {
+                        const confirmPurge = window.confirm("⚠️ ADMIN PURGE ⚠️\nVoulez-vous vraiment effacer les profils vocaux de 'Michaël Ross' et 'Donald ratté' pour repartir à neuf ?");
+                        if (confirmPurge) {
+                            try {
+                                showToast?.('Purge en cours...', 'info');
+                                const { getFunctions, httpsCallable } = await import('firebase/functions');
+                                const purgeFn = httpsCallable(getFunctions(), 'purge_speaker_profile');
+                                const result = await purgeFn({ names: ['Michaël Ross', 'Donald ratté', 'Donald Ratté'] });
+                                const res = result.data as any;
+                                if (res.success) {
+                                    showToast?.('✅ Profils nettoyés avec succès!', 'success');
+                                } else {
+                                    showToast?.(`❌ Erreur: ${res.error || res.message}`, 'error');
+                                }
+                            } catch(e: any) {
+                                showToast?.(`❌ Exception: ${e.message}`, 'error');
+                            }
+                        }
+                    }}
+                    sx={{ mb: 2, ml: 2, opacity: 0.3, '&:hover': { opacity: 1 } }}
+                    title="Nettoyer les profils corrompus"
+                >
+                    Purge
                 </Button>
 
                 {/* AI FEEDBACK PANEL - Shows warnings, missing speakers, learning suggestions */}

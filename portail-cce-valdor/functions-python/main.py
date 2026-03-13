@@ -1760,6 +1760,7 @@ async def identify_speakers_in_transcript(
         # Only call if we have enrolled speakers with roles
         context_scores = {}
         if enrolled_speakers:
+            # BUGFIX: Passing enrolled_speakers (dicts with roles) instead of known_member_names (strings)
             context_scores = contextual_ai_strategy(combined_text, meeting_context, enrolled_speakers)
             if context_scores:
                 print(f"[Identify] Context AI scores for {speaker_label}: {context_scores}")
@@ -1838,7 +1839,8 @@ async def identify_speakers_in_transcript(
             # Auto-Learning logic (Restored)
             voice_conf = voice_scores.get(best_name, 0)
             if voice_available and segment_embedding:
-                if 0.55 <= voice_conf <= 0.78 and best_score > 0.65:
+                # BUGFIX: Increased voice_conf strictness from 0.55 to 0.70 to prevent profile pollution
+                if 0.70 <= voice_conf <= 0.85 and best_score > 0.65:
                      try:
                          print(f"[AutoLearn] Autonomous Reinforcement triggered for {best_name}!")
                          # Write directly to Supabase (primary store)
@@ -6298,6 +6300,59 @@ def apply_ai_suggestion(req: https_fn.Request) -> https_fn.Response:
 
 
 # =============================================================================
+# ADMIN PURGE - Clean voice profiles
+# =============================================================================
+@https_fn.on_call(timeout_sec=120)
+def purge_speaker_profile(req: https_fn.CallableRequest) -> dict:
+    """
+    Utility function to hard delete speaker profile vectors in Supabase and reset Firestore counter.
+    Pass member_names list in req.data.
+    """
+    names_to_clean = req.data.get("names", [])
+    if not names_to_clean:
+        return {"success": False, "message": "No names provided"}
+    
+    deleted_count = 0
+    import traceback
+    try:
+        global db
+        if db is None:
+            db = firestore.client()
+            
+        print(f"[Admin] Purging profiles for: {names_to_clean}")
+
+        # 1. Clean Supabase
+        from supabase_embeddings import supabase
+        try:
+            res = supabase.table("speaker_embeddings").delete().in_("speaker_name", names_to_clean).execute()
+            print(f"[Admin] Supabase clean successful.")
+        except Exception as e:
+            print(f"[Admin] Error cleaning Supabase: {e}")
+            raise e
+            
+        # 2. Clean Firestore Counters
+        try:
+            members_ref = db.collection("members").where("displayName", "in", names_to_clean).stream()
+            for doc in members_ref:
+                doc.reference.update({"voiceSampleCount": 0})
+                deleted_count += 1
+                print(f"[Admin] Reset counter for: {doc.to_dict().get('displayName')}")
+        except Exception as e:
+             print(f"[Admin] Error cleaning Firestore: {e}")
+             raise e
+
+        return {
+            "success": True,
+            "message": f"Successfully purged profiles for {deleted_count} members.",
+            "names": names_to_clean
+        }
+
+    except Exception as e:
+        print(f"[Admin] Purge failed: {str(e)}")
+        print(traceback.format_exc())
+        return {"success": False, "error": str(e)}
+
+# =============================================================================
 # AUTONOMOUS ML LOOP - Global orchestration of all ML components
 # =============================================================================
 @https_fn.on_request(
@@ -7288,7 +7343,7 @@ def learn_resolution(req: https_fn.CallableRequest) -> dict:
 # Active embedding update from correction
 # -----------------------------------------------------------------------------
 @https_fn.on_call(
-    timeout_sec=120,
+    timeout_sec=540,
     memory=options.MemoryOption.GB_1,
 )
 def closed_feedback_loop(req: https_fn.CallableRequest) -> dict:

@@ -262,8 +262,13 @@ def update_with_correction(
         print(f"[SupabaseEmb] update_with_correction called: speaker='{speaker_name}', dim={len(correct_vec)}, wrong='{wrong_speaker_name}', weight={correction_weight}")
         # Step 1: Remove wrong embedding from wrong speaker
         removed = 0
-        if wrong_vec and wrong_speaker_name:
-            removed = remove_similar_embeddings(wrong_speaker_name, wrong_vec, threshold=0.92)
+        
+        # BUGFIX: If we don't have the explicit wrong_vec, the correct_vec IS the audio that was wrongly attributed.
+        # So we should search for correct_vec inside the wrong speaker's profile and remove it.
+        vec_to_remove = wrong_vec if wrong_vec else correct_vec
+
+        if vec_to_remove and wrong_speaker_name:
+            removed = remove_similar_embeddings(wrong_speaker_name, vec_to_remove, threshold=0.92)
             result["removedWrong"] = removed > 0
 
         # Step 2: Check for duplicates

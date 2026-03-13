@@ -227,7 +227,7 @@ export const SpeakerCorrectionTranscription: React.FC<SpeakerCorrectionTranscrip
                         const functions = getFunctions();
 
                         console.log('[SpeakerCorrection] Calling closed_feedback_loop...');
-                        const feedbackFn = httpsCallable(functions, 'closed_feedback_loop');
+                        const feedbackFn = httpsCallable(functions, 'closed_feedback_loop', { timeout: 540000 });
                         await feedbackFn({
                             meetingId,
                             speakerLabel: oldName,
@@ -672,7 +672,10 @@ function estimateSegmentTime(
 
         const start = Math.floor(prevTs.seconds + ratio * timeSpan);
         const end = Math.min(start + 30, timestamps[nextIdx].seconds);
-        return { start, end: Math.max(end, start + 5) }; // at least 5s
+        // BUGFIX: Removed `Math.max(end, start + 5)` which forced a 5s minimum.
+        // If a person speaks for only 2 seconds, forcing 5s captures the NEXT person's voice
+        // and severely pollutes the ML profile.
+        return { start, end };
     }
 
     // Fallback: no timestamps found, estimate from text position ratio
