@@ -278,30 +278,60 @@ const RecommendationBuilder: React.FC<RecommendationBuilderProps> = ({ onClose, 
     };
 
     const handleImportSelection = (meeting: Meeting, item: AgendaItem) => {
-        const resolutionEntry = item.minuteEntries?.find(e => e.type === 'resolution');
-        const comments = item.minuteEntries
-            ?.filter(e => e.type === 'comment')
-            .map(e => e.content)
-            .join('\n\n') || '';
-
-        const rawContent = resolutionEntry?.content || item.decision || item.description || '';
-        const resolutionNumber = resolutionEntry?.number || item.minuteNumber || '';
+        const newResolutions: { number: string; title: string; text: string; }[] = [];
         const title = item.title;
-        const extractedConsiderants = extractConsiderants(rawContent);
+        let mainContent = '';
+        let unnumberedComments: string[] = [];
+
+        if (item.minuteEntries && item.minuteEntries.length > 0) {
+            item.minuteEntries.forEach(entry => {
+                if (entry.type === 'resolution' || entry.type === 'comment') {
+                    if (entry.number || entry.type === 'resolution') {
+                        // Create a specific boxed resolution for numbered entries or any formal resolution
+                        newResolutions.push({
+                            number: entry.number || item.minuteNumber || '',
+                            title: title, 
+                            text: entry.content
+                        });
+                        if (entry.type === 'resolution' && !mainContent) {
+                            mainContent = entry.content; // Tracks the primary content
+                        }
+                    } else {
+                        // Comment without a number goes into notes
+                        unnumberedComments.push(entry.content);
+                    }
+                }
+            });
+        }
+        
+        // Fallback for legacy items without explicit minuteEntries
+        if (newResolutions.length === 0) {
+            const rawContent = item.decision || item.description || '';
+            if (rawContent) {
+                newResolutions.push({
+                    number: item.minuteNumber || '',
+                    title: title,
+                    text: rawContent
+                });
+                mainContent = rawContent;
+            }
+        }
+
+        const extractedConsiderants = extractConsiderants(mainContent || newResolutions[0]?.text || '');
 
         setFormData(prev => ({
             ...prev,
             projectName: title,
             meetingId: meeting.id,
             meetingDate: meeting.date,
-            sourceResolutionNumber: resolutionNumber,
-            sourceResolutionContent: rawContent,
-            description: rawContent,
-            notes: comments ? `[Commentaires du PV]:\n${comments}` : ''
+            sourceResolutionNumber: newResolutions[0]?.number || item.minuteNumber || '',
+            sourceResolutionContent: mainContent || newResolutions[0]?.text || '',
+            description: mainContent || newResolutions[0]?.text || '',
+            notes: unnumberedComments.length > 0 ? `[Commentaires du PV]:\n${unnumberedComments.join('\n\n')}` : ''
         }));
 
-        if (rawContent) {
-            setResolutions([{ number: resolutionNumber, title: title, text: rawContent }]);
+        if (newResolutions.length > 0) {
+            setResolutions(newResolutions);
         }
 
         if (extractedConsiderants.length > 0 && extractedConsiderants[0] !== '') {
