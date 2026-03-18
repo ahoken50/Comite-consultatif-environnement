@@ -108,6 +108,16 @@ const RecommendationBuilder: React.FC<RecommendationBuilderProps> = ({ onClose, 
     const [considerants, setConsiderants] = useState<string[]>(['']);
     const [newLink, setNewLink] = useState({ policyName: '', regulationArticle: '' });
 
+    // PDF Options State
+    const [isPdfDialogOpen, setIsPdfDialogOpen] = useState(false);
+    const [pdfOptions, setPdfOptions] = useState<{
+        includeComments: boolean;
+        selectedResolutions: number[];
+    }>({
+        includeComments: false,
+        selectedResolutions: []
+    });
+
     // Structured Resolutions State
     const [resolutions, setResolutions] = useState<{ number: string; title: string; text: string; }[]>([
         { number: '', title: '', text: '' }
@@ -374,7 +384,10 @@ const RecommendationBuilder: React.FC<RecommendationBuilderProps> = ({ onClose, 
                 createdBy: 'user-id-placeholder'
             } as Omit<CouncilRecommendation, 'id'>;
 
-            await dispatch(addRecommendation(finalData)).unwrap();
+            // Firebase throws errors if any field is precisely `undefined`
+            const cleanedData = Object.fromEntries(Object.entries(finalData).filter(([_, v]) => v !== undefined));
+
+            await dispatch(addRecommendation(cleanedData as any)).unwrap();
             if (onClose) onClose();
             else navigate('/governance');
         } catch (error) {
@@ -402,29 +415,46 @@ const RecommendationBuilder: React.FC<RecommendationBuilderProps> = ({ onClose, 
         }
     };
 
-    const handleGenerateExtractPDF = async () => {
-        let meetingContext: Meeting | undefined;
-        if (formData.meetingId) {
-            meetingContext = meetings.find(m => m.id === formData.meetingId);
-            if (!meetingContext) {
-                meetingContext = {
-                    id: formData.meetingId,
-                    date: formData.meetingDate || new Date().toISOString(),
-                    title: 'Réunion CCE (Référence)',
-                    type: 'regular',
-                    status: 'completed',
-                    agendaItems: [],
-                    attendees: []
-                } as any;
-            }
-        } else {
+    const handleOpenPdfDialog = () => {
+        if (!formData.meetingId) {
             showWarning("Veuillez lier une réunion (Import) pour générer l'extrait officiel.");
             return;
         }
+        setPdfOptions({
+            includeComments: !!formData.notes,
+            selectedResolutions: resolutions.map((_, i) => i) // Select all default
+        });
+        setIsPdfDialogOpen(true);
+    };
+
+    const confirmPdfGeneration = async () => {
+        let meetingContext: Meeting | undefined;
+        meetingContext = meetings.find(m => m.id === formData.meetingId);
+        
+        if (!meetingContext && formData.meetingId) {
+             meetingContext = {
+                 id: formData.meetingId,
+                 date: formData.meetingDate || new Date().toISOString(),
+                 title: 'Réunion CCE (Référence)',
+                 type: 'regular',
+                 status: 'completed',
+                 agendaItems: [],
+                 attendees: []
+             } as any;
+        }
+
         if (meetingContext) {
-            const combined = resolutions.filter(r => r.text.trim().length > 0).map(r => `[${r.number}] ${r.title}\n${r.text}`).join('\n\n---\n\n');
-            const dataToPrint = { ...formData, resolutions: resolutions.filter(r => r.text.trim().length > 0), description: combined };
+            const filteredResolutions = resolutions.filter((r, i) => pdfOptions.selectedResolutions.includes(i) && r.text.trim().length > 0);
+            
+            const combined = filteredResolutions.map(r => `[${r.number}] ${r.title}\n${r.text}`).join('\n\n---\n\n');
+            const dataToPrint = { 
+                ...formData, 
+                resolutions: filteredResolutions, 
+                description: combined,
+                notes: pdfOptions.includeComments ? formData.notes : ''
+            };
             await generateResolutionPDF(meetingContext, dataToPrint as CouncilRecommendation, 'recommendation');
+            setIsPdfDialogOpen(false);
         }
     };
 
@@ -853,7 +883,7 @@ const RecommendationBuilder: React.FC<RecommendationBuilderProps> = ({ onClose, 
                                     variant="outlined"
                                     color="secondary"
                                     startIcon={<FileDownload />}
-                                    onClick={handleGenerateExtractPDF}
+                                    onClick={handleOpenPdfDialog}
                                 >
                                     Extraire PDF Officiel
                                 </Button>
@@ -1013,6 +1043,71 @@ const RecommendationBuilder: React.FC<RecommendationBuilderProps> = ({ onClose, 
                 </DialogContent>
                 <DialogActions>
                     <Button onClick={() => setAiWizardOpen(false)}>Fermer</Button>
+                </DialogActions>
+            </Dialog>
+
+            {/* PDF Options Dialog */}
+            <Dialog open={isPdfDialogOpen} onClose={() => setIsPdfDialogOpen(false)} maxWidth="sm" fullWidth>
+                <DialogTitle>Paramètres d'extraction PDF</DialogTitle>
+                <DialogContent dividers>
+                    <Typography variant="subtitle2" gutterBottom color="text.secondary">
+                        Sélectionnez les résolutions à inclure dans l'extrait :
+                    </Typography>
+                    <List sx={{ pt: 0 }}>
+                        {resolutions.filter(r => r.text.trim().length > 0).map((res, idx) => (
+                            <ListItem key={idx} disablePadding>
+                                <ListItemButton onClick={() => {
+                                    setPdfOptions(prev => {
+                                        const isSelected = prev.selectedResolutions.includes(idx);
+                                        return {
+                                            ...prev,
+                                            selectedResolutions: isSelected 
+                                                ? prev.selectedResolutions.filter(i => i !== idx)
+                                                : [...prev.selectedResolutions, idx]
+                                        };
+                                    });
+                                }}>
+                                    <ListItemIcon>
+                                        <Checkbox
+                                            edge="start"
+                                            checked={pdfOptions.selectedResolutions.includes(idx)}
+                                            tabIndex={-1}
+                                            disableRipple
+                                        />
+                                    </ListItemIcon>
+                                    <ListItemText 
+                                        primary={`RÉSOLUTION ${res.number || '---'}`} 
+                                        secondary={res.title || 'Sans titre'} 
+                                    />
+                                </ListItemButton>
+                            </ListItem>
+                        ))}
+                    </List>
+
+                    {formData.notes && (
+                        <Box sx={{ mt: 2, pt: 2, borderTop: '1px dashed #e0e0e0' }}>
+                            <FormControlLabel
+                                control={
+                                    <Checkbox 
+                                        checked={pdfOptions.includeComments}
+                                        onChange={(e) => setPdfOptions(prev => ({ ...prev, includeComments: e.target.checked }))}
+                                    />
+                                }
+                                label="Inclure les Commentaires / Contexte du PV dans le PDF"
+                            />
+                        </Box>
+                    )}
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={() => setIsPdfDialogOpen(false)}>Annuler</Button>
+                    <Button 
+                        onClick={confirmPdfGeneration} 
+                        variant="contained" 
+                        color="secondary"
+                        disabled={pdfOptions.selectedResolutions.length === 0}
+                    >
+                        Générer PDF
+                    </Button>
                 </DialogActions>
             </Dialog>
         </Paper>

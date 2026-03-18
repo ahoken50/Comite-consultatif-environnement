@@ -148,6 +148,10 @@ export const generateResolutionPDF = async (
         notes = rec.notes || '';
     }
 
+    const location = meeting.location || 'Suite virtuelle / Hôtel de Ville';
+    const time = meeting.date ? format(new Date(meeting.date), "HH 'h' mm", { locale: fr }) : 'Non spécifiée';
+    const attendeesList = meeting.attendees?.filter(a => a.isPresent !== false).map(a => `${a.name}${a.role ? ` (${a.role})` : ''}`).join(', ') || 'Aucun';
+
     // Signatures (President & Secretary only for Extracts)
     const president = meeting.attendees?.find(a =>
         (a.role?.toLowerCase().includes('président') && !a.role?.toLowerCase().includes('vice')) ||
@@ -160,6 +164,8 @@ export const generateResolutionPDF = async (
     const presidentName = president ? president.name : 'Président(e)';
     const secretaryName = secretary ? secretary.name : 'Secrétaire';
 
+    const globalTitle = type === 'recommendation' ? (itemOrRec as CouncilRecommendation).projectName || 'Recommandation' : title;
+
     let resolutionBlocksHTML = '';
 
     if (type === 'recommendation' && (itemOrRec as CouncilRecommendation).resolutions && (itemOrRec as CouncilRecommendation).resolutions!.length > 0) {
@@ -169,8 +175,7 @@ export const generateResolutionPDF = async (
         <div class="res-header">
             <span>RÉSOLUTION ${r.number || '---'}</span>
         </div>
-        <div class="res-title">${r.title || rec.projectName || 'Recommandation'}</div>
-        
+        ${r.title !== globalTitle ? `<div class="res-title-sub">${r.title || ''}</div>` : ''}
         <div class="content">
             ${formatResolutionHTML(r.text)}
         </div>
@@ -182,7 +187,6 @@ export const generateResolutionPDF = async (
         <div class="res-header">
             <span>RÉSOLUTION ${resolutionNumber}</span>
         </div>
-        <div class="res-title">${title}</div>
         
         <div class="content">
             ${formatResolutionHTML(content)}
@@ -290,11 +294,20 @@ export const generateResolutionPDF = async (
             justify-content: space-between;
             align-items: center;
         }
-        .res-title {
+        .main-title {
             color: var(--primary-color);
-            font-size: 18px; 
-            margin-top: 5px;
+            font-size: 20px; 
+            margin-top: 10px;
             font-weight: 700;
+            margin-bottom: 20px;
+            text-align: center;
+            text-transform: uppercase;
+        }
+        .res-title-sub {
+            color: var(--primary-color);
+            font-size: 16px; 
+            margin-top: 5px;
+            font-weight: 600;
             margin-bottom: 15px;
         }
         .content {
@@ -360,23 +373,34 @@ export const generateResolutionPDF = async (
 </head>
 <body>
     <div class="header">
-        <img src="/logo-valdor.png" alt="Logo" class="logo" onerror="this.style.display='none'">
+        <div style="display: flex; justify-content: center; align-items: center; gap: 30px; margin-bottom: 15px;">
+            <img src="/logo-valdor.png" alt="Logo Ville" style="height: 80px;" onerror="this.style.display='none'">
+            <img src="/logo-cce.png" alt="Logo CCE" style="height: 80px;" onerror="this.style.display='none'">
+        </div>
         <h1>${mode === 'official' ? 'Extrait du Procès-Verbal' : 'Présentation de Projet'}</h1>
         <h2>Comité Consultatif en Environnement</h2>
         <div class="meta-info">
             Séance du ${dayName} ${dayOfMonth} ${monthName} ${year}
         </div>
+        <div style="text-align: left; font-size: 14px; margin-top: 20px; padding: 10px; background-color: #f9f9f9; border-left: 3px solid var(--primary-color);">
+            <p style="margin: 0 0 5px 0;"><strong>Lieu :</strong> ${location}</p>
+            <p style="margin: 0 0 5px 0;"><strong>Heure :</strong> ${time}</p>
+            <p style="margin: 0;"><strong>Présences :</strong> ${attendeesList}</p>
+        </div>
     </div>
 
-    ${mode === 'campaign' && notes ? `
+    <div class="main-title">${globalTitle}</div>
+
+    ${notes ? `
     <div class="campaign-box">
-        <div class="campaign-title">Argumentaire / Contexte</div>
+        <div class="campaign-title">Contexte / Commentaires du PV</div>
         <div class="campaign-content">${formattedNotes(notes)}</div>
     </div>
     ` : ''}
 
     ${resolutionBlocksHTML}
 
+    ${meeting.approvalStatus === 'approved' || meeting.approvalStatus === 'final' ? `
     <div class="signatures">
         <div class="sig-block">
             <div class="sig-line"></div>
@@ -389,6 +413,11 @@ export const generateResolutionPDF = async (
             <div>Secrétaire</div>
         </div>
     </div>
+    ` : `
+    <div style="text-align:center; font-style:italic; margin-top: 80px; color: #888;">
+        (Signatures requises une fois le PV approuvé)
+    </div>
+    `}
 
     ${mode === 'official' ? `
     <div class="cert">
