@@ -64,8 +64,7 @@ const formatResolutionHTML = (text: string): string => {
             // Capture "IL EST RÉSOLU" optionally followed by "QUE"
             const match = trimmed.match(/^(IL EST R[ÉE]SOLU(?:\s+QUE)?\s*:?)\s*(.*)/i);
             if (match) {
-                html += `<div class="il-est-resolu">${match[1]}</div>`;
-                if (match[2]) html += `<div class="resolution-text">${match[2]}</div>`;
+                html += `<div class="considerant"><span class="il-est-resolu">${match[1]}</span> ${match[2] ? `<span class="resolution-text">${match[2]}</span>` : ''}</div>`;
             }
         }
         // Bullet points
@@ -163,6 +162,19 @@ export const generateResolutionPDF = async (
 
     const presidentName = president ? president.name : 'Président(e)';
     const secretaryName = secretary ? secretary.name : 'Secrétaire';
+
+    // Format attendees for formal text block
+    const presents = meeting.attendees?.filter(a => a.isPresent !== false) || [];
+    const absents = meeting.attendees?.filter(a => a.isPresent === false) || [];
+
+    const formatAttendee = (a: any) => `${a.name}${a.role ? `, ${a.role.toLowerCase()}` : ''}`;
+
+    const regularPresentsStr = presents.filter(a => !a.role?.toLowerCase().includes('secrétaire') && !a.role?.toLowerCase().includes('conseil') && !a.role?.toLowerCase().includes('coordon')).map(formatAttendee).join(', ');
+    const staffPresentsStr = presents.filter(a => a.role?.toLowerCase().includes('secrétaire') || a.role?.toLowerCase().includes('conseil') || a.role?.toLowerCase().includes('coordon')).map(formatAttendee).join(', ');
+    const absentsStr = absents.map(formatAttendee).join(', ');
+
+    const meetingTypeStr = meeting.type === 'regular' ? 'ordinaire' : 'spéciale';
+    const meetingNumberStr = meeting.meetingNumber ? `${meeting.meetingNumber}e ` : '';
 
     const globalTitle = type === 'recommendation' ? (itemOrRec as CouncilRecommendation).projectName || 'Recommandation' : title;
 
@@ -264,43 +276,27 @@ export const generateResolutionPDF = async (
         }
         .campaign-title {
             font-family: 'Montserrat', sans-serif;
-            font-size: 16px;
+            font-size: 14px;
             font-weight: 700;
-            color: var(--primary-color);
-            margin-bottom: 10px;
+            margin-bottom: 5px;
             text-transform: uppercase;
         }
         .campaign-content {
-            font-size: 14px;
+            font-size: 15px;
             line-height: 1.5;
             white-space: pre-wrap;
+            margin-bottom: 30px;
         }
 
         .resolution-box {
-            background-color: #fdfcf8;
-            border: 1px solid #e0e0e0;
-            border-left: 4px solid var(--accent-color);
-            padding: 30px;
             margin: 20px 0;
             page-break-inside: avoid;
         }
         .res-header {
             font-family: 'Montserrat', sans-serif;
-            font-size: 16px;
+            font-size: 14px;
             font-weight: 700;
-            color: var(--accent-color);
-            margin-bottom: 20px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        .main-title {
-            color: var(--primary-color);
-            font-size: 20px; 
-            margin-top: 10px;
-            font-weight: 700;
-            margin-bottom: 20px;
-            text-align: center;
+            margin-bottom: 10px;
             text-transform: uppercase;
         }
         .res-title-sub {
@@ -370,46 +366,43 @@ export const generateResolutionPDF = async (
             padding-top: 10px;
         }
     </style>
-</head>
-<body>
     <div class="header">
         <div style="display: flex; justify-content: center; align-items: center; gap: 30px; margin-bottom: 15px;">
-            <img src="/logo-valdor.png" alt="Logo Ville" style="height: 80px;" onerror="this.style.display='none'">
+            <img src="/logo-valdor.png" alt="Logo Ville Val-d'Or" style="height: 80px;" onerror="this.style.display='none'">
             <img src="/logo-cce.png" alt="Logo CCE" style="height: 80px;" onerror="this.style.display='none'">
-        </div>
-        <h1>${mode === 'official' ? 'Extrait du Procès-Verbal' : 'Présentation de Projet'}</h1>
-        <h2>Comité Consultatif en Environnement</h2>
-        <div class="meta-info">
-            Séance du ${dayName} ${dayOfMonth} ${monthName} ${year}
-        </div>
-        <div style="text-align: left; font-size: 14px; margin-top: 20px; padding: 10px; background-color: #f9f9f9; border-left: 3px solid var(--primary-color);">
-            <p style="margin: 0 0 5px 0;"><strong>Lieu :</strong> ${location}</p>
-            <p style="margin: 0 0 5px 0;"><strong>Heure :</strong> ${time}</p>
-            <p style="margin: 0;"><strong>Présences :</strong> ${attendeesList}</p>
         </div>
     </div>
 
-    <div class="main-title">${globalTitle}</div>
+    <div style="text-align: justify; font-size: 15px; margin-top: 10px; margin-bottom: 40px; line-height: 1.6;">
+        PROCÈS-VERBAL de la ${meetingNumberStr}assemblée ${meetingTypeStr} du Comité consultatif en environnement tenue le ${dayName} ${dayOfMonth} ${monthName} ${year} à ${time} à ${location}.<br>
+        ${regularPresentsStr ? `ÉTAIENT PRÉSENT(E)S : ${regularPresentsStr}<br>` : ''}
+        ${staffPresentsStr ? `ÉTAIENT AUSSI PRÉSENT(E)S : ${staffPresentsStr}<br>` : ''}
+        ${absentsStr ? `ÉTAIENT ABSENT(E)S : ${absentsStr}` : ''}
+    </div>
+
+    <div style="font-weight: bold; font-size: 16px; margin-bottom: 30px;">
+        ${globalTitle}
+    </div>
 
     ${notes ? `
-    <div class="campaign-box">
-        <div class="campaign-title">Contexte / Commentaires du PV</div>
+    <div style="margin-bottom: 30px;">
+        <div class="campaign-title">COMMENTAIRE</div>
         <div class="campaign-content">${formattedNotes(notes)}</div>
     </div>
     ` : ''}
 
     ${resolutionBlocksHTML}
 
-    ${meeting.approvalStatus === 'approved' || meeting.approvalStatus === 'final' ? `
-    <div class="signatures">
-        <div class="sig-block">
-            <div class="sig-line"></div>
-            <div class="sig-name">${presidentName}</div>
+    ${meeting.approvalStatus === 'approved' || meeting.approvalStatus === 'final' || meeting.status === 'completed' ? `
+    <div style="margin-top: 80px; display: flex; justify-content: space-between; page-break-inside: avoid;">
+        <div style="width: 45%;">
+            <div style="margin-bottom: 40px; font-weight: bold;">Vraie copie certifiée</div>
+            <div>${presidentName}</div>
             <div>Président(e)</div>
         </div>
-        <div class="sig-block">
-            <div class="sig-line"></div>
-            <div class="sig-name">${secretaryName}</div>
+        <div style="width: 45%;">
+            <div style="margin-bottom: 40px;">&nbsp;</div>
+            <div>${secretaryName}</div>
             <div>Secrétaire</div>
         </div>
     </div>
