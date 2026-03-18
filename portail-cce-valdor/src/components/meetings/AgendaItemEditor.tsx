@@ -181,20 +181,23 @@ const AgendaItemEditor: React.FC<AgendaItemEditorProps> = ({
                                         const includedSet = new Set(item.councilIncludedEntryIndices || item.minuteEntries!.map((_, i) => i));
                                         const selectedEntries = item.minuteEntries!.filter((_, i) => includedSet.has(i));
                                         
-                                        const resolutions = selectedEntries.filter(e => e.type === 'resolution').map(e => e.content).join('\n\n');
+                                        const resolutionEntries = selectedEntries.filter(e => e.type === 'resolution');
+                                        const resolutionsArray = resolutionEntries.map(e => ({
+                                            number: e.number || item.minuteNumber || '',
+                                            title: item.title,
+                                            text: e.content
+                                        }));
+
                                         const notesComments = selectedEntries.filter(e => e.type !== 'resolution').map(e => `[${e.type === 'comment' ? 'Commentaire' : 'Note'}]: ${e.content}`).join('\n\n');
-                                        const descriptionText = [item.description, resolutions].filter(Boolean).join('\n\n');
 
                                         navigate('/recommendations', {
                                             state: {
                                                 createRecommendation: {
                                                     meetingId: meetingId,
                                                     meetingDate: meetingDate,
-                                                    sourceResolutionNumber: item.minuteNumber || '',
-                                                    sourceResolutionContent: resolutions || '',
                                                     projectName: item.title,
-                                                    description: descriptionText,
                                                     notes: notesComments,
+                                                    resolutions: resolutionsArray,
                                                     considerants: [] 
                                                 }
                                             }

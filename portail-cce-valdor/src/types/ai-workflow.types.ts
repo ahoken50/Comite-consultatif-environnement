@@ -42,4 +42,9 @@ export interface DraftRecommendation {
     priority: 'Haute' | 'Moyenne' | 'Basse';
     rationale: string; // Why this recommendation?
     sourceResolutionNumber?: string; // Link back to PV
+    resolutions?: {
+        number: string;
+        title: string;
+        text: string;
+    }[];
 }

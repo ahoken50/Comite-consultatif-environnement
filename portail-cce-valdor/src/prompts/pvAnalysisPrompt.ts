@@ -87,11 +87,21 @@ FORMAT JSON ATTENDU :
 [
   {
     "id": "rec_1",
-    "title": "Titre du projet / sujet (ex: Plan de protection des sources d'eau potable)",
-    "description": "Texte COMPLET de la résolution (incluant Considérant, Il est résolu que...)",
+    "title": "Titre global du sujet (ex: Renouvellement des mandats des membres)",
     "priority": "Haute" | "Moyenne" | "Basse",
-    "rationale": "Brève explication de son envoi au conseil municipal",
-    "sourceResolutionNumber": "Numéro exact de la résolution (ex: 14-C)"
+    "rationale": "Ceci sera copié dans Notes de Contexte: Commentaires rattachés à ce sujet, ou justification",
+    "resolutions": [
+      {
+        "number": "Numéro de la première résolution ou du commentaire (ex: 15-02 ou 15-A)",
+        "title": "Titre spécifique de ce bloc (ex: Approbation des membres)",
+        "text": "Texte COMPLET de la résolution (incluant Considérant, Il est résolu que...) ou du commentaire"
+      },
+      {
+        "number": "15-03",
+        "title": "Titre spécifique de ce bloc",
+        "text": "Texte COMPLET de la deuxième résolution rattachée à ce même sujet"
+      }
+    ]
   }
 ]`;
 

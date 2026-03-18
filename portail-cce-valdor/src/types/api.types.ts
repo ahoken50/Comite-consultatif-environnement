@@ -188,6 +188,11 @@ export interface DraftRecommendation {
     priority: 'Haute' | 'Moyenne' | 'Basse';
     rationale: string;
     sourceResolutionNumber?: string;
+    resolutions?: {
+        number: string;
+        title: string;
+        text: string;
+    }[];
 }
 
 // ============================================

@@ -66,6 +66,7 @@ export interface RecommendationInitialData {
     projectName: string;
     description: string;
     notes?: string;
+    resolutions?: { number: string; title: string; text: string; }[];
     considerants?: string[];
 }
 
@@ -127,7 +128,9 @@ const RecommendationBuilder: React.FC<RecommendationBuilderProps> = ({ onClose, 
                 notes: initialData.notes
             }));
 
-            if (initialData.description) {
+            if (initialData.resolutions && initialData.resolutions.length > 0) {
+                setResolutions(initialData.resolutions);
+            } else if (initialData.description) {
                 setResolutions([{ number: initialData.sourceResolutionNumber || '', title: initialData.projectName || '', text: initialData.description }]);
             }
 
@@ -254,16 +257,26 @@ const RecommendationBuilder: React.FC<RecommendationBuilderProps> = ({ onClose, 
         setFormData(prev => ({
             ...prev,
             projectName: prev.projectName || selected[0].title,
-            sourceResolutionNumber: selected[0].sourceResolutionNumber || '',
             priority: selected[0].priority === 'Haute' ? 'high' : selected[0].priority === 'Moyenne' ? 'medium' : 'low',
-            notes: selected.map(r => `RATIONALE IA (${r.title}): ${r.rationale}`).join('\n\n')
+            // Store the rationale dynamically in the notes
+            notes: selected.map(r => `[Commentaire / RATIONALE IA]:\n${r.rationale || r.title}`).join('\n\n')
         }));
         
-        const newResolutions = selected.map(r => ({
-            number: r.sourceResolutionNumber || '',
-            title: r.title || '',
-            text: r.description || ''
-        }));
+        const newResolutions = selected.flatMap(r => {
+            if (r.resolutions && r.resolutions.length > 0) {
+                return r.resolutions.map((res: any) => ({
+                    number: res.number || r.sourceResolutionNumber || '',
+                    title: res.title || r.title || '',
+                    text: res.text || ''
+                }));
+            }
+            // Fallback if AI didn't return structured resolutions
+            return [{
+                number: r.sourceResolutionNumber || '',
+                title: r.title || '',
+                text: r.description || ''
+            }];
+        });
         
         if (resolutions.length === 1 && resolutions[0].text.trim() === '') {
             setResolutions(newResolutions);
