@@ -28,7 +28,9 @@ import {
     CardContent,
     ListItem,
     ListItemIcon,
-    CircularProgress
+    CircularProgress,
+    Checkbox,
+    FormControlLabel
 } from '@mui/material';
 import {
     Add,
@@ -105,6 +107,10 @@ const RecommendationBuilder: React.FC<RecommendationBuilderProps> = ({ onClose, 
     const [considerants, setConsiderants] = useState<string[]>(['']);
     const [newLink, setNewLink] = useState({ policyName: '', regulationArticle: '' });
 
+    // Multi-Descriptions State
+    const [multiDescriptions, setMultiDescriptions] = useState<string[]>(['']);
+    const [selectedDraftRecs, setSelectedDraftRecs] = useState<Set<string>>(new Set());
+
     // Handle Initial Data (Link from Resolution)
     useEffect(() => {
         if (initialData) {
@@ -118,6 +124,10 @@ const RecommendationBuilder: React.FC<RecommendationBuilderProps> = ({ onClose, 
                 description: initialData.description,
                 notes: initialData.notes
             }));
+
+            if (initialData.description) {
+                setMultiDescriptions([initialData.description]);
+            }
 
             if (initialData.considerants && initialData.considerants.length > 0) {
                 setConsiderants(initialData.considerants);
@@ -227,18 +237,37 @@ const RecommendationBuilder: React.FC<RecommendationBuilderProps> = ({ onClose, 
         }
     };
 
-    const handleApplyRecommendation = (rec: DraftRecommendation) => {
+    const toggleDraftRec = (id: string, title?: string) => {
+        const identifier = id || title || '';
+        const newSet = new Set(selectedDraftRecs);
+        if (newSet.has(identifier)) newSet.delete(identifier);
+        else newSet.add(identifier);
+        setSelectedDraftRecs(newSet);
+    };
+
+    const applySelectedRecommendations = () => {
+        const selected = draftedRecommendations.filter(r => selectedDraftRecs.has(r.id || r.title));
+        if (selected.length === 0) return;
+        
         setFormData(prev => ({
             ...prev,
-            projectName: rec.title,
-            description: rec.description,
-            sourceResolutionNumber: rec.sourceResolutionNumber || '',
-            priority: rec.priority === 'Haute' ? 'high' : rec.priority === 'Moyenne' ? 'medium' : 'low',
-            notes: `RATIONALE IA: ${rec.rationale}`
+            projectName: prev.projectName || selected[0].title,
+            sourceResolutionNumber: selected[0].sourceResolutionNumber || '',
+            priority: selected[0].priority === 'Haute' ? 'high' : selected[0].priority === 'Moyenne' ? 'medium' : 'low',
+            notes: selected.map(r => `RATIONALE IA (${r.title}): ${r.rationale}`).join('\n\n')
         }));
+        
+        const newDescriptions = selected.map(r => `${r.title}\n${r.description}`);
+        if (multiDescriptions.length === 1 && multiDescriptions[0].trim() === '') {
+            setMultiDescriptions(newDescriptions);
+        } else {
+            setMultiDescriptions([...multiDescriptions, ...newDescriptions]);
+        }
+        
         setAiWizardOpen(false);
         setAiStep(0);
         setPvText('');
+        setSelectedDraftRecs(new Set());
     };
 
     const handleImportSelection = (meeting: Meeting, item: AgendaItem) => {
@@ -264,6 +293,10 @@ const RecommendationBuilder: React.FC<RecommendationBuilderProps> = ({ onClose, 
             notes: comments ? `[Commentaires du PV]:\n${comments}` : ''
         }));
 
+        if (rawContent) {
+            setMultiDescriptions([rawContent]);
+        }
+
         if (extractedConsiderants.length > 0 && extractedConsiderants[0] !== '') {
             setConsiderants(extractedConsiderants);
         }
@@ -277,9 +310,13 @@ const RecommendationBuilder: React.FC<RecommendationBuilderProps> = ({ onClose, 
 
     const handleSubmit = async () => {
         try {
+            const combinedDescription = multiDescriptions
+                .filter(d => d.trim().length > 0)
+                .join('\n\n---\n\n');
+
             const finalData = {
                 ...formData,
-                description: `${formData.description || ''}\n\nCONSIDÉRANTS:\n${considerants.map(c => `- ${c}`).join('\n')}`,
+                description: `${combinedDescription}\n\nCONSIDÉRANTS:\n${considerants.map(c => `- ${c}`).join('\n')}`,
                 createdAt: new Date().toISOString(),
                 updatedAt: new Date().toISOString(),
                 createdBy: 'user-id-placeholder'
@@ -333,7 +370,9 @@ const RecommendationBuilder: React.FC<RecommendationBuilderProps> = ({ onClose, 
             return;
         }
         if (meetingContext) {
-            await generateResolutionPDF(meetingContext, formData as CouncilRecommendation, 'recommendation');
+            const combined = multiDescriptions.filter(d => d.trim().length > 0).join('\n\n---\n\n');
+            const dataToPrint = { ...formData, description: combined };
+            await generateResolutionPDF(meetingContext, dataToPrint as CouncilRecommendation, 'recommendation');
         }
     };
 
@@ -482,15 +521,32 @@ const RecommendationBuilder: React.FC<RecommendationBuilderProps> = ({ onClose, 
                                             <Typography variant="body2" paragraph sx={{ mt: 1 }}>{rec.description}</Typography>
                                             <Typography variant="caption" color="textSecondary">Rationale: {rec.rationale}</Typography>
                                             <Box sx={{ mt: 2, textAlign: 'right' }}>
-                                                <Button size="small" variant="contained" onClick={() => handleApplyRecommendation(rec)}>Utiliser cette recommandation</Button>
+                                                <FormControlLabel
+                                                    control={
+                                                        <Checkbox 
+                                                            checked={selectedDraftRecs.has(rec.id || rec.title)} 
+                                                            onChange={() => toggleDraftRec(rec.id || '', rec.title)} 
+                                                            color="primary"
+                                                        />
+                                                    }
+                                                    label="Sélectionner"
+                                                />
                                             </Box>
                                         </CardContent>
                                     </Card>
                                 </Grid>
                             ))}
                         </Grid>
-                        <Box sx={{ mt: 2 }}>
+                        <Box sx={{ mt: 2, display: 'flex', justifyContent: 'space-between' }}>
                             <Button onClick={() => setAiStep(2)}>Retour</Button>
+                            <Button 
+                                variant="contained" 
+                                color="primary" 
+                                onClick={applySelectedRecommendations}
+                                disabled={selectedDraftRecs.size === 0}
+                            >
+                                Appliquer la sélection ({selectedDraftRecs.size})
+                            </Button>
                         </Box>
                     </Box>
                 );
@@ -544,16 +600,34 @@ const RecommendationBuilder: React.FC<RecommendationBuilderProps> = ({ onClose, 
                             onChange={(e) => setFormData({ ...formData, dateSent: e.target.value })}
                             margin="normal"
                         />
-                        <TextField
-                            fullWidth
-                            multiline
-                            rows={4}
-                            label="Description / Résolution proposée"
-                            value={formData.description || ''}
-                            onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                            margin="normal"
-                            helperText="Le texte principal de la recommandation (Il est résolu de...)"
-                        />
+                        {multiDescriptions.map((desc, idx) => (
+                            <Box key={idx} sx={{ display: 'flex', gap: 1, alignItems: 'flex-start', mb: 2, position: 'relative' }}>
+                                <TextField
+                                    fullWidth
+                                    multiline
+                                    rows={4}
+                                    label={`Résolution proposée #${idx + 1}`}
+                                    value={desc}
+                                    onChange={(e) => {
+                                        const newDesc = [...multiDescriptions];
+                                        newDesc[idx] = e.target.value;
+                                        setMultiDescriptions(newDesc);
+                                    }}
+                                    helperText={idx === 0 ? "Le texte principal de la recommandation (Il est résolu de...)" : ""}
+                                />
+                                <IconButton 
+                                    onClick={() => setMultiDescriptions(multiDescriptions.length > 1 ? multiDescriptions.filter((_, i) => i !== idx) : [''])} 
+                                    color="error" 
+                                    sx={{ mt: 1 }}
+                                    title="Supprimer cette case"
+                                >
+                                    <Delete />
+                                </IconButton>
+                            </Box>
+                        ))}
+                        <Button startIcon={<Add />} onClick={() => setMultiDescriptions([...multiDescriptions, ''])} size="small" sx={{ mb: 3 }}>
+                            Ajouter une résolution proposée
+                        </Button>
                         <TextField
                             fullWidth
                             multiline
@@ -701,7 +775,12 @@ const RecommendationBuilder: React.FC<RecommendationBuilderProps> = ({ onClose, 
                             )}
                         </Box>
 
-                        <Typography variant="body1" paragraph>{formData.description}</Typography>
+                        {multiDescriptions.filter(d => d.trim().length > 0).map((desc, idx) => (
+                            <Paper key={idx} variant="outlined" sx={{ p: 2, mb: 2, bgcolor: 'grey.50' }}>
+                                <Typography variant="subtitle2" color="textSecondary" gutterBottom>Résolution #{idx + 1}</Typography>
+                                <Typography variant="body1" sx={{ whiteSpace: 'pre-line' }}>{desc}</Typography>
+                            </Paper>
+                        ))}
 
                         <Typography variant="subtitle2" color="primary">Considérants:</Typography>
                         <ul>
@@ -724,7 +803,7 @@ const RecommendationBuilder: React.FC<RecommendationBuilderProps> = ({ onClose, 
                                 onClick={async () => {
                                     const tempRec = {
                                         ...formData,
-                                        description: `${formData.description || ''}\n\nCONSIDÉRANTS:\n${considerants.map(c => `- ${c}`).join('\n')}`,
+                                        description: `${multiDescriptions.filter(d => d.trim().length > 0).join('\n\n---\n\n')}\n\nCONSIDÉRANTS:\n${considerants.map(c => `- ${c}`).join('\n')}`,
                                         notes: formData.notes
                                     };
                                     const result = await generateSpeakingPoints(tempRec);

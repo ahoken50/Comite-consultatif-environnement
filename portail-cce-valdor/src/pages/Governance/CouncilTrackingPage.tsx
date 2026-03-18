@@ -15,11 +15,12 @@ import {
     Card,
     CardContent,
     Grid,
-    Dialog
+    Dialog,
+    IconButton
 } from '@mui/material';
-import { Add as AddIcon } from '@mui/icons-material';
+import { Add as AddIcon, Delete as DeleteIcon } from '@mui/icons-material';
 import type { AppDispatch } from '../../store/store';
-import { fetchRecommendations, selectRecommendations } from '../../features/governance/governanceSlice';
+import { fetchRecommendations, selectRecommendations, deleteRecommendation } from '../../features/governance/governanceSlice';
 import type { CouncilRecommendation } from '../../types/recommendation.types';
 import RecommendationBuilder from '../../components/governance/RecommendationBuilder';
 import type { RecommendationInitialData } from '../../components/governance/RecommendationBuilder';
@@ -49,9 +50,26 @@ const CouncilTrackingPage: React.FC = () => {
     const [selectedRec, setSelectedRec] = useState<CouncilRecommendation | null>(null);
     const [isDetailsOpen, setIsDetailsOpen] = useState(false);
 
+    // Delete Confirmation State
+    const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+    const [recToDelete, setRecToDelete] = useState<string | null>(null);
+
     useEffect(() => {
         dispatch(fetchRecommendations());
     }, [dispatch]);
+
+    const handleDeleteClick = (id: string) => {
+        setRecToDelete(id);
+        setDeleteConfirmOpen(true);
+    };
+
+    const handleConfirmDelete = async () => {
+        if (recToDelete) {
+            await dispatch(deleteRecommendation(recToDelete)).unwrap();
+            setRecToDelete(null);
+            setDeleteConfirmOpen(false);
+        }
+    };
 
     const getStatusColor = (status: string) => {
         switch (status) {
@@ -167,6 +185,11 @@ const CouncilTrackingPage: React.FC = () => {
                                         <AccessControl allowedRoles={['coordinator', 'president', 'elected_official']}>
                                             <Button size="small" onClick={() => handleOpenDetails(rec)}>Détails</Button>
                                         </AccessControl>
+                                        <AccessControl allowedRoles={['coordinator']}>
+                                            <IconButton size="small" color="error" onClick={() => handleDeleteClick(rec.id)} title="Supprimer la recommandation">
+                                                <DeleteIcon fontSize="small" />
+                                            </IconButton>
+                                        </AccessControl>
                                     </TableCell>
                                 </TableRow>
                             ))
@@ -197,6 +220,17 @@ const CouncilTrackingPage: React.FC = () => {
                 onClose={() => setIsDetailsOpen(false)}
                 recommendation={selectedRec}
             />
+
+            <Dialog open={deleteConfirmOpen} onClose={() => setDeleteConfirmOpen(false)}>
+                <Box sx={{ p: 3 }}>
+                    <Typography variant="h6" gutterBottom color="error">Confirmer la suppression</Typography>
+                    <Typography variant="body1" mb={3}>Êtes-vous sûr de vouloir supprimer cette recommandation ? Cette action est irréversible.</Typography>
+                    <Box display="flex" justifyContent="flex-end" gap={2}>
+                        <Button onClick={() => setDeleteConfirmOpen(false)}>Annuler</Button>
+                        <Button variant="contained" color="error" onClick={handleConfirmDelete}>Supprimer</Button>
+                    </Box>
+                </Box>
+            </Dialog>
         </Box>
     );
 };
