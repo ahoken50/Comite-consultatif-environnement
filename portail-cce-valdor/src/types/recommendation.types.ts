@@ -6,7 +6,12 @@ export interface CouncilRecommendation {
     projectName?: string; // Denormalized for easier display
     meetingId?: string; // Optional link to a CCE meeting
     meetingDate?: string; // Date of the CCE meeting
-    description: string;
+    description: string; // The legacy combined text representation
+    resolutions?: {
+        number: string;
+        title: string;
+        text: string;
+    }[]; // The new structured representation for multiple resolutions
     dateSent: string; // ISO Date string
     councilMeetingDate?: string; // ISO Date string
     councilResolutionNumber?: string;

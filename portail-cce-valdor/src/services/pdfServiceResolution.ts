@@ -160,6 +160,44 @@ export const generateResolutionPDF = async (
     const presidentName = president ? president.name : 'Président(e)';
     const secretaryName = secretary ? secretary.name : 'Secrétaire';
 
+    let resolutionBlocksHTML = '';
+
+    if (type === 'recommendation' && (itemOrRec as CouncilRecommendation).resolutions && (itemOrRec as CouncilRecommendation).resolutions!.length > 0) {
+        const rec = itemOrRec as CouncilRecommendation;
+        resolutionBlocksHTML = rec.resolutions!.map(r => `
+    <div class="resolution-box">
+        <div class="res-header">
+            <span>RÉSOLUTION ${r.number || '---'}</span>
+        </div>
+        <div class="res-title">${r.title || rec.projectName || 'Recommandation'}</div>
+        
+        <div class="content">
+            ${formatResolutionHTML(r.text)}
+        </div>
+    </div>
+        `).join('\n');
+    } else {
+        resolutionBlocksHTML = `
+    <div class="resolution-box">
+        <div class="res-header">
+            <span>RÉSOLUTION ${resolutionNumber}</span>
+        </div>
+        <div class="res-title">${title}</div>
+        
+        <div class="content">
+            ${formatResolutionHTML(content)}
+        </div>
+
+        ${(proposer || seconder) ? `
+        <div class="movers">
+            ${proposer ? `Proposé par : ${proposer}` : ''}<br>
+            ${seconder ? `Appuyé par : ${seconder}` : ''}
+        </div>
+        ` : ''}
+    </div>
+        `;
+    }
+
     // HTML Template
     const html = `<!DOCTYPE html>
 <html lang="fr">
@@ -240,6 +278,7 @@ export const generateResolutionPDF = async (
             border-left: 4px solid var(--accent-color);
             padding: 30px;
             margin: 20px 0;
+            page-break-inside: avoid;
         }
         .res-header {
             font-family: 'Montserrat', sans-serif;
@@ -255,6 +294,8 @@ export const generateResolutionPDF = async (
             color: var(--primary-color);
             font-size: 18px; 
             margin-top: 5px;
+            font-weight: 700;
+            margin-bottom: 15px;
         }
         .content {
             font-size: 16px;
@@ -290,6 +331,7 @@ export const generateResolutionPDF = async (
             margin-top: 80px;
             display: flex;
             justify-content: space-around;
+            page-break-inside: avoid;
         }
         .sig-block {
             text-align: center;
@@ -333,23 +375,7 @@ export const generateResolutionPDF = async (
     </div>
     ` : ''}
 
-    <div class="resolution-box">
-        <div class="res-header">
-            <span>RÉSOLUTION ${resolutionNumber}</span>
-        </div>
-        <div class="res-title">${title}</div>
-        
-        <div class="content">
-            ${formatResolutionHTML(content)}
-        </div>
-
-        ${(proposer || seconder) ? `
-        <div class="movers">
-            ${proposer ? `Proposé par : ${proposer}` : ''}<br>
-            ${seconder ? `Appuyé par : ${seconder}` : ''}
-        </div>
-        ` : ''}
-    </div>
+    ${resolutionBlocksHTML}
 
     <div class="signatures">
         <div class="sig-block">

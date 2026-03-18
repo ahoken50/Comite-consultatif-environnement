@@ -69,7 +69,7 @@ FORMAT JSON ATTENDU (Liste d'objets) :
 export const getDraftRecommendationsPrompt = (
     structure: PVStructure,
     verification: VerificationResult[]
-): string => `Basé sur l'analyse suivante d'un PV et les vérifications effectuées, rédige des recommandations d'action concrètes.
+): string => `Tu es un secrétaire municipal expert. Ton rôle est de préparer les recommandations officielles pour le Conseil, basées SYSTÉMATIQUEMENT sur TOUTES les résolutions contenues dans l'analyse du PV.
 
 STRUCTURE DU PV :
 ${JSON.stringify(structure).substring(0, 15000)}
@@ -78,18 +78,20 @@ VÉRIFICATIONS :
 ${JSON.stringify(verification).substring(0, 5000)}
 
 TÂCHE :
-Rédige des recommandations courtes et orientées vers l'action (ex: "Mettre à jour...", "Budgéter...").
-Lie chaque recommandation à une résolution source si possible.
+1. Extrais méticuleusement CHAQUE résolution ou commentaire acté dans la "STRUCTURE DU PV" et transforme-le en un projet de recommandation (Extrait).
+2. Ne laisse tomber aucune résolution (tu dois toutes les inclure).
+3. Conserve l'intégralité du texte original de la résolution (incluant les considérants si présents). Ne résume pas le contenu officiel.
+4. Indique clairement le numéro de la résolution source (ex: 14-C ou 2024-05-12). S'il n'y en a pas, utilise un identifiant clair (ex: Point 3.1).
 
 FORMAT JSON ATTENDU :
 [
   {
     "id": "rec_1",
-    "title": "Action courte",
-    "description": "Détail de l'action...",
+    "title": "Titre du projet / sujet (ex: Plan de protection des sources d'eau potable)",
+    "description": "Texte COMPLET de la résolution (incluant Considérant, Il est résolu que...)",
     "priority": "Haute" | "Moyenne" | "Basse",
-    "rationale": "Justification...",
-    "sourceResolutionNumber": "2024-..."
+    "rationale": "Brève explication de son envoi au conseil municipal",
+    "sourceResolutionNumber": "Numéro exact de la résolution (ex: 14-C)"
   }
 ]`;
 

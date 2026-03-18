@@ -107,8 +107,10 @@ const RecommendationBuilder: React.FC<RecommendationBuilderProps> = ({ onClose, 
     const [considerants, setConsiderants] = useState<string[]>(['']);
     const [newLink, setNewLink] = useState({ policyName: '', regulationArticle: '' });
 
-    // Multi-Descriptions State
-    const [multiDescriptions, setMultiDescriptions] = useState<string[]>(['']);
+    // Structured Resolutions State
+    const [resolutions, setResolutions] = useState<{ number: string; title: string; text: string; }[]>([
+        { number: '', title: '', text: '' }
+    ]);
     const [selectedDraftRecs, setSelectedDraftRecs] = useState<Set<string>>(new Set());
 
     // Handle Initial Data (Link from Resolution)
@@ -126,7 +128,7 @@ const RecommendationBuilder: React.FC<RecommendationBuilderProps> = ({ onClose, 
             }));
 
             if (initialData.description) {
-                setMultiDescriptions([initialData.description]);
+                setResolutions([{ number: initialData.sourceResolutionNumber || '', title: initialData.projectName || '', text: initialData.description }]);
             }
 
             if (initialData.considerants && initialData.considerants.length > 0) {
@@ -257,11 +259,16 @@ const RecommendationBuilder: React.FC<RecommendationBuilderProps> = ({ onClose, 
             notes: selected.map(r => `RATIONALE IA (${r.title}): ${r.rationale}`).join('\n\n')
         }));
         
-        const newDescriptions = selected.map(r => `${r.title}\n${r.description}`);
-        if (multiDescriptions.length === 1 && multiDescriptions[0].trim() === '') {
-            setMultiDescriptions(newDescriptions);
+        const newResolutions = selected.map(r => ({
+            number: r.sourceResolutionNumber || '',
+            title: r.title || '',
+            text: r.description || ''
+        }));
+        
+        if (resolutions.length === 1 && resolutions[0].text.trim() === '') {
+            setResolutions(newResolutions);
         } else {
-            setMultiDescriptions([...multiDescriptions, ...newDescriptions]);
+            setResolutions([...resolutions, ...newResolutions]);
         }
         
         setAiWizardOpen(false);
@@ -294,7 +301,7 @@ const RecommendationBuilder: React.FC<RecommendationBuilderProps> = ({ onClose, 
         }));
 
         if (rawContent) {
-            setMultiDescriptions([rawContent]);
+            setResolutions([{ number: resolutionNumber, title: title, text: rawContent }]);
         }
 
         if (extractedConsiderants.length > 0 && extractedConsiderants[0] !== '') {
@@ -310,12 +317,14 @@ const RecommendationBuilder: React.FC<RecommendationBuilderProps> = ({ onClose, 
 
     const handleSubmit = async () => {
         try {
-            const combinedDescription = multiDescriptions
-                .filter(d => d.trim().length > 0)
+            const combinedDescription = resolutions
+                .filter(r => r.text.trim().length > 0)
+                .map(r => `[${r.number}] ${r.title}\n${r.text}`)
                 .join('\n\n---\n\n');
 
             const finalData = {
                 ...formData,
+                resolutions: resolutions.filter(r => r.text.trim().length > 0),
                 description: `${combinedDescription}\n\nCONSIDÉRANTS:\n${considerants.map(c => `- ${c}`).join('\n')}`,
                 createdAt: new Date().toISOString(),
                 updatedAt: new Date().toISOString(),
@@ -370,8 +379,8 @@ const RecommendationBuilder: React.FC<RecommendationBuilderProps> = ({ onClose, 
             return;
         }
         if (meetingContext) {
-            const combined = multiDescriptions.filter(d => d.trim().length > 0).join('\n\n---\n\n');
-            const dataToPrint = { ...formData, description: combined };
+            const combined = resolutions.filter(r => r.text.trim().length > 0).map(r => `[${r.number}] ${r.title}\n${r.text}`).join('\n\n---\n\n');
+            const dataToPrint = { ...formData, resolutions: resolutions.filter(r => r.text.trim().length > 0), description: combined };
             await generateResolutionPDF(meetingContext, dataToPrint as CouncilRecommendation, 'recommendation');
         }
     };
@@ -600,32 +609,65 @@ const RecommendationBuilder: React.FC<RecommendationBuilderProps> = ({ onClose, 
                             onChange={(e) => setFormData({ ...formData, dateSent: e.target.value })}
                             margin="normal"
                         />
-                        {multiDescriptions.map((desc, idx) => (
-                            <Box key={idx} sx={{ display: 'flex', gap: 1, alignItems: 'flex-start', mb: 2, position: 'relative' }}>
-                                <TextField
-                                    fullWidth
-                                    multiline
-                                    rows={4}
-                                    label={`Résolution proposée #${idx + 1}`}
-                                    value={desc}
-                                    onChange={(e) => {
-                                        const newDesc = [...multiDescriptions];
-                                        newDesc[idx] = e.target.value;
-                                        setMultiDescriptions(newDesc);
-                                    }}
-                                    helperText={idx === 0 ? "Le texte principal de la recommandation (Il est résolu de...)" : ""}
-                                />
+                        {resolutions.map((res, idx) => (
+                            <Box key={idx} sx={{ p: 2, mb: 2, border: '1px solid #e0e0e0', borderRadius: 1, position: 'relative' }}>
+                                <Typography variant="subtitle2" sx={{ mb: 2, color: 'primary.main' }}>
+                                    Résolution #{idx + 1}
+                                </Typography>
+                                <Grid container spacing={2}>
+                                    <Grid size={{ xs: 12, md: 4 }}>
+                                        <TextField
+                                            fullWidth
+                                            label="N° (ex: 14-C ou 2024-X)"
+                                            value={res.number}
+                                            onChange={(e) => {
+                                                const newR = [...resolutions];
+                                                newR[idx].number = e.target.value;
+                                                setResolutions(newR);
+                                            }}
+                                            size="small"
+                                        />
+                                    </Grid>
+                                    <Grid size={{ xs: 12, md: 8 }}>
+                                        <TextField
+                                            fullWidth
+                                            label="Titre du sujet spécifique"
+                                            value={res.title}
+                                            onChange={(e) => {
+                                                const newR = [...resolutions];
+                                                newR[idx].title = e.target.value;
+                                                setResolutions(newR);
+                                            }}
+                                            size="small"
+                                        />
+                                    </Grid>
+                                    <Grid size={12}>
+                                        <TextField
+                                            fullWidth
+                                            multiline
+                                            rows={4}
+                                            label="Texte Complet / Description"
+                                            value={res.text}
+                                            onChange={(e) => {
+                                                const newR = [...resolutions];
+                                                newR[idx].text = e.target.value;
+                                                setResolutions(newR);
+                                            }}
+                                            helperText={idx === 0 ? "Le texte principal (Il est résolu de...)" : ""}
+                                        />
+                                    </Grid>
+                                </Grid>
                                 <IconButton 
-                                    onClick={() => setMultiDescriptions(multiDescriptions.length > 1 ? multiDescriptions.filter((_, i) => i !== idx) : [''])} 
+                                    onClick={() => setResolutions(resolutions.length > 1 ? resolutions.filter((_, i) => i !== idx) : [{ number: '', title: '', text: '' }])} 
                                     color="error" 
-                                    sx={{ mt: 1 }}
+                                    sx={{ position: 'absolute', top: 8, right: 8 }}
                                     title="Supprimer cette case"
                                 >
                                     <Delete />
                                 </IconButton>
                             </Box>
                         ))}
-                        <Button startIcon={<Add />} onClick={() => setMultiDescriptions([...multiDescriptions, ''])} size="small" sx={{ mb: 3 }}>
+                        <Button startIcon={<Add />} onClick={() => setResolutions([...resolutions, { number: '', title: '', text: '' }])} size="small" sx={{ mb: 3 }}>
                             Ajouter une résolution proposée
                         </Button>
                         <TextField
@@ -775,10 +817,12 @@ const RecommendationBuilder: React.FC<RecommendationBuilderProps> = ({ onClose, 
                             )}
                         </Box>
 
-                        {multiDescriptions.filter(d => d.trim().length > 0).map((desc, idx) => (
+                        {resolutions.filter(r => r.text.trim().length > 0).map((res, idx) => (
                             <Paper key={idx} variant="outlined" sx={{ p: 2, mb: 2, bgcolor: 'grey.50' }}>
-                                <Typography variant="subtitle2" color="textSecondary" gutterBottom>Résolution #{idx + 1}</Typography>
-                                <Typography variant="body1" sx={{ whiteSpace: 'pre-line' }}>{desc}</Typography>
+                                <Typography variant="subtitle2" color="primary" gutterBottom>
+                                    {res.number ? `${res.number} - ` : ''}{res.title || `Résolution #${idx + 1}`}
+                                </Typography>
+                                <Typography variant="body2" sx={{ whiteSpace: 'pre-line' }}>{res.text}</Typography>
                             </Paper>
                         ))}
 
@@ -803,7 +847,7 @@ const RecommendationBuilder: React.FC<RecommendationBuilderProps> = ({ onClose, 
                                 onClick={async () => {
                                     const tempRec = {
                                         ...formData,
-                                        description: `${multiDescriptions.filter(d => d.trim().length > 0).join('\n\n---\n\n')}\n\nCONSIDÉRANTS:\n${considerants.map(c => `- ${c}`).join('\n')}`,
+                                        description: `${resolutions.filter(r => r.text.trim().length > 0).map(r => `[${r.number}] ${r.title}\n${r.text}`).join('\n\n---\n\n')}\n\nCONSIDÉRANTS:\n${considerants.map(c => `- ${c}`).join('\n')}`,
                                         notes: formData.notes
                                     };
                                     const result = await generateSpeakingPoints(tempRec);
