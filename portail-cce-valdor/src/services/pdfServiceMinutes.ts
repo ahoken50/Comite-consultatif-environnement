@@ -658,10 +658,16 @@ const generateHTMLDocument = (meeting: Meeting, _globalNotes?: string, enrichedS
 <body>
     <div class="document-page">
         <!-- MARQUEUR BROUILLON SI NON APPROUVÉ -->
-        ${meeting.approvalStatus !== 'approved' && meeting.approvalStatus !== 'final'
-            ? '<div class="watermark">BROUILLON<br>CONFIDENTIEL</div>'
-            : ''
-        }
+        ${(() => {
+            const hasPresidentSig = enrichedSignatures.some(s => s.role === 'president' || s.role === 'elected_official' || s.role === 'vice_president');
+            const hasSecretarySig = enrichedSignatures.some(s => s.role === 'coordinator' || s.role === 'admin_bypass');
+            const isFullySigned = hasPresidentSig && hasSecretarySig;
+            
+            if (meeting.approvalStatus === 'approved' || meeting.approvalStatus === 'final' || isFullySigned) {
+                return '';
+            }
+            return '<div class="watermark">BROUILLON<br>CONFIDENTIEL</div>';
+        })()}
 
         <!-- EN-TÊTE -->
         <header>
