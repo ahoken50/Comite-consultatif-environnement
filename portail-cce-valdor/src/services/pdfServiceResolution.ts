@@ -149,7 +149,6 @@ export const generateResolutionPDF = async (
 
     const location = meeting.location || 'Suite virtuelle / Hôtel de Ville';
     const time = meeting.date ? format(new Date(meeting.date), "HH 'h' mm", { locale: fr }) : 'Non spécifiée';
-    const attendeesList = meeting.attendees?.filter(a => a.isPresent !== false).map(a => `${a.name}${a.role ? ` (${a.role})` : ''}`).join(', ') || 'Aucun';
 
     // Signatures (President & Secretary only for Extracts)
     const president = meeting.attendees?.find(a =>
