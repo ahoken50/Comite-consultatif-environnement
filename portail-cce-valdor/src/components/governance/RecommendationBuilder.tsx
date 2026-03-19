@@ -796,15 +796,38 @@ const RecommendationBuilder: React.FC<RecommendationBuilderProps> = ({ onClose, 
                         <Box sx={{ mt: 3, mb: 1 }}>
                             <Typography variant="subtitle2" gutterBottom>Pièces jointes optionnelles (Images, Tableaux, Plans)</Typography>
                             {formData.attachments && formData.attachments.length > 0 && (
-                                <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 2 }}>
+                                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, mb: 2 }}>
                                     {formData.attachments.map((att, i) => (
-                                        <Chip
-                                            key={i}
-                                            icon={<AttachmentOutlined />}
-                                            label={att.name}
-                                            onDelete={() => removeAttachment(i)}
-                                            variant="outlined"
-                                        />
+                                        <Box key={i} sx={{ display: 'flex', alignItems: 'center', gap: 2, p: 1, border: '1px solid #eee', borderRadius: 1 }}>
+                                            <Chip
+                                                icon={<AttachmentOutlined />}
+                                                label={att.name}
+                                                onDelete={() => removeAttachment(i)}
+                                                variant="outlined"
+                                            />
+                                            {resolutions.length > 0 && (
+                                                <FormControl size="small" sx={{ minWidth: 200 }}>
+                                                    <Select
+                                                        displayEmpty
+                                                        value={att.resolutionNumber || ''}
+                                                        onChange={(e) => {
+                                                            const newAtts = [...formData.attachments!];
+                                                            newAtts[i] = { ...newAtts[i], resolutionNumber: e.target.value as string };
+                                                            setFormData({ ...formData, attachments: newAtts });
+                                                        }}
+                                                    >
+                                                        <MenuItem value="">
+                                                            <em>Globale (non lié)</em>
+                                                        </MenuItem>
+                                                        {resolutions.map((r, rIdx) => (
+                                                            <MenuItem key={rIdx} value={r.number || `temp-${rIdx}`}>
+                                                                {r.number ? `RÉSOLUTION ${r.number}` : `Résolution #${rIdx + 1}`}
+                                                            </MenuItem>
+                                                        ))}
+                                                    </Select>
+                                                </FormControl>
+                                            )}
+                                        </Box>
                                     ))}
                                 </Box>
                             )}

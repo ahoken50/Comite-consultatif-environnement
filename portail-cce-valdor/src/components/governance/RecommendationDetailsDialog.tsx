@@ -44,7 +44,7 @@ const RecommendationDetailsDialog: React.FC<RecommendationDetailsDialogProps> = 
     const [councilResolution, setCouncilResolution] = useState(recommendation?.councilResolutionNumber || '');
     const [feedback, setFeedback] = useState(recommendation?.notes || '');
     const [attachment, setAttachment] = useState<{ url: string, name: string, uploadedAt: string } | undefined>(recommendation?.councilFeedbackAttachment);
-    const [attachments, setAttachments] = useState<{ url: string, name: string, uploadedAt: string }[]>(recommendation?.attachments || []);
+    const [attachments, setAttachments] = useState<{ url: string, name: string, uploadedAt: string, resolutionNumber?: string }[]>(recommendation?.attachments || []);
     const [isUploading, setIsUploading] = useState(false);
     const [isUploadingAttachment, setIsUploadingAttachment] = useState(false);
 
@@ -310,15 +310,38 @@ const RecommendationDetailsDialog: React.FC<RecommendationDetailsDialogProps> = 
                         <Box>
                             <Typography variant="subtitle2" gutterBottom>Pièces Jointes / Annexes liés à la recommandation</Typography>
                             {attachments.length > 0 && (
-                                <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 1 }}>
+                                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, mb: 2 }}>
                                     {attachments.map((att, i) => (
-                                        <Chip
-                                            key={i}
-                                            icon={<AttachmentOutlined />}
-                                            label={att.name}
-                                            onDelete={() => removeRecAttachment(i)}
-                                            variant="outlined"
-                                        />
+                                        <Box key={i} sx={{ display: 'flex', alignItems: 'center', gap: 2, p: 1, border: '1px solid #eee', borderRadius: 1 }}>
+                                            <Chip
+                                                icon={<AttachmentOutlined />}
+                                                label={att.name}
+                                                onDelete={() => removeRecAttachment(i)}
+                                                variant="outlined"
+                                            />
+                                            {recommendation.resolutions && recommendation.resolutions.length > 0 && (
+                                                <FormControl size="small" sx={{ minWidth: 200 }}>
+                                                    <Select
+                                                        displayEmpty
+                                                        value={att.resolutionNumber || ''}
+                                                        onChange={(e) => {
+                                                            const newAtts = [...attachments];
+                                                            newAtts[i] = { ...newAtts[i], resolutionNumber: e.target.value as string };
+                                                            setAttachments(newAtts);
+                                                        }}
+                                                    >
+                                                        <MenuItem value="">
+                                                            <em>Globale (non lié)</em>
+                                                        </MenuItem>
+                                                        {recommendation.resolutions.map((r, rIdx) => (
+                                                            <MenuItem key={rIdx} value={r.number || `temp-${rIdx}`}>
+                                                                {r.number ? `RÉSOLUTION ${r.number}` : `Résolution #${rIdx + 1}`}
+                                                            </MenuItem>
+                                                        ))}
+                                                    </Select>
+                                                </FormControl>
+                                            )}
+                                        </Box>
                                     ))}
                                 </Box>
                             )}

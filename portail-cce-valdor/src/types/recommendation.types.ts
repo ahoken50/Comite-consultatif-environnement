@@ -28,6 +28,7 @@ export interface CouncilRecommendation {
         url: string;
         name: string;
         uploadedAt: string;
+        resolutionNumber?: string;
     }[];
     createdBy: string;
     createdAt: string;
