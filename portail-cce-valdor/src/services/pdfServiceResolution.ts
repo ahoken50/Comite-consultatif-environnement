@@ -121,6 +121,7 @@ export const generateResolutionPDF = async (
     let proposer = '';
     let seconder = '';
     let notes = '';
+    let attachments: { url: string, name: string }[] | undefined = undefined;
 
     if (type === 'agendaItem') {
         const item = itemOrRec as AgendaItem;
@@ -145,6 +146,7 @@ export const generateResolutionPDF = async (
         }
 
         notes = rec.notes ? rec.notes.replace(/^\[?[cC]ommentaires?\]?\s*:\s*/gi, '').trim() : '';
+        attachments = rec.attachments;
     }
 
     const location = meeting.location || 'Suite virtuelle / Hôtel de Ville';
@@ -432,6 +434,35 @@ export const generateResolutionPDF = async (
         Copie certifiée conforme tirée du livre des délibérations du Comité Consultatif en Environnement de la Ville de Val-d'Or.
     </div>
     ` : ''}
+
+    ${(() => {
+        let annexesHTML = '';
+        if (attachments && attachments.length > 0) {
+            annexesHTML += `
+                <div style="page-break-before: always; margin-top: 40px;">
+                    <h2 style="font-family: 'Montserrat', sans-serif; font-size: 18px; color: var(--primary-color); text-transform: uppercase;">ANNEXES / PIÈCES JOINTES</h2>
+                    <ul style="margin-bottom: 40px;">
+            `;
+            attachments.forEach((att, idx) => {
+                annexesHTML += `<li style="margin-bottom: 10px; font-size: 15px;"><strong>Annexe ${idx + 1} :</strong> ${att.name}</li>`;
+            });
+            annexesHTML += `</ul>`;
+            
+            attachments.forEach((att, idx) => {
+                const isImage = att.name.toLowerCase().match(/\\.(jpeg|jpg|gif|png|webp)$/) != null;
+                if (isImage) {
+                    annexesHTML += `
+                        <div style="margin-top: 30px; text-align: center; page-break-inside: avoid;">
+                            <div style="font-weight: bold; margin-bottom: 15px;">Annexe ${idx + 1} - ${att.name}</div>
+                            <img src="${att.url}" style="max-width: 100%; max-height: 800px; border: 1px solid #ccc; padding: 5px;" alt="${att.name}" />
+                        </div>
+                    `;
+                }
+            });
+            annexesHTML += `</div>`;
+        }
+        return annexesHTML;
+    })()}
 
 </body>
 </html>`;

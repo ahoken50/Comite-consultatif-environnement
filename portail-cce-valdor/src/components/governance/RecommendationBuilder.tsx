@@ -41,10 +41,13 @@ import {
     CheckCircle,
     Warning,
     Info,
-    Gavel
+    Gavel,
+    CloudUpload,
+    AttachmentOutlined
 } from '@mui/icons-material';
 import { useDispatch, useSelector } from 'react-redux';
 import { addRecommendation } from '../../features/governance/governanceSlice';
+import { documentsAPI } from '../../features/documents/documentsAPI';
 import { generateSpeakingPoints, analyzePVStructure, verifyPVClaims, draftAIRecommendations } from '../../services/geminiService';
 import type { AppDispatch } from '../../store/store';
 import type { RootState } from '../../store/rootReducer';
@@ -102,8 +105,11 @@ const RecommendationBuilder: React.FC<RecommendationBuilderProps> = ({ onClose, 
             implementationEffort: 'medium',
             environmentalImpact: 'positive'
         },
-        strategicLinks: []
+        strategicLinks: [],
+        attachments: []
     });
+
+    const [isUploading, setIsUploading] = useState(false);
 
     const [considerants, setConsiderants] = useState<string[]>(['']);
     const [newLink, setNewLink] = useState({ policyName: '', regulationArticle: '' });
@@ -413,6 +419,39 @@ const RecommendationBuilder: React.FC<RecommendationBuilderProps> = ({ onClose, 
             }));
             setNewLink({ policyName: '', regulationArticle: '' });
         }
+    };
+
+    const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+        if (event.target.files && event.target.files[0]) {
+            setIsUploading(true);
+            try {
+                const file = event.target.files[0];
+                const doc = await documentsAPI.upload(file, undefined, 'project', 'Admin');
+                setFormData(prev => ({
+                    ...prev,
+                    attachments: [
+                        ...(prev.attachments || []),
+                        {
+                            url: doc.url,
+                            name: doc.name,
+                            uploadedAt: new Date().toISOString()
+                        }
+                    ]
+                }));
+            } catch (error) {
+                console.error("Upload failed", error);
+            } finally {
+                setIsUploading(false);
+            }
+        }
+    };
+    
+    const removeAttachment = (index: number) => {
+        setFormData(prev => {
+            const newAttachments = [...(prev.attachments || [])];
+            newAttachments.splice(index, 1);
+            return { ...prev, attachments: newAttachments };
+        });
     };
 
     const handleOpenPdfDialog = () => {
@@ -753,6 +792,37 @@ const RecommendationBuilder: React.FC<RecommendationBuilderProps> = ({ onClose, 
                             margin="normal"
                             helperText="Informations pertinentes pour la recommandation. Vous pouvez modifier ou retirer le contenu."
                         />
+
+                        <Box sx={{ mt: 3, mb: 1 }}>
+                            <Typography variant="subtitle2" gutterBottom>Pièces jointes optionnelles (Images, Tableaux, Plans)</Typography>
+                            {formData.attachments && formData.attachments.length > 0 && (
+                                <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 2 }}>
+                                    {formData.attachments.map((att, i) => (
+                                        <Chip
+                                            key={i}
+                                            icon={<AttachmentOutlined />}
+                                            label={att.name}
+                                            onDelete={() => removeAttachment(i)}
+                                            variant="outlined"
+                                        />
+                                    ))}
+                                </Box>
+                            )}
+                            <Button
+                                variant="outlined"
+                                component="label"
+                                startIcon={isUploading ? <CircularProgress size={20} /> : <CloudUpload />}
+                                disabled={isUploading}
+                            >
+                                {isUploading ? 'Téléversement...' : 'Joindre un fichier (Image, PDF)'}
+                                <input
+                                    type="file"
+                                    hidden
+                                    accept="image/*,application/pdf"
+                                    onChange={handleFileUpload}
+                                />
+                            </Button>
+                        </Box>
                     </Box>
                 );
             case 1:

@@ -44,7 +44,9 @@ const RecommendationDetailsDialog: React.FC<RecommendationDetailsDialogProps> = 
     const [councilResolution, setCouncilResolution] = useState(recommendation?.councilResolutionNumber || '');
     const [feedback, setFeedback] = useState(recommendation?.notes || '');
     const [attachment, setAttachment] = useState<{ url: string, name: string, uploadedAt: string } | undefined>(recommendation?.councilFeedbackAttachment);
+    const [attachments, setAttachments] = useState<{ url: string, name: string, uploadedAt: string }[]>(recommendation?.attachments || []);
     const [isUploading, setIsUploading] = useState(false);
+    const [isUploadingAttachment, setIsUploadingAttachment] = useState(false);
 
     // PDF Options State
     const [isPdfDialogOpen, setIsPdfDialogOpen] = useState(false);
@@ -65,7 +67,8 @@ const RecommendationDetailsDialog: React.FC<RecommendationDetailsDialogProps> = 
                 status: status as any,
                 councilResolutionNumber: councilResolution,
                 notes: feedback,
-                councilFeedbackAttachment: attachment
+                councilFeedbackAttachment: attachment,
+                attachments: attachments
             }
         }));
         setEditMode(false);
@@ -89,6 +92,29 @@ const RecommendationDetailsDialog: React.FC<RecommendationDetailsDialogProps> = 
                 setIsUploading(false);
             }
         }
+    };
+
+    const handleRecAttachmentUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+        if (event.target.files && event.target.files[0]) {
+            setIsUploadingAttachment(true);
+            try {
+                const file = event.target.files[0];
+                const doc = await documentsAPI.upload(file, recommendation?.id, 'project', 'Admin');
+                setAttachments(prev => [...prev, {
+                    url: doc.url,
+                    name: doc.name,
+                    uploadedAt: new Date().toISOString()
+                }]);
+            } catch (error) {
+                console.error("Upload failed", error);
+            } finally {
+                setIsUploadingAttachment(false);
+            }
+        }
+    };
+
+    const removeRecAttachment = (index: number) => {
+        setAttachments(prev => prev.filter((_, i) => i !== index));
     };
 
     if (!recommendation) return null;
@@ -218,6 +244,27 @@ const RecommendationDetailsDialog: React.FC<RecommendationDetailsDialogProps> = 
                             </Box>
                         </Box>
                     )}
+
+                    {attachments && attachments.length > 0 && !editMode && (
+                        <Box sx={{ mb: 2 }}>
+                            <Typography variant="subtitle2" gutterBottom>Pièces Jointes / Annexes:</Typography>
+                            <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                                {attachments.map((att, i) => (
+                                    <Chip 
+                                        key={i} 
+                                        label={att.name} 
+                                        component="a" 
+                                        href={att.url} 
+                                        target="_blank" 
+                                        clickable 
+                                        color="primary" 
+                                        variant="outlined" 
+                                        icon={<AttachmentOutlined />}
+                                    />
+                                ))}
+                            </Box>
+                        </Box>
+                    )}
                 </Box>
 
                 <Divider sx={{ my: 2 }} />
@@ -260,6 +307,41 @@ const RecommendationDetailsDialog: React.FC<RecommendationDetailsDialogProps> = 
                     </Box>
                 ) : (
                     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 2 }}>
+                        <Box>
+                            <Typography variant="subtitle2" gutterBottom>Pièces Jointes / Annexes liés à la recommandation</Typography>
+                            {attachments.length > 0 && (
+                                <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 1 }}>
+                                    {attachments.map((att, i) => (
+                                        <Chip
+                                            key={i}
+                                            icon={<AttachmentOutlined />}
+                                            label={att.name}
+                                            onDelete={() => removeRecAttachment(i)}
+                                            variant="outlined"
+                                        />
+                                    ))}
+                                </Box>
+                            )}
+                            <Button
+                                variant="outlined"
+                                component="label"
+                                size="small"
+                                startIcon={isUploadingAttachment ? <CircularProgress size={20} /> : <CloudUpload />}
+                                disabled={isUploadingAttachment}
+                            >
+                                {isUploadingAttachment ? 'Téléversement...' : 'Joindre un fichier (Annexe)'}
+                                <input
+                                    type="file"
+                                    hidden
+                                    accept="image/*,application/pdf"
+                                    onChange={handleRecAttachmentUpload}
+                                />
+                            </Button>
+                        </Box>
+                        
+                        <Divider sx={{ my: 1 }} />
+                        <Typography variant="subtitle1" fontWeight="bold">Détails du retour du conseil</Typography>
+                        
                         <FormControl fullWidth>
                             <InputLabel>Statut Décisionnel</InputLabel>
                             <Select

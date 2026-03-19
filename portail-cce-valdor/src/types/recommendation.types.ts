@@ -24,6 +24,11 @@ export interface CouncilRecommendation {
         name: string;
         uploadedAt: string;
     };
+    attachments?: {
+        url: string;
+        name: string;
+        uploadedAt: string;
+    }[];
     createdBy: string;
     createdAt: string;
     updatedAt: string;
