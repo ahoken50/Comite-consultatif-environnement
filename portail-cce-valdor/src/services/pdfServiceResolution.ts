@@ -144,7 +144,7 @@ export const generateResolutionPDF = async (
             content = parts[0].trim();
         }
 
-        notes = rec.notes || '';
+        notes = rec.notes ? rec.notes.replace(/^\[?[cC]ommentaires?\]?\s*:\s*/gi, '').trim() : '';
     }
 
     const location = meeting.location || 'Suite virtuelle / Hôtel de Ville';
@@ -166,10 +166,23 @@ export const generateResolutionPDF = async (
     const presents = meeting.attendees?.filter(a => a.isPresent !== false) || [];
     const absents = meeting.attendees?.filter(a => a.isPresent === false) || [];
 
-    const formatAttendee = (a: any) => `${a.name}${a.role ? `, ${a.role.toLowerCase()}` : ''}`;
+    const translateRole = (role?: string) => {
+        if (!role) return '';
+        const r = role.toLowerCase();
+        if (r.includes('elected_official')) return 'conseillé(ère) responsable';
+        if (r.includes('coordinator')) return 'coordonnateur(trice) en environnement';
+        if (r.includes('observer')) return 'observateur(trice)';
+        if (r.includes('vice_president') || r.includes('vice president')) return 'vice-président(e)';
+        if (r.includes('president') && !r.includes('vice')) return 'président(e)';
+        if (r.includes('member')) return 'membre';
+        if (r.includes('secretary')) return 'secrétaire';
+        return role;
+    };
 
-    const regularPresentsStr = presents.filter(a => !a.role?.toLowerCase().includes('secrétaire') && !a.role?.toLowerCase().includes('conseil') && !a.role?.toLowerCase().includes('coordon')).map(formatAttendee).join(', ');
-    const staffPresentsStr = presents.filter(a => a.role?.toLowerCase().includes('secrétaire') || a.role?.toLowerCase().includes('conseil') || a.role?.toLowerCase().includes('coordon')).map(formatAttendee).join(', ');
+    const formatAttendee = (a: any) => `${a.name}${a.role ? `, ${translateRole(a.role)}` : ''}`;
+
+    const regularPresentsStr = presents.filter(a => !a.role?.toLowerCase().includes('secrétaire') && !a.role?.toLowerCase().includes('conseil') && !a.role?.toLowerCase().includes('coordon') && !a.role?.toLowerCase().includes('elected_official') && !a.role?.toLowerCase().includes('coordinator')).map(formatAttendee).join(', ');
+    const staffPresentsStr = presents.filter(a => a.role?.toLowerCase().includes('secrétaire') || a.role?.toLowerCase().includes('conseil') || a.role?.toLowerCase().includes('coordon') || a.role?.toLowerCase().includes('elected_official') || a.role?.toLowerCase().includes('coordinator')).map(formatAttendee).join(', ');
     const absentsStr = absents.map(formatAttendee).join(', ');
 
     const meetingTypeStr = meeting.type === 'regular' ? 'ordinaire' : 'spéciale';
@@ -370,16 +383,19 @@ export const generateResolutionPDF = async (
             <img src="/logo-valdor.png" alt="Logo Ville Val-d'Or" style="height: 80px;" onerror="this.style.display='none'">
             <img src="/logo-cce.png" alt="Logo CCE" style="height: 80px;" onerror="this.style.display='none'">
         </div>
+        <h1 style="font-family: 'Montserrat', sans-serif; font-size: 20px; text-transform: uppercase; letter-spacing: 1.5px; color: var(--primary-color); text-align: center; margin: 15px 0;">
+            Extrait de procès-verbal CCE
+        </h1>
     </div>
 
     <div style="text-align: justify; font-size: 15px; margin-top: 10px; margin-bottom: 40px; line-height: 1.6;">
-        PROCÈS-VERBAL de la ${meetingNumberStr}assemblée ${meetingTypeStr} du Comité consultatif en environnement tenue le ${dayName} ${dayOfMonth} ${monthName} ${year} à ${time} à ${location}.<br>
+        PROCÈS-VERBAL de la ${meetingNumberStr}assemblée ${meetingTypeStr} du Comité consultatif en environnement tenue le ${dayName} ${dayOfMonth} ${monthName} ${year} à ${time} à ${location}.<br><br>
         ${regularPresentsStr ? `ÉTAIENT PRÉSENT(E)S : ${regularPresentsStr}<br>` : ''}
         ${staffPresentsStr ? `ÉTAIENT AUSSI PRÉSENT(E)S : ${staffPresentsStr}<br>` : ''}
         ${absentsStr ? `ÉTAIENT ABSENT(E)S : ${absentsStr}` : ''}
     </div>
 
-    <div style="font-weight: bold; font-size: 16px; margin-bottom: 30px;">
+    <div style="font-weight: bold; font-size: 20px; line-height: 1.4; margin-bottom: 30px;">
         ${globalTitle}
     </div>
 
