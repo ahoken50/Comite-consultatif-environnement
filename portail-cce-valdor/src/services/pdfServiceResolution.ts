@@ -121,7 +121,7 @@ export const generateResolutionPDF = async (
     let proposer = '';
     let seconder = '';
     let notes = '';
-    let attachments: { url: string, name: string }[] | undefined = undefined;
+    let attachments: { url: string, name: string, resolutionNumber?: string }[] | undefined = undefined;
 
     if (type === 'agendaItem') {
         const item = itemOrRec as AgendaItem;
@@ -444,12 +444,13 @@ export const generateResolutionPDF = async (
                     <ul style="margin-bottom: 40px;">
             `;
             attachments.forEach((att, idx) => {
-                annexesHTML += `<li style="margin-bottom: 10px; font-size: 15px;"><strong>Annexe ${idx + 1} :</strong> ${att.name}</li>`;
+                const linkedTo = att.resolutionNumber ? ` (Lié à la résolution ${att.resolutionNumber})` : '';
+                annexesHTML += `<li style="margin-bottom: 10px; font-size: 15px;"><strong>Annexe ${idx + 1} :</strong> ${att.name}${linkedTo}</li>`;
             });
             annexesHTML += `</ul>`;
             
             attachments.forEach((att, idx) => {
-                const isImage = att.name.toLowerCase().match(/\\.(jpeg|jpg|gif|png|webp)$/) != null;
+                const isImage = att.name.toLowerCase().match(/\.(jpeg|jpg|gif|png|webp)/) != null || att.url.toLowerCase().match(/\.(jpeg|jpg|gif|png|webp|alt=media)/) != null;
                 if (isImage) {
                     annexesHTML += `
                         <div style="margin-top: 30px; text-align: center; page-break-inside: avoid;">
@@ -477,7 +478,7 @@ export const generateResolutionPDF = async (
     printWindow.document.close();
 
     // Wait for resources
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    await new Promise(resolve => setTimeout(resolve, 2500));
     printWindow.print();
     return { success: true };
 };
