@@ -67,13 +67,23 @@ export const generateExtractAndUpload = async (
         doc.write(htmlString);
         doc.close();
 
-        // 3. Configure html2pdf (Optimized for speed)
+        // 3. Configure html2pdf (Optimized for 1:1 pixel-perfect mapping matching browser window.print)
         const opt = {
-            margin:       [15, 15, 15, 15] as [number, number, number, number],
+            margin:       0, // Zero margin at the PDF level; relying entirely on the HTML's internal padding (60px 80px)
             filename:     `extrait_${extractNumber.replace(/\//g, '-')}.pdf`,
-            image:        { type: 'jpeg' as const, quality: 0.98 },
-            html2canvas:  { scale: 2, useCORS: true, logging: false, backgroundColor: '#ffffff' },
-            jsPDF:        { unit: 'mm', format: 'legal', orientation: 'portrait' as const }
+            image:        { type: 'jpeg' as const, quality: 1 },
+            html2canvas:  { 
+                scale: 2, // High DPI rendering
+                useCORS: true, 
+                logging: false, 
+                backgroundColor: '#ffffff',
+                windowWidth: 816 // Force EXACT 8.5" pixel width for the canvas snapshot to prevent text wrapping/squishing
+            },
+            jsPDF:        { 
+                unit: 'in', 
+                format: 'legal', 
+                orientation: 'portrait' as const 
+            }
         };
 
         let pdfBlob: Blob;
