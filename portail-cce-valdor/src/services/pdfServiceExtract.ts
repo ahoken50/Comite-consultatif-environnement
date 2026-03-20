@@ -1,4 +1,4 @@
-import { jsPDF } from 'jspdf';
+import html2pdf from 'html2pdf.js';
 import { collection, addDoc, Timestamp, query, where, getDocs } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from './firebase';
@@ -17,10 +17,39 @@ export interface MinuteExtract {
     uploadedBy: string;
 }
 
+/**
+ * Extract <style> content and <body> content from a full HTML document string.
+ * This is necessary because setting innerHTML on a div strips <head>/<style> tags,
+ * causing the PDF to render without any CSS styling.
+ */
+const parseHTMLDocument = (htmlString: string): { styles: string; body: string } => {
+    // Extract all <style> blocks
+    const styleRegex = /<style[^>]*>([\s\S]*?)<\/style>/gi;
+    let styles = '';
+    let match;
+    while ((match = styleRegex.exec(htmlString)) !== null) {
+        styles += match[1] + '\n';
+    }
+
+    // Extract body content
+    const bodyMatch = htmlString.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+    const body = bodyMatch ? bodyMatch[1] : htmlString;
+
+    // Extract any <link> tags (for Google Fonts)
+    const linkRegex = /<link[^>]*href="([^"]*fonts[^"]*)"[^>]*>/gi;
+    let fontLinks = '';
+    while ((match = linkRegex.exec(htmlString)) !== null) {
+        fontLinks += `@import url('${match[1]}');\n`;
+    }
+
+    return { styles: fontLinks + styles, body };
+};
+
 export const generateExtractAndUpload = async (
     meeting: Meeting,
     item: AgendaItem,
-    uploadedBy: string
+    uploadedBy: string,
+    agendaOrderNumber: number  // 1-indexed position of the item on the agenda (Ordre du Jour)
 ): Promise<MinuteExtract> => {
     try {
         // 1. Check if an extract already exists for this item to avoid duplicates
@@ -34,88 +63,101 @@ export const generateExtractAndUpload = async (
         }
 
         const allResNumbers = item.minuteEntries?.filter(e => e.type === 'resolution' && e.number).map(e => e.number).join(', ');
-        const extractNumber = `EXT-${item.minuteNumber || item.id.substring(0, 4)}`;
-        const extractTitle = allResNumbers ? `${item.title} (Résolutions: ${allResNumbers})` : item.title;
-        const fileName = `extrait_${extractNumber.replace(/\//g, '-')}.pdf`;
+        const extractNumber = `EXT-${agendaOrderNumber}`;
+        const extractTitle = allResNumbers 
+            ? `${agendaOrderNumber}. ${item.title} (Résolutions: ${allResNumbers})` 
+            : `${agendaOrderNumber}. ${item.title}`;
+        const fileName = `extrait_${extractNumber}.pdf`;
 
-        // 2. Generate HTML using the SAME template as the Recommendation PDF
+        // 2. Generate the full HTML document (same template as Recommendations)
         const htmlString = generateResolutionHTML(meeting, item, 'agendaItem', 'official');
-        
-        // 3. Use an invisible popup window to render the HTML with full CSS/fonts,
-        //    then use jsPDF .html() to convert it to a vector PDF
-        //    (jsPDF .html() uses html2canvas internally but its .html() pipeline 
-        //    is specifically designed for multi-page flows and proper scaling)
-        const iframe = document.createElement('iframe');
-        iframe.style.position = 'fixed';
-        iframe.style.left = '0px';
-        iframe.style.top = '0px';
-        iframe.style.width = '816px';
-        iframe.style.height = '1344px';
-        iframe.style.opacity = '0';
-        iframe.style.pointerEvents = 'none';
-        iframe.style.zIndex = '-9999';
-        iframe.style.border = 'none';
-        document.body.appendChild(iframe);
 
-        const iframeDoc = iframe.contentWindow?.document;
-        if (!iframeDoc) {
-            document.body.removeChild(iframe);
-            throw new Error("Could not create iframe for PDF extraction");
+        // 3. Parse the HTML to separate CSS styles from body content.
+        //    When we inject a full <!DOCTYPE html> into a div's innerHTML, the browser 
+        //    strips the <head> and <style> tags, leaving unstyled content (= ugly PDF).
+        //    By extracting them separately, we inject styles into the main document
+        //    and only put the body content into the rendering div.
+        const { styles, body } = parseHTMLDocument(htmlString);
+
+        // 4. Create a unique scope ID to prevent style collision with the main app
+        const scopeId = `extract-scope-${Date.now()}`;
+
+        // Inject styles into <head> with scope prefix
+        const styleElement = document.createElement('style');
+        styleElement.id = scopeId;
+        // Scope all CSS rules under our unique container class
+        const scopedStyles = styles.replace(/(^|\})\s*([^@\}][^{]*)\{/g, (match, prefix, selector) => {
+            // Don't scope @-rules (like @media, @font-face, @import)
+            if (selector.trim().startsWith('@')) return match;
+            // Scope normal selectors
+            return `${prefix} .${scopeId} ${selector.trim()} {`;
+        });
+        styleElement.textContent = scopedStyles;
+        document.head.appendChild(styleElement);
+
+        // 5. Create a container div with the body content
+        const container = document.createElement('div');
+        container.className = scopeId;
+        container.style.position = 'fixed';
+        container.style.left = '0px';
+        container.style.top = '0px';
+        container.style.width = '816px';         // 8.5" at 96dpi
+        container.style.backgroundColor = '#ffffff';
+        container.style.zIndex = '-9999';
+        container.style.opacity = '0.01';         // Nearly invisible but renderable
+        container.style.pointerEvents = 'none';
+        container.innerHTML = body;
+        document.body.appendChild(container);
+
+        // 6. Wait for Google Fonts to load
+        await new Promise(resolve => setTimeout(resolve, 1200));
+        if (document.fonts?.ready) {
+            await document.fonts.ready;
         }
 
-        iframeDoc.open();
-        iframeDoc.write(htmlString);
-        iframeDoc.close();
-
-        // Wait for Google Fonts and images to load
-        await new Promise(resolve => setTimeout(resolve, 1500));
-        try {
-            // @ts-ignore
-            if (iframeDoc.fonts?.ready) {
-                // @ts-ignore
-                await iframeDoc.fonts.ready;
+        // 7. Configure html2pdf with settings matching the Recommendation PDF
+        const opt = {
+            margin:       0,  // HTML template already has 60px/80px padding
+            filename:     fileName,
+            image:        { type: 'jpeg' as const, quality: 0.98 },
+            html2canvas:  { 
+                scale: 2,
+                useCORS: true, 
+                logging: false, 
+                backgroundColor: '#ffffff',
+                width: 816,
+                windowWidth: 816
+            },
+            jsPDF:        { 
+                unit: 'in' as const, 
+                format: 'legal' as const, 
+                orientation: 'portrait' as const 
             }
-        } catch (_) { /* fonts API not available, timeout is our fallback */ }
+        };
 
-        // 4. Create jsPDF instance with Legal format (8.5 x 14 inches)
-        const pdf = new jsPDF({
-            unit: 'in',
-            format: 'legal',
-            orientation: 'portrait'
-        });
-        
-        // Use jsPDF's .html() method for vector-quality rendering
-        const pageBody = iframeDoc.body;
-        
-        await new Promise<void>((resolve) => {
-            pdf.html(pageBody, {
-                callback: function () {
-                    resolve();
-                },
-                x: 0,
-                y: 0,
-                width: 8.5, // Full legal page width in inches
-                windowWidth: 816, // Match the 816px width of the HTML template
-                autoPaging: 'text'
-            });
-        });
-        
-        // Clean up iframe
-        if (document.body.contains(iframe)) {
-            document.body.removeChild(iframe);
+        // 8. Generate PDF Blob
+        let pdfBlob: Blob;
+        try {
+            pdfBlob = await html2pdf().set(opt).from(container).outputPdf('blob');
+        } finally {
+            // Clean up: remove both the container and the injected styles
+            if (document.body.contains(container)) {
+                document.body.removeChild(container);
+            }
+            const styleEl = document.getElementById(scopeId);
+            if (styleEl) {
+                document.head.removeChild(styleEl);
+            }
         }
 
-        // 5. Get PDF as blob
-        const pdfBlob = pdf.output('blob');
+        // 9. Upload to Firebase Storage
         const file = new File([pdfBlob], fileName, { type: 'application/pdf' });
-
-        // 6. Upload to Firebase Storage
         const storagePath = `extracts/${meeting.id}/${Date.now()}_${fileName}`;
         const storageRef = ref(storage, storagePath);
         await uploadBytes(storageRef, file);
         const url = await getDownloadURL(storageRef);
 
-        // 7. Save metadata to Firestore 'extracts' collection
+        // 10. Save metadata to Firestore
         const extractData: Omit<MinuteExtract, 'id'> = {
             meetingId: meeting.id,
             agendaItemId: item.id,

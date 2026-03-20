@@ -160,10 +160,11 @@ const MeetingApprovalCard: React.FC<MeetingApprovalCardProps> = ({ meeting, curr
         setIsGeneratingExtraits(true);
         try {
             let count = 0;
-            for (const item of meeting.agendaItems) {
+            for (let i = 0; i < meeting.agendaItems.length; i++) {
+                const item = meeting.agendaItems[i];
                 // Generate extract for ALL items on the agenda as requested
                 const userName = currentUser?.displayName || 'Système';
-                await generateExtractAndUpload(meeting, item, userName);
+                await generateExtractAndUpload(meeting, item, userName, i + 1);  // i+1 = 1-indexed ODJ number
                 count++;
             }
             alert(`Succès! ${count} extraits générés et enregistrés dans le registre.`);
