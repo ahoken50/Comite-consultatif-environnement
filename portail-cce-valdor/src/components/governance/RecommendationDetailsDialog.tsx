@@ -113,7 +113,7 @@ const RecommendationDetailsDialog: React.FC<RecommendationDetailsDialogProps> = 
                 if (!editMode && recommendation) {
                     dispatch(updateRecommendation({
                         id: recommendation.id,
-                        data: { attachments: updatedAttachments }
+                        updates: { attachments: updatedAttachments }
                     }));
                 }
             } catch (error) {
@@ -131,7 +131,7 @@ const RecommendationDetailsDialog: React.FC<RecommendationDetailsDialogProps> = 
         if (!editMode && recommendation) {
             dispatch(updateRecommendation({
                 id: recommendation.id,
-                data: { attachments: updatedAttachments }
+                updates: { attachments: updatedAttachments }
             }));
         }
     };
@@ -295,7 +295,7 @@ const RecommendationDetailsDialog: React.FC<RecommendationDetailsDialogProps> = 
                                                         if (!editMode && recommendation) {
                                                             dispatch(updateRecommendation({
                                                                 id: recommendation.id,
-                                                                data: { attachments: newAtts }
+                                                                updates: { attachments: newAtts }
                                                             }));
                                                         }
                                                     }}
@@ -375,6 +375,7 @@ const RecommendationDetailsDialog: React.FC<RecommendationDetailsDialogProps> = 
                         </Grid>
                     </Box>
                 ) : (
+                    <Box>
                         <Divider sx={{ my: 1 }} />
                         <Typography variant="subtitle1" fontWeight="bold">Détails du retour du conseil</Typography>
                         
