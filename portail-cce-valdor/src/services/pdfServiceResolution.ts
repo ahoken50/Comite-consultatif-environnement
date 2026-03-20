@@ -407,6 +407,8 @@ export const generateResolutionHTML = (
             padding-top: 10px;
         }
     </style>
+</head>
+<body>
     <div class="header">
         <div style="display: flex; justify-content: center; align-items: center; gap: 30px; margin-bottom: 15px;">
             <img src="/logo-valdor.png" alt="Logo Ville Val-d'Or" style="height: 80px;" onerror="this.style.display='none'">

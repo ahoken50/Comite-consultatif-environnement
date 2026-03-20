@@ -1,9 +1,10 @@
 import html2pdf from 'html2pdf.js';
-import { collection, addDoc, Timestamp, query, where, getDocs } from 'firebase/firestore';
+import { collection, addDoc, Timestamp, query, where, getDocs, doc, getDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from './firebase';
 import type { Meeting, AgendaItem } from '../types/meeting.types';
-import { generateResolutionHTML } from './pdfServiceResolution';
+import { format } from 'date-fns';
+import { fr } from 'date-fns/locale';
 
 export interface MinuteExtract {
     id?: string;
@@ -17,13 +18,628 @@ export interface MinuteExtract {
     uploadedBy: string;
 }
 
-/**
- * Extract <style> content and <body> content from a full HTML document string.
- * This is necessary because setting innerHTML on a div strips <head>/<style> tags,
- * causing the PDF to render without any CSS styling.
- */
+/* ─── Text helpers (same as pdfServiceMinutes) ─── */
+
+const sanitizeText = (text: string): string => {
+    if (!text) return '';
+    return text
+        .replace(/[\u200B-\u200D\uFEFF]/g, '')
+        .replace(/\u00AD/g, '')
+        .replace(/\u00A0/g, ' ')
+        .replace(/[\u2000-\u200A\u202F\u205F\u3000]/g, ' ')
+        .replace(/  +/g, ' ')
+        .replace(/\t/g, ' ')
+        .replace(/\r\n/g, '\n')
+        .replace(/\r/g, '\n')
+        .split('\n')
+        .map(line => line.trim())
+        .join('\n');
+};
+
+const formatDecisionHTML = (decision: string): string => {
+    if (!decision) return '';
+    const sanitized = sanitizeText(decision);
+    const lines = sanitized.split('\n').filter(line => line.trim().length > 0);
+    let html = '';
+    let inResolvedList = false;
+
+    for (const line of lines) {
+        const trimmed = line.trim();
+
+        if (/^CONSID[ÉE]RANT/i.test(trimmed)) {
+            if (inResolvedList) { html += '</ul>'; inResolvedList = false; }
+            const match = trimmed.match(/^(CONSID[ÉE]RANT)\s+(.*)/i);
+            if (match) {
+                html += `<div class="considerant-row"><div class="considerant-label">${match[1].toUpperCase()}</div><div class="considerant-text">${match[2]}</div></div>`;
+            } else {
+                html += `<div class="considerant-row"><div class="considerant-label">${trimmed.toUpperCase()}</div><div class="considerant-text"></div></div>`;
+            }
+        } else if (/^(ATTENDU|RECONNAISSANT)/i.test(trimmed)) {
+            if (inResolvedList) { html += '</ul>'; inResolvedList = false; }
+            const match = trimmed.match(/^((?:ATTENDU|RECONNAISSANT))\s+(.*)/i);
+            if (match) {
+                html += `<div class="considerant-row"><div class="considerant-label">${match[1].toUpperCase()}</div><div class="considerant-text">${match[2]}</div></div>`;
+            } else {
+                html += `<div class="considerant-row"><div class="considerant-label">${trimmed.toUpperCase()}</div><div class="considerant-text"></div></div>`;
+            }
+        } else if (/^IL EST R[ÉE]SOLU/i.test(trimmed)) {
+            if (inResolvedList) { html += '</ul>'; inResolvedList = false; }
+            const match = trimmed.match(/^(IL EST R[ÉE]SOLU(?:\s+QUE)?\s*:?)\s*(.*)/i);
+            if (match) {
+                html += `<div class="il-est-resolu">${match[1]}</div>`;
+                if (match[2]) html += `<div class="resolution-text">${match[2]}</div>`;
+            } else {
+                html += `<div class="il-est-resolu">${trimmed}</div>`;
+            }
+        } else if (/^[-•]/.test(trimmed)) {
+            if (!inResolvedList) { html += '<ul class="resolu-list">'; inResolvedList = true; }
+            html += `<li>${trimmed.replace(/^[-•]\s*/, '')}</li>`;
+        } else {
+            if (inResolvedList) { html += '</ul>'; inResolvedList = false; }
+            html += `<div class="resolution-text">${trimmed}</div>`;
+        }
+    }
+    if (inResolvedList) html += '</ul>';
+    return html;
+};
+
+const formatContentHTML = (text: string): string => {
+    if (!text) return '';
+    const sanitized = sanitizeText(text);
+    const lines = sanitized.split('\n').filter(p => p.trim().length > 0);
+    let html = '';
+
+    for (const line of lines) {
+        const trimmed = line.trim();
+        if (/^\d+\.\s+[A-ZÀ-Ÿ]/.test(trimmed)) {
+            const colonIndex = trimmed.indexOf(':');
+            if (colonIndex > 0 && colonIndex < 100) {
+                const title = trimmed.substring(0, colonIndex + 1);
+                const rest = trimmed.substring(colonIndex + 1).trim();
+                html += `<div class="subsection-title">${title}</div>`;
+                if (rest) html += `<p>${rest}</p>`;
+            } else {
+                html += `<div class="subsection-title">${trimmed}</div>`;
+            }
+        } else {
+            html += `<p>${trimmed}</p>`;
+        }
+    }
+    return html;
+};
+
+/* ─── Role labels ─── */
+
+const getRoleLabelPDF = (role: string, name: string = ''): string => {
+    const labels: Record<string, string> = {
+        president: 'présidente',
+        vice_president: 'vice-président',
+        coordinator: 'coordonnateur',
+        elected_official: name.includes('Sylvie') || name.includes('Hébert') ? 'conseillère responsable' : 'conseiller responsable',
+        advisor: name.includes('Sylvie') || name.includes('Hébert') ? 'conseillère responsable' : 'conseiller responsable',
+        guest: 'invité',
+        member: 'membre',
+        observer: 'observateur'
+    };
+    return labels[role.toLowerCase()] || labels[role] || role;
+};
+
+/* ─── HTML generation (PV-minutes layout, scoped to one agenda item) ─── */
+
+const generateExtractHTML = (
+    meeting: Meeting,
+    item: AgendaItem,
+    agendaOrderNumber: number,
+    enrichedSignatures: any[] = []
+): string => {
+    // Date
+    const dateObj = new Date(meeting.date);
+    const dayName = format(dateObj, 'EEEE', { locale: fr });
+    const dayOfMonth = format(dateObj, 'd', { locale: fr });
+    const monthName = format(dateObj, 'MMMM', { locale: fr });
+    const year = format(dateObj, 'yyyy', { locale: fr });
+    const timeStr = format(dateObj, 'HH', { locale: fr }) + ' h';
+
+    const meetingNum = meeting.meetingNumber
+        ? String(meeting.meetingNumber)
+        : (meeting.title.match(/(\d+)/)?.[1] || '01');
+
+    // Attendees
+    const memberRoles = ['member', 'Membre', 'president', 'Président(e)', 'vice_president', 'Vice-président(e)'];
+    const isMemberRole = (role: string) => memberRoles.some(r => r.toLowerCase() === role.toLowerCase());
+    const absents = meeting.attendees?.filter(a => !a.isPresent) || [];
+    const presents = meeting.attendees?.filter(a => a.isPresent && isMemberRole(a.role)) || [];
+    const othersPresent = meeting.attendees?.filter(a => a.isPresent && !isMemberRole(a.role)) || [];
+
+    const formatName = (a: typeof presents[0]) => {
+        const roleLabel = getRoleLabelPDF(a.role, a.name);
+        return roleLabel ? `${a.name} (${roleLabel})` : a.name;
+    };
+
+    // Signature names
+    const president = meeting.attendees?.find(a =>
+        a.role?.toLowerCase().includes('président') && !a.role?.toLowerCase().includes('vice')
+    );
+    const secretary = meeting.attendees?.find(a => a.role?.toLowerCase().includes('secrétaire'));
+    const presidentName = president ? president.name : 'Président(e)';
+    const secretaryName = secretary ? secretary.name : 'Secrétaire';
+
+    // Build agenda item content using same approach as pdfServiceMinutes
+    const cleanTitle = item.title.replace(/^\d+[\.)\-]?\s*/, '');
+    const titleWithNumber = `${agendaOrderNumber}. ${cleanTitle}`;
+
+    let commentRef = '';
+    if (item.minuteEntries && item.minuteEntries.length > 0) {
+        const comment = item.minuteEntries.find(e => e.type === 'comment');
+        if (comment) commentRef = `<span class="comment-ref">COMMENTAIRE ${comment.number}</span>`;
+    }
+
+    let contentHTML = '';
+    contentHTML += `
+        <section class="content-section">
+            <div class="section-title">
+                ${titleWithNumber}
+                ${commentRef}
+            </div>
+    `;
+
+    if (item.minuteEntries && item.minuteEntries.length > 0) {
+        const sortedEntries = [...item.minuteEntries].sort((a, b) => {
+            const order: Record<string, number> = { comment: 0, note: 1, resolution: 2 };
+            return (order[a.type] ?? 1) - (order[b.type] ?? 1);
+        });
+
+        for (const entry of sortedEntries) {
+            if (entry.type === 'comment' || entry.type === 'note') {
+                contentHTML += formatContentHTML(entry.content || '');
+            } else if (entry.type === 'resolution') {
+                contentHTML += `
+                    <div class="resolution-block">
+                        <span class="resolution-header">RÉSOLUTION ${entry.number}</span>
+                        <div class="resolution-content">
+                            ${formatDecisionHTML(entry.content || '')}
+                        </div>
+                    </div>
+                `;
+            }
+        }
+    } else if (item.decision) {
+        if (item.minuteType === 'resolution') {
+            contentHTML += `
+                <div class="resolution-block">
+                    <span class="resolution-header">RÉSOLUTION ${item.minuteNumber || ''}</span>
+                    <div class="resolution-content">
+                        ${formatDecisionHTML(item.decision)}
+                    </div>
+                </div>
+            `;
+        } else {
+            contentHTML += formatContentHTML(item.decision);
+        }
+    }
+
+    // Also include item.description if present and not already covered
+    if (item.description && (!item.minuteEntries || item.minuteEntries.length === 0) && !item.decision) {
+        contentHTML += formatContentHTML(item.description);
+    }
+
+    contentHTML += '</section>';
+
+    const meetingTypeStr = meeting.type === 'regular' ? 'ordinaire' : 'spéciale';
+
+    // Full HTML document (same CSS as pdfServiceMinutes)
+    return `<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Extrait de PV - ${titleWithNumber}</title>
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;0,700;1,400&family=Montserrat:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary-color: #1e4e3d;
+            --accent-color: #c5a065;
+            --text-color: #2b2b2b;
+            --bg-color: #ffffff;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background-color: #ffffff;
+            font-family: 'Cormorant Garamond', serif;
+            color: var(--text-color);
+            margin: 0;
+            padding: 0;
+        }
+
+        .document-page {
+            background-color: var(--bg-color);
+            width: 816px;
+            padding: 60px 80px;
+            box-sizing: border-box;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 50px;
+            border-bottom: 3px double var(--primary-color);
+            padding-bottom: 25px;
+        }
+
+        .logos-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 30px;
+            margin-bottom: 20px;
+        }
+
+        .logo-placeholder {
+            width: 120px;
+            height: auto;
+        }
+
+        .logo-cce {
+            width: 100px;
+            height: auto;
+        }
+
+        h1 {
+            font-family: 'Montserrat', sans-serif;
+            font-size: 24px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            color: var(--primary-color);
+            margin: 0 0 10px 0;
+            font-weight: 600;
+        }
+
+        h2 {
+            font-family: 'Montserrat', sans-serif;
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--accent-color);
+            margin: 0 0 20px 0;
+            font-weight: 500;
+        }
+
+        .meeting-info {
+            font-size: 16px;
+            font-style: italic;
+            color: #555;
+            line-height: 1.4;
+        }
+
+        .attendance {
+            background-color: #f9fbfa;
+            border-left: 4px solid var(--primary-color);
+            padding: 15px 25px;
+            margin-bottom: 40px;
+            font-family: 'Montserrat', sans-serif;
+            font-size: 13px;
+        }
+
+        .attendance h3 {
+            color: var(--primary-color);
+            margin: 0 0 8px 0;
+            font-size: 12px;
+            text-transform: uppercase;
+        }
+
+        .attendance-group {
+            margin-bottom: 12px;
+        }
+
+        .content-section {
+            margin-bottom: 35px;
+        }
+
+        .section-title {
+            font-family: 'Montserrat', sans-serif;
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--primary-color);
+            border-bottom: 1px solid #ddd;
+            padding-bottom: 5px;
+            margin-top: 30px;
+            margin-bottom: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+        }
+
+        .comment-ref {
+            font-size: 11px;
+            color: #888;
+            font-weight: 400;
+        }
+
+        .subsection-title {
+            font-family: 'Montserrat', sans-serif;
+            font-size: 14px;
+            font-weight: 600;
+            color: #444;
+            margin-top: 20px;
+            margin-bottom: 10px;
+        }
+
+        p {
+            font-size: 15px;
+            line-height: 1.5;
+            margin-bottom: 15px;
+            text-align: justify;
+        }
+
+        .resolution-block {
+            background-color: #fdfcf8;
+            border: 1px solid #e0e0e0;
+            border-top: 3px solid var(--accent-color);
+            padding: 20px 30px;
+            margin: 25px 0;
+            page-break-inside: avoid;
+        }
+
+        .resolution-header {
+            font-family: 'Montserrat', sans-serif;
+            font-size: 14px;
+            font-weight: 700;
+            color: var(--accent-color);
+            margin-bottom: 15px;
+            display: block;
+        }
+
+        .resolution-content {
+            font-style: italic;
+            color: #444;
+        }
+
+        .considerant-row {
+            display: flex;
+            margin-bottom: 8px;
+            align-items: baseline;
+        }
+
+        .considerant-label {
+            font-family: 'Montserrat', sans-serif;
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--primary-color);
+            min-width: 110px;
+            flex-shrink: 0;
+        }
+
+        .considerant-text {
+            flex-grow: 1;
+        }
+
+        .il-est-resolu {
+            margin-top: 15px;
+            margin-bottom: 10px;
+            font-weight: 600;
+            color: var(--primary-color);
+            display: block;
+            font-family: 'Montserrat', sans-serif;
+        }
+
+        .resolution-text {
+            display: block;
+            margin-bottom: 8px;
+        }
+
+        .resolu-list {
+            list-style-type: none;
+            padding-left: 0;
+            margin: 10px 0;
+        }
+
+        .resolu-list li {
+            position: relative;
+            padding-left: 20px;
+            margin-bottom: 10px;
+        }
+
+        .resolu-list li::before {
+            content: "•";
+            color: var(--accent-color);
+            position: absolute;
+            left: 0;
+        }
+
+        .signatures {
+            margin-top: 60px;
+            display: flex;
+            justify-content: space-between;
+            page-break-inside: avoid;
+        }
+
+        .signature-block {
+            width: 40%;
+            text-align: center;
+        }
+
+        .signature-line {
+            border-bottom: 1px solid #000;
+            height: 50px;
+            margin-bottom: 10px;
+            position: relative;
+        }
+
+        .digital-signature {
+            position: absolute;
+            bottom: 5px;
+            left: 0;
+            right: 0;
+            font-family: 'Courier New', monospace;
+            font-size: 10px;
+            color: var(--primary-color);
+            background-color: rgba(255, 255, 255, 0.8);
+        }
+
+        .signature-name {
+            font-family: 'Montserrat', sans-serif;
+            font-weight: 700;
+            font-size: 12px;
+            text-transform: uppercase;
+        }
+
+        .signature-role {
+            font-family: 'Montserrat', sans-serif;
+            font-size: 11px;
+            color: #555;
+        }
+
+        .cert {
+            margin-top: 40px;
+            font-size: 12px;
+            color: #888;
+            text-align: center;
+            border-top: 1px solid #eee;
+            padding-top: 10px;
+        }
+
+        @media print {
+            @page {
+                size: legal portrait;
+                margin: 0.75in 0.5in 0.75in 2cm;
+            }
+            body {
+                background-color: white;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+            .document-page {
+                width: 100%;
+                padding: 0;
+                box-shadow: none;
+            }
+            .resolution-block {
+                page-break-inside: avoid !important;
+                break-inside: avoid !important;
+            }
+            .content-section {
+                page-break-inside: avoid;
+                break-inside: avoid;
+            }
+            .section-title {
+                page-break-after: avoid;
+                break-after: avoid;
+            }
+            .signatures {
+                page-break-inside: avoid !important;
+                break-inside: avoid !important;
+            }
+            .attendance {
+                page-break-inside: avoid;
+                break-inside: avoid;
+            }
+            header {
+                page-break-after: avoid;
+            }
+            p {
+                orphans: 3;
+                widows: 3;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="document-page">
+        <header>
+            <div class="logos-container">
+                <img src="/logo-valdor.png" alt="Logo Ville de Val-d'Or" class="logo-placeholder" onerror="this.style.display='none';">
+                <img src="/logo-cce.png" alt="Logo CCE" class="logo-cce" onerror="this.style.display='none';">
+            </div>
+
+            <h1>Extrait de Procès-Verbal</h1>
+            <h2>Comité Consultatif en Environnement (CCE)</h2>
+            <div class="meeting-info">
+                <strong>${meetingNum.replace(/^0/, '')}e assemblée ${meetingTypeStr}</strong><br>
+                Tenue le ${dayName} ${dayOfMonth} ${monthName} ${year}, ${timeStr}<br>
+                ${meeting.location || 'Salle de conférence des bureaux du Service permis, inspection et environnement'}
+            </div>
+        </header>
+
+        <section class="attendance">
+            ${presents.length > 0 ? `
+            <div class="attendance-group">
+                <h3>Étaient présents</h3>
+                <div>${presents.map(formatName).join(', ')}.</div>
+            </div>
+            ` : ''}
+            ${othersPresent.length > 0 ? `
+            <div class="attendance-group">
+                <h3>Étaient aussi présents</h3>
+                <div>${othersPresent.map(formatName).join(', ')}.</div>
+            </div>
+            ` : ''}
+            ${absents.length > 0 ? `
+            <div class="attendance-group">
+                <h3>Étaient absents</h3>
+                <div>${absents.map(formatName).join(', ')}.</div>
+            </div>
+            ` : ''}
+        </section>
+
+        ${contentHTML}
+
+        <section class="signatures">
+            <div class="signature-block">
+                <div class="signature-line">
+                ${(() => {
+                    const sig = enrichedSignatures.find(s => s.role === 'president' || s.role === 'elected_official' || s.role === 'vice_president');
+                    if (sig) {
+                        if (sig.signatureUrl) {
+                            return `<img src="${sig.signatureUrl}" crossorigin="anonymous" style="max-width: 200px; max-height: 80px; object-fit: contain; position: absolute; bottom: 0; left: 50%; transform: translateX(-50%);" />`;
+                        }
+                        return `<div class="digital-signature">Signé numériquement<br>${new Date(sig.signedAt).toLocaleDateString('fr-CA')}</div>`;
+                    }
+                    return '';
+                })()}
+                </div>
+                <div class="signature-name">${(() => {
+                    const sig = enrichedSignatures.find(s => s.role === 'president' || s.role === 'elected_official' || s.role === 'vice_president');
+                    return sig ? sig.signedByName : presidentName;
+                })()}</div>
+                <div class="signature-role">Président(e) / Élu(e) Responsable</div>
+            </div>
+            <div class="signature-block">
+                <div class="signature-line">
+                ${(() => {
+                    const sig = enrichedSignatures.find(s => s.role === 'coordinator' || s.role === 'admin_bypass');
+                    if (sig) {
+                        if (sig.signatureUrl) {
+                            return `<img src="${sig.signatureUrl}" crossorigin="anonymous" style="max-width: 200px; max-height: 80px; object-fit: contain; position: absolute; bottom: 0; left: 50%; transform: translateX(-50%);" />`;
+                        }
+                        return `<div class="digital-signature">Validé administrativement<br>${new Date(sig.signedAt).toLocaleDateString('fr-CA')}</div>`;
+                    }
+                    return '';
+                })()}
+                </div>
+                <div class="signature-name">${(() => {
+                    const sig = enrichedSignatures.find(s => s.role === 'coordinator' || s.role === 'admin_bypass');
+                    return sig ? sig.signedByName : secretaryName;
+                })()}</div>
+                <div class="signature-role">Secrétaire / Coordonnateur</div>
+            </div>
+        </section>
+
+        <div class="cert">
+            Copie certifiée conforme tirée du livre des délibérations du Comité Consultatif en Environnement de la Ville de Val-d'Or.
+        </div>
+    </div>
+</body>
+</html>`;
+};
+
+/* ─── Parse HTML helpers ─── */
+
 const parseHTMLDocument = (htmlString: string): { styles: string; body: string } => {
-    // Extract all <style> blocks
     const styleRegex = /<style[^>]*>([\s\S]*?)<\/style>/gi;
     let styles = '';
     let match;
@@ -31,11 +647,9 @@ const parseHTMLDocument = (htmlString: string): { styles: string; body: string }
         styles += match[1] + '\n';
     }
 
-    // Extract body content
     const bodyMatch = htmlString.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
     const body = bodyMatch ? bodyMatch[1] : htmlString;
 
-    // Extract any <link> tags (for Google Fonts)
     const linkRegex = /<link[^>]*href="([^"]*fonts[^"]*)"[^>]*>/gi;
     let fontLinks = '';
     while ((match = linkRegex.exec(htmlString)) !== null) {
@@ -45,18 +659,83 @@ const parseHTMLDocument = (htmlString: string): { styles: string; body: string }
     return { styles: fontLinks + styles, body };
 };
 
+/* ─── Enriched signatures (same logic as pdfServiceMinutes) ─── */
+
+const fetchEnrichedSignatures = async (meeting: Meeting): Promise<any[]> => {
+    const enrichedSignatures: any[] = [];
+
+    for (const sig of meeting.approvalSignatures || []) {
+        let signatureUrl = '';
+        if (sig.signedBy) {
+            try {
+                const memberDoc = await getDoc(doc(db, 'members', sig.signedBy));
+                if (memberDoc.exists() && memberDoc.data().signatureUrl) {
+                    signatureUrl = memberDoc.data().signatureUrl;
+                }
+            } catch (e) {
+                console.error('Error fetching member signature:', e);
+            }
+        }
+        enrichedSignatures.push({
+            role: sig.role,
+            signedByName: sig.signedByName,
+            signedAt: sig.signedAt,
+            signatureUrl
+        });
+    }
+
+    try {
+        const tokensRef = collection(db, 'meetings', meeting.id, 'approval_tokens');
+        const tokensSnap = await getDocs(tokensRef);
+        for (const d of tokensSnap.docs) {
+            const t = d.data();
+            if (t.status === 'approved') {
+                let signatureUrl = '';
+                if (t.userId) {
+                    try {
+                        const memberDoc2 = await getDoc(doc(db, 'members', t.userId));
+                        if (memberDoc2.exists() && memberDoc2.data().signatureUrl) {
+                            signatureUrl = memberDoc2.data().signatureUrl;
+                        }
+                    } catch (e) {
+                        console.error('Error fetching token member signature:', e);
+                    }
+                } else if (t.email) {
+                    const q = query(collection(db, 'members'), where('email', '==', t.email));
+                    const memSnap = await getDocs(q);
+                    if (!memSnap.empty && memSnap.docs[0].data().signatureUrl) {
+                        signatureUrl = memSnap.docs[0].data().signatureUrl;
+                    }
+                }
+                enrichedSignatures.push({
+                    role: t.role,
+                    signedByName: t.name || 'Signataire',
+                    signedAt: t.approvedAt || t.updatedAt || new Date().toISOString(),
+                    signatureUrl
+                });
+            }
+        }
+    } catch (e) {
+        console.error('Error fetching approval tokens:', e);
+    }
+
+    return enrichedSignatures;
+};
+
+/* ─── Main export ─── */
+
 export const generateExtractAndUpload = async (
     meeting: Meeting,
     item: AgendaItem,
     uploadedBy: string,
-    agendaOrderNumber: number  // 1-indexed position of the item on the agenda (Ordre du Jour)
+    agendaOrderNumber: number
 ): Promise<MinuteExtract> => {
     try {
-        // 1. Check if an extract already exists for this item to avoid duplicates
+        // 1. Check for existing extract
         const extractsRef = collection(db, 'extracts');
         const q = query(extractsRef, where('agendaItemId', '==', item.id));
         const snapshot = await getDocs(q);
-        
+
         let existingExtract: MinuteExtract | null = null;
         if (!snapshot.empty) {
             existingExtract = { id: snapshot.docs[0].id, ...snapshot.docs[0].data() } as MinuteExtract;
@@ -64,83 +743,76 @@ export const generateExtractAndUpload = async (
 
         const allResNumbers = item.minuteEntries?.filter(e => e.type === 'resolution' && e.number).map(e => e.number).join(', ');
         const extractNumber = `EXT-${agendaOrderNumber}`;
-        const extractTitle = allResNumbers 
-            ? `${agendaOrderNumber}. ${item.title} (Résolutions: ${allResNumbers})` 
+        const extractTitle = allResNumbers
+            ? `${agendaOrderNumber}. ${item.title} (Résolutions: ${allResNumbers})`
             : `${agendaOrderNumber}. ${item.title}`;
         const fileName = `extrait_${extractNumber}.pdf`;
 
-        // 2. Generate the full HTML document (same template as Recommendations)
-        const htmlString = generateResolutionHTML(meeting, item, 'agendaItem', 'official');
+        // 2. Fetch signature data
+        const enrichedSignatures = await fetchEnrichedSignatures(meeting);
 
-        // 3. Parse the HTML to separate CSS styles from body content.
-        //    When we inject a full <!DOCTYPE html> into a div's innerHTML, the browser 
-        //    strips the <head> and <style> tags, leaving unstyled content (= ugly PDF).
-        //    By extracting them separately, we inject styles into the main document
-        //    and only put the body content into the rendering div.
+        // 3. Generate full HTML using PV-minutes layout
+        const htmlString = generateExtractHTML(meeting, item, agendaOrderNumber, enrichedSignatures);
+
+        // 4. Parse CSS & body separately for html2pdf injection
         const { styles, body } = parseHTMLDocument(htmlString);
 
-        // 4. Create a unique scope ID to prevent style collision with the main app
+        // 5. Create scoped style container
         const scopeId = `extract-scope-${Date.now()}`;
-
-        // Inject styles into <head> with scope prefix
         const styleElement = document.createElement('style');
         styleElement.id = scopeId;
-        // Scope all CSS rules under our unique container class
-        const scopedStyles = styles.replace(/(^|\})\s*([^@\}][^{]*)\{/g, (match, prefix, selector) => {
-            // Don't scope @-rules (like @media, @font-face, @import)
-            if (selector.trim().startsWith('@')) return match;
-            // Scope normal selectors
+        const scopedStyles = styles.replace(/(^|})\s*([^@}][^{]*)\{/g, (_match, prefix, selector) => {
+            if (selector.trim().startsWith('@')) return _match;
             return `${prefix} .${scopeId} ${selector.trim()} {`;
         });
         styleElement.textContent = scopedStyles;
         document.head.appendChild(styleElement);
 
-        // 5. Create a container div with the body content
+        // 6. Create rendering container
         const container = document.createElement('div');
         container.className = scopeId;
         container.style.position = 'fixed';
         container.style.left = '0px';
         container.style.top = '0px';
-        container.style.width = '816px';         // 8.5" at 96dpi
+        container.style.width = '816px';
         container.style.backgroundColor = '#ffffff';
         container.style.zIndex = '-9999';
-        container.style.opacity = '0.01';         // Nearly invisible but renderable
+        container.style.opacity = '0.01';
         container.style.pointerEvents = 'none';
         container.innerHTML = body;
         document.body.appendChild(container);
 
-        // 6. Wait for Google Fonts to load
+        // 7. Wait for fonts
         await new Promise(resolve => setTimeout(resolve, 1200));
         if (document.fonts?.ready) {
             await document.fonts.ready;
         }
 
-        // 7. Configure html2pdf with settings matching the Recommendation PDF
+        // 8. html2pdf options
         const opt = {
-            margin:       0,  // HTML template already has 60px/80px padding
+            margin:       0,
             filename:     fileName,
             image:        { type: 'jpeg' as const, quality: 0.98 },
-            html2canvas:  { 
+            html2canvas:  {
                 scale: 2,
-                useCORS: true, 
-                logging: false, 
+                useCORS: true,
+                logging: false,
                 backgroundColor: '#ffffff',
                 width: 816,
                 windowWidth: 816
             },
-            jsPDF:        { 
-                unit: 'in' as const, 
-                format: 'legal' as const, 
-                orientation: 'portrait' as const 
+            jsPDF:        {
+                unit: 'in' as const,
+                format: 'legal' as const,
+                orientation: 'portrait' as const
             }
         };
 
-        // 8. Generate PDF Blob
+        // 9. Generate PDF Blob
         let pdfBlob: Blob;
         try {
             pdfBlob = await html2pdf().set(opt).from(container).outputPdf('blob');
         } finally {
-            // Clean up: remove both the container and the injected styles
             if (document.body.contains(container)) {
                 document.body.removeChild(container);
             }
@@ -150,14 +822,14 @@ export const generateExtractAndUpload = async (
             }
         }
 
-        // 9. Upload to Firebase Storage
+        // 10. Upload to Firebase Storage
         const file = new File([pdfBlob], fileName, { type: 'application/pdf' });
         const storagePath = `extracts/${meeting.id}/${Date.now()}_${fileName}`;
         const storageRef = ref(storage, storagePath);
         await uploadBytes(storageRef, file);
         const url = await getDownloadURL(storageRef);
 
-        // 10. Save metadata to Firestore
+        // 11. Save metadata to Firestore
         const extractData: Omit<MinuteExtract, 'id'> = {
             meetingId: meeting.id,
             agendaItemId: item.id,
@@ -171,8 +843,8 @@ export const generateExtractAndUpload = async (
 
         let finalDocId = '';
         if (existingExtract && existingExtract.id) {
-            const { doc, updateDoc } = await import('firebase/firestore');
-            const docRef = doc(db, 'extracts', existingExtract.id);
+            const { doc: docFn, updateDoc } = await import('firebase/firestore');
+            const docRef = docFn(db, 'extracts', existingExtract.id);
             await updateDoc(docRef, extractData as any);
             finalDocId = existingExtract.id;
         } else {
