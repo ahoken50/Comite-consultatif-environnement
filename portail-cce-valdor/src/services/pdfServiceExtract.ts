@@ -52,8 +52,11 @@ export const generateExtractAndUpload = async (
         // Create an explicit hidden DOM element to prevent html2pdf from leaking string-based containers
         const tempContainer = document.createElement('div');
         tempContainer.style.position = 'absolute';
-        tempContainer.style.left = '-9999px';
-        tempContainer.style.top = '-9999px';
+        tempContainer.style.left = '0';
+        tempContainer.style.top = '0';
+        tempContainer.style.width = '816px'; // Matches PDF layout
+        tempContainer.style.zIndex = '-9999';
+        tempContainer.style.pointerEvents = 'none';
         tempContainer.innerHTML = containerHtml;
         document.body.appendChild(tempContainer);
 
