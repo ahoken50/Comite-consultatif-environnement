@@ -30,6 +30,18 @@ const ExtractsPage: React.FC = () => {
         fetchExtracts();
     }, []);
 
+    const handleDelete = async (id: string) => {
+        if (window.confirm("Êtes-vous sûr de vouloir supprimer cet extrait ?")) {
+            try {
+                await deleteDoc(doc(db, 'extracts', id));
+                setExtracts(prev => prev.filter(e => e.id !== id));
+            } catch (error) {
+                console.error("Erreur lors de la suppression de l'extrait", error);
+                alert("Impossible de supprimer l'extrait.");
+            }
+        }
+    };
+
     return (
         <Box sx={{ p: 3 }}>
             <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
@@ -73,7 +85,7 @@ const ExtractsPage: React.FC = () => {
                                   <TableCell>
                                       {ex.uploadedAt ? format(new Date(ex.uploadedAt), 'd MMM yyyy', { locale: fr }) : 'N/A'}
                                   </TableCell>
-                                  <TableCell align="right">
+                                  <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
                                       <Button 
                                           startIcon={<OpenInNewIcon />} 
                                           component="a" 
@@ -81,9 +93,15 @@ const ExtractsPage: React.FC = () => {
                                           target="_blank" 
                                           size="small"
                                           variant="outlined"
+                                          sx={{ mr: 1 }}
                                       >
                                           Consulter
                                       </Button>
+                                      <AccessControl allowedRoles={['coordinator']}>
+                                          <IconButton size="small" color="error" onClick={() => ex.id && handleDelete(ex.id)}>
+                                              <DeleteIcon />
+                                          </IconButton>
+                                      </AccessControl>
                                   </TableCell>
                               </TableRow>
                           ))}
