@@ -193,5 +193,10 @@ service cloud.firestore {
       allow create: if isAuthenticated();
       allow update, delete: if isAuthenticated() && (resource.data.userId == request.auth.uid || isCoordinator());
     }
+    // PV Extracts
+    match /extracts/{extractId} {
+      allow read: if isAuthenticated();
+      allow write: if isCoordinator();
+    }
   }
 }

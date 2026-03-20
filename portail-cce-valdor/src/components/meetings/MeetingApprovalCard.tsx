@@ -161,12 +161,10 @@ const MeetingApprovalCard: React.FC<MeetingApprovalCardProps> = ({ meeting, curr
         try {
             let count = 0;
             for (const item of meeting.agendaItems) {
-                // Generate extract specifically if it has a resolution associated or a minute number assigned
-                if (item.minuteNumber || item.minuteEntries?.some(e => e.type === 'resolution')) {
-                   const userName = currentUser?.displayName || 'Système';
-                   await generateExtractAndUpload(meeting, item, userName);
-                   count++;
-                }
+                // Generate extract for ALL items on the agenda as requested
+                const userName = currentUser?.displayName || 'Système';
+                await generateExtractAndUpload(meeting, item, userName);
+                count++;
             }
             alert(`Succès! ${count} extraits générés et enregistrés dans le registre.`);
         } catch (error) {
