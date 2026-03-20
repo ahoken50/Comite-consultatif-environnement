@@ -28,6 +28,7 @@ const ResolutionsPage = lazy(() => import('./pages/Resolutions/ResolutionsPage')
 const SettingsPage = lazy(() => import('./pages/Settings/SettingsPage'));
 const MinutesPage = lazy(() => import('./pages/Minutes/MinutesPage'));
 const CouncilTrackingPage = lazy(() => import('./pages/Governance/CouncilTrackingPage'));
+const ExtractsPage = lazy(() => import('./pages/Governance/ExtractsPage'));
 const AnnualReportPage = lazy(() => import('./pages/Reports/AnnualReportPage'));
 const RSVPPage = lazy(() => import('./pages/RSVP/RSVPPage'));
 const ApprovalPage = lazy(() => import('./pages/Approval/ApprovalPage'));
@@ -246,6 +247,7 @@ function App() {
                 <Route path="regulations" element={<RegulationManagerPage />} />
                 <Route path="jurisprudence" element={<JurisprudenceSearch />} />
                 <Route path="recommendations" element={<CouncilTrackingPage />} />
+                <Route path="extracts" element={<ExtractsPage />} />
                 {/* Reports and Settings moved to Protected Route above */}
                 <Route path="minutes" element={<MinutesPage />} />
               </Route>

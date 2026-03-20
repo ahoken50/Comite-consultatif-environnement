@@ -24,6 +24,7 @@ import { AttachmentOutlined, CloudUpload, Print, Gavel, Campaign } from '@mui/ic
 import { useDispatch } from 'react-redux';
 import { updateRecommendation } from '../../features/governance/governanceSlice';
 import { documentsAPI } from '../../features/documents/documentsAPI';
+import { AccessControl } from '../../components/auth/AccessControl';
 import type { AppDispatch } from '../../store/store';
 import type { CouncilRecommendation } from '../../types/recommendation.types';
 
@@ -100,11 +101,21 @@ const RecommendationDetailsDialog: React.FC<RecommendationDetailsDialogProps> = 
             try {
                 const file = event.target.files[0];
                 const doc = await documentsAPI.upload(file, recommendation?.id, 'project', 'Admin');
-                setAttachments(prev => [...prev, {
+                const newAtt = {
                     url: doc.url,
                     name: doc.name,
                     uploadedAt: new Date().toISOString()
-                }]);
+                };
+                
+                const updatedAttachments = [...attachments, newAtt];
+                setAttachments(updatedAttachments);
+                
+                if (!editMode && recommendation) {
+                    dispatch(updateRecommendation({
+                        id: recommendation.id,
+                        data: { attachments: updatedAttachments }
+                    }));
+                }
             } catch (error) {
                 console.error("Upload failed", error);
             } finally {
@@ -114,7 +125,15 @@ const RecommendationDetailsDialog: React.FC<RecommendationDetailsDialogProps> = 
     };
 
     const removeRecAttachment = (index: number) => {
-        setAttachments(prev => prev.filter((_, i) => i !== index));
+        const updatedAttachments = attachments.filter((_, i) => i !== index);
+        setAttachments(updatedAttachments);
+        
+        if (!editMode && recommendation) {
+            dispatch(updateRecommendation({
+                id: recommendation.id,
+                data: { attachments: updatedAttachments }
+            }));
+        }
     };
 
     if (!recommendation) return null;
@@ -245,26 +264,76 @@ const RecommendationDetailsDialog: React.FC<RecommendationDetailsDialogProps> = 
                         </Box>
                     )}
 
-                    {attachments && attachments.length > 0 && !editMode && (
-                        <Box sx={{ mb: 2 }}>
-                            <Typography variant="subtitle2" gutterBottom>Pièces Jointes / Annexes:</Typography>
-                            <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                    <Box sx={{ mb: 2 }}>
+                        <Typography variant="subtitle2" gutterBottom>Pièces Jointes / Annexes:</Typography>
+                        {attachments.length > 0 && (
+                            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, mb: 2 }}>
                                 {attachments.map((att, i) => (
-                                    <Chip 
-                                        key={i} 
-                                        label={att.name} 
-                                        component="a" 
-                                        href={att.url} 
-                                        target="_blank" 
-                                        clickable 
-                                        color="primary" 
-                                        variant="outlined" 
-                                        icon={<AttachmentOutlined />}
-                                    />
+                                    <Box key={i} sx={{ display: 'flex', alignItems: 'center', gap: 2, p: 1, border: '1px solid #eee', borderRadius: 1 }}>
+                                        <Chip 
+                                            icon={<AttachmentOutlined />}
+                                            label={att.name} 
+                                            component="a" 
+                                            href={att.url} 
+                                            target="_blank" 
+                                            clickable 
+                                            color="primary" 
+                                            variant="outlined"
+                                            onDelete={() => removeRecAttachment(i)}
+                                        />
+                                        {recommendation.resolutions && recommendation.resolutions.length > 0 && (
+                                            <FormControl size="small" sx={{ minWidth: 200 }}>
+                                                <Select
+                                                    displayEmpty
+                                                    value={att.resolutionNumber || ''}
+                                                    onChange={(e) => {
+                                                        const newAtts = [...attachments];
+                                                        newAtts[i] = { ...newAtts[i], resolutionNumber: e.target.value as string };
+                                                        setAttachments(newAtts);
+                                                        
+                                                        // Auto-save resolution link if not in edit mode
+                                                        if (!editMode && recommendation) {
+                                                            dispatch(updateRecommendation({
+                                                                id: recommendation.id,
+                                                                data: { attachments: newAtts }
+                                                            }));
+                                                        }
+                                                    }}
+                                                >
+                                                    <MenuItem value="">
+                                                        <em>Globale (non lié)</em>
+                                                    </MenuItem>
+                                                    {recommendation.resolutions.map((r, rIdx) => (
+                                                        <MenuItem key={rIdx} value={r.number || `temp-${rIdx}`}>
+                                                            {r.number ? `RÉSOLUTION ${r.number}` : `Résolution #${rIdx + 1}`}
+                                                        </MenuItem>
+                                                    ))}
+                                                </Select>
+                                            </FormControl>
+                                        )}
+                                    </Box>
                                 ))}
                             </Box>
-                        </Box>
-                    )}
+                        )}
+                        <AccessControl allowedRoles={['coordinator']}>
+                            <Button
+                                variant="outlined"
+                                component="label"
+                                size="small"
+                                startIcon={isUploadingAttachment ? <CircularProgress size={20} /> : <CloudUpload />}
+                                disabled={isUploadingAttachment}
+                                sx={{ mt: 1 }}
+                            >
+                                {isUploadingAttachment ? 'Téléversement...' : 'Joindre un fichier (Annexe)'}
+                                <input
+                                    type="file"
+                                    hidden
+                                    accept="image/*,application/pdf"
+                                    onChange={handleRecAttachmentUpload}
+                                />
+                            </Button>
+                        </AccessControl>
+                    </Box>
                 </Box>
 
                 <Divider sx={{ my: 2 }} />
@@ -306,62 +375,6 @@ const RecommendationDetailsDialog: React.FC<RecommendationDetailsDialogProps> = 
                         </Grid>
                     </Box>
                 ) : (
-                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 2 }}>
-                        <Box>
-                            <Typography variant="subtitle2" gutterBottom>Pièces Jointes / Annexes liés à la recommandation</Typography>
-                            {attachments.length > 0 && (
-                                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, mb: 2 }}>
-                                    {attachments.map((att, i) => (
-                                        <Box key={i} sx={{ display: 'flex', alignItems: 'center', gap: 2, p: 1, border: '1px solid #eee', borderRadius: 1 }}>
-                                            <Chip
-                                                icon={<AttachmentOutlined />}
-                                                label={att.name}
-                                                onDelete={() => removeRecAttachment(i)}
-                                                variant="outlined"
-                                            />
-                                            {recommendation.resolutions && recommendation.resolutions.length > 0 && (
-                                                <FormControl size="small" sx={{ minWidth: 200 }}>
-                                                    <Select
-                                                        displayEmpty
-                                                        value={att.resolutionNumber || ''}
-                                                        onChange={(e) => {
-                                                            const newAtts = [...attachments];
-                                                            newAtts[i] = { ...newAtts[i], resolutionNumber: e.target.value as string };
-                                                            setAttachments(newAtts);
-                                                        }}
-                                                    >
-                                                        <MenuItem value="">
-                                                            <em>Globale (non lié)</em>
-                                                        </MenuItem>
-                                                        {recommendation.resolutions.map((r, rIdx) => (
-                                                            <MenuItem key={rIdx} value={r.number || `temp-${rIdx}`}>
-                                                                {r.number ? `RÉSOLUTION ${r.number}` : `Résolution #${rIdx + 1}`}
-                                                            </MenuItem>
-                                                        ))}
-                                                    </Select>
-                                                </FormControl>
-                                            )}
-                                        </Box>
-                                    ))}
-                                </Box>
-                            )}
-                            <Button
-                                variant="outlined"
-                                component="label"
-                                size="small"
-                                startIcon={isUploadingAttachment ? <CircularProgress size={20} /> : <CloudUpload />}
-                                disabled={isUploadingAttachment}
-                            >
-                                {isUploadingAttachment ? 'Téléversement...' : 'Joindre un fichier (Annexe)'}
-                                <input
-                                    type="file"
-                                    hidden
-                                    accept="image/*,application/pdf"
-                                    onChange={handleRecAttachmentUpload}
-                                />
-                            </Button>
-                        </Box>
-                        
                         <Divider sx={{ my: 1 }} />
                         <Typography variant="subtitle1" fontWeight="bold">Détails du retour du conseil</Typography>
                         

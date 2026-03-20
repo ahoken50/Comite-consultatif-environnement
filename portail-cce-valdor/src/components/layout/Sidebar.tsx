@@ -18,6 +18,7 @@ const menuItems = [
     { text: 'Règlements', icon: <Gavel />, path: '/regulations' },
     { text: 'Documents', icon: <Description />, path: '/documents' },
     { text: 'Procès-verbaux', icon: <BarChart />, path: '/minutes' },
+    { text: 'Extraits de PV', icon: <Description />, path: '/extracts' },
     { text: 'Recommandations', icon: <Gavel />, path: '/recommendations' },
     { text: 'Rapports', icon: <Description />, path: '/reports' },
     { text: 'Membres', icon: <People />, path: '/members' },

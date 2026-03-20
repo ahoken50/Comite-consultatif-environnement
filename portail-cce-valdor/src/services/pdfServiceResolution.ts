@@ -101,12 +101,12 @@ const formatResolutionHTML = (text: string): string => {
  * source: Can be an AgendaItem (from Minutes) or a CouncilRecommendation object
  * mode: 'official' (legal extract) or 'campaign' (presentation with arguments)
  */
-export const generateResolutionPDF = async (
+export const generateResolutionHTML = (
     meeting: Meeting,
     itemOrRec: AgendaItem | CouncilRecommendation,
     type: 'agendaItem' | 'recommendation',
     mode: 'official' | 'campaign' = 'official'
-): Promise<PDFGenerationResult> => {
+): string => {
 
     // Extract Data
     const meetingDate = new Date(meeting.date);
@@ -468,6 +468,21 @@ export const generateResolutionPDF = async (
 </body>
 </html>`;
 
+    return html;
+};
+
+/**
+ * Legacy PDF Printing logic using the browser popup window
+ */
+export const generateResolutionPDF = async (
+    meeting: Meeting,
+    itemOrRec: AgendaItem | CouncilRecommendation,
+    type: 'agendaItem' | 'recommendation',
+    mode: 'official' | 'campaign' = 'official'
+): Promise<PDFGenerationResult> => {
+    
+    const html = generateResolutionHTML(meeting, itemOrRec, type, mode);
+    
     // Open print window
     const printWindow = window.open('', '_blank', 'width=816,height=1056');
     if (!printWindow) {

@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import {
     Box, Paper, Typography, Button, Stepper, Step, StepLabel, Chip,
-    Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions, FormControlLabel, Switch, Alert
+    Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions, FormControlLabel, Switch, Alert, CircularProgress
 } from '@mui/material';
-import { Gavel, VerifiedUser, HowToReg, AdminPanelSettings, Warning } from '@mui/icons-material';
+import { Gavel, VerifiedUser, HowToReg, AdminPanelSettings, Warning, PictureAsPdf } from '@mui/icons-material';
 import type { Member, MemberRole } from '../../types/member.types';
 import type { Meeting } from '../../types/meeting.types';
 
@@ -21,6 +21,7 @@ import { useDispatch } from 'react-redux';
 import type { AppDispatch } from '../../store/store';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { db } from '../../services/firebase';
+import { generateExtractAndUpload } from '../../services/pdfServiceExtract';
 
 // ... (existing helper functions)
 
@@ -51,6 +52,7 @@ const MeetingApprovalCard: React.FC<MeetingApprovalCardProps> = ({ meeting, curr
     // Warning dialog state
     const [warningOpen, setWarningOpen] = useState(false);
     const [pendingAction, setPendingAction] = useState<'president' | 'elected_official' | 'coordinator' | 'admin_bypass' | null>(null);
+    const [isGeneratingExtraits, setIsGeneratingExtraits] = useState(false);
 
     // Fetch approved tokens from subcollection
     const [approvedTokens, setApprovedTokens] = useState<any[]>([]);
@@ -150,6 +152,28 @@ const MeetingApprovalCard: React.FC<MeetingApprovalCardProps> = ({ meeting, curr
                 id: meeting.id,
                 updates: { isApprovalAvailable: !isApprovalAvailable }
             }));
+        }
+    };
+
+    const handleGenerateExtraits = async () => {
+        if (!meeting.agendaItems || meeting.agendaItems.length === 0) return;
+        setIsGeneratingExtraits(true);
+        try {
+            let count = 0;
+            for (const item of meeting.agendaItems) {
+                // Generate extract specifically if it has a resolution associated or a minute number assigned
+                if (item.minuteNumber || item.minuteEntries?.some(e => e.type === 'resolution')) {
+                   const userName = currentUser?.displayName || 'Système';
+                   await generateExtractAndUpload(meeting, item, userName);
+                   count++;
+                }
+            }
+            alert(`Succès! ${count} extraits générés et enregistrés dans le registre.`);
+        } catch (error) {
+            console.error('Extraction error:', error);
+            alert("Erreur lors de la génération PDF.");
+        } finally {
+            setIsGeneratingExtraits(false);
         }
     };
 
@@ -303,6 +327,29 @@ const MeetingApprovalCard: React.FC<MeetingApprovalCardProps> = ({ meeting, curr
                             Signer (Élu)
                         </Button>
                     )}
+                </Box>
+            )}
+
+            {/* PV Extraction Panel (Post-Approval) */}
+            {activeStep === 3 && isCoordinator && (
+                <Box sx={{ mt: 3, display: 'flex', justifyContent: 'center', p: 2, bgcolor: '#f0f4ff', borderRadius: 2, border: '1px solid #d0deff' }}>
+                    <Box sx={{ textAlign: 'center' }}>
+                        <Typography variant="subtitle1" fontWeight="bold" gutterBottom color="primary">
+                            Documentation
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                            Générer les extraits individuels pour les résolutions de ce PV.
+                        </Typography>
+                        <Button
+                            variant="contained"
+                            color="primary"
+                            startIcon={isGeneratingExtraits ? <CircularProgress size={20} color="inherit" /> : <PictureAsPdf />}
+                            onClick={handleGenerateExtraits}
+                            disabled={isGeneratingExtraits}
+                        >
+                            {isGeneratingExtraits ? 'Génération en cours...' : 'Générer les Extraits de PV'}
+                        </Button>
+                    </Box>
                 </Box>
             )}
 
