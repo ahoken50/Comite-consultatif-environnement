@@ -186,11 +186,18 @@ const RecommendationDetailsDialog: React.FC<RecommendationDetailsDialogProps> = 
             // Filter the resolutions based on selection
             const filteredResolutions = recommendation.resolutions ? recommendation.resolutions.filter((r, i) => pdfOptions.selectedResolutions.includes(i) && r.text.trim().length > 0) : [];
             const combined = filteredResolutions.map(r => `[${r.number}] ${r.title}\n${r.text}`).join('\n\n---\n\n');
+            const resolutionNumbersArray = filteredResolutions.map(r => r.number).filter(Boolean);
+            const mergedNumbers = resolutionNumbersArray.length > 0 ? resolutionNumbersArray.join(', ') : 'PROJET';
+            
+            const specialMention = "EXTRAIT SPÉCIFIQUE RÉSERVÉ AU CONSEIL";
+            
             const dataToPrint = { 
                 ...recommendation, 
+                projectName: `RÉSOLUTION(S) ${mergedNumbers}`,
+                sourceResolutionNumber: mergedNumbers, // Sets the document <title> for 'Save as PDF'
                 resolutions: filteredResolutions, 
                 description: combined,
-                notes: pdfOptions.includeComments ? recommendation.notes : ''
+                notes: `[${specialMention}]\n${pdfOptions.includeComments && recommendation.notes ? recommendation.notes : ''}`.trim()
             };
 
             const { generateResolutionPDF } = await import('../../services/pdfServiceResolution');

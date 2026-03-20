@@ -1,13 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import {
-    Box, Typography, Paper, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Chip, Button, CircularProgress
+    Box, Typography, Paper, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Chip, Button, CircularProgress, IconButton
 } from '@mui/material';
-import { OpenInNew as OpenInNewIcon } from '@mui/icons-material';
-import { collection, query, orderBy, getDocs } from 'firebase/firestore';
+import { OpenInNew as OpenInNewIcon, Delete as DeleteIcon } from '@mui/icons-material';
+import { collection, query, orderBy, getDocs, doc, deleteDoc } from 'firebase/firestore';
 import { db } from '../../services/firebase';
 import type { MinuteExtract } from '../../services/pdfServiceExtract';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
+import { AccessControl } from '../../components/auth/AccessControl';
 
 const ExtractsPage: React.FC = () => {
     const [extracts, setExtracts] = useState<MinuteExtract[]>([]);

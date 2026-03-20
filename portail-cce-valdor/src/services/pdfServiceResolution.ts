@@ -118,8 +118,6 @@ export const generateResolutionHTML = (
     let resolutionNumber = '';
     let title = '';
     let content = '';
-    let proposer = '';
-    let seconder = '';
     let notes = '';
     let attachments: { url: string, name: string, resolutionNumber?: string }[] | undefined = undefined;
 
@@ -130,8 +128,6 @@ export const generateResolutionHTML = (
         // Prefer explicit resolution entry, fallback to decision, fallback to description
         const resolutionEntry = item.minuteEntries?.find(e => e.type === 'resolution');
         content = resolutionEntry ? resolutionEntry.content : (item.decision || item.description || '');
-        proposer = item.proposer || resolutionEntry?.proposer || '';
-        seconder = item.seconder || resolutionEntry?.seconder || '';
 
     } else {
         const rec = itemOrRec as CouncilRecommendation;
@@ -208,32 +204,69 @@ export const generateResolutionHTML = (
     </div>
         `).join('\n');
     } else {
-        resolutionBlocksHTML = `
-    <div class="resolution-box">
-        <div class="res-header">
-            <span>RÉSOLUTION ${resolutionNumber}</span>
-        </div>
+        const item = itemOrRec as AgendaItem;
+        const entries = item.minuteEntries || [];
         
-        <div class="content">
-            ${formatResolutionHTML(content)}
+        if (entries.length > 0) {
+            resolutionBlocksHTML = entries.map(e => {
+                const isRes = e.type === 'resolution';
+                const headerText = isRes ? `RÉSOLUTION ${e.number || ''}` 
+                                 : e.type === 'comment' ? 'COMMENTAIRE' 
+                                 : 'NOTE';
+                
+                return `
+    <div class="resolution-box" style="margin-bottom: 25px;">
+        <div class="res-header" style="color: #666; font-size: 13px; margin-bottom: 5px;">
+            <span>--- ${headerText} ---</span>
         </div>
-
-        ${(proposer || seconder) ? `
+        <div class="content">
+            ${formatResolutionHTML(e.content)}
+        </div>
+        ${(e.proposer || e.seconder) ? `
         <div class="movers">
-            ${proposer ? `Proposé par : ${proposer}` : ''}<br>
-            ${seconder ? `Appuyé par : ${seconder}` : ''}
+            ${e.proposer ? `Proposé par : ${e.proposer}` : ''}<br>
+            ${e.seconder ? `Appuyé par : ${e.seconder}` : ''}
         </div>
         ` : ''}
-    </div>
-        `;
+    </div>`;
+            }).join('\n');
+            
+            // Si la description de base n'est pas déjà dans les entrées, on l'ajoute au début
+            if (item.description && !entries.some(e => e.content.includes(item.description.substring(0, 30)))) {
+               resolutionBlocksHTML = `
+               <div class="content" style="margin-bottom: 20px;">
+                   ${formatResolutionHTML(item.description)}
+               </div>
+               ` + resolutionBlocksHTML;
+            }
+        } else {
+            // Repli de sécurité pour un point vide ou sans entrée
+            resolutionBlocksHTML = `
+    <div class="resolution-box">
+        <div class="content">
+            ${formatResolutionHTML(item.description || '')}
+        </div>
+        ${item.decision ? `
+        <div class="res-header" style="margin-top: 15px; color: #666; font-size: 13px;"><span>--- DÉCISION ---</span></div>
+        <div class="content">${formatResolutionHTML(item.decision)}</div>
+        ` : ''}
+        ${(item.proposer || item.seconder) ? `
+        <div class="movers">
+            ${item.proposer ? `Proposé par : ${item.proposer}` : ''}<br>
+            ${item.seconder ? `Appuyé par : ${item.seconder}` : ''}
+        </div>
+        ` : ''}
+    </div>`;
+        }
     }
 
     // HTML Template
+    const docTitle = type === 'recommendation' ? `Extrait_Specifique_Conseil_${resolutionNumber.replace(/[, ]+/g, '_')}` : `Extrait_CCE_${resolutionNumber.replace(/[, ]+/g, '_')}`;
     const html = `<!DOCTYPE html>
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <title>Extrait de Résolution - CCE Val-d'Or</title>
+    <title>${docTitle}</title>
     <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;0,700;1,400&family=Montserrat:wght@300;400;500;600&display=swap" rel="stylesheet">
     <style>
         :root {

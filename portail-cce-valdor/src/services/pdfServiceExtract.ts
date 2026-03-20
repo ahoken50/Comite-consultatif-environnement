@@ -35,30 +35,47 @@ export const generateExtractAndUpload = async (
             // But let's just create a new one and delete the old record to keep it clean.
         }
 
-        const extractNumber = item.minuteNumber || item.minuteEntries?.find(e => e.type === 'resolution')?.number || `ITEM-${item.id.substring(0, 4)}`;
+        const allResNumbers = item.minuteEntries?.filter(e => e.type === 'resolution' && e.number).map(e => e.number).join(', ');
+        const extractNumber = allResNumbers || item.minuteNumber || `ITEM-${item.id.substring(0, 4)}`;
+        const extractTitle = allResNumbers ? `${item.title} (Résolutions: ${allResNumbers})` : item.title;
 
         // 2. Generate HTML
         const htmlString = generateResolutionHTML(meeting, item, 'agendaItem', 'official');
         
-        // Ensure the HTML string is properly wrapped for html2pdf
+        // Ensure the HTML string is properly wrapped
         const containerHtml = `
             <div style="background: white; padding: 20px;">
                 ${htmlString}
             </div>
         `;
 
-        // 3. Configure html2pdf
+        // Create an explicit hidden DOM element to prevent html2pdf from leaking string-based containers
+        const tempContainer = document.createElement('div');
+        tempContainer.style.position = 'absolute';
+        tempContainer.style.left = '-9999px';
+        tempContainer.style.top = '-9999px';
+        tempContainer.innerHTML = containerHtml;
+        document.body.appendChild(tempContainer);
+
+        // 3. Configure html2pdf (Optimized for speed)
         const opt = {
             margin:       [15, 15, 15, 15] as [number, number, number, number],
             filename:     `extrait_${extractNumber.replace(/\//g, '-')}.pdf`,
-            image:        { type: 'jpeg' as const, quality: 0.98 },
-            html2canvas:  { scale: 2, useCORS: true, letterRendering: true },
+            image:        { type: 'jpeg' as const, quality: 0.95 },
+            html2canvas:  { scale: 1.5, useCORS: true, logging: false },
             jsPDF:        { unit: 'mm', format: 'letter', orientation: 'portrait' as const }
         };
 
-        // 4. Generate PDF Blob
-        // html2pdf can output various formats. 'blob' is ideal for uploading.
-        const pdfBlob = await html2pdf().set(opt).from(containerHtml).outputPdf('blob');
+        let pdfBlob: Blob;
+        try {
+            // 4. Generate PDF Blob
+            pdfBlob = await html2pdf().set(opt).from(tempContainer).outputPdf('blob');
+        } finally {
+            // ALWAYS clean up the DOM element to prevent exponential GC/DOM slowdowns
+            if (document.body.contains(tempContainer)) {
+                document.body.removeChild(tempContainer);
+            }
+        }
         
         // Convert Blob to File
         const file = new File([pdfBlob], opt.filename, { type: 'application/pdf' });
@@ -74,7 +91,7 @@ export const generateExtractAndUpload = async (
             meetingId: meeting.id,
             agendaItemId: item.id,
             extractNumber,
-            title: item.title,
+            title: extractTitle,
             meetingDate: meeting.date,
             url,
             uploadedAt: new Date().toISOString(),
