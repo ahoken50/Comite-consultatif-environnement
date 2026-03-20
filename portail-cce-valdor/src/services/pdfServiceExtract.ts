@@ -48,12 +48,13 @@ export const generateExtractAndUpload = async (
         iframe.style.position = 'fixed';
         iframe.style.top = '0px';
         iframe.style.left = '0px';
-        iframe.style.width = '816px'; // Matches standard Letter width
-        iframe.style.height = '1056px'; // Prevent cropping
+        iframe.style.width = '816px'; // 8.5 inches at 96dpi
+        iframe.style.height = '1344px'; // 14 inches at 96dpi (Legal format)
         iframe.style.opacity = '0.01'; // Practically invisible but html2canvas will still render it
         iframe.style.pointerEvents = 'none';
         iframe.style.zIndex = '-9999';
         iframe.style.border = 'none';
+        iframe.style.backgroundColor = '#ffffff';
         document.body.appendChild(iframe);
 
         const doc = iframe.contentWindow?.document;
@@ -70,15 +71,20 @@ export const generateExtractAndUpload = async (
         const opt = {
             margin:       [15, 15, 15, 15] as [number, number, number, number],
             filename:     `extrait_${extractNumber.replace(/\//g, '-')}.pdf`,
-            image:        { type: 'jpeg' as const, quality: 0.95 },
-            html2canvas:  { scale: 1.5, useCORS: true, logging: false },
-            jsPDF:        { unit: 'mm', format: 'letter', orientation: 'portrait' as const }
+            image:        { type: 'jpeg' as const, quality: 0.98 },
+            html2canvas:  { scale: 2, useCORS: true, logging: false, backgroundColor: '#ffffff' },
+            jsPDF:        { unit: 'mm', format: 'legal', orientation: 'portrait' as const }
         };
 
         let pdfBlob: Blob;
         try {
-            // Wait slightly for fonts and images to load inside the iframe
-            await new Promise(resolve => setTimeout(resolve, 500));
+            // Wait for fonts and images to load inside the iframe
+            await new Promise(resolve => setTimeout(resolve, 800));
+            // @ts-ignore
+            if (doc.fonts && doc.fonts.ready) {
+                // @ts-ignore
+                await doc.fonts.ready;
+            }
             // 4. Generate PDF Blob
             pdfBlob = await html2pdf().set(opt).from(doc.body).outputPdf('blob');
         } finally {

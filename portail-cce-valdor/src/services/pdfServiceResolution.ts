@@ -207,57 +207,51 @@ export const generateResolutionHTML = (
         const item = itemOrRec as AgendaItem;
         const entries = item.minuteEntries || [];
         
+        let blocks = '';
+        
+        // Always print the item description if present
+        if (item.description) {
+            blocks += `<div class="content" style="margin-bottom: 20px;">
+                ${formatResolutionHTML(item.description)}
+            </div>`;
+        }
+
         if (entries.length > 0) {
-            resolutionBlocksHTML = entries.map(e => {
-                const isRes = e.type === 'resolution';
-                const headerText = isRes ? `RÉSOLUTION ${e.number || ''}` 
-                                 : e.type === 'comment' ? 'COMMENTAIRE' 
-                                 : 'NOTE';
-                
-                return `
-    <div class="resolution-box" style="margin-bottom: 25px;">
-        <div class="res-header" style="color: #666; font-size: 13px; margin-bottom: 5px;">
-            <span>--- ${headerText} ---</span>
-        </div>
-        <div class="content">
-            ${formatResolutionHTML(e.content)}
-        </div>
-        ${(e.proposer || e.seconder) ? `
-        <div class="movers">
-            ${e.proposer ? `Proposé par : ${e.proposer}` : ''}<br>
-            ${e.seconder ? `Appuyé par : ${e.seconder}` : ''}
-        </div>
-        ` : ''}
-    </div>`;
-            }).join('\n');
-            
-            // Si la description de base n'est pas déjà dans les entrées, on l'ajoute au début
-            if (item.description && !entries.some(e => e.content.includes(item.description.substring(0, 30)))) {
-               resolutionBlocksHTML = `
-               <div class="content" style="margin-bottom: 20px;">
-                   ${formatResolutionHTML(item.description)}
-               </div>
-               ` + resolutionBlocksHTML;
+            // Sort entries: comments first, then notes, then resolutions
+            const sortedEntries = [...entries].sort((a, b) => {
+                const order: Record<string, number> = { comment: 0, note: 1, resolution: 2 };
+                return (order[a.type as string] ?? 1) - (order[b.type as string] ?? 1);
+            });
+
+            for (const e of sortedEntries) {
+                if (e.type === 'comment' || e.type === 'note') {
+                    blocks += `<div class="content" style="margin-bottom: 15px;">
+                        ${formatResolutionHTML(e.content)}
+                    </div>`;
+                } else if (e.type === 'resolution') {
+                    blocks += `
+                    <div class="resolution-box" style="margin-bottom: 25px;">
+                        <div class="res-header">
+                            <span>RÉSOLUTION ${e.number || ''}</span>
+                        </div>
+                        <div class="content">
+                            ${formatResolutionHTML(e.content)}
+                        </div>
+                    </div>`;
+                }
             }
         } else {
-            // Repli de sécurité pour un point vide ou sans entrée
-            resolutionBlocksHTML = `
-    <div class="resolution-box">
-        <div class="content">
-            ${formatResolutionHTML(item.description || '')}
-        </div>
-        ${item.decision ? `
-        <div class="res-header" style="margin-top: 15px; color: #666; font-size: 13px;"><span>--- DÉCISION ---</span></div>
-        <div class="content">${formatResolutionHTML(item.decision)}</div>
-        ` : ''}
-        ${(item.proposer || item.seconder) ? `
-        <div class="movers">
-            ${item.proposer ? `Proposé par : ${item.proposer}` : ''}<br>
-            ${item.seconder ? `Appuyé par : ${item.seconder}` : ''}
-        </div>
-        ` : ''}
-    </div>`;
+            // Legacy format fallback for items without explicit entries
+            if (item.decision) {
+                blocks += `
+                <div class="resolution-box" style="margin-bottom: 25px;">
+                    <div class="res-header"><span>DÉCISION</span></div>
+                    <div class="content">${formatResolutionHTML(item.decision)}</div>
+                </div>`;
+            }
         }
+        
+        resolutionBlocksHTML = blocks;
     }
 
     // HTML Template
