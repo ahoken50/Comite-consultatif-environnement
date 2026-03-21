@@ -637,27 +637,6 @@ const generateExtractHTML = (
 </html>`;
 };
 
-/* ─── Parse HTML helpers ─── */
-
-const parseHTMLDocument = (htmlString: string): { styles: string; body: string } => {
-    const styleRegex = /<style[^>]*>([\s\S]*?)<\/style>/gi;
-    let styles = '';
-    let match;
-    while ((match = styleRegex.exec(htmlString)) !== null) {
-        styles += match[1] + '\n';
-    }
-
-    const bodyMatch = htmlString.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
-    const body = bodyMatch ? bodyMatch[1] : htmlString;
-
-    const linkRegex = /<link[^>]*href="([^"]*fonts[^"]*)"[^>]*>/gi;
-    let fontLinks = '';
-    while ((match = linkRegex.exec(htmlString)) !== null) {
-        fontLinks += `@import url('${match[1]}');\n`;
-    }
-
-    return { styles: fontLinks + styles, body };
-};
 
 /* ─── Enriched signatures (same logic as pdfServiceMinutes) ─── */
 
@@ -728,9 +707,12 @@ export const generateExtractAndUpload = async (
     meeting: Meeting,
     item: AgendaItem,
     uploadedBy: string,
-    agendaOrderNumber: number
+    agendaOrderNumber: number,
+    prefetchedSignatures?: any[]  // Pass from caller to avoid refetching per item
 ): Promise<MinuteExtract> => {
     try {
+        console.log(`📄 [Extract ${agendaOrderNumber}] Starting: "${item.title}"`);
+
         // 1. Check for existing extract
         const extractsRef = collection(db, 'extracts');
         const q = query(extractsRef, where('agendaItemId', '==', item.id));
@@ -739,6 +721,7 @@ export const generateExtractAndUpload = async (
         let existingExtract: MinuteExtract | null = null;
         if (!snapshot.empty) {
             existingExtract = { id: snapshot.docs[0].id, ...snapshot.docs[0].data() } as MinuteExtract;
+            console.log(`📄 [Extract ${agendaOrderNumber}] Existing extract found, will update.`);
         }
 
         const allResNumbers = item.minuteEntries?.filter(e => e.type === 'resolution' && e.number).map(e => e.number).join(', ');
@@ -748,47 +731,41 @@ export const generateExtractAndUpload = async (
             : `${agendaOrderNumber}. ${item.title}`;
         const fileName = `extrait_${extractNumber}.pdf`;
 
-        // 2. Fetch signature data
-        const enrichedSignatures = await fetchEnrichedSignatures(meeting);
+        // 2. Get signatures (use prefetched if available)
+        const enrichedSignatures = prefetchedSignatures || await fetchEnrichedSignatures(meeting);
+        console.log(`📄 [Extract ${agendaOrderNumber}] Signatures: ${enrichedSignatures.length}`);
 
         // 3. Generate full HTML using PV-minutes layout
         const htmlString = generateExtractHTML(meeting, item, agendaOrderNumber, enrichedSignatures);
+        console.log(`📄 [Extract ${agendaOrderNumber}] HTML generated (${htmlString.length} chars)`);
 
-        // 4. Parse CSS & body separately for html2pdf injection
-        const { styles, body } = parseHTMLDocument(htmlString);
+        // 4. Create a hidden iframe for isolated rendering
+        //    Using an iframe avoids CSS scoping issues — :root, body, etc. work naturally
+        const iframe = document.createElement('iframe');
+        iframe.style.cssText = 'position:fixed;left:-9999px;top:0;width:816px;height:1200px;border:none;opacity:0.01;pointer-events:none;';
+        document.body.appendChild(iframe);
 
-        // 5. Create scoped style container
-        const scopeId = `extract-scope-${Date.now()}`;
-        const styleElement = document.createElement('style');
-        styleElement.id = scopeId;
-        const scopedStyles = styles.replace(/(^|})\s*([^@}][^{]*)\{/g, (_match, prefix, selector) => {
-            if (selector.trim().startsWith('@')) return _match;
-            return `${prefix} .${scopeId} ${selector.trim()} {`;
-        });
-        styleElement.textContent = scopedStyles;
-        document.head.appendChild(styleElement);
-
-        // 6. Create rendering container
-        const container = document.createElement('div');
-        container.className = scopeId;
-        container.style.position = 'fixed';
-        container.style.left = '0px';
-        container.style.top = '0px';
-        container.style.width = '816px';
-        container.style.backgroundColor = '#ffffff';
-        container.style.zIndex = '-9999';
-        container.style.opacity = '0.01';
-        container.style.pointerEvents = 'none';
-        container.innerHTML = body;
-        document.body.appendChild(container);
-
-        // 7. Wait for fonts
-        await new Promise(resolve => setTimeout(resolve, 1200));
-        if (document.fonts?.ready) {
-            await document.fonts.ready;
+        const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
+        if (!iframeDoc) {
+            document.body.removeChild(iframe);
+            throw new Error('Cannot access iframe document');
         }
 
-        // 8. html2pdf options
+        iframeDoc.open();
+        iframeDoc.write(htmlString);
+        iframeDoc.close();
+
+        // 5. Wait for fonts & images to load inside iframe
+        console.log(`📄 [Extract ${agendaOrderNumber}] Waiting for fonts…`);
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        try {
+            await Promise.race([
+                iframe.contentWindow?.document.fonts?.ready,
+                new Promise(resolve => setTimeout(resolve, 3000))
+            ]);
+        } catch { /* fonts.ready not supported */ }
+
+        // 6. html2pdf options
         const opt = {
             margin:       0,
             filename:     fileName,
@@ -808,26 +785,31 @@ export const generateExtractAndUpload = async (
             }
         };
 
-        // 9. Generate PDF Blob
+        // 7. Generate PDF Blob from iframe body (with 30s timeout)
+        console.log(`📄 [Extract ${agendaOrderNumber}] Rendering PDF with html2pdf…`);
         let pdfBlob: Blob;
         try {
-            pdfBlob = await html2pdf().set(opt).from(container).outputPdf('blob');
+            const renderTarget = iframeDoc.body;
+            const pdfPromise = html2pdf().set(opt).from(renderTarget).outputPdf('blob') as Promise<Blob>;
+            const timeoutPromise = new Promise<never>((_, reject) =>
+                setTimeout(() => reject(new Error('html2pdf timeout after 30s')), 30000)
+            );
+            pdfBlob = await Promise.race([pdfPromise, timeoutPromise]);
+            console.log(`📄 [Extract ${agendaOrderNumber}] PDF blob generated (${pdfBlob.size} bytes)`);
         } finally {
-            if (document.body.contains(container)) {
-                document.body.removeChild(container);
-            }
-            const styleEl = document.getElementById(scopeId);
-            if (styleEl) {
-                document.head.removeChild(styleEl);
+            if (document.body.contains(iframe)) {
+                document.body.removeChild(iframe);
             }
         }
 
         // 10. Upload to Firebase Storage
+        console.log(`📄 [Extract ${agendaOrderNumber}] Uploading to Storage…`);
         const file = new File([pdfBlob], fileName, { type: 'application/pdf' });
         const storagePath = `extracts/${meeting.id}/${Date.now()}_${fileName}`;
         const storageRef = ref(storage, storagePath);
         await uploadBytes(storageRef, file);
         const url = await getDownloadURL(storageRef);
+        console.log(`📄 [Extract ${agendaOrderNumber}] Uploaded: ${url.substring(0, 80)}…`);
 
         // 11. Save metadata to Firestore
         const extractData: Omit<MinuteExtract, 'id'> = {
@@ -855,10 +837,15 @@ export const generateExtractAndUpload = async (
             finalDocId = docRef.id;
         }
 
+        console.log(`✅ [Extract ${agendaOrderNumber}] Done! docId=${finalDocId}`);
         return { id: finalDocId, ...extractData };
 
     } catch (error) {
-        console.error("Error generating and uploading extract PDF:", error);
+        console.error(`❌ [Extract ${agendaOrderNumber}] Error:`, error);
         throw error;
     }
 };
+
+/** Pre-fetch signatures once for all extracts */
+export { fetchEnrichedSignatures };
+

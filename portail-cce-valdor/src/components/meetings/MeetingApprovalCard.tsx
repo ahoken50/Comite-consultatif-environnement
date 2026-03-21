@@ -21,7 +21,7 @@ import { useDispatch } from 'react-redux';
 import type { AppDispatch } from '../../store/store';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { db } from '../../services/firebase';
-import { generateExtractAndUpload } from '../../services/pdfServiceExtract';
+import { generateExtractAndUpload, fetchEnrichedSignatures } from '../../services/pdfServiceExtract';
 
 // ... (existing helper functions)
 
@@ -159,12 +159,16 @@ const MeetingApprovalCard: React.FC<MeetingApprovalCardProps> = ({ meeting, curr
         if (!meeting.agendaItems || meeting.agendaItems.length === 0) return;
         setIsGeneratingExtraits(true);
         try {
+            console.log(`🚀 Starting extract generation for ${meeting.agendaItems.length} agenda items…`);
+            // Pre-fetch signatures ONCE for all extracts
+            const enrichedSignatures = await fetchEnrichedSignatures(meeting);
+            console.log(`🔑 Fetched ${enrichedSignatures.length} enriched signatures`);
+
             let count = 0;
             for (let i = 0; i < meeting.agendaItems.length; i++) {
                 const item = meeting.agendaItems[i];
-                // Generate extract for ALL items on the agenda as requested
                 const userName = currentUser?.displayName || 'Système';
-                await generateExtractAndUpload(meeting, item, userName, i + 1);  // i+1 = 1-indexed ODJ number
+                await generateExtractAndUpload(meeting, item, userName, i + 1, enrichedSignatures);
                 count++;
             }
             alert(`Succès! ${count} extraits générés et enregistrés dans le registre.`);
