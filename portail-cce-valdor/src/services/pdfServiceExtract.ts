@@ -737,35 +737,72 @@ export const generateExtractAndUpload = async (
 
         // 3. Generate full HTML using PV-minutes layout
         const htmlString = generateExtractHTML(meeting, item, agendaOrderNumber, enrichedSignatures);
-        console.log(`📄 [Extract ${agendaOrderNumber}] HTML generated (${htmlString.length} chars)`);
+        // 4. Parse CSS & body content from the full HTML document
+        const parseHTML = (html: string) => {
+            // Extract <style> content
+            const styleRegex = /<style[^>]*>([\s\S]*?)<\/style>/gi;
+            let styles = '';
+            let m;
+            while ((m = styleRegex.exec(html)) !== null) styles += m[1] + '\n';
 
-        // 4. Create a hidden iframe for isolated rendering
-        //    Using an iframe avoids CSS scoping issues — :root, body, etc. work naturally
-        const iframe = document.createElement('iframe');
-        iframe.style.cssText = 'position:fixed;left:-9999px;top:0;width:816px;height:1200px;border:none;opacity:0.01;pointer-events:none;';
-        document.body.appendChild(iframe);
+            // Extract <body> content
+            const bodyMatch = html.match(/<body[^>]*>([\s\S]*)<\/body>/i);
+            const body = bodyMatch ? bodyMatch[1] : html;
 
-        const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
-        if (!iframeDoc) {
-            document.body.removeChild(iframe);
-            throw new Error('Cannot access iframe document');
-        }
+            // Extract Google Font @imports
+            const linkRegex = /<link[^>]*href="([^"]*fonts[^"]*)"[^>]*>/gi;
+            let fontImports = '';
+            while ((m = linkRegex.exec(html)) !== null) fontImports += `@import url('${m[1]}');\n`;
 
-        iframeDoc.open();
-        iframeDoc.write(htmlString);
-        iframeDoc.close();
+            return { styles: fontImports + styles, body };
+        };
 
-        // 5. Wait for fonts & images to load inside iframe
+        const { styles, body } = parseHTML(htmlString);
+        console.log(`📄 [Extract ${agendaOrderNumber}] Parsed — styles: ${styles.length} chars, body: ${body.length} chars`);
+
+        // 5. Create scoped style container
+        const scopeId = `extract-scope-${Date.now()}`;
+        const styleElement = document.createElement('style');
+        styleElement.id = scopeId;
+
+        // Scope CSS selectors under our unique class, with special handling for
+        // :root (CSS custom properties) and body (base styles) which must apply 
+        // to the container div itself, not to non-existent child elements.
+        const scopedStyles = styles.replace(/(^|})\s*([^@}][^{]*)\{/g, (_match, prefix, selector) => {
+            const s = selector.trim();
+            if (s.startsWith('@')) return _match;                       // @media, @page, @import — keep as-is
+            if (s === ':root' || s === 'body') return `${prefix} .${scopeId} {`;  // apply to container itself
+            if (s === '*') return `${prefix} .${scopeId}, .${scopeId} * {`;       // container + all descendants
+            return `${prefix} .${scopeId} ${s} {`;                     // normal: prefix with scope
+        });
+        styleElement.textContent = scopedStyles;
+        document.head.appendChild(styleElement);
+
+        // 6. Create rendering container
+        const container = document.createElement('div');
+        container.className = scopeId;
+        container.style.position = 'fixed';
+        container.style.left = '0px';
+        container.style.top = '0px';
+        container.style.width = '816px';
+        container.style.backgroundColor = '#ffffff';
+        container.style.zIndex = '-9999';
+        container.style.opacity = '0.01';
+        container.style.pointerEvents = 'none';
+        container.innerHTML = body;
+        document.body.appendChild(container);
+
+        // 7. Wait for fonts
         console.log(`📄 [Extract ${agendaOrderNumber}] Waiting for fonts…`);
-        await new Promise(resolve => setTimeout(resolve, 1500));
+        await new Promise(resolve => setTimeout(resolve, 1000));
         try {
             await Promise.race([
-                iframe.contentWindow?.document.fonts?.ready,
+                document.fonts?.ready,
                 new Promise(resolve => setTimeout(resolve, 3000))
             ]);
-        } catch { /* fonts.ready not supported */ }
+        } catch { /* continue */ }
 
-        // 6. html2pdf options
+        // 8. html2pdf options
         const opt = {
             margin:       0,
             filename:     fileName,
@@ -785,20 +822,23 @@ export const generateExtractAndUpload = async (
             }
         };
 
-        // 7. Generate PDF Blob from iframe body (with 30s timeout)
+        // 9. Generate PDF Blob (with 30s timeout)
         console.log(`📄 [Extract ${agendaOrderNumber}] Rendering PDF with html2pdf…`);
         let pdfBlob: Blob;
         try {
-            const renderTarget = iframeDoc.body;
-            const pdfPromise = html2pdf().set(opt).from(renderTarget).outputPdf('blob') as Promise<Blob>;
+            const pdfPromise = html2pdf().set(opt).from(container).outputPdf('blob') as Promise<Blob>;
             const timeoutPromise = new Promise<never>((_, reject) =>
                 setTimeout(() => reject(new Error('html2pdf timeout after 30s')), 30000)
             );
             pdfBlob = await Promise.race([pdfPromise, timeoutPromise]);
             console.log(`📄 [Extract ${agendaOrderNumber}] PDF blob generated (${pdfBlob.size} bytes)`);
         } finally {
-            if (document.body.contains(iframe)) {
-                document.body.removeChild(iframe);
+            if (document.body.contains(container)) {
+                document.body.removeChild(container);
+            }
+            const styleEl = document.getElementById(scopeId);
+            if (styleEl) {
+                document.head.removeChild(styleEl);
             }
         }
 
