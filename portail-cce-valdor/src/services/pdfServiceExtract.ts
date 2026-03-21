@@ -236,12 +236,6 @@ const generateExtractHTML = (
     <title>Extrait de PV - ${titleWithNumber}</title>
     <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;0,700;1,400&family=Montserrat:wght@300;400;500;600&display=swap" rel="stylesheet">
     <style>
-        :root {
-            --primary-color: #1e4e3d;
-            --accent-color: #c5a065;
-            --text-color: #2b2b2b;
-            --bg-color: #ffffff;
-        }
 
         * {
             margin: 0;
@@ -252,13 +246,13 @@ const generateExtractHTML = (
         body {
             background-color: #ffffff;
             font-family: 'Cormorant Garamond', serif;
-            color: var(--text-color);
+            color: #2b2b2b;
             margin: 0;
             padding: 0;
         }
 
         .document-page {
-            background-color: var(--bg-color);
+            background-color: #ffffff;
             width: 816px;
             padding: 60px 80px;
             box-sizing: border-box;
@@ -267,7 +261,7 @@ const generateExtractHTML = (
         header {
             text-align: center;
             margin-bottom: 50px;
-            border-bottom: 3px double var(--primary-color);
+            border-bottom: 3px double #1e4e3d;
             padding-bottom: 25px;
         }
 
@@ -294,7 +288,7 @@ const generateExtractHTML = (
             font-size: 24px;
             text-transform: uppercase;
             letter-spacing: 2px;
-            color: var(--primary-color);
+            color: #1e4e3d;
             margin: 0 0 10px 0;
             font-weight: 600;
         }
@@ -304,7 +298,7 @@ const generateExtractHTML = (
             font-size: 14px;
             text-transform: uppercase;
             letter-spacing: 1px;
-            color: var(--accent-color);
+            color: #c5a065;
             margin: 0 0 20px 0;
             font-weight: 500;
         }
@@ -318,7 +312,7 @@ const generateExtractHTML = (
 
         .attendance {
             background-color: #f9fbfa;
-            border-left: 4px solid var(--primary-color);
+            border-left: 4px solid #1e4e3d;
             padding: 15px 25px;
             margin-bottom: 40px;
             font-family: 'Montserrat', sans-serif;
@@ -326,7 +320,7 @@ const generateExtractHTML = (
         }
 
         .attendance h3 {
-            color: var(--primary-color);
+            color: #1e4e3d;
             margin: 0 0 8px 0;
             font-size: 12px;
             text-transform: uppercase;
@@ -344,7 +338,7 @@ const generateExtractHTML = (
             font-family: 'Montserrat', sans-serif;
             font-size: 16px;
             font-weight: 600;
-            color: var(--primary-color);
+            color: #1e4e3d;
             border-bottom: 1px solid #ddd;
             padding-bottom: 5px;
             margin-top: 30px;
@@ -379,7 +373,7 @@ const generateExtractHTML = (
         .resolution-block {
             background-color: #fdfcf8;
             border: 1px solid #e0e0e0;
-            border-top: 3px solid var(--accent-color);
+            border-top: 3px solid #c5a065;
             padding: 20px 30px;
             margin: 25px 0;
             page-break-inside: avoid;
@@ -389,7 +383,7 @@ const generateExtractHTML = (
             font-family: 'Montserrat', sans-serif;
             font-size: 14px;
             font-weight: 700;
-            color: var(--accent-color);
+            color: #c5a065;
             margin-bottom: 15px;
             display: block;
         }
@@ -409,7 +403,7 @@ const generateExtractHTML = (
             font-family: 'Montserrat', sans-serif;
             font-size: 12px;
             font-weight: 700;
-            color: var(--primary-color);
+            color: #1e4e3d;
             min-width: 110px;
             flex-shrink: 0;
         }
@@ -422,7 +416,7 @@ const generateExtractHTML = (
             margin-top: 15px;
             margin-bottom: 10px;
             font-weight: 600;
-            color: var(--primary-color);
+            color: #1e4e3d;
             display: block;
             font-family: 'Montserrat', sans-serif;
         }
@@ -446,7 +440,7 @@ const generateExtractHTML = (
 
         .resolu-list li::before {
             content: "•";
-            color: var(--accent-color);
+            color: #c5a065;
             position: absolute;
             left: 0;
         }
@@ -477,7 +471,7 @@ const generateExtractHTML = (
             right: 0;
             font-family: 'Courier New', monospace;
             font-size: 10px;
-            color: var(--primary-color);
+            color: #1e4e3d;
             background-color: rgba(255, 255, 255, 0.8);
         }
 
@@ -779,26 +773,26 @@ export const generateExtractAndUpload = async (
         document.head.appendChild(styleElement);
 
         // 6. Create rendering container
+        //    IMPORTANT: opacity MUST be 1 — html2canvas captures at actual opacity,
+        //    so 0.01 = invisible on white background. Use off-screen position instead.
         const container = document.createElement('div');
         container.className = scopeId;
-        container.style.position = 'fixed';
-        container.style.left = '0px';
+        container.style.position = 'absolute';
+        container.style.left = '-10000px';
         container.style.top = '0px';
         container.style.width = '816px';
         container.style.backgroundColor = '#ffffff';
-        container.style.zIndex = '-9999';
-        container.style.opacity = '0.01';
+        container.style.opacity = '1';
         container.style.pointerEvents = 'none';
         container.innerHTML = body;
         document.body.appendChild(container);
 
-        // 7. Wait for fonts
-        console.log(`📄 [Extract ${agendaOrderNumber}] Waiting for fonts…`);
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        // 7. Wait for fonts (short wait — fonts are cached after first render)
+        await new Promise(resolve => setTimeout(resolve, 300));
         try {
             await Promise.race([
                 document.fonts?.ready,
-                new Promise(resolve => setTimeout(resolve, 3000))
+                new Promise(resolve => setTimeout(resolve, 2000))
             ]);
         } catch { /* continue */ }
 
@@ -811,7 +805,7 @@ export const generateExtractAndUpload = async (
                 scale: 2,
                 useCORS: true,
                 allowTaint: false,
-                logging: true,
+                logging: false,
                 backgroundColor: '#ffffff',
                 width: 816,
                 windowWidth: 816
