@@ -595,7 +595,7 @@ const generateExtractHTML = (
                     const sig = enrichedSignatures.find(s => s.role === 'president' || s.role === 'elected_official' || s.role === 'vice_president');
                     if (sig) {
                         if (sig.signatureUrl) {
-                            return `<img src="${sig.signatureUrl}" crossorigin="anonymous" style="max-width: 200px; max-height: 80px; object-fit: contain; position: absolute; bottom: 0; left: 50%; transform: translateX(-50%);" />`;
+                            return `<img src="${sig.signatureUrl}" crossorigin="anonymous" onerror="this.remove()" style="max-width: 200px; max-height: 80px; object-fit: contain; position: absolute; bottom: 0; left: 50%; transform: translateX(-50%);" />`;
                         }
                         return `<div class="digital-signature">Signé numériquement<br>${new Date(sig.signedAt).toLocaleDateString('fr-CA')}</div>`;
                     }
@@ -810,7 +810,8 @@ export const generateExtractAndUpload = async (
             html2canvas:  {
                 scale: 2,
                 useCORS: true,
-                logging: false,
+                allowTaint: false,
+                logging: true,
                 backgroundColor: '#ffffff',
                 width: 816,
                 windowWidth: 816
@@ -822,16 +823,20 @@ export const generateExtractAndUpload = async (
             }
         };
 
-        // 9. Generate PDF Blob (with 30s timeout)
-        console.log(`📄 [Extract ${agendaOrderNumber}] Rendering PDF with html2pdf…`);
+        // 9. Generate PDF Blob — step by step for diagnostics
+        console.log(`📄 [Extract ${agendaOrderNumber}] Rendering PDF with html2pdf (step-by-step)…`);
         let pdfBlob: Blob;
         try {
-            const pdfPromise = html2pdf().set(opt).from(container).outputPdf('blob') as Promise<Blob>;
-            const timeoutPromise = new Promise<never>((_, reject) =>
-                setTimeout(() => reject(new Error('html2pdf timeout after 30s')), 30000)
-            );
-            pdfBlob = await Promise.race([pdfPromise, timeoutPromise]);
-            console.log(`📄 [Extract ${agendaOrderNumber}] PDF blob generated (${pdfBlob.size} bytes)`);
+            const worker = html2pdf().set(opt).from(container);
+            console.log(`📄 [Extract ${agendaOrderNumber}] Step 1/4: toContainer…`);
+            await worker.toContainer();
+            console.log(`📄 [Extract ${agendaOrderNumber}] Step 2/4: toCanvas…`);
+            await worker.toCanvas();
+            console.log(`📄 [Extract ${agendaOrderNumber}] Step 3/4: toPdf…`);
+            await worker.toPdf();
+            console.log(`📄 [Extract ${agendaOrderNumber}] Step 4/4: output blob…`);
+            pdfBlob = await (worker as any).output('blob');
+            console.log(`📄 [Extract ${agendaOrderNumber}] ✅ PDF blob generated (${pdfBlob.size} bytes)`);
         } finally {
             if (document.body.contains(container)) {
                 document.body.removeChild(container);
@@ -880,8 +885,8 @@ export const generateExtractAndUpload = async (
         console.log(`✅ [Extract ${agendaOrderNumber}] Done! docId=${finalDocId}`);
         return { id: finalDocId, ...extractData };
 
-    } catch (error) {
-        console.error(`❌ [Extract ${agendaOrderNumber}] Error:`, error);
+    } catch (error: any) {
+        console.error(`❌ [Extract ${agendaOrderNumber}] Error:`, error, '| message:', error?.message, '| string:', String(error));
         throw error;
     }
 };
