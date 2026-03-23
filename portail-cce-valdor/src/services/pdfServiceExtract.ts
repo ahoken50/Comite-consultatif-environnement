@@ -773,10 +773,13 @@ export const generateExtractAndUpload = async (
         const { jsPDF } = await import('jspdf');
 
         const pdf = new jsPDF({
-            unit: 'in',
+            unit: 'pt', // MUST be pt: jsPDF.html uses standard 72-DPI conversion internally
             format: 'legal',
             orientation: 'portrait'
         });
+
+        // Ensure background is fully white to prevent transparency artifacts
+        iframeDoc.body.style.backgroundColor = '#ffffff';
 
         // 8. Generate Vector PDF Blob
         await new Promise<void>((resolve) => {
@@ -786,14 +789,15 @@ export const generateExtractAndUpload = async (
                 },
                 x: 0,
                 y: 0,
-                width: 8.5,             // 8.5 inches = exact Legal page width
-                windowWidth: 816,       // Match exactly our CSS container width 816px
+                width: 612,             // 8.5 inches * 72 pt = 612 pt
+                windowWidth: 816,       // 8.5 inches * 96 DPI CSS px = 816 px (0.75 perfect ratio)
                 autoPaging: 'text',
                 html2canvas: {
                     useCORS: true,
                     logging: false,    
                     width: 816,
-                    windowWidth: 816
+                    windowWidth: 816,
+                    backgroundColor: '#ffffff'
                 }
             });
         });
