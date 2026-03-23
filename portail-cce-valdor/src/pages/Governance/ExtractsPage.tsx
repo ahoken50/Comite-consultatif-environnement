@@ -54,8 +54,10 @@ const ExtractsPage: React.FC = () => {
                 alert("Réunion introuvable.");
                 return;
             }
+            const meetingData = meetingDoc.data();
+            const normalizedDate = meetingData.date?.toDate ? meetingData.date.toDate().toISOString() : meetingData.date;
             
-            const meeting = { id: meetingDoc.id, ...meetingDoc.data() } as any;
+            const meeting = { id: meetingDoc.id, ...meetingData, date: normalizedDate } as any;
             const item = meeting.agendaItems?.find((a: any) => a.id === extract.agendaItemId) || null;
             if (!item) {
                 alert("Point à l'ordre du jour introuvable dans cette réunion.");
