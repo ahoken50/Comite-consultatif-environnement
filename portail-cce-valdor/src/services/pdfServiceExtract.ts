@@ -132,18 +132,17 @@ const generateExtractHTML = (
     enrichedSignatures: any[] = []
 ): string => {
     // Date
-    const formatDateSafe = (d: any, fmt: string) => {
-        if (!d) return '';
-        const dt = new Date(d);
-        if (isNaN(dt.getTime())) return '';
-        return format(dt, fmt, { locale: fr });
-    };
-
-    const dayName = formatDateSafe(meeting.date, 'EEEE');
-    const dayOfMonth = formatDateSafe(meeting.date, 'd');
-    const monthName = formatDateSafe(meeting.date, 'MMMM');
-    const year = formatDateSafe(meeting.date, 'yyyy');
-    const timeStr = formatDateSafe(meeting.date, 'HH') ? `${formatDateSafe(meeting.date, 'HH')} h` : '';
+    let dayName = '', dayOfMonth = '', monthName = '', year = '', timeStr = '';
+    if (meeting.date) {
+        const parsedDate = new Date(meeting.date);
+        if (!isNaN(parsedDate.getTime())) {
+            dayName = format(parsedDate, 'EEEE', { locale: fr });
+            dayOfMonth = format(parsedDate, 'd', { locale: fr });
+            monthName = format(parsedDate, 'MMMM', { locale: fr });
+            year = format(parsedDate, 'yyyy', { locale: fr });
+            timeStr = format(parsedDate, 'HH', { locale: fr }) + ' h';
+        }
+    }
 
     const meetingNum = meeting.meetingNumber
         ? String(meeting.meetingNumber)
@@ -521,12 +520,10 @@ const generateExtractHTML = (
                 box-shadow: none;
             }
             .resolution-block {
-                page-break-inside: avoid !important;
-                break-inside: avoid !important;
+                /* Allowed to break in extracts */
             }
             .content-section {
-                page-break-inside: avoid;
-                break-inside: avoid;
+                /* Allowed to break in extracts */
             }
             .section-title {
                 page-break-after: avoid;
