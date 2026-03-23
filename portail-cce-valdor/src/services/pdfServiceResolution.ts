@@ -141,7 +141,9 @@ export const generateResolutionHTML = (
             content = parts[0].trim();
         }
 
-        notes = rec.notes ? rec.notes.replace(/^\[?[cC]ommentaires?\]?\s*:\s*/gi, '').trim() : '';
+        notes = rec.notes ? rec.notes.replace(/^\[?[cC]ommentaires?\]?\s*:\s*/gi, '')
+                                     .replace(/\[EXTRAIT SPÉCIFIQUE RÉSERVÉ AU CONSEIL\]\s*/gi, '')
+                                     .trim() : '';
         attachments = rec.attachments;
     }
 
