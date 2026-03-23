@@ -565,9 +565,12 @@ const generateHTMLDocument = (meeting: Meeting, _globalNotes?: string, enrichedS
 
         .signature-line {
             border-bottom: 1px solid #000;
-            height: 50px;
+            height: 70px;
             margin-bottom: 10px;
             position: relative;
+            display: flex;
+            align-items: flex-end;
+            justify-content: center;
         }
 
         .digital-signature {
@@ -718,9 +721,11 @@ const generateHTMLDocument = (meeting: Meeting, _globalNotes?: string, enrichedS
             const sig = enrichedSignatures.find(s => s.role === 'president' || s.role === 'elected_official' || s.role === 'vice_president');
             if (sig) {
                 if (sig.signatureUrl) {
-                    return `<img src="${sig.signatureUrl}" crossorigin="anonymous" style="max-width: 200px; max-height: 80px; object-fit: contain; position: absolute; bottom: 0; left: 50%; transform: translateX(-50%);" />`;
+                    return `<img src="${sig.signatureUrl}" crossorigin="anonymous" style="max-width: 200px; max-height: 70px; object-fit: contain; margin-bottom: 2px;" />`;
                 }
-                return `<div class="digital-signature">Signé numériquement<br>${new Date(sig.signedAt).toLocaleDateString('fr-CA')}</div>`;
+                const dt = sig.signedAt ? new Date(sig.signedAt) : new Date('invalid');
+                const dateStr = !isNaN(dt.getTime()) ? dt.toLocaleDateString('fr-CA') : '';
+                return `<div class="digital-signature">Signé numériquement<br>${dateStr}</div>`;
             }
             return '';
         })()}
@@ -737,9 +742,11 @@ const generateHTMLDocument = (meeting: Meeting, _globalNotes?: string, enrichedS
             const sig = enrichedSignatures.find(s => s.role === 'coordinator' || s.role === 'admin_bypass'); 
             if (sig) {
                 if (sig.signatureUrl) {
-                    return `<img src="${sig.signatureUrl}" crossorigin="anonymous" style="max-width: 200px; max-height: 80px; object-fit: contain; position: absolute; bottom: 0; left: 50%; transform: translateX(-50%);" />`;
+                    return `<img src="${sig.signatureUrl}" crossorigin="anonymous" style="max-width: 200px; max-height: 70px; object-fit: contain; margin-bottom: 2px;" />`;
                 }
-                return `<div class="digital-signature">Validé administrativement<br>${new Date(sig.signedAt).toLocaleDateString('fr-CA')}</div>`;
+                const dt = sig.signedAt ? new Date(sig.signedAt) : new Date('invalid');
+                const dateStr = !isNaN(dt.getTime()) ? dt.toLocaleDateString('fr-CA') : '';
+                return `<div class="digital-signature">Validé administrativement<br>${dateStr}</div>`;
             }
             return '';
         })()}
