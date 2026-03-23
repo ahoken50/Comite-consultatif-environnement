@@ -56,7 +56,7 @@ const ExtractsPage: React.FC = () => {
             }
             
             const meeting = { id: meetingDoc.id, ...meetingDoc.data() } as any;
-            const item = meeting.agenda?.find((a: any) => a.id === extract.agendaItemId) || null;
+            const item = meeting.agendaItems?.find((a: any) => a.id === extract.agendaItemId) || null;
             if (!item) {
                 alert("Point à l'ordre du jour introuvable dans cette réunion.");
                 return;
@@ -76,6 +76,19 @@ const ExtractsPage: React.FC = () => {
         }
     };
 
+    // Group extracts by meeting
+    const groupedExtracts = extracts.reduce((acc, ex) => {
+        if (!acc[ex.meetingId]) acc[ex.meetingId] = [];
+        acc[ex.meetingId].push(ex);
+        return acc;
+    }, {} as Record<string, MinuteExtract[]>);
+
+    const sortedMeetingIds = Object.keys(groupedExtracts).sort((a, b) => {
+        const dateA = new Date(groupedExtracts[a][0].meetingDate || 0).getTime();
+        const dateB = new Date(groupedExtracts[b][0].meetingDate || 0).getTime();
+        return dateB - dateA;
+    });
+
     return (
         <Box sx={{ p: 3 }}>
             <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
@@ -84,73 +97,87 @@ const ExtractsPage: React.FC = () => {
                 </Typography>
             </Box>
             
-            <TableContainer component={Paper}>
-                {loading ? (
-                    <Box sx={{ p: 4, display: 'flex', justifyContent: 'center' }}>
-                         <CircularProgress />
-                    </Box>
-                ) : (
-                    <Table>
-                       <TableHead>
-                          <TableRow>
-                             <TableCell sx={{ fontWeight: 'bold' }}>Ref. Extrait</TableCell>
-                             <TableCell sx={{ fontWeight: 'bold' }}>Sujet / Titre de la Résolution</TableCell>
-                             <TableCell sx={{ fontWeight: 'bold' }}>Date de Réunion (CCE)</TableCell>
-                             <TableCell sx={{ fontWeight: 'bold' }}>Généré le</TableCell>
-                             <TableCell align="right" sx={{ fontWeight: 'bold' }}>Actions</TableCell>
-                          </TableRow>
-                       </TableHead>
-                       <TableBody>
-                          {extracts.map(ex => (
-                              <TableRow key={ex.id} hover>
-                                  <TableCell>
-                                      <Chip 
-                                          label={ex.extractNumber || '---'} 
-                                          color="primary" 
-                                          variant="filled" 
-                                          size="small" 
-                                          sx={{ fontWeight: 'bold', fontSize: '1rem', p: 1 }}
-                                      />
-                                  </TableCell>
-                                  <TableCell>{ex.title}</TableCell>
-                                  <TableCell>
-                                      {ex.meetingDate ? format(new Date(ex.meetingDate), 'd MMMM yyyy', { locale: fr }) : 'N/A'}
-                                  </TableCell>
-                                  <TableCell>
-                                      {ex.uploadedAt ? format(new Date(ex.uploadedAt), 'd MMM yyyy', { locale: fr }) : 'N/A'}
-                                  </TableCell>
-                                  <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
-                                      <Button 
-                                          startIcon={generatingId === ex.id ? <CircularProgress size={16} /> : <OpenInNewIcon />} 
-                                          onClick={() => handleGeneratePDF(ex)}
-                                          disabled={generatingId === ex.id}
-                                          size="small"
-                                          variant="outlined"
-                                          sx={{ mr: 1 }}
-                                      >
-                                          Consulter
-                                      </Button>
-                                      <AccessControl allowedRoles={['coordinator']}>
-                                          <IconButton size="small" color="error" onClick={() => ex.id && handleDelete(ex.id)}>
-                                              <DeleteIcon />
-                                          </IconButton>
-                                      </AccessControl>
-                                  </TableCell>
-                              </TableRow>
-                          ))}
-                          {extracts.length === 0 && (
-                              <TableRow>
-                                  <TableCell colSpan={5} align="center" sx={{ py: 4 }}>
-                                      <Typography variant="body1" color="text.secondary">
-                                          Aucun extrait trouvé. Les extraits peuvent être générés depuis l'étape de finalisation d'un PV approuvé.
-                                      </Typography>
-                                  </TableCell>
-                              </TableRow>
-                          )}
-                       </TableBody>
-                    </Table>
-                )}
-            </TableContainer>
+            {loading ? (
+                <Box sx={{ p: 4, display: 'flex', justifyContent: 'center' }}>
+                     <CircularProgress />
+                </Box>
+            ) : sortedMeetingIds.length > 0 ? (
+                sortedMeetingIds.map(meetingId => {
+                    const group = groupedExtracts[meetingId];
+                    // Sort extracts within a meeting by their EXT number
+                    const sortedGroup = [...group].sort((a, b) => {
+                        const numA = parseInt(a.extractNumber?.match(/\d+/)?.[0] || '0');
+                        const numB = parseInt(b.extractNumber?.match(/\d+/)?.[0] || '0');
+                        return numA - numB;
+                    });
+                    
+                    const meetingDateStr = group[0].meetingDate 
+                        ? format(new Date(group[0].meetingDate), 'd MMMM yyyy', { locale: fr })
+                        : 'Date inconnue';
+
+                    return (
+                        <Box key={meetingId} mb={5}>
+                            <Typography variant="h6" gutterBottom color="primary" sx={{ borderBottom: '2px solid', borderColor: 'divider', pb: 1 }}>
+                                Assemblée du {meetingDateStr}
+                            </Typography>
+                            <TableContainer component={Paper} elevation={2}>
+                                <Table size="small">
+                                   <TableHead sx={{ backgroundColor: 'background.default' }}>
+                                      <TableRow>
+                                         <TableCell sx={{ fontWeight: 'bold', width: '15%' }}>Ref. Extrait</TableCell>
+                                         <TableCell sx={{ fontWeight: 'bold', width: '50%' }}>Sujet / Titre de la Résolution</TableCell>
+                                         <TableCell sx={{ fontWeight: 'bold', width: '20%' }}>Généré le</TableCell>
+                                         <TableCell align="right" sx={{ fontWeight: 'bold', width: '15%' }}>Actions</TableCell>
+                                      </TableRow>
+                                   </TableHead>
+                                   <TableBody>
+                                      {sortedGroup.map(ex => (
+                                          <TableRow key={ex.id} hover>
+                                              <TableCell>
+                                                  <Chip 
+                                                      label={ex.extractNumber || '---'} 
+                                                      color="primary" 
+                                                      variant="outlined" 
+                                                      size="small" 
+                                                  />
+                                              </TableCell>
+                                              <TableCell>{ex.title}</TableCell>
+                                              <TableCell>
+                                                  {ex.uploadedAt ? format(new Date(ex.uploadedAt), 'd MMM yyyy, HH:mm', { locale: fr }) : 'N/A'}
+                                              </TableCell>
+                                              <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
+                                                  <Button 
+                                                      startIcon={generatingId === ex.id ? <CircularProgress size={16} color="inherit" /> : <OpenInNewIcon />} 
+                                                      onClick={() => handleGeneratePDF(ex)}
+                                                      disabled={generatingId === ex.id}
+                                                      size="small"
+                                                      variant="contained"
+                                                      disableElevation
+                                                      sx={{ mr: 1 }}
+                                                  >
+                                                      Consulter
+                                                  </Button>
+                                                  <AccessControl allowedRoles={['coordinator']}>
+                                                      <IconButton size="small" color="error" onClick={() => ex.id && handleDelete(ex.id)}>
+                                                          <DeleteIcon fontSize="small" />
+                                                      </IconButton>
+                                                  </AccessControl>
+                                              </TableCell>
+                                          </TableRow>
+                                      ))}
+                                   </TableBody>
+                                </Table>
+                            </TableContainer>
+                        </Box>
+                    );
+                })
+            ) : (
+                <Paper sx={{ p: 4, textAlign: 'center' }}>
+                    <Typography variant="body1" color="text.secondary">
+                        Aucun extrait trouvé. Les extraits peuvent être générés depuis l'étape de finalisation d'un PV approuvé.
+                    </Typography>
+                </Paper>
+            )}
         </Box>
     );
 };
