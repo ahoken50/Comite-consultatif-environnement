@@ -1,4 +1,4 @@
-import html2pdf from 'html2pdf.js';
+
 import { collection, addDoc, Timestamp, query, where, getDocs, doc, getDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from './firebase';
@@ -227,14 +227,14 @@ const generateExtractHTML = (
 
     const meetingTypeStr = meeting.type === 'regular' ? 'ordinaire' : 'spéciale';
 
-    // Full HTML document (same CSS as pdfServiceMinutes)
+    // Full HTML document using standard fonts for jsPDF.html() compatibility
     return `<!DOCTYPE html>
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Extrait de PV - ${titleWithNumber}</title>
-    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;0,700;1,400&family=Montserrat:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <!-- Removed Google Fonts to prevent jsPDF text gluing -->
     <style>
 
         * {
@@ -245,7 +245,7 @@ const generateExtractHTML = (
 
         body {
             background-color: #ffffff;
-            font-family: 'Cormorant Garamond', serif;
+            font-family: Helvetica, Arial, sans-serif;
             color: #2b2b2b;
             margin: 0;
             padding: 0;
@@ -284,7 +284,7 @@ const generateExtractHTML = (
         }
 
         h1 {
-            font-family: 'Montserrat', sans-serif;
+            font-family: Helvetica, Arial, sans-serif;
             font-size: 24px;
             text-transform: uppercase;
             letter-spacing: 2px;
@@ -294,7 +294,7 @@ const generateExtractHTML = (
         }
 
         h2 {
-            font-family: 'Montserrat', sans-serif;
+            font-family: Helvetica, Arial, sans-serif;
             font-size: 14px;
             text-transform: uppercase;
             letter-spacing: 1px;
@@ -315,7 +315,7 @@ const generateExtractHTML = (
             border-left: 4px solid #1e4e3d;
             padding: 15px 25px;
             margin-bottom: 40px;
-            font-family: 'Montserrat', sans-serif;
+            font-family: Helvetica, Arial, sans-serif;
             font-size: 13px;
         }
 
@@ -731,117 +731,79 @@ export const generateExtractAndUpload = async (
 
         // 3. Generate full HTML using PV-minutes layout
         const htmlString = generateExtractHTML(meeting, item, agendaOrderNumber, enrichedSignatures);
-        // 4. Parse CSS & body content from the full HTML document
-        const parseHTML = (html: string) => {
-            // Extract <style> content
-            const styleRegex = /<style[^>]*>([\s\S]*?)<\/style>/gi;
-            let styles = '';
-            let m;
-            while ((m = styleRegex.exec(html)) !== null) styles += m[1] + '\n';
+        // 4. Create an invisible iframe to isolate the CSS and HTML for html2canvas
+        // Using an iframe prevents the regex issues where <body> classes were lost,
+        // and guarantees isolated CSS rendering (Google Fonts, styling, margins).
+        const iframe = document.createElement('iframe');
+        iframe.style.position = 'absolute';
+        iframe.style.width = '816px';
+        iframe.style.height = '100vh';    // Give it height so html2canvas sees it
+        iframe.style.left = '0px';
+        iframe.style.top = '0px';
+        iframe.style.zIndex = '-9999';
+        iframe.style.border = 'none';
+        iframe.style.opacity = '1';       // Never use opacity 0 with html2canvas!
+        document.body.appendChild(iframe);
 
-            // Extract <body> content
-            const bodyMatch = html.match(/<body[^>]*>([\s\S]*)<\/body>/i);
-            const body = bodyMatch ? bodyMatch[1] : html;
+        const iframeDoc = iframe.contentWindow?.document;
+        if (!iframeDoc) {
+            document.body.removeChild(iframe);
+            throw new Error("Could not create iframe for PDF extraction");
+        }
 
-            // Extract Google Font @imports
-            const linkRegex = /<link[^>]*href="([^"]*fonts[^"]*)"[^>]*>/gi;
-            let fontImports = '';
-            while ((m = linkRegex.exec(html)) !== null) fontImports += `@import url('${m[1]}');\n`;
+        // 5. Inject the full HTML string (including <head> and <body class="document-page">)
+        iframeDoc.open();
+        iframeDoc.write(htmlString);
+        iframeDoc.close();
 
-            return { styles: fontImports + styles, body };
-        };
-
-        const { styles, body } = parseHTML(htmlString);
-        console.log(`📄 [Extract ${agendaOrderNumber}] Parsed — styles: ${styles.length} chars, body: ${body.length} chars`);
-
-        // 5. Create scoped style container
-        const scopeId = `extract-scope-${Date.now()}`;
-        const styleElement = document.createElement('style');
-        styleElement.id = scopeId;
-
-        // Scope CSS selectors under our unique class, with special handling for
-        // :root (CSS custom properties) and body (base styles) which must apply 
-        // to the container div itself, not to non-existent child elements.
-        const scopedStyles = styles.replace(/(^|})\s*([^@}][^{]*)\{/g, (_match, prefix, selector) => {
-            const s = selector.trim();
-            if (s.startsWith('@')) return _match;                       // @media, @page, @import — keep as-is
-            if (s === ':root' || s === 'body') return `${prefix} .${scopeId} {`;  // apply to container itself
-            if (s === '*') return `${prefix} .${scopeId}, .${scopeId} * {`;       // container + all descendants
-            return `${prefix} .${scopeId} ${s} {`;                     // normal: prefix with scope
-        });
-        styleElement.textContent = scopedStyles;
-        document.head.appendChild(styleElement);
-
-        // 6. Create rendering container
-        //    IMPORTANT: opacity MUST be 1 — html2canvas captures at actual opacity,
-        //    so 0.01 = invisible on white background. Use z-index behind the app instead.
-        const container = document.createElement('div');
-        // RECRITIAL FIX: We must add 'document-page' because the regex extracted the *inside*
-        // of <body class="document-page">, thereby losing the primary layout wrapper class!
-        container.className = `${scopeId} document-page`;
-        container.style.position = 'absolute';
-        container.style.left = '0px'; 
-        container.style.top = '0px';
-        container.style.zIndex = '-9999'; // Hide behind the main application
-        container.style.width = '816px';
-        container.style.backgroundColor = '#ffffff';
-        container.style.opacity = '1';
-        container.style.pointerEvents = 'none';
-        container.innerHTML = body;
-        document.body.appendChild(container);
-
-        // 7. Wait for fonts (short wait — fonts are cached after first render)
-        await new Promise(resolve => setTimeout(resolve, 800)); // Increased wait for font stability
+        // 6. Wait for fonts to load inside the new iframe context
+        await new Promise(resolve => setTimeout(resolve, 800)); // Minimum wait
         try {
             await Promise.race([
-                document.fonts?.ready,
+                // @ts-ignore
+                iframeDoc.fonts?.ready,
                 new Promise(resolve => setTimeout(resolve, 3000))
             ]);
         } catch { /* continue */ }
 
-        // 8. html2pdf options
-        const opt = {
-            margin:       0,
-            filename:     fileName,
-            image:        { type: 'jpeg' as const, quality: 0.98 },
-            html2canvas:  {
-                scale: 2,
-                useCORS: true,
-                allowTaint: false,
-                logging: false,
-                backgroundColor: '#ffffff',
-                width: 816,
-                windowWidth: 816
-            },
-            jsPDF:        {
-                unit: 'in' as const,
-                format: 'legal' as const,
-                orientation: 'portrait' as const
-            }
-        };
+        // 7. Instantiate jsPDF and run native HTML mapping for vector-searchable text
+        console.log(`📄 [Extract ${agendaOrderNumber}] Rendering vector PDF via jsPDF…`);
+        
+        // Use require dynamically for jsPDF to prevent any module missing errors
+        const { jsPDF } = await import('jspdf');
 
-        // 9. Generate PDF Blob — step by step for diagnostics
-        console.log(`📄 [Extract ${agendaOrderNumber}] Rendering PDF with html2pdf (step-by-step)…`);
-        let pdfBlob: Blob;
-        try {
-            const worker = html2pdf().set(opt).from(container);
-            console.log(`📄 [Extract ${agendaOrderNumber}] Step 1/4: toContainer…`);
-            await worker.toContainer();
-            console.log(`📄 [Extract ${agendaOrderNumber}] Step 2/4: toCanvas…`);
-            await worker.toCanvas();
-            console.log(`📄 [Extract ${agendaOrderNumber}] Step 3/4: toPdf…`);
-            await worker.toPdf();
-            console.log(`📄 [Extract ${agendaOrderNumber}] Step 4/4: output blob…`);
-            pdfBlob = await (worker as any).output('blob');
-            console.log(`📄 [Extract ${agendaOrderNumber}] ✅ PDF blob generated (${pdfBlob.size} bytes)`);
-        } finally {
-            if (document.body.contains(container)) {
-                document.body.removeChild(container);
-            }
-            const styleEl = document.getElementById(scopeId);
-            if (styleEl) {
-                document.head.removeChild(styleEl);
-            }
+        const pdf = new jsPDF({
+            unit: 'in',
+            format: 'legal',
+            orientation: 'portrait'
+        });
+
+        // 8. Generate Vector PDF Blob
+        await new Promise<void>((resolve) => {
+            pdf.html(iframeDoc.body, {
+                callback: function () {
+                    resolve();
+                },
+                x: 0,
+                y: 0,
+                width: 8.5,             // 8.5 inches = exact Legal page width
+                windowWidth: 816,       // Match exactly our CSS container width 816px
+                autoPaging: 'text',
+                html2canvas: {
+                    useCORS: true,
+                    logging: false,    
+                    width: 816,
+                    windowWidth: 816
+                }
+            });
+        });
+
+        const pdfBlob = pdf.output('blob');
+        console.log(`📄 [Extract ${agendaOrderNumber}] ✅ Vector PDF generated (${pdfBlob.size} bytes)`);
+
+        // Clean up invisible iframe
+        if (document.body.contains(iframe)) {
+            document.body.removeChild(iframe);
         }
 
         // 10. Upload to Firebase Storage
