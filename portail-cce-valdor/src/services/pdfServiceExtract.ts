@@ -774,13 +774,15 @@ export const generateExtractAndUpload = async (
 
         // 6. Create rendering container
         //    IMPORTANT: opacity MUST be 1 — html2canvas captures at actual opacity,
-        //    so 0.01 = invisible on white background. Use off-screen position instead.
+        //    so 0.01 = invisible on white background. Use z-index behind the app instead.
         const container = document.createElement('div');
-        container.className = scopeId;
+        // RECRITIAL FIX: We must add 'document-page' because the regex extracted the *inside*
+        // of <body class="document-page">, thereby losing the primary layout wrapper class!
+        container.className = `${scopeId} document-page`;
         container.style.position = 'absolute';
-        container.style.left = '0px'; // MUST be within viewport bounds for html2canvas to paint it
+        container.style.left = '0px'; 
         container.style.top = '0px';
-        container.style.zIndex = '-9999'; // Hide behind the main application instead of putting off-screen
+        container.style.zIndex = '-9999'; // Hide behind the main application
         container.style.width = '816px';
         container.style.backgroundColor = '#ffffff';
         container.style.opacity = '1';
@@ -789,11 +791,11 @@ export const generateExtractAndUpload = async (
         document.body.appendChild(container);
 
         // 7. Wait for fonts (short wait — fonts are cached after first render)
-        await new Promise(resolve => setTimeout(resolve, 300));
+        await new Promise(resolve => setTimeout(resolve, 800)); // Increased wait for font stability
         try {
             await Promise.race([
                 document.fonts?.ready,
-                new Promise(resolve => setTimeout(resolve, 2000))
+                new Promise(resolve => setTimeout(resolve, 3000))
             ]);
         } catch { /* continue */ }
 
