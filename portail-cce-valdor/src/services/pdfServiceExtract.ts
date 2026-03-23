@@ -1,7 +1,6 @@
 
 import { collection, addDoc, Timestamp, query, where, getDocs, doc, getDoc } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { db, storage } from './firebase';
+import { db } from './firebase';
 import type { Meeting, AgendaItem } from '../types/meeting.types';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -227,14 +226,14 @@ const generateExtractHTML = (
 
     const meetingTypeStr = meeting.type === 'regular' ? 'ordinaire' : 'spéciale';
 
-    // Full HTML document using standard fonts for jsPDF.html() compatibility
+    // Full HTML document using original elegant fonts natively supported by window.print
     return `<!DOCTYPE html>
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Extrait de PV - ${titleWithNumber}</title>
-    <!-- Removed Google Fonts to prevent jsPDF text gluing -->
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;0,700;1,400&family=Montserrat:wght@300;400;500;600&display=swap" rel="stylesheet">
     <style>
 
         * {
@@ -245,7 +244,7 @@ const generateExtractHTML = (
 
         body {
             background-color: #ffffff;
-            font-family: Helvetica, Arial, sans-serif;
+            font-family: 'Cormorant Garamond', serif;
             color: #2b2b2b;
             margin: 0;
             padding: 0;
@@ -284,7 +283,7 @@ const generateExtractHTML = (
         }
 
         h1 {
-            font-family: Helvetica, Arial, sans-serif;
+            font-family: 'Montserrat', sans-serif;
             font-size: 24px;
             text-transform: uppercase;
             letter-spacing: 2px;
@@ -294,7 +293,7 @@ const generateExtractHTML = (
         }
 
         h2 {
-            font-family: Helvetica, Arial, sans-serif;
+            font-family: 'Montserrat', sans-serif;
             font-size: 14px;
             text-transform: uppercase;
             letter-spacing: 1px;
@@ -315,7 +314,7 @@ const generateExtractHTML = (
             border-left: 4px solid #1e4e3d;
             padding: 15px 25px;
             margin-bottom: 40px;
-            font-family: Helvetica, Arial, sans-serif;
+            font-family: 'Montserrat', sans-serif;
             font-size: 13px;
         }
 
@@ -723,110 +722,23 @@ export const generateExtractAndUpload = async (
         const extractTitle = allResNumbers
             ? `${agendaOrderNumber}. ${item.title} (Résolutions: ${allResNumbers})`
             : `${agendaOrderNumber}. ${item.title}`;
-        const fileName = `extrait_${extractNumber}.pdf`;
 
         // 2. Get signatures (use prefetched if available)
         const enrichedSignatures = prefetchedSignatures || await fetchEnrichedSignatures(meeting);
         console.log(`📄 [Extract ${agendaOrderNumber}] Signatures: ${enrichedSignatures.length}`);
 
-        // 3. Generate full HTML using PV-minutes layout
-        const htmlString = generateExtractHTML(meeting, item, agendaOrderNumber, enrichedSignatures);
-        // 4. Create an invisible iframe to isolate the CSS and HTML for html2canvas
-        // Using an iframe prevents the regex issues where <body> classes were lost,
-        // and guarantees isolated CSS rendering (Google Fonts, styling, margins).
-        const iframe = document.createElement('iframe');
-        iframe.style.position = 'absolute';
-        iframe.style.width = '816px';
-        iframe.style.height = '100vh';    // Give it height so html2canvas sees it
-        iframe.style.left = '0px';
-        iframe.style.top = '0px';
-        iframe.style.zIndex = '-9999';
-        iframe.style.border = 'none';
-        iframe.style.opacity = '1';       // Never use opacity 0 with html2canvas!
-        document.body.appendChild(iframe);
-
-        const iframeDoc = iframe.contentWindow?.document;
-        if (!iframeDoc) {
-            document.body.removeChild(iframe);
-            throw new Error("Could not create iframe for PDF extraction");
-        }
-
-        // 5. Inject the full HTML string (including <head> and <body class="document-page">)
-        iframeDoc.open();
-        iframeDoc.write(htmlString);
-        iframeDoc.close();
-
-        // 6. Wait for fonts to load inside the new iframe context
-        await new Promise(resolve => setTimeout(resolve, 800)); // Minimum wait
-        try {
-            await Promise.race([
-                // @ts-ignore
-                iframeDoc.fonts?.ready,
-                new Promise(resolve => setTimeout(resolve, 3000))
-            ]);
-        } catch { /* continue */ }
-
-        // 7. Instantiate jsPDF and run native HTML mapping for vector-searchable text
-        console.log(`📄 [Extract ${agendaOrderNumber}] Rendering vector PDF via jsPDF…`);
+        // 3. We NO LONGER generate a PDF file here or upload it to Storage.
+        // We only prepare the metadata to be saved in Firestore.
+        // The actual PDF will be generated on-the-fly (`window.print`) when the user clicks "Consulter" in ExtractsPage.
         
-        // Use require dynamically for jsPDF to prevent any module missing errors
-        const { jsPDF } = await import('jspdf');
-
-        const pdf = new jsPDF({
-            unit: 'pt', // MUST be pt: jsPDF.html uses standard 72-DPI conversion internally
-            format: 'legal',
-            orientation: 'portrait'
-        });
-
-        // Ensure background is fully white to prevent transparency artifacts
-        iframeDoc.body.style.backgroundColor = '#ffffff';
-
-        // 8. Generate Vector PDF Blob
-        await new Promise<void>((resolve) => {
-            pdf.html(iframeDoc.body, {
-                callback: function () {
-                    resolve();
-                },
-                x: 0,
-                y: 0,
-                width: 612,             // 8.5 inches * 72 pt = 612 pt
-                windowWidth: 816,       // 8.5 inches * 96 DPI CSS px = 816 px (0.75 perfect ratio)
-                autoPaging: 'text',
-                html2canvas: {
-                    useCORS: true,
-                    logging: false,    
-                    width: 816,
-                    windowWidth: 816,
-                    backgroundColor: '#ffffff'
-                }
-            });
-        });
-
-        const pdfBlob = pdf.output('blob');
-        console.log(`📄 [Extract ${agendaOrderNumber}] ✅ Vector PDF generated (${pdfBlob.size} bytes)`);
-
-        // Clean up invisible iframe
-        if (document.body.contains(iframe)) {
-            document.body.removeChild(iframe);
-        }
-
-        // 10. Upload to Firebase Storage
-        console.log(`📄 [Extract ${agendaOrderNumber}] Uploading to Storage…`);
-        const file = new File([pdfBlob], fileName, { type: 'application/pdf' });
-        const storagePath = `extracts/${meeting.id}/${Date.now()}_${fileName}`;
-        const storageRef = ref(storage, storagePath);
-        await uploadBytes(storageRef, file);
-        const url = await getDownloadURL(storageRef);
-        console.log(`📄 [Extract ${agendaOrderNumber}] Uploaded: ${url.substring(0, 80)}…`);
-
-        // 11. Save metadata to Firestore
+        // 4. Save metadata to Firestore
         const extractData: Omit<MinuteExtract, 'id'> = {
             meetingId: meeting.id,
             agendaItemId: item.id,
             extractNumber,
             title: extractTitle,
             meetingDate: meeting.date,
-            url,
+            url: '', // No heavy PDF URL anymore, generated live on-demand
             uploadedAt: new Date().toISOString(),
             uploadedBy
         };
@@ -854,6 +766,54 @@ export const generateExtractAndUpload = async (
     }
 };
 
-/** Pre-fetch signatures once for all extracts */
 export { fetchEnrichedSignatures };
 
+/**
+ * On-Demand Native PDF Generation
+ * Opens a popup with the Extrait HTML and triggers the browser's native window.print()
+ * This guarantees 100% searchable vector text and perfect layout scaling.
+ */
+export const generateExtractPDF_WindowPrint = async (
+    meeting: Meeting,
+    item: AgendaItem,
+    agendaOrderNumber: number,
+    prefetchedSignatures?: any[]
+): Promise<void> => {
+    try {
+        console.log(`📄 [Extract PDF] Generating Native Popup for "${item.title}"`);
+
+        // Get signatures
+        const enrichedSignatures = prefetchedSignatures || await fetchEnrichedSignatures(meeting);
+
+        // Generate full HTML
+        const htmlString = generateExtractHTML(meeting, item, agendaOrderNumber, enrichedSignatures);
+
+        // Open print window
+        const printWindow = window.open('', '_blank');
+        if (!printWindow) {
+            alert("Bloqueur de fenêtres contextuelles détecté. Veuillez l'autoriser pour imprimer le PDF.");
+            throw new Error("Popup blocker prevented printing.");
+        }
+
+        printWindow.document.write(htmlString);
+        printWindow.document.close();
+
+        // Wait for fonts to load
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        try {
+            await Promise.race([
+                // @ts-ignore
+                printWindow.document.fonts?.ready,
+                new Promise(resolve => setTimeout(resolve, 3000))
+            ]);
+        } catch { /* continue */ }
+
+        // Trigger native print
+        printWindow.focus();
+        printWindow.print();
+
+    } catch (error) {
+        console.error("❌ Error generating extract window print:", error);
+        throw error;
+    }
+};

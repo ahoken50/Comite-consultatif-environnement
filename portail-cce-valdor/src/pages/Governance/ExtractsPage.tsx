@@ -13,6 +13,7 @@ import { AccessControl } from '../../components/auth/AccessControl';
 const ExtractsPage: React.FC = () => {
     const [extracts, setExtracts] = useState<MinuteExtract[]>([]);
     const [loading, setLoading] = useState(true);
+    const [generatingId, setGeneratingId] = useState<string | null>(null);
 
     useEffect(() => {
         const fetchExtracts = async () => {
@@ -39,6 +40,39 @@ const ExtractsPage: React.FC = () => {
                 console.error("Erreur lors de la suppression de l'extrait", error);
                 alert("Impossible de supprimer l'extrait.");
             }
+        }
+    };
+
+    const handleGeneratePDF = async (extract: MinuteExtract) => {
+        try {
+            setGeneratingId(extract.id || null);
+            const { getDoc, doc } = await import('firebase/firestore');
+            const { db } = await import('../../services/firebase');
+            
+            const meetingDoc = await getDoc(doc(db, 'meetings', extract.meetingId));
+            if (!meetingDoc.exists()) {
+                alert("Réunion introuvable.");
+                return;
+            }
+            
+            const meeting = { id: meetingDoc.id, ...meetingDoc.data() } as any;
+            const item = meeting.agenda?.find((a: any) => a.id === extract.agendaItemId) || null;
+            if (!item) {
+                alert("Point à l'ordre du jour introuvable dans cette réunion.");
+                return;
+            }
+            
+            const orderMatch = extract.extractNumber?.match(/EXT-(\d+)/);
+            const orderNumber = orderMatch ? parseInt(orderMatch[1], 10) : 1;
+            
+            const { generateExtractPDF_WindowPrint } = await import('../../services/pdfServiceExtract');
+            await generateExtractPDF_WindowPrint(meeting, item, orderNumber);
+            
+        } catch (error) {
+            console.error("Erreur génération PDF:", error);
+            alert("Erreur lors de la génération du PDF.");
+        } finally {
+            setGeneratingId(null);
         }
     };
 
@@ -87,10 +121,9 @@ const ExtractsPage: React.FC = () => {
                                   </TableCell>
                                   <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
                                       <Button 
-                                          startIcon={<OpenInNewIcon />} 
-                                          component="a" 
-                                          href={ex.url} 
-                                          target="_blank" 
+                                          startIcon={generatingId === ex.id ? <CircularProgress size={16} /> : <OpenInNewIcon />} 
+                                          onClick={() => handleGeneratePDF(ex)}
+                                          disabled={generatingId === ex.id}
                                           size="small"
                                           variant="outlined"
                                           sx={{ mr: 1 }}
