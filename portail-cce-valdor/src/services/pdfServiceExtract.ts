@@ -132,12 +132,18 @@ const generateExtractHTML = (
     enrichedSignatures: any[] = []
 ): string => {
     // Date
-    const dateObj = new Date(meeting.date);
-    const dayName = format(dateObj, 'EEEE', { locale: fr });
-    const dayOfMonth = format(dateObj, 'd', { locale: fr });
-    const monthName = format(dateObj, 'MMMM', { locale: fr });
-    const year = format(dateObj, 'yyyy', { locale: fr });
-    const timeStr = format(dateObj, 'HH', { locale: fr }) + ' h';
+    const formatDateSafe = (d: any, fmt: string) => {
+        if (!d) return '';
+        const dt = new Date(d);
+        if (isNaN(dt.getTime())) return '';
+        return format(dt, fmt, { locale: fr });
+    };
+
+    const dayName = formatDateSafe(meeting.date, 'EEEE');
+    const dayOfMonth = formatDateSafe(meeting.date, 'd');
+    const monthName = formatDateSafe(meeting.date, 'MMMM');
+    const year = formatDateSafe(meeting.date, 'yyyy');
+    const timeStr = formatDateSafe(meeting.date, 'HH') ? `${formatDateSafe(meeting.date, 'HH')} h` : '';
 
     const meetingNum = meeting.meetingNumber
         ? String(meeting.meetingNumber)
@@ -590,7 +596,9 @@ const generateExtractHTML = (
                         if (sig.signatureUrl) {
                             return `<img src="${sig.signatureUrl}" crossorigin="anonymous" onerror="this.remove()" style="max-width: 200px; max-height: 80px; object-fit: contain; position: absolute; bottom: 0; left: 50%; transform: translateX(-50%);" />`;
                         }
-                        return `<div class="digital-signature">Signé numériquement<br>${new Date(sig.signedAt).toLocaleDateString('fr-CA')}</div>`;
+                        const dt = sig.signedAt ? new Date(sig.signedAt) : new Date('invalid');
+                        const dateStr = !isNaN(dt.getTime()) ? dt.toLocaleDateString('fr-CA') : '';
+                        return `<div class="digital-signature">Signé numériquement<br>${dateStr}</div>`;
                     }
                     return '';
                 })()}
@@ -609,7 +617,9 @@ const generateExtractHTML = (
                         if (sig.signatureUrl) {
                             return `<img src="${sig.signatureUrl}" crossorigin="anonymous" style="max-width: 200px; max-height: 80px; object-fit: contain; position: absolute; bottom: 0; left: 50%; transform: translateX(-50%);" />`;
                         }
-                        return `<div class="digital-signature">Validé administrativement<br>${new Date(sig.signedAt).toLocaleDateString('fr-CA')}</div>`;
+                        const dt = sig.signedAt ? new Date(sig.signedAt) : new Date('invalid');
+                        const dateStr = !isNaN(dt.getTime()) ? dt.toLocaleDateString('fr-CA') : '';
+                        return `<div class="digital-signature">Validé administrativement<br>${dateStr}</div>`;
                     }
                     return '';
                 })()}
