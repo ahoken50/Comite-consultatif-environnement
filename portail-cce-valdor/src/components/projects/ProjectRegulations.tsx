@@ -100,10 +100,11 @@ const ProjectRegulations: React.FC<ProjectRegulationsProps> = ({ project }) => {
 
     // Link a regulation
     const handleLink = async (reg: SearchableRegulation) => {
-        const currentIds = project.linkedRegulationIds || [];
-        if (currentIds.includes(reg.id)) return;
+        const currentIds = (project.linkedRegulationIds || []).map(id => String(id));
+        const regId = String(reg.id);
+        if (currentIds.includes(regId)) return;
 
-        const newIds = [...currentIds, reg.id];
+        const newIds = [...currentIds, regId];
 
         // Optimistic update
         setLinkedRegulations(prev => [...prev, reg]);
@@ -112,14 +113,14 @@ const ProjectRegulations: React.FC<ProjectRegulationsProps> = ({ project }) => {
             await dispatch(updateProject({
                 id: project.id,
                 updates: { linkedRegulationIds: newIds },
-                userId: 'system', // Should be current user
+                userId: 'system',
                 userName: 'System',
                 projectName: project.name
             })).unwrap();
         } catch (error) {
             console.error("Failed to link regulation", error);
             // Revert optimistic update
-            setLinkedRegulations(prev => prev.filter(r => r.id !== reg.id));
+            setLinkedRegulations(prev => prev.filter(r => String(r.id) !== regId));
         }
     };
 

@@ -54,6 +54,7 @@ const RecommendationDetailsDialog: React.FC<RecommendationDetailsDialogProps> = 
 
     const [editMode, setEditMode] = useState(false);
     const [status, setStatus] = useState<string>(recommendation?.status || '');
+    const [projectName, setProjectName] = useState(recommendation?.projectName || '');
     const [councilResolution, setCouncilResolution] = useState(recommendation?.councilResolutionNumber || '');
     const [feedback, setFeedback] = useState(recommendation?.notes || '');
     const [attachment, setAttachment] = useState<{ url: string, name: string, uploadedAt: string } | undefined>(recommendation?.councilFeedbackAttachment);
@@ -78,6 +79,7 @@ const RecommendationDetailsDialog: React.FC<RecommendationDetailsDialogProps> = 
             id: recommendation.id,
             updates: {
                 status: status as any,
+                projectName: projectName,
                 councilResolutionNumber: councilResolution,
                 notes: feedback,
                 councilFeedbackAttachment: attachment,
@@ -419,7 +421,16 @@ const RecommendationDetailsDialog: React.FC<RecommendationDetailsDialogProps> = 
                     <Box>
                         <Divider sx={{ my: 1 }} />
                         <Typography variant="subtitle1" fontWeight="bold">Détails du retour du conseil</Typography>
-                        
+
+                        <TextField
+                            label="Titre / Nom du sujet"
+                            value={projectName}
+                            onChange={(e) => setProjectName(e.target.value)}
+                            fullWidth
+                            helperText="Modifiez le titre du sujet tel qu'il apparaîtra dans le PDF."
+                            sx={{ mb: 2 }}
+                        />
+
                         <FormControl fullWidth>
                             <InputLabel>Statut Décisionnel</InputLabel>
                             <Select

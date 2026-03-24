@@ -240,10 +240,19 @@ export const generateResolutionHTML = (
             globalTitle = `Sujet ${item.order} - ${globalTitle}`;
         }
     } else {
-        // Try to find if recommendation has source item order (we will set this in builder)
         const rec = itemOrRec as any;
         if (rec.sourceAgendaItemOrder) {
+            // Order was stored on the recommendation (new recommendations)
             globalTitle = `Sujet ${rec.sourceAgendaItemOrder} - ${globalTitle}`;
+        } else if (meeting.agendaItems && rec.sourceResolutionNumber) {
+            // Fallback: find the agenda item that contains this resolution number
+            const matchingItem = meeting.agendaItems.find((item: any) =>
+                item.minuteNumber === rec.sourceResolutionNumber ||
+                item.minuteEntries?.some((e: any) => e.number === rec.sourceResolutionNumber)
+            );
+            if (matchingItem?.order) {
+                globalTitle = `Sujet ${matchingItem.order} - ${globalTitle}`;
+            }
         }
     }
 
@@ -556,9 +565,7 @@ export const generateResolutionHTML = (
         ` : ''}
     </section>
 
-    <hr style="border: none; border-bottom: 2px solid var(--primary-color, #1e4e3d); margin: 25px 0 15px 0;">
-
-    <div style="font-weight: bold; font-size: 20px; line-height: 1.4; margin-bottom: 30px;">
+    <div style="font-weight: bold; font-size: 20px; line-height: 1.4; margin-bottom: 30px; margin-top: 20px;">
         ${globalTitle}
     </div>
 
