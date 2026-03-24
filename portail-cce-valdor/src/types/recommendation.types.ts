@@ -12,6 +12,8 @@ export interface CouncilRecommendation {
         title: string;
         text: string;
     }[]; // The new structured representation for multiple resolutions
+    linkedProjectIds?: string[]; // To link multiple projects
+    linkedRecommendationIds?: string[]; // To link to previous recommendations
     dateSent: string; // ISO Date string
     councilMeetingDate?: string; // ISO Date string
     councilResolutionNumber?: string;

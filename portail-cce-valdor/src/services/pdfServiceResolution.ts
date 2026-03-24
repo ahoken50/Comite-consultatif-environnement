@@ -2,6 +2,42 @@ import type { Meeting, AgendaItem } from '../types/meeting.types';
 import type { CouncilRecommendation } from '../types/recommendation.types';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
+import * as pdfjsLib from 'pdfjs-dist';
+import pdfWorker from 'pdfjs-dist/build/pdf.worker?url';
+
+if (typeof window !== 'undefined' && (pdfjsLib as any).GlobalWorkerOptions) {
+    (pdfjsLib as any).GlobalWorkerOptions.workerSrc = pdfWorker;
+}
+
+const renderPdfToImages = async (url: string): Promise<string[]> => {
+    try {
+        const response = await fetch(url);
+        if (!response.ok) throw new Error("Failed to fetch PDF");
+        const arrayBuffer = await response.arrayBuffer();
+
+        const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+        const pdf = await loadingTask.promise;
+        const numPages = pdf.numPages;
+        const images: string[] = [];
+
+        for (let i = 1; i <= numPages; i++) {
+            const page = await pdf.getPage(i);
+            const viewport = page.getViewport({ scale: 2.0 });
+            const canvas = document.createElement('canvas');
+            const context = canvas.getContext('2d');
+            if (context) {
+                canvas.width = viewport.width;
+                canvas.height = viewport.height;
+                await page.render({ canvasContext: context, viewport }).promise;
+                images.push(canvas.toDataURL('image/jpeg', 0.8));
+            }
+        }
+        return images;
+    } catch (err) {
+        console.error("Error rendering PDF to images", err);
+        return [];
+    }
+};
 
 export interface PDFGenerationResult {
     success: boolean;
@@ -481,7 +517,7 @@ export const generateResolutionHTML = (
             annexesHTML += `</ul>`;
             
             attachments.forEach((att, idx) => {
-                const isImage = att.name.toLowerCase().match(/\.(jpeg|jpg|gif|png|webp)/) != null || att.url.toLowerCase().match(/\.(jpeg|jpg|gif|png|webp|alt=media)/) != null;
+                const isImage = att.name.toLowerCase().match(/\.(jpeg|jpg|gif|png|webp)/) != null || att.url.toLowerCase().match(/\.(jpeg|jpg|gif|png|webp|alt=media)/) != null || att.url.startsWith('data:image/');
                 if (isImage) {
                     annexesHTML += `
                         <div style="margin-top: 30px; text-align: center; page-break-inside: avoid;">
@@ -512,7 +548,38 @@ export const generateResolutionPDF = async (
     mode: 'official' | 'campaign' = 'official'
 ): Promise<PDFGenerationResult> => {
     
-    const html = generateResolutionHTML(meeting, itemOrRec, type, mode);
+    let processedItemOrRec = { ...itemOrRec } as any;
+    
+    if (type === 'recommendation') {
+        const rec = itemOrRec as CouncilRecommendation;
+        if (rec.attachments && rec.attachments.length > 0) {
+            const newAttachments: { url: string, name: string, resolutionNumber?: string }[] = [];
+            
+            for (const att of rec.attachments) {
+                const isPdf = att.name.toLowerCase().endsWith('.pdf');
+                
+                if (isPdf) {
+                    const images = await renderPdfToImages(att.url);
+                    if (images.length > 0) {
+                        images.forEach((imgDataUrl, idx) => {
+                            newAttachments.push({
+                                url: imgDataUrl,
+                                name: `${att.name} (Page ${idx + 1})`,
+                                resolutionNumber: att.resolutionNumber
+                            });
+                        });
+                    } else {
+                        newAttachments.push(att);
+                    }
+                } else {
+                    newAttachments.push(att);
+                }
+            }
+            processedItemOrRec.attachments = newAttachments;
+        }
+    }
+
+    const html = generateResolutionHTML(meeting, processedItemOrRec, type, mode);
     
     // Open print window
     const printWindow = window.open('', '_blank', 'width=816,height=1056');

@@ -21,8 +21,10 @@ import {
     ListItemText
 } from '@mui/material';
 import { AttachmentOutlined, CloudUpload, Print, Gavel, Campaign } from '@mui/icons-material';
-import { useDispatch } from 'react-redux';
-import { updateRecommendation } from '../../features/governance/governanceSlice';
+import { useDispatch, useSelector } from 'react-redux';
+import { updateRecommendation, fetchRecommendations } from '../../features/governance/governanceSlice';
+import { fetchProjects } from '../../features/projects/projectsSlice';
+import type { RootState } from '../../store/rootReducer';
 import { documentsAPI } from '../../features/documents/documentsAPI';
 import { AccessControl } from '../../components/auth/AccessControl';
 import type { AppDispatch } from '../../store/store';
@@ -40,6 +42,16 @@ const RecommendationDetailsDialog: React.FC<RecommendationDetailsDialogProps> = 
     recommendation
 }) => {
     const dispatch = useDispatch<AppDispatch>();
+    const { items: projects } = useSelector((state: RootState) => state.projects || { items: [] });
+    const { recommendations } = useSelector((state: RootState) => state.governance || { recommendations: [] });
+
+    React.useEffect(() => {
+        if (open) {
+            if (projects.length === 0) dispatch(fetchProjects());
+            if (recommendations.length === 0) dispatch(fetchRecommendations());
+        }
+    }, [open, dispatch, projects.length, recommendations.length]);
+
     const [editMode, setEditMode] = useState(false);
     const [status, setStatus] = useState<string>(recommendation?.status || '');
     const [councilResolution, setCouncilResolution] = useState(recommendation?.councilResolutionNumber || '');
@@ -265,6 +277,30 @@ const RecommendationDetailsDialog: React.FC<RecommendationDetailsDialogProps> = 
                                 {recommendation.strategicLinks.map((link, i) => (
                                     <Chip key={i} label={`${link.policyName} (${link.regulationArticle})`} size="small" variant="outlined" />
                                 ))}
+                            </Box>
+                        </Box>
+                    )}
+
+                    {recommendation.linkedProjectIds && recommendation.linkedProjectIds.length > 0 && (
+                        <Box sx={{ mb: 2 }}>
+                            <Typography variant="subtitle2" gutterBottom>Projets Liés:</Typography>
+                            <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                                {recommendation.linkedProjectIds.map((id) => {
+                                    const proj = projects.find(p => p.id === id);
+                                    return <Chip key={id} label={proj ? proj.name : id} size="small" variant="outlined" color="secondary" />;
+                                })}
+                            </Box>
+                        </Box>
+                    )}
+
+                    {recommendation.linkedRecommendationIds && recommendation.linkedRecommendationIds.length > 0 && (
+                        <Box sx={{ mb: 2 }}>
+                            <Typography variant="subtitle2" gutterBottom>Recommandations / Résolutions antérieures:</Typography>
+                            <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                                {recommendation.linkedRecommendationIds.map((id) => {
+                                    const rec = recommendations.find(r => r.id === id);
+                                    return <Chip key={id} label={rec ? rec.projectName : id} size="small" variant="outlined" color="secondary" />;
+                                })}
                             </Box>
                         </Box>
                     )}

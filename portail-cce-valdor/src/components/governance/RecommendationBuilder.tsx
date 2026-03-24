@@ -46,7 +46,8 @@ import {
     AttachmentOutlined
 } from '@mui/icons-material';
 import { useDispatch, useSelector } from 'react-redux';
-import { addRecommendation } from '../../features/governance/governanceSlice';
+import { addRecommendation, fetchRecommendations } from '../../features/governance/governanceSlice';
+import { fetchProjects } from '../../features/projects/projectsSlice';
 import { documentsAPI } from '../../features/documents/documentsAPI';
 import { generateSpeakingPoints, analyzePVStructure, verifyPVClaims, draftAIRecommendations } from '../../services/geminiService';
 import type { AppDispatch } from '../../store/store';
@@ -88,12 +89,19 @@ const RecommendationBuilder: React.FC<RecommendationBuilderProps> = ({ onClose, 
     const [importOpen, setImportOpen] = useState(false);
     const [selectedMeetingId, setSelectedMeetingId] = useState<string>('');
     const { items: meetings } = useSelector((state: RootState) => state.meetings);
+    const { items: projects } = useSelector((state: RootState) => state.projects || { items: [] });
+    const { recommendations } = useSelector((state: RootState) => state.governance || { recommendations: [] });
 
     useEffect(() => {
         if (importOpen && meetings.length === 0) {
             dispatch(fetchMeetings());
         }
     }, [importOpen, dispatch, meetings.length]);
+
+    useEffect(() => {
+        if (projects.length === 0) dispatch(fetchProjects());
+        if (recommendations.length === 0) dispatch(fetchRecommendations());
+    }, [dispatch, projects.length, recommendations.length]);
 
     // Form State
     const [formData, setFormData] = useState<Partial<CouncilRecommendation>>({
@@ -712,6 +720,61 @@ const RecommendationBuilder: React.FC<RecommendationBuilderProps> = ({ onClose, 
                             onChange={(e) => setFormData({ ...formData, projectName: e.target.value })}
                             margin="normal"
                         />
+
+                        <FormControl fullWidth margin="normal">
+                            <InputLabel>Projets liés au niveau de la ville</InputLabel>
+                            <Select
+                                multiple
+                                label="Projets liés au niveau de la ville"
+                                value={formData.linkedProjectIds || []}
+                                onChange={(e) => {
+                                    const selectedIds = e.target.value as string[];
+                                    setFormData({ ...formData, linkedProjectIds: selectedIds });
+                                }}
+                                renderValue={(selected) => (
+                                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                                        {(selected as string[]).map((value) => {
+                                            const proj = projects.find(p => p.id === value);
+                                            return <Chip key={value} label={proj ? proj.name : value} size="small" />;
+                                        })}
+                                    </Box>
+                                )}
+                            >
+                                {projects.filter(p => p.status !== 'completed').map((proj) => (
+                                    <MenuItem key={proj.id} value={proj.id}>
+                                        {proj.name}
+                                    </MenuItem>
+                                ))}
+                            </Select>
+                        </FormControl>
+
+                        <FormControl fullWidth margin="normal">
+                            <InputLabel>Recommandations / Résolutions antérieures</InputLabel>
+                            <Select
+                                multiple
+                                label="Recommandations / Résolutions antérieures"
+                                value={formData.linkedRecommendationIds || []}
+                                onChange={(e) => {
+                                    const selectedIds = e.target.value as string[];
+                                    setFormData({ ...formData, linkedRecommendationIds: selectedIds });
+                                }}
+                                renderValue={(selected) => (
+                                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                                        {(selected as string[]).map((value) => {
+                                            const rec = recommendations.find(r => r.id === value);
+                                            return <Chip key={value} label={rec ? rec.projectName : value} size="small" />;
+                                        })}
+                                    </Box>
+                                )}
+                            >
+                                {recommendations.filter(r => r.id !== formData.id).map((rec) => (
+                                    <MenuItem key={rec.id} value={rec.id}>
+                                        {rec.projectName} ({rec.meetingDate?.split('T')[0] || 'Date inconnue'})
+                                    </MenuItem>
+                                ))}
+                            </Select>
+                        </FormControl>
+
                         <TextField
                             fullWidth
                             type="date"
