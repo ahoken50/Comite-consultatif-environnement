@@ -256,11 +256,27 @@ const ProjectDetailPage: React.FC = () => {
                                     <Typography variant="body2"><strong>Créé le:</strong> {new Date(project.dateCreated).toLocaleDateString()}</Typography>
                                     <Typography variant="body2"><strong>Mis à jour:</strong> {new Date(project.dateUpdated).toLocaleDateString()}</Typography>
                                     <Typography variant="body2"><strong>Responsable:</strong> {coordinator?.displayName || project.coordinatorId || 'Non assigné'}</Typography>
-                                    {project.resolutionCCE && (
-                                        <Typography variant="body2"><strong>Résolution:</strong> {project.resolutionCCE}</Typography>
+                                    
+                                    {/* Link to the most recent resolution number if available */}
+                                    {(project.resolutionCCE || (project.linkedResolutions && project.linkedResolutions.length > 0)) && (
+                                        <Typography variant="body2">
+                                            <strong>Résolution:</strong> {
+                                                project.linkedResolutions && project.linkedResolutions.length > 0
+                                                    ? [...project.linkedResolutions].sort((a, b) => new Date(b.linkedAt).getTime() - new Date(a.linkedAt).getTime())[0].entryNumber
+                                                    : project.resolutionCCE
+                                            }
+                                        </Typography>
                                     )}
-                                    {project.linkedMeetingIds && project.linkedMeetingIds.length > 0 && (
-                                        <Typography variant="body2"><strong>Réunion:</strong> {project.linkedMeetingIds.length} liée(s)</Typography>
+
+                                    {/* Dynamic meeting count */}
+                                    {((project.linkedMeetingIds && project.linkedMeetingIds.length > 0) || (project.linkedResolutions && project.linkedResolutions.length > 0)) && (
+                                        <Typography variant="body2">
+                                            <strong>Réunion:</strong> {
+                                                project.linkedResolutions && project.linkedResolutions.length > 0
+                                                    ? new Set(project.linkedResolutions.map(r => r.meetingId)).size
+                                                    : project.linkedMeetingIds?.length || 0
+                                            } liée(s)
+                                        </Typography>
                                     )}
                                 </Box>
                             </Paper>

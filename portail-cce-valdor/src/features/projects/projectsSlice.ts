@@ -177,7 +177,10 @@ export const linkResolutionToProject = createAsyncThunk(
         await projectsAPI.linkResolution(projectId, resolution);
         await logProjectActivity('project_updated', userId, userName, projectId,
             `${projectName}: Résolution liée (${resolution.entryNumber} - ${resolution.meetingTitle})`);
-        return { projectId, resolution };
+        
+        // Fetch updated project to get new linkedMeetingIds and resolutionCCE
+        const updatedProject = await projectsAPI.fetchById(projectId);
+        return { projectId, updatedProject };
     }
 );
 
@@ -194,7 +197,9 @@ export const unlinkResolutionFromProject = createAsyncThunk(
         await projectsAPI.unlinkResolution(projectId, resolutionId);
         await logProjectActivity('project_updated', userId, userName, projectId,
             `${projectName}: Résolution déliée`);
-        return { projectId, resolutionId };
+            
+        const updatedProject = await projectsAPI.fetchById(projectId);
+        return { projectId, updatedProject };
     }
 );
 
@@ -310,21 +315,22 @@ const projectsSlice = createSlice({
             })
             // Link Resolution
             .addCase(linkResolutionToProject.fulfilled, (state, action) => {
-                const { projectId, resolution } = action.payload;
-                const project = state.items.find(p => p.id === projectId);
-                if (project) {
-                    if (!project.linkedResolutions) project.linkedResolutions = [];
-                    project.linkedResolutions.push(resolution);
+                const { projectId, updatedProject } = action.payload;
+                if (updatedProject) {
+                    const index = state.items.findIndex(p => p.id === projectId);
+                    if (index !== -1) {
+                        state.items[index] = updatedProject;
+                    }
                 }
             })
             // Unlink Resolution
             .addCase(unlinkResolutionFromProject.fulfilled, (state, action) => {
-                const { projectId, resolutionId } = action.payload;
-                const project = state.items.find(p => p.id === projectId);
-                if (project && project.linkedResolutions) {
-                    project.linkedResolutions = project.linkedResolutions.filter(
-                        r => r.id !== resolutionId
-                    );
+                const { projectId, updatedProject } = action.payload;
+                if (updatedProject) {
+                    const index = state.items.findIndex(p => p.id === projectId);
+                    if (index !== -1) {
+                        state.items[index] = updatedProject;
+                    }
                 }
             })
             // Merge Projects

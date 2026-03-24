@@ -32,6 +32,21 @@ export const projectsAPI = {
         } as Project));
     },
 
+    fetchById: async (id: string): Promise<Project | null> => {
+        const docRef = doc(db, COLLECTION_NAME, id);
+        const docSnap = await getDoc(docRef);
+        if (!docSnap.exists()) return null;
+        const data = docSnap.data();
+        return {
+            id: docSnap.id,
+            ...data,
+            dateCreated: data.dateCreated?.toDate ? data.dateCreated.toDate().toISOString() : data.dateCreated,
+            dateUpdated: data.dateUpdated?.toDate ? data.dateUpdated.toDate().toISOString() : data.dateUpdated,
+            dateCompleted: (data.dateCompleted?.toDate ? data.dateCompleted.toDate().toISOString() : data.dateCompleted) || null,
+            estimatedCompletionDate: (data.estimatedCompletionDate?.toDate ? data.estimatedCompletionDate.toDate().toISOString() : data.estimatedCompletionDate) || null,
+        } as Project;
+    },
+
     create: async (project: Omit<Project, 'id'>): Promise<Project> => {
         const docRef = await addDoc(collection(db, COLLECTION_NAME), {
             ...project,
@@ -110,10 +125,29 @@ export const projectsAPI = {
     linkResolution: async (projectId: string, resolution: LinkedResolution): Promise<void> => {
         // 1. Update project
         const docRef = doc(db, COLLECTION_NAME, projectId);
-        await updateDoc(docRef, {
-            linkedResolutions: arrayUnion(resolution),
-            dateUpdated: Timestamp.now()
-        });
+        const docSnap = await getDoc(docRef);
+        
+        if (docSnap.exists()) {
+            const data = docSnap.data();
+            const linkedMeetingIds = data.linkedMeetingIds || [];
+            
+            const updates: any = {
+                linkedResolutions: arrayUnion(resolution),
+                dateUpdated: Timestamp.now()
+            };
+
+            // Add meeting ID if not present
+            if (!linkedMeetingIds.includes(resolution.meetingId)) {
+                updates.linkedMeetingIds = arrayUnion(resolution.meetingId);
+            }
+
+            // Update resolutionCCE if it's currently empty or if this is a formal resolution
+            if (!data.resolutionCCE || resolution.entryType === 'resolution') {
+                updates.resolutionCCE = resolution.entryNumber;
+            }
+
+            await updateDoc(docRef, updates);
+        }
 
         // 2. Update meeting agenda item
         try {
@@ -162,10 +196,30 @@ export const projectsAPI = {
                 }
             );
 
-            await updateDoc(docRef, {
+            const updates: any = {
                 linkedResolutions,
                 dateUpdated: Timestamp.now()
-            });
+            };
+
+            // If we removed a resolution, check if we should remove the meeting ID
+            if (removedResolution) {
+                const stillHasResolutionsFromMeeting = linkedResolutions.some(
+                    (r: LinkedResolution) => r.meetingId === removedResolution!.meetingId
+                );
+                if (!stillHasResolutionsFromMeeting) {
+                    updates.linkedMeetingIds = (data.linkedMeetingIds || []).filter(
+                        (id: string) => id !== removedResolution!.meetingId
+                    );
+                }
+
+                // Update resolutionCCE to the previous one if available
+                if (data.resolutionCCE === removedResolution.entryNumber) {
+                    const lastRes = [...linkedResolutions].reverse().find(r => r.entryType === 'resolution');
+                    updates.resolutionCCE = lastRes ? lastRes.entryNumber : null;
+                }
+            }
+
+            await updateDoc(docRef, updates);
 
             // 2. Update meeting agenda item (remove link)
             if (removedResolution) {
