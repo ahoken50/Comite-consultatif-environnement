@@ -651,8 +651,14 @@ const fetchEnrichedSignatures = async (meeting: Meeting): Promise<any[]> => {
         if (sig.signedBy) {
             try {
                 const memberDoc = await getDoc(doc(db, 'members', sig.signedBy));
-                if (memberDoc.exists() && memberDoc.data().signatureUrl) {
-                    signatureUrl = memberDoc.data().signatureUrl;
+                if (memberDoc.exists()) {
+                    const memberData = memberDoc.data();
+                    // Prevent Coordinator's signature image from stamping the President's signature field
+                    const isCoordinatorSpoofingPresident = memberData.role === 'coordinator' && ['president', 'vice_president', 'elected_official'].includes(sig.role);
+                    
+                    if (!isCoordinatorSpoofingPresident && memberData.signatureUrl) {
+                        signatureUrl = memberData.signatureUrl;
+                    }
                 }
             } catch (e) {
                 console.error('Error fetching member signature:', e);
@@ -676,8 +682,12 @@ const fetchEnrichedSignatures = async (meeting: Meeting): Promise<any[]> => {
                 if (t.userId) {
                     try {
                         const memberDoc2 = await getDoc(doc(db, 'members', t.userId));
-                        if (memberDoc2.exists() && memberDoc2.data().signatureUrl) {
-                            signatureUrl = memberDoc2.data().signatureUrl;
+                        if (memberDoc2.exists()) {
+                            const memberData2 = memberDoc2.data();
+                            const isCoordinatorSpoofingPresident = memberData2.role === 'coordinator' && ['president', 'vice_president', 'elected_official'].includes(t.role);
+                            if (!isCoordinatorSpoofingPresident && memberData2.signatureUrl) {
+                                signatureUrl = memberData2.signatureUrl;
+                            }
                         }
                     } catch (e) {
                         console.error('Error fetching token member signature:', e);

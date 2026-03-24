@@ -778,8 +778,13 @@ export const generateMinutesPDF = async (meeting: Meeting, globalNotes?: string,
         if (sig.signedBy) {
             try {
                 const memberDoc = await getDoc(doc(db, 'members', sig.signedBy));
-                if (memberDoc.exists() && memberDoc.data().signatureUrl) {
-                    signatureUrl = memberDoc.data().signatureUrl;
+                if (memberDoc.exists()) {
+                    const memberData = memberDoc.data();
+                    const isCoordinatorSpoofingPresident = memberData.role === 'coordinator' && ['president', 'vice_president', 'elected_official'].includes(sig.role);
+                    
+                    if (!isCoordinatorSpoofingPresident && memberData.signatureUrl) {
+                        signatureUrl = memberData.signatureUrl;
+                    }
                 }
             } catch (e) {
                 console.error('Error fetching member signature:', e);
@@ -804,8 +809,13 @@ export const generateMinutesPDF = async (meeting: Meeting, globalNotes?: string,
                 if (t.userId) {
                     try {
                         const memberDoc = await getDoc(doc(db, 'members', t.userId));
-                        if (memberDoc.exists() && memberDoc.data().signatureUrl) {
-                            signatureUrl = memberDoc.data().signatureUrl;
+                        if (memberDoc.exists()) {
+                            const memberData = memberDoc.data();
+                            const isCoordinatorSpoofingPresident = memberData.role === 'coordinator' && ['president', 'vice_president', 'elected_official'].includes(t.role);
+                            
+                            if (!isCoordinatorSpoofingPresident && memberData.signatureUrl) {
+                                signatureUrl = memberData.signatureUrl;
+                            }
                         }
                     } catch (e) {
                         console.error('Error fetching token member signature:', e);
