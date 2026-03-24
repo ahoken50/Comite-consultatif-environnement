@@ -363,6 +363,7 @@ const RecommendationBuilder: React.FC<RecommendationBuilderProps> = ({ onClose, 
             meetingDate: meeting.date,
             sourceResolutionNumber: newResolutions[0]?.number || item.minuteNumber || '',
             sourceResolutionContent: mainContent || newResolutions[0]?.text || '',
+            sourceAgendaItemOrder: item.order,
             description: mainContent || newResolutions[0]?.text || '',
             notes: unnumberedComments.length > 0 ? `[Commentaires du PV]:\n${unnumberedComments.join('\n\n')}` : ''
         }));

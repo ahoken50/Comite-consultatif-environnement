@@ -19,6 +19,7 @@ export interface CouncilRecommendation {
     councilResolutionNumber?: string;
     sourceResolutionNumber?: string; // from CCE minutes
     sourceResolutionContent?: string; // from CCE minutes
+    sourceAgendaItemOrder?: number; // Point à l'ODJ
     status: RecommendationStatus;
     notes?: string;
     councilFeedbackAttachment?: {

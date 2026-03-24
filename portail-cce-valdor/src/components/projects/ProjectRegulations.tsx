@@ -56,11 +56,10 @@ const ProjectRegulations: React.FC<ProjectRegulationsProps> = ({ project }) => {
     }, [project.linkedRegulationIds]);
 
     // Handle Search
-    const handleSearch = async () => {
-        if (!searchQuery) return;
+    const handleSearch = async (queryToSearch: string = searchQuery) => {
         setLoading(true);
         try {
-            const results = await searchRegulations(searchQuery, { matchCount: 5 });
+            const results = await searchRegulations(queryToSearch, { matchCount: 50 });
             setSearchResults(results.hits.map(h => h.document));
         } catch (error) {
             console.error("Search failed", error);
@@ -68,6 +67,12 @@ const ProjectRegulations: React.FC<ProjectRegulationsProps> = ({ project }) => {
             setLoading(false);
         }
     };
+
+    // Initial load of regulations list
+    useEffect(() => {
+        handleSearch('');
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     // Handle AI Analysis
     const handleAiAnalysis = async () => {
@@ -174,9 +179,9 @@ const ProjectRegulations: React.FC<ProjectRegulationsProps> = ({ project }) => {
                                 placeholder="Rechercher..."
                                 value={searchQuery}
                                 onChange={e => setSearchQuery(e.target.value)}
-                                onKeyPress={e => e.key === 'Enter' && handleSearch()}
+                                onKeyPress={e => e.key === 'Enter' && handleSearch(searchQuery)}
                             />
-                            <Button variant="contained" onClick={handleSearch} disabled={loading}>
+                            <Button variant="contained" onClick={() => handleSearch(searchQuery)} disabled={loading}>
                                 <Search />
                             </Button>
                         </Box>

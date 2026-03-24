@@ -65,6 +65,13 @@ const sanitizeText = (text: string): string => {
 };
 
 /**
+ * Format notes with line breaks
+ */
+const formattedNotes = (text: string): string => {
+    return text.replace(/\n/g, '<br>');
+};
+
+/**
  * Format content for HTML (Resolutions, Considerants, etc.)
  */
 const formatResolutionHTML = (text: string): string => {
@@ -131,17 +138,14 @@ const formatResolutionHTML = (text: string): string => {
 /**
  * Generate PDF for a Single Resolution Extract
  * source: Can be an AgendaItem (from Minutes) or a CouncilRecommendation object
- */
-/**
- * Generate PDF for a Single Resolution Extract
- * source: Can be an AgendaItem (from Minutes) or a CouncilRecommendation object
  * mode: 'official' (legal extract) or 'campaign' (presentation with arguments)
  */
 export const generateResolutionHTML = (
     meeting: Meeting,
     itemOrRec: AgendaItem | CouncilRecommendation,
     type: 'agendaItem' | 'recommendation',
-    mode: 'official' | 'campaign' = 'official'
+    mode: 'official' | 'campaign' = 'official',
+    enrichedSignatures: any[] = [] // Added to accept signatures
 ): string => {
 
     // Extract Data
@@ -224,7 +228,21 @@ export const generateResolutionHTML = (
     const meetingTypeStr = meeting.type === 'regular' ? 'ordinaire' : 'spéciale';
     const meetingNumberStr = meeting.meetingNumber ? `${meeting.meetingNumber}e ` : '';
 
-    const globalTitle = type === 'recommendation' ? (itemOrRec as CouncilRecommendation).projectName || 'Recommandation' : title;
+    let globalTitle = type === 'recommendation' ? (itemOrRec as CouncilRecommendation).projectName || 'Recommandation' : title;
+    
+    // Prefix title with agenda order number if available
+    if (type === 'agendaItem') {
+        const item = itemOrRec as AgendaItem;
+        if (item.order) {
+            globalTitle = `Sujet ${item.order} - ${globalTitle}`;
+        }
+    } else {
+        // Try to find if recommendation has source item order (we will set this in builder)
+        const rec = itemOrRec as any;
+        if (rec.sourceAgendaItemOrder) {
+            globalTitle = `Sujet ${rec.sourceAgendaItemOrder} - ${globalTitle}`;
+        }
+    }
 
     let resolutionBlocksHTML = '';
 
@@ -362,9 +380,10 @@ export const generateResolutionHTML = (
         }
         .campaign-content {
             font-size: 15px;
-            line-height: 1.5;
+            line-height: 1.6;
             white-space: pre-wrap;
             margin-bottom: 30px;
+            text-align: justify;
         }
 
         .resolution-box {
@@ -427,8 +446,22 @@ export const generateResolutionHTML = (
         }
         .sig-line {
             border-bottom: 1px solid #000;
+            height: 70px;
             margin-bottom: 10px;
-            height: 40px;
+            position: relative;
+            display: flex;
+            align-items: flex-end;
+            justify-content: center;
+        }
+        .digital-signature {
+            position: absolute;
+            bottom: 5px;
+            left: 0;
+            right: 0;
+            font-family: 'Courier New', monospace;
+            font-size: 10px;
+            color: var(--primary-color);
+            background-color: rgba(255, 255, 255, 0.8);
         }
         .sig-name {
             font-family: 'Montserrat', sans-serif;
@@ -478,16 +511,48 @@ export const generateResolutionHTML = (
     ${resolutionBlocksHTML}
 
     ${meeting.approvalStatus === 'approved' || meeting.approvalStatus === 'final' || meeting.status === 'completed' ? `
-    <div style="margin-top: 80px; display: flex; justify-content: space-between; page-break-inside: avoid;">
-        <div style="width: 45%;">
-            <div style="margin-bottom: 40px; font-weight: bold;">Vraie copie certifiée</div>
-            <div>${presidentName}</div>
-            <div>Président(e)</div>
+    <div class="signatures">
+        <div class="sig-block">
+            <div class="sig-line">
+            ${(() => {
+                const sig = enrichedSignatures.find(s => s.role === 'president' || s.role === 'elected_official' || s.role === 'vice_president');
+                if (sig) {
+                    if (sig.signatureUrl) {
+                        return '<img src="' + sig.signatureUrl + '" crossorigin="anonymous" onerror="this.remove()" style="max-width: 200px; max-height: 70px; object-fit: contain; margin-bottom: 2px;" />';
+                    }
+                    const dt = sig.signedAt ? new Date(sig.signedAt) : new Date('invalid');
+                    const dateStr = !isNaN(dt.getTime()) ? dt.toLocaleDateString('fr-CA') : '';
+                    return '<div class="digital-signature">Signé numériquement<br>' + dateStr + '</div>';
+                }
+                return '';
+            })()}
+            </div>
+            <div class="sig-name">${(() => {
+                const sig = enrichedSignatures.find(s => s.role === 'president' || s.role === 'elected_official' || s.role === 'vice_president');
+                return sig ? sig.signedByName : presidentName;
+            })()}</div>
+            <div class="sig-role">Président(e) / Élu(e) Responsable</div>
         </div>
-        <div style="width: 45%;">
-            <div style="margin-bottom: 40px;">&nbsp;</div>
-            <div>${secretaryName}</div>
-            <div>Secrétaire</div>
+        <div class="sig-block">
+            <div class="sig-line">
+            ${(() => {
+                const sig = enrichedSignatures.find(s => s.role === 'coordinator' || s.role === 'admin_bypass');
+                if (sig) {
+                    if (sig.signatureUrl) {
+                        return '<img src="' + sig.signatureUrl + '" crossorigin="anonymous" onerror="this.remove()" style="max-width: 200px; max-height: 70px; object-fit: contain; margin-bottom: 2px;" />';
+                    }
+                    const dt = sig.signedAt ? new Date(sig.signedAt) : new Date('invalid');
+                    const dateStr = !isNaN(dt.getTime()) ? dt.toLocaleDateString('fr-CA') : '';
+                    return '<div class="digital-signature">Validé administrativement<br>' + dateStr + '</div>';
+                }
+                return '';
+            })()}
+            </div>
+            <div class="sig-name">${(() => {
+                const sig = enrichedSignatures.find(s => s.role === 'coordinator' || s.role === 'admin_bypass');
+                return sig ? sig.signedByName : secretaryName;
+            })()}</div>
+            <div class="sig-role">Secrétaire / Coordonnateur</div>
         </div>
     </div>
     ` : `
@@ -510,9 +575,19 @@ export const generateResolutionHTML = (
                     <h2 style="font-family: 'Montserrat', sans-serif; font-size: 18px; color: var(--primary-color); text-transform: uppercase;">ANNEXES / PIÈCES JOINTES</h2>
                     <ul style="margin-bottom: 40px;">
             `;
-            attachments.forEach((att, idx) => {
+            const uniqueAttachments: any[] = [];
+            const seenNames = new Set<string>();
+            attachments.forEach((att) => {
+                // Remove "(Page X)" suffix for base name display
+                const baseName = att.name.replace(/\s*\(Page\s+\d+\)$/i, '');
+                if (!seenNames.has(baseName)) {
+                    seenNames.add(baseName);
+                    uniqueAttachments.push({ ...att, baseName });
+                }
+            });
+            uniqueAttachments.forEach((att, idx) => {
                 const linkedTo = att.resolutionNumber ? ` (Lié à la résolution ${att.resolutionNumber})` : '';
-                annexesHTML += `<li style="margin-bottom: 10px; font-size: 15px;"><strong>Annexe ${idx + 1} :</strong> ${att.name}${linkedTo}</li>`;
+                annexesHTML += `<li style="margin-bottom: 10px; font-size: 15px;"><strong>Annexe ${idx + 1} :</strong> ${att.baseName}${linkedTo}</li>`;
             });
             annexesHTML += `</ul>`;
             
@@ -579,7 +654,10 @@ export const generateResolutionPDF = async (
         }
     }
 
-    const html = generateResolutionHTML(meeting, processedItemOrRec, type, mode);
+    const { fetchEnrichedSignatures } = await import('./pdfServiceExtract');
+    const enrichedSignatures = await fetchEnrichedSignatures(meeting);
+
+    const html = generateResolutionHTML(meeting, processedItemOrRec, type, mode, enrichedSignatures);
     
     // Open print window
     const printWindow = window.open('', '_blank', 'width=816,height=1056');
@@ -596,6 +674,3 @@ export const generateResolutionPDF = async (
     return { success: true };
 };
 
-const formattedNotes = (text: string) => {
-    return text.replace(/\n/g, '<br>');
-};

@@ -170,7 +170,7 @@ const generateExtractHTML = (
 
     // Build agenda item content using same approach as pdfServiceMinutes
     const cleanTitle = item.title.replace(/^\d+[\.)\-]?\s*/, '');
-    const titleWithNumber = `${agendaOrderNumber}. ${cleanTitle}`;
+    const titleWithNumber = `Sujet ${agendaOrderNumber} - ${cleanTitle}`;
 
     let commentRef = '';
     if (item.minuteEntries && item.minuteEntries.length > 0) {
