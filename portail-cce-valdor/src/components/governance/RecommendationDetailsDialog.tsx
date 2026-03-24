@@ -197,20 +197,37 @@ const RecommendationDetailsDialog: React.FC<RecommendationDetailsDialogProps> = 
                 } as any;
             }
 
-            // Filter the resolutions based on selection
             const filteredResolutions = recommendation.resolutions ? recommendation.resolutions.filter((r, i) => pdfOptions.selectedResolutions.includes(i) && r.text.trim().length > 0) : [];
             const combined = filteredResolutions.map(r => `[${r.number}] ${r.title}\n${r.text}`).join('\n\n---\n\n');
             const resolutionNumbersArray = filteredResolutions.map(r => r.number).filter(Boolean);
             const mergedNumbers = resolutionNumbersArray.length > 0 ? resolutionNumbersArray.join(', ') : 'PROJET';
+
+            // Try to find the agenda item order number (for PDF title "Sujet X - ...")
+            let agendaItemOrder = recommendation.sourceAgendaItemOrder;
+            if (!agendaItemOrder && meetingForPdf?.agendaItems) {
+                const srcNum = recommendation.sourceResolutionNumber;
+                const matchedItem = (meetingForPdf.agendaItems as any[]).find((item: any) =>
+                    item.minuteNumber === srcNum ||
+                    item.minuteEntries?.some((e: any) => e.number === srcNum) ||
+                    filteredResolutions.some(r => r.number === item.minuteNumber ||
+                        item.minuteEntries?.some((e: any) => e.number === r.number))
+                );
+                if (matchedItem?.order) {
+                    agendaItemOrder = matchedItem.order;
+                }
+            }
             
             const dataToPrint = { 
-                ...recommendation, 
-                projectName: recommendation.projectName, // Reverting to actual Agenda Item Name
-                sourceResolutionNumber: mergedNumbers, // Sets the document <title> for 'Save as PDF'
+                ...recommendation,
+                projectName: projectName || recommendation.projectName, // Use edited name if changed
+                sourceResolutionNumber: mergedNumbers,
+                sourceAgendaItemOrder: agendaItemOrder, // Explicitly pass order
                 resolutions: filteredResolutions, 
                 description: combined,
                 notes: (pdfOptions.includeComments && recommendation.notes ? recommendation.notes : '').replace(/^\[?[cC]ommentaires?\]?\s*:\s*/gi, '').trim()
             };
+
+            console.log('[PDF] dataToPrint:', { sourceAgendaItemOrder: dataToPrint.sourceAgendaItemOrder, projectName: dataToPrint.projectName, sourceResolutionNumber: dataToPrint.sourceResolutionNumber });
 
             const { generateResolutionPDF } = await import('../../services/pdfServiceResolution');
             await generateResolutionPDF(meetingForPdf as any, dataToPrint as CouncilRecommendation, 'recommendation', 'official');
