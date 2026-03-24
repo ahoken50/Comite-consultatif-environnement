@@ -55,6 +55,7 @@ const RecommendationDetailsDialog: React.FC<RecommendationDetailsDialogProps> = 
     const [editMode, setEditMode] = useState(false);
     const [status, setStatus] = useState<string>(recommendation?.status || '');
     const [projectName, setProjectName] = useState(recommendation?.projectName || '');
+    const [agendaItemOrder, setAgendaItemOrder] = useState<number | ''>(recommendation?.sourceAgendaItemOrder ?? '');
     const [councilResolution, setCouncilResolution] = useState(recommendation?.councilResolutionNumber || '');
     const [feedback, setFeedback] = useState(recommendation?.notes || '');
     const [attachment, setAttachment] = useState<{ url: string, name: string, uploadedAt: string } | undefined>(recommendation?.councilFeedbackAttachment);
@@ -80,6 +81,7 @@ const RecommendationDetailsDialog: React.FC<RecommendationDetailsDialogProps> = 
             updates: {
                 status: status as any,
                 projectName: projectName,
+                sourceAgendaItemOrder: agendaItemOrder !== '' ? Number(agendaItemOrder) : undefined,
                 councilResolutionNumber: councilResolution,
                 notes: feedback,
                 councilFeedbackAttachment: attachment,
@@ -203,16 +205,16 @@ const RecommendationDetailsDialog: React.FC<RecommendationDetailsDialogProps> = 
             const mergedNumbers = resolutionNumbersArray.length > 0 ? resolutionNumbersArray.join(', ') : 'PROJET';
 
             // Try to find the agenda item order number (for PDF title "Sujet X - ...")
-            let agendaItemOrder = recommendation.sourceAgendaItemOrder;
-            if (!agendaItemOrder && meetingForPdf?.agendaItems) {
+            // Priority 1: manually saved value from dialog
+            let resolvedOrder: number | undefined = recommendation.sourceAgendaItemOrder;
+            // Priority 2: lookup by title in meeting agendaItems
+            if (!resolvedOrder && meetingForPdf?.agendaItems) {
                 const srcNum = recommendation.sourceResolutionNumber;
                 const recTitle = (recommendation.projectName || '').toLowerCase().trim();
                 const matchedItem = (meetingForPdf.agendaItems as any[]).find((item: any) => {
                     const itemTitle = (item.title || '').toLowerCase().trim();
                     return (
-                        // Primary: match by agenda item title (most reliable)
                         (recTitle && itemTitle && itemTitle === recTitle) ||
-                        // Secondary: match by resolution number in entries
                         item.minuteNumber === srcNum ||
                         item.minuteEntries?.some((e: any) => e.number === srcNum) ||
                         filteredResolutions.some((r: any) => r.number === item.minuteNumber ||
@@ -220,15 +222,15 @@ const RecommendationDetailsDialog: React.FC<RecommendationDetailsDialogProps> = 
                     );
                 });
                 if (matchedItem?.order !== undefined && matchedItem.order !== null) {
-                    agendaItemOrder = matchedItem.order;
+                    resolvedOrder = matchedItem.order;
                 }
             }
             
             const dataToPrint = { 
                 ...recommendation,
-                projectName: projectName || recommendation.projectName, // Use edited name if changed
+                projectName: projectName || recommendation.projectName,
                 sourceResolutionNumber: mergedNumbers,
-                sourceAgendaItemOrder: agendaItemOrder, // Explicitly pass order
+                sourceAgendaItemOrder: resolvedOrder,
                 resolutions: filteredResolutions, 
                 description: combined,
                 notes: (pdfOptions.includeComments && recommendation.notes ? recommendation.notes : '').replace(/^\[?[cC]ommentaires?\]?\s*:\s*/gi, '').trim()
@@ -452,6 +454,17 @@ const RecommendationDetailsDialog: React.FC<RecommendationDetailsDialogProps> = 
                             onChange={(e) => setProjectName(e.target.value)}
                             fullWidth
                             helperText="Modifiez le titre du sujet tel qu'il apparaîtra dans le PDF."
+                            sx={{ mb: 2 }}
+                        />
+
+                        <TextField
+                            label="N° à l'ordre du jour (ODJ)"
+                            type="number"
+                            value={agendaItemOrder}
+                            onChange={(e) => setAgendaItemOrder(e.target.value === '' ? '' : Number(e.target.value))}
+                            fullWidth
+                            helperText="Entrez le numéro du sujet à l'ODJ (ex: 6). S'affichera comme 'Sujet 6 - ...' dans le PDF."
+                            inputProps={{ min: 1 }}
                             sx={{ mb: 2 }}
                         />
 
