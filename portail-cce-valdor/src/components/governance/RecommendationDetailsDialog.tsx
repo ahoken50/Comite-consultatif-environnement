@@ -76,17 +76,24 @@ const RecommendationDetailsDialog: React.FC<RecommendationDetailsDialogProps> = 
     const handleSave = async () => {
         if (!recommendation) return;
 
+        const rawUpdates: any = {
+            status: status,
+            projectName: projectName,
+            councilResolutionNumber: councilResolution,
+            notes: feedback,
+            attachments: attachments,
+        };
+        // Only include optional fields if they have a real value
+        if (agendaItemOrder !== '' && agendaItemOrder !== undefined) {
+            rawUpdates.sourceAgendaItemOrder = Number(agendaItemOrder);
+        }
+        if (attachment !== undefined) {
+            rawUpdates.councilFeedbackAttachment = attachment;
+        }
+
         await dispatch(updateRecommendation({
             id: recommendation.id,
-            updates: {
-                status: status as any,
-                projectName: projectName,
-                sourceAgendaItemOrder: agendaItemOrder !== '' ? Number(agendaItemOrder) : undefined,
-                councilResolutionNumber: councilResolution,
-                notes: feedback,
-                councilFeedbackAttachment: attachment,
-                attachments: attachments
-            }
+            updates: rawUpdates
         }));
         setEditMode(false);
         onClose();
