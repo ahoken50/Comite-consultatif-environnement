@@ -83,13 +83,13 @@ const formatDecisionHTML = (decision: string): string => {
                 html += `<div class="considerant-row"><div class="considerant-label">${trimmed.toUpperCase()}</div><div class="considerant-text"></div></div>`;
             }
         }
-        // IL EST RÉSOLU
-        else if (/^IL EST R[ÉE]SOLU/i.test(trimmed)) {
+        // IL EST RÉSOLU / IL EST ÉGALEMENT RÉSOLU / IL EST PROPOSÉ
+        else if (/^IL EST (?:ÉGALEMENT )?(?:R[ÉE]SOLU|PROPOS[ÉE])/i.test(trimmed)) {
             if (inResolvedList) {
                 html += '</ul>';
                 inResolvedList = false;
             }
-            const match = trimmed.match(/^(IL EST R[ÉE]SOLU(?:\s+QUE)?\s*:?)\s*(.*)/i);
+            const match = trimmed.match(/^(IL EST (?:ÉGALEMENT )?(?:R[ÉE]SOLU|PROPOS[ÉE])(?:\s+PAR)?(?:\s+QUE)?\s*:?)\s*(.*)/i);
             if (match) {
                 html += `<div class="il-est-resolu">${match[1]}</div>`;
                 if (match[2]) {

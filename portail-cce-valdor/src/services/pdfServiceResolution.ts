@@ -98,16 +98,19 @@ const formatResolutionHTML = (text: string): string => {
                 html += `<div class="considerant">${trimmed}</div>`;
             }
         }
-        // IL EST RÉSOLU
-        else if (/^IL EST R[ÉE]SOLU/i.test(trimmed)) {
+        // IL EST RÉSOLU / IL EST ÉGALEMENT RÉSOLU / IL EST PROPOSÉ
+        else if (/^IL EST (?:ÉGALEMENT )?(?:R[ÉE]SOLU|PROPOS[ÉE])/i.test(trimmed)) {
             if (inResolvedList) {
                 html += '</ul>';
                 inResolvedList = false;
             }
-            // Capture "IL EST RÉSOLU" optionally followed by "QUE"
-            const match = trimmed.match(/^(IL EST R[ÉE]SOLU(?:\s+QUE)?\s*:?)\s*(.*)/i);
+            const match = trimmed.match(/^(IL EST (?:ÉGALEMENT )?(?:R[ÉE]SOLU|PROPOS[ÉE])(?:\s+PAR)?(?:\s+QUE)?\s*:?)\s*(.*)/i);
             if (match) {
-                html += `<div class="considerant"><span class="il-est-resolu">${match[1]}</span> ${match[2] ? `<span class="resolution-text">${match[2]}</span>` : ''}</div>`;
+                html += `<div class="il-est-resolu-container"><span class="il-est-resolu">${match[1]}</span> `;
+                if (match[2]) html += `<span class="resolution-text">${match[2]}</span></div>`;
+                else html += `</div>`;
+            } else {
+                html += `<div class="il-est-resolu-container"><span class="il-est-resolu">${trimmed}</span></div>`;
             }
         }
         // Bullet points
@@ -124,7 +127,7 @@ const formatResolutionHTML = (text: string): string => {
                 html += '</ul>';
                 inResolvedList = false;
             }
-            html += `<div class="resolution-text">${trimmed}</div>`;
+            html += `<div class="il-est-resolu-container"><span class="resolution-text">${trimmed}</span></div>`;
         }
     }
 
@@ -419,13 +422,21 @@ export const generateResolutionHTML = (
             font-weight: 600;
             color: var(--primary-color);
         }
-        .il-est-resolu {
-            margin-top: 25px;
+        .il-est-resolu-container {
+            margin-top: 15px;
             margin-bottom: 15px;
-            font-family: 'Montserrat', sans-serif;
+            display: block;
+        }
+        .il-est-resolu {
             font-weight: 700;
             color: var(--primary-color);
+            font-family: 'Montserrat', sans-serif;
+            margin-right: 5px;
             text-transform: uppercase;
+        }
+        .resolution-text {
+            color: #444;
+            display: inline;
         }
         .movers {
             margin-top: 30px;
@@ -488,6 +499,7 @@ export const generateResolutionHTML = (
         <h1 style="font-family: 'Montserrat', sans-serif; font-size: 20px; text-transform: uppercase; letter-spacing: 1.5px; color: var(--primary-color); text-align: center; margin: 15px 0;">
             Extrait de procès-verbal CCE
         </h1>
+        <hr style="border: none; border-bottom: 2px solid var(--primary-color, #1e4e3d); margin: 25px 0 15px 0;">
     </div>
 
     <div style="text-align: justify; font-size: 15px; margin-top: 10px; margin-bottom: 40px; line-height: 1.6;">

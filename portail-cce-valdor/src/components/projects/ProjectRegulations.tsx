@@ -29,30 +29,28 @@ const ProjectRegulations: React.FC<ProjectRegulationsProps> = ({ project }) => {
     const [analyzing, setAnalyzing] = useState(false);
     const [aiReasoning, setAiReasoning] = useState<string | null>(null);
 
+    const [loadingLinked, setLoadingLinked] = useState(false);
+
     // Initial load of linked regulations
     useEffect(() => {
-        const loadLinkedRegulations = async () => {
-            if (project.linkedRegulationIds && project.linkedRegulationIds.length > 0) {
-                setLoading(true);
-                try {
-                    // Fetch each regulation by ID
-                    // Typesense doesn't have a bulk get by ID easily unless we filter by id:=[...]
-                    // Let's filter by ID
-                    const ids = project.linkedRegulationIds;
-                    // Note: 'id' field must be in schema for filtering
-                    // Fetch via Supabase Helper
-                    const docs = await getRegulationsByIds(ids);
-                    setLinkedRegulations(docs);
-                } catch (error) {
-                    console.error("Failed to load linked regulations", error);
-                } finally {
-                    setLoading(false);
-                }
-            } else {
-                setLinkedRegulations([]);
+        if (!project.linkedRegulationIds || project.linkedRegulationIds.length === 0) {
+            setLinkedRegulations([]);
+            return;
+        }
+
+        const fetchLinked = async () => {
+            setLoadingLinked(true);
+            try {
+                const docs = await getRegulationsByIds(project.linkedRegulationIds!);
+                setLinkedRegulations(docs);
+            } catch (error) {
+                console.error("Failed to load linked regulations", error);
+            } finally {
+                setLoadingLinked(false);
             }
         };
-        loadLinkedRegulations();
+
+        fetchLinked();
     }, [project.linkedRegulationIds]);
 
     // Handle Search
@@ -87,7 +85,6 @@ const ProjectRegulations: React.FC<ProjectRegulationsProps> = ({ project }) => {
 
             if (result.relevantRegulationIds.length > 0) {
                 // Fetch recommended regulations details to display them
-                // Fetch recommended regulations details to display them
                 const docs = await getRegulationsByIds(result.relevantRegulationIds);
                 setSearchResults(docs);
             } else {
@@ -111,13 +108,19 @@ const ProjectRegulations: React.FC<ProjectRegulationsProps> = ({ project }) => {
         // Optimistic update
         setLinkedRegulations(prev => [...prev, reg]);
 
-        await dispatch(updateProject({
-            id: project.id,
-            updates: { linkedRegulationIds: newIds },
-            userId: 'system', // Should be current user
-            userName: 'System',
-            projectName: project.name
-        }));
+        try {
+            await dispatch(updateProject({
+                id: project.id,
+                updates: { linkedRegulationIds: newIds },
+                userId: 'system', // Should be current user
+                userName: 'System',
+                projectName: project.name
+            })).unwrap();
+        } catch (error) {
+            console.error("Failed to link regulation", error);
+            // Revert optimistic update
+            setLinkedRegulations(prev => prev.filter(r => r.id !== reg.id));
+        }
     };
 
     // Unlink
@@ -129,13 +132,17 @@ const ProjectRegulations: React.FC<ProjectRegulationsProps> = ({ project }) => {
 
         setLinkedRegulations(prev => prev.filter(r => r.id !== regId));
 
-        await dispatch(updateProject({
-            id: project.id,
-            updates: { linkedRegulationIds: newIds },
-            userId: 'system',
-            userName: 'System',
-            projectName: project.name
-        }));
+        try {
+            await dispatch(updateProject({
+                id: project.id,
+                updates: { linkedRegulationIds: newIds },
+                userId: 'system',
+                userName: 'System',
+                projectName: project.name
+            })).unwrap();
+        } catch (error) {
+            console.error("Failed to unlink regulation", error);
+        }
     };
 
     return (
@@ -144,7 +151,7 @@ const ProjectRegulations: React.FC<ProjectRegulationsProps> = ({ project }) => {
                 {/* LEFT: Linked Regulations */}
                 <Grid size={{ xs: 12, md: 6 }}>
                     <Typography variant="h6" gutterBottom>Règlements liés</Typography>
-                    {linkedRegulations.length === 0 && !loading && (
+                    {linkedRegulations.length === 0 && !loadingLinked && (
                         <Alert severity="info" sx={{ mb: 2 }}>Aucun règlement lié à ce projet.</Alert>
                     )}
 

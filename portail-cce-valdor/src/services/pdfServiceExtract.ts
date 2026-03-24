@@ -75,7 +75,7 @@ const formatDecisionHTML = (decision: string): string => {
             html += `<li>${trimmed.replace(/^[-•]\s*/, '')}</li>`;
         } else {
             if (inResolvedList) { html += '</ul>'; inResolvedList = false; }
-            html += `<div class="resolution-text">${trimmed}</div>`;
+            html += `<div class="il-est-resolu-container"><span class="resolution-text">${trimmed}</span></div>`;
         }
     }
     if (inResolvedList) html += '</ul>';
@@ -416,18 +416,21 @@ const generateExtractHTML = (
             flex-grow: 1;
         }
 
-        .il-est-resolu {
+        .il-est-resolu-container {
             margin-top: 15px;
-            margin-bottom: 10px;
-            font-weight: 600;
-            color: #1e4e3d;
+            margin-bottom: 15px;
             display: block;
+        }
+
+        .il-est-resolu {
+            font-weight: 700;
+            color: #1e4e3d;
             font-family: 'Montserrat', sans-serif;
+            margin-right: 5px;
         }
 
         .resolution-text {
-            display: block;
-            margin-bottom: 8px;
+            display: inline;
         }
 
         .resolu-list {
