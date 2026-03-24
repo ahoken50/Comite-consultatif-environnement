@@ -743,7 +743,8 @@ const RecommendationBuilder: React.FC<RecommendationBuilderProps> = ({ onClose, 
                             >
                                 {projects.filter(p => p.status !== 'completed').map((proj) => (
                                     <MenuItem key={proj.id} value={proj.id}>
-                                        {proj.name}
+                                        <Checkbox checked={(formData.linkedProjectIds || []).includes(proj.id)} />
+                                        <ListItemText primary={proj.name} />
                                     </MenuItem>
                                 ))}
                             </Select>
@@ -806,7 +807,8 @@ const RecommendationBuilder: React.FC<RecommendationBuilderProps> = ({ onClose, 
 
                                     return options.map(opt => (
                                         <MenuItem key={opt.id} value={opt.id}>
-                                            {opt.label}
+                                            <Checkbox checked={(formData.linkedRecommendationIds || []).includes(opt.id)} />
+                                            <ListItemText primary={opt.label} />
                                         </MenuItem>
                                     ));
                                 })()}
