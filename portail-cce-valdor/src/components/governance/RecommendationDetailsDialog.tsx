@@ -206,13 +206,20 @@ const RecommendationDetailsDialog: React.FC<RecommendationDetailsDialogProps> = 
             let agendaItemOrder = recommendation.sourceAgendaItemOrder;
             if (!agendaItemOrder && meetingForPdf?.agendaItems) {
                 const srcNum = recommendation.sourceResolutionNumber;
-                const matchedItem = (meetingForPdf.agendaItems as any[]).find((item: any) =>
-                    item.minuteNumber === srcNum ||
-                    item.minuteEntries?.some((e: any) => e.number === srcNum) ||
-                    filteredResolutions.some(r => r.number === item.minuteNumber ||
-                        item.minuteEntries?.some((e: any) => e.number === r.number))
-                );
-                if (matchedItem?.order) {
+                const recTitle = (recommendation.projectName || '').toLowerCase().trim();
+                const matchedItem = (meetingForPdf.agendaItems as any[]).find((item: any) => {
+                    const itemTitle = (item.title || '').toLowerCase().trim();
+                    return (
+                        // Primary: match by agenda item title (most reliable)
+                        (recTitle && itemTitle && itemTitle === recTitle) ||
+                        // Secondary: match by resolution number in entries
+                        item.minuteNumber === srcNum ||
+                        item.minuteEntries?.some((e: any) => e.number === srcNum) ||
+                        filteredResolutions.some((r: any) => r.number === item.minuteNumber ||
+                            item.minuteEntries?.some((e: any) => e.number === r.number))
+                    );
+                });
+                if (matchedItem?.order !== undefined && matchedItem.order !== null) {
                     agendaItemOrder = matchedItem.order;
                 }
             }
