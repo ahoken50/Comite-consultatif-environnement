@@ -728,7 +728,8 @@ const RecommendationBuilder: React.FC<RecommendationBuilderProps> = ({ onClose, 
                                 label="Projets liés au niveau de la ville"
                                 value={formData.linkedProjectIds || []}
                                 onChange={(e) => {
-                                    const selectedIds = e.target.value as string[];
+                                    const val = e.target.value;
+                                    const selectedIds = typeof val === 'string' ? val.split(',') : val as string[];
                                     setFormData({ ...formData, linkedProjectIds: selectedIds });
                                 }}
                                 renderValue={(selected) => (
@@ -755,23 +756,60 @@ const RecommendationBuilder: React.FC<RecommendationBuilderProps> = ({ onClose, 
                                 label="Recommandations / Résolutions antérieures"
                                 value={formData.linkedRecommendationIds || []}
                                 onChange={(e) => {
-                                    const selectedIds = e.target.value as string[];
+                                    const val = e.target.value;
+                                    const selectedIds = typeof val === 'string' ? val.split(',') : val as string[];
                                     setFormData({ ...formData, linkedRecommendationIds: selectedIds });
                                 }}
                                 renderValue={(selected) => (
                                     <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
                                         {(selected as string[]).map((value) => {
+                                            let label = value;
                                             const rec = recommendations.find(r => r.id === value);
-                                            return <Chip key={value} label={rec ? rec.projectName : value} size="small" />;
+                                            if (rec) label = rec.projectName || value;
+                                            else {
+                                                // Try to locate in meetings
+                                                for (const m of meetings) {
+                                                    for (const a of m.agendaItems || []) {
+                                                        const entry = a.minuteEntries?.find(en => en.type === 'resolution' && en.number === value);
+                                                        if (entry) label = `Résolution ${entry.number} (${m.date?.split('T')[0]})`;
+                                                        else if (value.includes(a.id)) label = `Décision: ${a.title} (${m.date?.split('T')[0]})`;
+                                                    }
+                                                }
+                                            }
+                                            return <Chip key={value} label={label} size="small" />;
                                         })}
                                     </Box>
                                 )}
                             >
-                                {recommendations.filter(r => r.id !== formData.id).map((rec) => (
-                                    <MenuItem key={rec.id} value={rec.id}>
-                                        {rec.projectName} ({rec.meetingDate?.split('T')[0] || 'Date inconnue'})
-                                    </MenuItem>
-                                ))}
+                                {(() => {
+                                    const options: { id: string, label: string }[] = [];
+                                    
+                                    // Add Formal Recommendations
+                                    recommendations.filter(r => r.id !== formData.id).forEach(rec => {
+                                        options.push({ id: rec.id, label: `Recommandation: ${rec.projectName} (${rec.meetingDate?.split('T')[0] || '?'})` });
+                                    });
+
+                                    // Add raw Resolutions from all Meetings
+                                    meetings.forEach(m => {
+                                        const dateStr = m.date?.split('T')[0] || '?';
+                                        (m.agendaItems || []).forEach(a => {
+                                            if (a.minuteEntries) {
+                                                a.minuteEntries.filter(e => e.type === 'resolution' && e.number).forEach(res => {
+                                                    options.push({ id: res.number, label: `Résolution ${res.number} - ${a.title} (${dateStr})` });
+                                                });
+                                            } else if (a.decision) {
+                                                const id = `dec-${m.id}-${a.id}`;
+                                                options.push({ id, label: `Décision - ${a.title} (${dateStr})` });
+                                            }
+                                        });
+                                    });
+
+                                    return options.map(opt => (
+                                        <MenuItem key={opt.id} value={opt.id}>
+                                            {opt.label}
+                                        </MenuItem>
+                                    ));
+                                })()}
                             </Select>
                         </FormControl>
 
