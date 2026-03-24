@@ -338,7 +338,32 @@ export const generateResolutionHTML = (
             text-align: center;
             border-bottom: 3px double var(--primary-color);
             padding-bottom: 20px;
-            margin-bottom: 40px;
+            margin-bottom: 20px;
+        }
+        .meeting-info {
+            font-size: 16px;
+            font-style: italic;
+            color: #555;
+            line-height: 1.4;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        .attendance {
+            background-color: #f9fbfa;
+            border-left: 4px solid var(--primary-color);
+            padding: 15px 25px;
+            margin-bottom: 20px;
+            font-family: 'Montserrat', sans-serif;
+            font-size: 13px;
+        }
+        .attendance h3 {
+            color: var(--primary-color);
+            margin: 0 0 8px 0;
+            font-size: 12px;
+            text-transform: uppercase;
+        }
+        .attendance-group {
+            margin-bottom: 12px;
         }
         .logo {
             height: 80px;
@@ -390,7 +415,11 @@ export const generateResolutionHTML = (
         }
 
         .resolution-box {
-            margin: 20px 0;
+            background-color: #fdfcf8;
+            border: 1px solid #e0e0e0;
+            border-top: 3px solid var(--accent-color);
+            padding: 20px 30px;
+            margin: 25px 0;
             page-break-inside: avoid;
         }
         .res-header {
@@ -499,15 +528,35 @@ export const generateResolutionHTML = (
         <h1 style="font-family: 'Montserrat', sans-serif; font-size: 20px; text-transform: uppercase; letter-spacing: 1.5px; color: var(--primary-color); text-align: center; margin: 15px 0;">
             Extrait de procès-verbal CCE
         </h1>
-        <hr style="border: none; border-bottom: 2px solid var(--primary-color, #1e4e3d); margin: 25px 0 15px 0;">
+        <div class="meeting-info">
+            <strong>${meetingNumberStr.replace(/^0/, '')}assemblée ${meetingTypeStr}</strong><br>
+            Tenue le ${dayName} ${dayOfMonth} ${monthName} ${year}, ${time}<br>
+            ${location}
+        </div>
     </div>
 
-    <div style="text-align: justify; font-size: 15px; margin-top: 10px; margin-bottom: 40px; line-height: 1.6;">
-        PROCÈS-VERBAL de la ${meetingNumberStr}assemblée ${meetingTypeStr} du Comité consultatif en environnement tenue le ${dayName} ${dayOfMonth} ${monthName} ${year} à ${time} à ${location}.<br><br>
-        ${regularPresentsStr ? `ÉTAIENT PRÉSENT(E)S : ${regularPresentsStr}<br>` : ''}
-        ${staffPresentsStr ? `ÉTAIENT AUSSI PRÉSENT(E)S : ${staffPresentsStr}<br>` : ''}
-        ${absentsStr ? `ÉTAIENT ABSENT(E)S : ${absentsStr}` : ''}
-    </div>
+    <section class="attendance">
+        ${regularPresentsStr ? `
+        <div class="attendance-group">
+            <h3>Étaient présent(e)s</h3>
+            <div>${regularPresentsStr}</div>
+        </div>
+        ` : ''}
+        ${staffPresentsStr ? `
+        <div class="attendance-group">
+            <h3>Étaient aussi présent(e)s</h3>
+            <div>${staffPresentsStr}</div>
+        </div>
+        ` : ''}
+        ${absentsStr ? `
+        <div class="attendance-group">
+            <h3>Étaient absent(e)s</h3>
+            <div>${absentsStr}</div>
+        </div>
+        ` : ''}
+    </section>
+
+    <hr style="border: none; border-bottom: 2px solid var(--primary-color, #1e4e3d); margin: 25px 0 15px 0;">
 
     <div style="font-weight: bold; font-size: 20px; line-height: 1.4; margin-bottom: 30px;">
         ${globalTitle}
