@@ -117,8 +117,45 @@ export const projectsAPI = {
     addCaucusDecision: async (projectId: string, decision: any): Promise<void> => {
         const docRef = doc(db, COLLECTION_NAME, projectId);
         await updateDoc(docRef, {
-            caucusDecisions: arrayUnion(decision)
+            caucusDecisions: arrayUnion(decision),
+            dateUpdated: Timestamp.now()
         });
+    },
+
+    updateCaucusDecision: async (projectId: string, decisionId: string, updates: Partial<CaucusDecision>): Promise<void> => {
+        const docRef = doc(db, COLLECTION_NAME, projectId);
+        const docSnap = await getDoc(docRef);
+        
+        if (docSnap.exists()) {
+            const data = docSnap.data();
+            const decisions = (data.caucusDecisions || []) as CaucusDecision[];
+            
+            const updatedDecisions = decisions.map(d => 
+                d.id === decisionId ? { ...d, ...updates } : d
+            );
+
+            await updateDoc(docRef, {
+                caucusDecisions: updatedDecisions,
+                dateUpdated: Timestamp.now()
+            });
+        }
+    },
+
+    deleteCaucusDecision: async (projectId: string, decisionId: string): Promise<void> => {
+        const docRef = doc(db, COLLECTION_NAME, projectId);
+        const docSnap = await getDoc(docRef);
+        
+        if (docSnap.exists()) {
+            const data = docSnap.data();
+            const decisions = (data.caucusDecisions || []) as CaucusDecision[];
+            
+            const updatedDecisions = decisions.filter(d => d.id !== decisionId);
+
+            await updateDoc(docRef, {
+                caucusDecisions: updatedDecisions,
+                dateUpdated: Timestamp.now()
+            });
+        }
     },
 
     // Link a CCE resolution/comment to a project

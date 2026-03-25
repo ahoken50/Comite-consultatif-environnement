@@ -1,5 +1,5 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
-import type { Project, LinkedResolution } from '../../types/project.types';
+import type { Project, LinkedResolution, CaucusDecision } from '../../types/project.types';
 import type { ProjectTask } from '../../types/task.types';
 import { projectsAPI } from './projectsAPI';
 import { logProjectActivity } from '../../services/activityLogService';
@@ -164,6 +164,37 @@ export const addCaucusDecision = createAsyncThunk(
     }
 );
 
+export const updateCaucusDecision = createAsyncThunk(
+    'projects/updateCaucusDecision',
+    async ({ projectId, decisionId, updates, projectName, userId, userName }: {
+        projectId: string;
+        decisionId: string;
+        updates: Partial<CaucusDecision>;
+        projectName: string;
+        userId: string;
+        userName: string;
+    }) => {
+        await projectsAPI.updateCaucusDecision(projectId, decisionId, updates);
+        await logProjectActivity('project_updated', userId, userName, projectId, `${projectName}: Décision caucus modifiée`);
+        return { projectId, decisionId, updates };
+    }
+);
+
+export const deleteCaucusDecision = createAsyncThunk(
+    'projects/deleteCaucusDecision',
+    async ({ projectId, decisionId, projectName, userId, userName }: {
+        projectId: string;
+        decisionId: string;
+        projectName: string;
+        userId: string;
+        userName: string;
+    }) => {
+        await projectsAPI.deleteCaucusDecision(projectId, decisionId);
+        await logProjectActivity('project_updated', userId, userName, projectId, `${projectName}: Décision caucus supprimée`);
+        return { projectId, decisionId };
+    }
+);
+
 // Link a CCE resolution/comment to a project
 export const linkResolutionToProject = createAsyncThunk(
     'projects/linkResolution',
@@ -311,6 +342,23 @@ const projectsSlice = createSlice({
                 if (project) {
                     if (!project.caucusDecisions) project.caucusDecisions = [];
                     project.caucusDecisions.push(decision);
+                }
+            })
+            .addCase(updateCaucusDecision.fulfilled, (state, action) => {
+                const { projectId, decisionId, updates } = action.payload;
+                const project = state.items.find(p => p.id === projectId);
+                if (project && project.caucusDecisions) {
+                    const index = project.caucusDecisions.findIndex(d => d.id === decisionId);
+                    if (index !== -1) {
+                        project.caucusDecisions[index] = { ...project.caucusDecisions[index], ...updates };
+                    }
+                }
+            })
+            .addCase(deleteCaucusDecision.fulfilled, (state, action) => {
+                const { projectId, decisionId } = action.payload;
+                const project = state.items.find(p => p.id === projectId);
+                if (project && project.caucusDecisions) {
+                    project.caucusDecisions = project.caucusDecisions.filter(d => d.id !== decisionId);
                 }
             })
             // Link Resolution
