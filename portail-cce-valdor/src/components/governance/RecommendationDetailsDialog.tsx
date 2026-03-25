@@ -18,7 +18,8 @@ import {
     CircularProgress,
     Menu,
     ListItemIcon,
-    ListItemText
+    ListItemText,
+    Autocomplete
 } from '@mui/material';
 import { AttachmentOutlined, CloudUpload, Print, Gavel, Campaign } from '@mui/icons-material';
 import { useDispatch, useSelector } from 'react-redux';
@@ -54,6 +55,7 @@ const RecommendationDetailsDialog: React.FC<RecommendationDetailsDialogProps> = 
 
     const [editMode, setEditMode] = useState(false);
     const [status, setStatus] = useState<string>(recommendation?.status || '');
+    const [selectedProjectId, setSelectedProjectId] = useState<string>(recommendation?.projectId || '');
     const [projectName, setProjectName] = useState(recommendation?.projectName || '');
     const [agendaItemOrder, setAgendaItemOrder] = useState<number | ''>(recommendation?.sourceAgendaItemOrder ?? '');
     const [councilResolution, setCouncilResolution] = useState(recommendation?.councilResolutionNumber || '');
@@ -78,6 +80,7 @@ const RecommendationDetailsDialog: React.FC<RecommendationDetailsDialogProps> = 
 
         const rawUpdates: any = {
             status: status,
+            projectId: selectedProjectId,
             projectName: projectName,
             councilResolutionNumber: councilResolution,
             notes: feedback,
@@ -455,8 +458,43 @@ const RecommendationDetailsDialog: React.FC<RecommendationDetailsDialogProps> = 
                         <Divider sx={{ my: 1 }} />
                         <Typography variant="subtitle1" fontWeight="bold">Détails du retour du conseil</Typography>
 
+                        <Autocomplete
+                            id="project-selector"
+                            options={projects}
+                            getOptionLabel={(option) => {
+                                if (typeof option === 'string') return option;
+                                return option.name || 'Projet sans nom';
+                            }}
+                            value={projects.find(p => p.id === selectedProjectId) || projectName || null}
+                            onChange={(_, newValue) => {
+                                if (newValue && typeof newValue !== 'string') {
+                                    setSelectedProjectId(newValue.id);
+                                    setProjectName(newValue.name);
+                                } else if (typeof newValue === 'string') {
+                                    setProjectName(newValue);
+                                    setSelectedProjectId('');
+                                } else {
+                                    setSelectedProjectId('');
+                                }
+                            }}
+                            renderInput={(params) => (
+                                <TextField
+                                    {...params}
+                                    label="Lier à un projet"
+                                    placeholder="Rechercher un projet..."
+                                    fullWidth
+                                    sx={{ mb: 2 }}
+                                    helperText="Sélectionnez le projet concerné par cette recommandation."
+                                />
+                            )}
+                            freeSolo
+                            onInputChange={(_, newInputValue) => {
+                                setProjectName(newInputValue);
+                            }}
+                        />
+
                         <TextField
-                            label="Titre / Nom du sujet"
+                            label="Titre du sujet (Pour le PDF)"
                             value={projectName}
                             onChange={(e) => setProjectName(e.target.value)}
                             fullWidth
