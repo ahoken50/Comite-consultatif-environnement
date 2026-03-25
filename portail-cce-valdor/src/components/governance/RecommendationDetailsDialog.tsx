@@ -55,7 +55,8 @@ const RecommendationDetailsDialog: React.FC<RecommendationDetailsDialogProps> = 
 
     const [editMode, setEditMode] = useState(false);
     const [status, setStatus] = useState<string>(recommendation?.status || '');
-    const [selectedProjectId, setSelectedProjectId] = useState<string>(recommendation?.projectId || '');
+    const [selectedProjectIds, setSelectedProjectIds] = useState<string[]>(recommendation?.linkedProjectIds || (recommendation?.projectId ? [recommendation.projectId] : []));
+    const [selectedLinkedRecIds, setSelectedLinkedRecIds] = useState<string[]>(recommendation?.linkedRecommendationIds || []);
     const [projectName, setProjectName] = useState(recommendation?.projectName || '');
     const [agendaItemOrder, setAgendaItemOrder] = useState<number | ''>(recommendation?.sourceAgendaItemOrder ?? '');
     const [councilResolution, setCouncilResolution] = useState(recommendation?.councilResolutionNumber || '');
@@ -80,7 +81,9 @@ const RecommendationDetailsDialog: React.FC<RecommendationDetailsDialogProps> = 
 
         const rawUpdates: any = {
             status: status,
-            projectId: selectedProjectId,
+            projectId: selectedProjectIds.length > 0 ? selectedProjectIds[0] : '', // Fallback to first for legacy support
+            linkedProjectIds: selectedProjectIds,
+            linkedRecommendationIds: selectedLinkedRecIds,
             projectName: projectName,
             councilResolutionNumber: councilResolution,
             notes: feedback,
@@ -460,37 +463,80 @@ const RecommendationDetailsDialog: React.FC<RecommendationDetailsDialogProps> = 
 
                         <Autocomplete
                             id="project-selector"
+                            multiple
                             options={projects}
                             getOptionLabel={(option) => {
                                 if (typeof option === 'string') return option;
                                 return option.name || 'Projet sans nom';
                             }}
-                            value={projects.find(p => p.id === selectedProjectId) || projectName || null}
+                            value={projects.filter(p => selectedProjectIds.includes(p.id))}
                             onChange={(_, newValue) => {
-                                if (newValue && typeof newValue !== 'string') {
-                                    setSelectedProjectId(newValue.id);
-                                    setProjectName(newValue.name);
-                                } else if (typeof newValue === 'string') {
-                                    setProjectName(newValue);
-                                    setSelectedProjectId('');
-                                } else {
-                                    setSelectedProjectId('');
+                                const ids = newValue.map(v => typeof v === 'string' ? '' : v.id).filter(Boolean);
+                                setSelectedProjectIds(ids);
+                                if (newValue.length > 0) {
+                                    const lastItem = newValue[newValue.length - 1];
+                                    if (typeof lastItem !== 'string') {
+                                        setProjectName(lastItem.name);
+                                    }
                                 }
                             }}
                             renderInput={(params) => (
                                 <TextField
                                     {...params}
-                                    label="Lier à un projet"
-                                    placeholder="Rechercher un projet..."
+                                    label="Lier à un ou plusieurs projets"
+                                    placeholder="Rechercher des projets..."
                                     fullWidth
                                     sx={{ mb: 2 }}
-                                    helperText="Sélectionnez le projet concerné par cette recommandation."
+                                    helperText="Sélectionnez les projets concernés par cette recommandation."
                                 />
                             )}
-                            freeSolo
-                            onInputChange={(_, newInputValue) => {
-                                setProjectName(newInputValue);
+                            renderTags={(value, getTagProps) =>
+                                value.map((option, index) => (
+                                    <Chip
+                                        label={typeof option === 'string' ? option : option.name}
+                                        {...getTagProps({ index })}
+                                        size="small"
+                                        color="primary"
+                                        variant="outlined"
+                                    />
+                                ))
+                            }
+                        />
+
+                        <Autocomplete
+                            id="rec-selector"
+                            multiple
+                            options={recommendations.filter(r => r.id !== recommendation.id)}
+                            getOptionLabel={(option) => {
+                                if (typeof option === 'string') return option;
+                                return option.projectName || 'Recommandation sans nom';
                             }}
+                            value={recommendations.filter(r => selectedLinkedRecIds.includes(r.id))}
+                            onChange={(_, newValue) => {
+                                const ids = newValue.map(v => typeof v === 'string' ? '' : v.id).filter(Boolean);
+                                setSelectedLinkedRecIds(ids);
+                            }}
+                            renderInput={(params) => (
+                                <TextField
+                                    {...params}
+                                    label="Lier à d'autres résolutions / recommandations"
+                                    placeholder="Rechercher..."
+                                    fullWidth
+                                    sx={{ mb: 2 }}
+                                    helperText="Liez cette recommandation à des résolutions antérieures ou liées."
+                                />
+                            )}
+                            renderTags={(value, getTagProps) =>
+                                value.map((option, index) => (
+                                    <Chip
+                                        label={typeof option === 'string' ? option : option.projectName}
+                                        {...getTagProps({ index })}
+                                        size="small"
+                                        color="secondary"
+                                        variant="outlined"
+                                    />
+                                ))
+                            }
                         />
 
                         <TextField
