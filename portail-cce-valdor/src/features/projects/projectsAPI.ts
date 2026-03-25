@@ -12,7 +12,7 @@ import {
     getDoc
 } from 'firebase/firestore';
 import { db } from '../../services/firebase';
-import type { Project, LinkedResolution } from '../../types/project.types';
+import type { Project, LinkedResolution, CaucusDecision } from '../../types/project.types';
 import type { ProjectTask } from '../../types/task.types';
 
 const COLLECTION_NAME = 'projects';
