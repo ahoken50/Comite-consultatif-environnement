@@ -15,6 +15,7 @@ import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import type { Project } from '../../types/project.types';
+import type { Member as TeamMember } from '../../types/member.types';
 import { ProjectStatus, Priority, Category } from '../../types/project.types';
 import { useDispatch, useSelector } from 'react-redux';
 import { fetchSettings } from '../../features/settings/settingsSlice';
@@ -42,9 +43,10 @@ interface ProjectFormProps {
     onClose: () => void;
     onSubmit: (data: ProjectFormData) => void;
     initialData?: Partial<Project>;
+    members?: TeamMember[]; // Using imported Member type aliased as TeamMember
 }
 
-const ProjectForm: React.FC<ProjectFormProps> = ({ open, onClose, onSubmit, initialData }) => {
+const ProjectForm: React.FC<ProjectFormProps> = ({ open, onClose, onSubmit, initialData, members = [] }) => {
     const dispatch = useDispatch<AppDispatch>();
     const { categories } = useSelector((state: RootState) => state.settings);
 
@@ -106,6 +108,33 @@ const ProjectForm: React.FC<ProjectFormProps> = ({ open, onClose, onSubmit, init
                                         error={!!errors.name}
                                         helperText={errors.name?.message}
                                     />
+                                )}
+                            />
+                        </Grid>
+
+                        <Grid size={{ xs: 12 }}>
+                            <Controller
+                                name="coordinatorId"
+                                control={control}
+                                render={({ field }) => (
+                                    <TextField
+                                        {...field}
+                                        id={`${formId}-coordinatorId`}
+                                        select
+                                        label="Responsable du projet"
+                                        fullWidth
+                                        error={!!errors.coordinatorId}
+                                        helperText={errors.coordinatorId?.message || "Sélectionnez la personne en charge de ce projet."}
+                                    >
+                                        <MenuItem value="">
+                                            <em>Non assigné</em>
+                                        </MenuItem>
+                                        {members.map((member) => (
+                                            <MenuItem key={member.id} value={member.id}>
+                                                {member.displayName || member.email}
+                                            </MenuItem>
+                                        ))}
+                                    </TextField>
                                 )}
                             />
                         </Grid>

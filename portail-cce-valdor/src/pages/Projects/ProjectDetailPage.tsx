@@ -383,6 +383,7 @@ const ProjectDetailPage: React.FC = () => {
                 initialData={project}
                 onClose={() => setEditDialogOpen(false)}
                 onSubmit={handleUpdateProject}
+                members={members}
             />
         </Box>
     );

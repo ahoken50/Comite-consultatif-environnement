@@ -26,6 +26,7 @@ import type { AppDispatch } from '../../store/store';
 import type { RootState } from '../../store/rootReducer';
 import { fetchProjects, createProject, updateProject, deleteProject } from '../../features/projects/projectsSlice';
 import { fetchMeetings } from '../../features/meetings/meetingsSlice';
+import { fetchMembers } from '../../features/members/membersSlice';
 import ProjectCard from '../../components/projects/ProjectCard';
 import ProjectList from '../../components/projects/ProjectList';
 import ProjectKanbanBoard from '../../components/projects/ProjectKanbanBoard';
@@ -45,6 +46,7 @@ const ProjectsPage: React.FC = () => {
     const { showSuccess, showError } = useToast();
     const { items: projects, error } = useSelector((state: RootState) => state.projects);
     const { items: meetings } = useSelector((state: RootState) => state.meetings);
+    const { items: members } = useSelector((state: RootState) => state.members);
     const { user } = useSelector((state: RootState) => state.auth);
     const [view, setView] = useState<'grid' | 'list' | 'kanban' | 'calendar'>('kanban');
     const [searchTerm, setSearchTerm] = useState('');
@@ -58,6 +60,7 @@ const ProjectsPage: React.FC = () => {
     useEffect(() => {
         dispatch(fetchProjects());
         dispatch(fetchMeetings());
+        dispatch(fetchMembers());
     }, [dispatch]);
 
     const handleViewChange = (_: React.MouseEvent<HTMLElement>, newView: 'grid' | 'list' | 'kanban' | null) => {
@@ -114,7 +117,6 @@ const ProjectsPage: React.FC = () => {
                 userName: user.displayName || user.email || 'Utilisateur'
             })).unwrap();
 
-            setIsFormOpen(false);
             setIsFormOpen(false);
             showSuccess('Projet créé avec succès !');
         } catch (err) {
@@ -318,6 +320,7 @@ const ProjectsPage: React.FC = () => {
                 open={isFormOpen}
                 onClose={() => setIsFormOpen(false)}
                 onSubmit={handleCreateProject}
+                members={members}
             />
 
             <ProjectMergeDialog
