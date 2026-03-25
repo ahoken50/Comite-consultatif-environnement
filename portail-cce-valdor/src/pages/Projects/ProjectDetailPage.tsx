@@ -23,12 +23,14 @@ import { fetchDocumentsByEntity, deleteDocument, fetchDocuments } from '../../fe
 import { fetchMembers } from '../../features/members/membersSlice';
 import { fetchMeetings } from '../../features/meetings/meetingsSlice';
 import { updateProject, deleteProject, fetchProjects } from '../../features/projects/projectsSlice';
+import { fetchRecommendations } from '../../features/governance/governanceSlice';
 import DocumentList from '../../components/documents/DocumentList';
 import DocumentUpload from '../../components/documents/DocumentUpload';
 import ProjectTasks from '../../components/projects/ProjectTasks';
 import ProjectForm from '../../components/projects/ProjectForm';
 import ProjectComments from '../../components/projects/ProjectComments';
 import ProjectDecisions from '../../components/projects/ProjectDecisions';
+import ProjectRecommendations from '../../components/projects/ProjectRecommendations';
 import LinkedResolutions from '../../components/projects/LinkedResolutions';
 import ProjectRegulations from '../../components/projects/ProjectRegulations';
 import ProjectDependencies from '../../components/projects/ProjectDependencies';
@@ -88,6 +90,7 @@ const ProjectDetailPage: React.FC = () => {
             dispatch(fetchDocuments()); // Fetch all documents for LinkedResolutions attachments
             if (members.length === 0) dispatch(fetchMembers());
             dispatch(fetchMeetings()); // Fetch meetings for LinkedResolutions
+            dispatch(fetchRecommendations()); // Fetch recommendations for the new tab
         }
     }, [dispatch, id, members.length]);
 
@@ -221,6 +224,7 @@ const ProjectDetailPage: React.FC = () => {
                         <Tab label="Tâches" />
                         <Tab label="Dépendances" />
                         <Tab label="Résolutions CCE" />
+                        <Tab label="Recommandations" />
                         <Tab label="Règlements" />
                         <Tab label="Décisions Caucus" />
                         <Tab label="Documents" />
@@ -338,14 +342,18 @@ const ProjectDetailPage: React.FC = () => {
                 </TabPanel>
 
                 <TabPanel value={tabValue} index={4}>
-                    <ProjectRegulations project={project} />
+                    <ProjectRecommendations projectId={project.id} />
                 </TabPanel>
 
                 <TabPanel value={tabValue} index={5}>
-                    <ProjectDecisions project={project} />
+                    <ProjectRegulations project={project} />
                 </TabPanel>
 
                 <TabPanel value={tabValue} index={6}>
+                    <ProjectDecisions project={project} />
+                </TabPanel>
+
+                <TabPanel value={tabValue} index={7}>
                     <Grid container spacing={3}>
                         <Grid size={{ xs: 12, md: 8 }}>
                             <Typography variant="h6" gutterBottom>Documents du projet</Typography>
@@ -365,7 +373,7 @@ const ProjectDetailPage: React.FC = () => {
                     </Grid>
                 </TabPanel>
 
-                <TabPanel value={tabValue} index={7}>
+                <TabPanel value={tabValue} index={8}>
                     <ProjectComments project={project} />
                 </TabPanel>
             </Paper>
