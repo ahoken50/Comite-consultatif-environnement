@@ -117,6 +117,12 @@ service cloud.firestore {
          allow write: if isCoordinator();
       }
 
+      // Avis de convocations (Phase 1)
+      match /avis_convocations/{avisId} {
+         allow read: if isCoordinator();
+         allow write: if isCoordinator();
+      }
+
       // Approval Tokens (Subcollection)
       // - Used for managing PV approvals via magic links and admin panel
       match /approval_tokens/{tokenId} {

@@ -20,7 +20,7 @@ const CategoryChart: React.FC<CategoryChartProps> = ({ data }) => {
             <CardContent>
                 <div style={{ width: '100%', height: 300 }}>
                     {data.length > 0 ? (
-                        <ResponsiveContainer width="99%" height="100%">
+                        <ResponsiveContainer width="99%" height="100%" minWidth={0} minHeight={0}>
                             <PieChart>
                                 <Pie
                                     data={data}
