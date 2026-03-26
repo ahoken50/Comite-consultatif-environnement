@@ -78,8 +78,7 @@ const MeetingDetailPage: React.FC = () => {
     const dispatch = useDispatch<AppDispatch>();
     const { showInfo, showSuccess, showError } = useToast();
     const meetingRedux = useSelector(
-        (state: RootState) => state.meetings.items.find(m => m.id === id),
-        (a, b) => JSON.stringify(a) === JSON.stringify(b)
+        (state: RootState) => state.meetings.items.find(m => m.id === id)
     );
     const userRedux = useSelector(
         (state: RootState) => state.auth.user,
