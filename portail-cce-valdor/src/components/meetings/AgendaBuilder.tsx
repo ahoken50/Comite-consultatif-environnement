@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
     Box,
     Typography,
@@ -47,7 +47,7 @@ interface AgendaBuilderProps {
     members?: any[]; // Passed down from parent to decouple from Redux updates
 }
 
-const SortableItem = ({ item, onDelete, onEdit, linkedDocuments, readOnly }: { item: AgendaItem; onDelete: (id: string) => void; onEdit: (item: AgendaItem) => void; linkedDocuments?: Document[]; readOnly?: boolean }) => {
+const SortableItem = React.memo(({ item, onDelete, onEdit, linkedDocuments, readOnly }: { item: AgendaItem; onDelete: (id: string) => void; onEdit: (item: AgendaItem) => void; linkedDocuments?: Document[]; readOnly?: boolean }) => {
     const {
         attributes,
         listeners,
@@ -103,7 +103,7 @@ const SortableItem = ({ item, onDelete, onEdit, linkedDocuments, readOnly }: { i
             />
         </ListItem>
     );
-};
+});
 
 const AgendaBuilder: React.FC<AgendaBuilderProps> = ({ items, onItemsChange, meetingId, meeting, documents = [], onDocumentUpload, initialAgendaItemId, onDocumentUnlink, onDocumentDelete, readOnly = false, canPropose = false, members = [] }) => {
     const [editingItem, setEditingItem] = useState<AgendaItem | null>(null);
@@ -111,23 +111,9 @@ const AgendaBuilder: React.FC<AgendaBuilderProps> = ({ items, onItemsChange, mee
     const [previewDoc, setPreviewDoc] = useState<Document | null>(null);
     const [documentToAction, setDocumentToAction] = useState<Document | null>(null);
 
-    // PERF: Progressive rendering — render items in batches to avoid 270+ MUI components at once
-    const BATCH_SIZE = 5;
-    const [visibleCount, setVisibleCount] = useState(Math.min(BATCH_SIZE, items.length));
-
-    useEffect(() => {
-        // Reset visible count when items change (e.g. new data load)
-        setVisibleCount(Math.min(BATCH_SIZE, items.length));
-    }, [items.length]);
-
-    useEffect(() => {
-        if (visibleCount < items.length) {
-            const frame = requestAnimationFrame(() => {
-                setVisibleCount(prev => Math.min(prev + BATCH_SIZE, items.length));
-            });
-            return () => cancelAnimationFrame(frame);
-        }
-    }, [visibleCount, items.length]);
+    // PERF: Render all items at once. Progressive rendering with requestAnimationFrame
+    // causes continuous re-renders and forced reflows with @dnd-kit when adding items
+    const visibleCount = items.length;
 
     // Get members for presenter dropdown
     const presenterOptions = [
@@ -199,10 +185,24 @@ const AgendaBuilder: React.FC<AgendaBuilderProps> = ({ items, onItemsChange, mee
         }
     };
 
-    const getLinkedDocuments = (itemId: string) => {
-        const linked = documents.filter(doc => doc.agendaItemId === itemId);
-        return linked;
-    };
+    // Group documents by agendaItemId to avoid O(N*M) lookups on every render
+    const linkedDocumentsMap = React.useMemo(() => {
+        const map = new Map<string, Document[]>();
+        documents.forEach(doc => {
+            if (doc.agendaItemId) {
+                const existing = map.get(doc.agendaItemId) || [];
+                existing.push(doc);
+                map.set(doc.agendaItemId, existing);
+            }
+        });
+        return map;
+    }, [documents]);
+
+    const emptyDocsRef = React.useRef<Document[]>([]);
+
+    const getLinkedDocuments = React.useCallback((itemId: string) => {
+        return linkedDocumentsMap.get(itemId) || emptyDocsRef.current;
+    }, [linkedDocumentsMap]);
 
     return (
         <Box>
