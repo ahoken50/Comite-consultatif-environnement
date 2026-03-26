@@ -89,7 +89,7 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate, readOn
 
     // Progressive Rendering State for Agenda Items
     // Prevents massive DOM layout thrashing and thread blocking on mount
-    const BATCH_SIZE = 5;
+const BATCH_SIZE = 5; // Ou une constante importée d'un fichier de configuration
     const [visibleCount, setVisibleCount] = useState(Math.min(BATCH_SIZE, localAgendaItems.length));
 
     React.useEffect(() => {
