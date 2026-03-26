@@ -26,7 +26,7 @@ import { generateMinutesPDF } from '../../services/pdfServiceMinutes';
 
 // ⚡ Bolt: Extract row into a React.memo component to prevent re-rendering when parent state changes (e.g. navigation)
 // This avoids O(M*K) calculations per row per render.
-const MeetingRow = React.memo(({ meeting, onEdit, onDownload }: { meeting: any, onEdit: (id: string) => void, onDownload: (meeting: any) => void }) => {
+const MeetingRow = React.memo(({ meeting, onEdit, onDownload }: { meeting: Meeting, onEdit: (id: string) => void, onDownload: (meeting: Meeting) => void }) => {
     // ⚡ Bolt: Memoize the status calculation (O(M*K)) which was previously inline and unmemoized
     const minutesStatus = useMemo(() => {
         const agendaItems = meeting.agendaItems || [];
