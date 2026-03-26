@@ -1,8 +1,7 @@
 import type { Meeting } from '../types/meeting.types';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { collection, getDocs, doc, getDoc, query, where } from 'firebase/firestore';
-import { db } from './firebase';
+import { fetchEnrichedSignatures } from './pdfServiceExtract';
 
 export interface PDFGenerationResult {
     success: boolean;
@@ -250,7 +249,7 @@ const generateHTMLDocument = (meeting: Meeting, _globalNotes?: string, enrichedS
         }
 
         // Build title with order number - strip any existing number prefix from title
-        const cleanTitle = item.title.replace(/^\d+[\.\)\-]?\s*/, '');
+        const cleanTitle = item.title.replace(/^\d+[.)-]?\s*/, '');
         const titleWithNumber = `${orderNum}. ${cleanTitle}`;
 
         sectionsHTML += `
@@ -769,76 +768,8 @@ const generateHTMLDocument = (meeting: Meeting, _globalNotes?: string, enrichedS
  */
 export const generateMinutesPDF = async (meeting: Meeting, globalNotes?: string, windowRef?: Window | null): Promise<PDFGenerationResult> => {
     
-    // 1. Prepare enriched signatures
-    const enrichedSignatures: any[] = [];
-    
-    // From manual approvalSignatures in meeting
-    for (const sig of meeting.approvalSignatures || []) {
-        let signatureUrl = '';
-        if (sig.signedBy) {
-            try {
-                const memberDoc = await getDoc(doc(db, 'members', sig.signedBy));
-                if (memberDoc.exists()) {
-                    const memberData = memberDoc.data();
-                    const isCoordinatorSpoofingPresident = memberData.role === 'coordinator' && ['president', 'vice_president', 'elected_official'].includes(sig.role);
-                    
-                    if (!isCoordinatorSpoofingPresident && memberData.signatureUrl) {
-                        signatureUrl = memberData.signatureUrl;
-                    }
-                }
-            } catch (e) {
-                console.error('Error fetching member signature:', e);
-            }
-        }
-        enrichedSignatures.push({
-            role: sig.role,
-            signedByName: sig.signedByName,
-            signedAt: sig.signedAt,
-            signatureUrl
-        });
-    }
-
-    // From email approval tokens
-    try {
-        const tokensRef = collection(db, 'meetings', meeting.id, 'approval_tokens');
-        const tokensSnap = await getDocs(tokensRef);
-        for (const d of tokensSnap.docs) {
-            const t = d.data();
-            if (t.status === 'approved') {
-                let signatureUrl = '';
-                if (t.userId) {
-                    try {
-                        const memberDoc = await getDoc(doc(db, 'members', t.userId));
-                        if (memberDoc.exists()) {
-                            const memberData = memberDoc.data();
-                            const isCoordinatorSpoofingPresident = memberData.role === 'coordinator' && ['president', 'vice_president', 'elected_official'].includes(t.role);
-                            
-                            if (!isCoordinatorSpoofingPresident && memberData.signatureUrl) {
-                                signatureUrl = memberData.signatureUrl;
-                            }
-                        }
-                    } catch (e) {
-                        console.error('Error fetching token member signature:', e);
-                    }
-                } else if (t.email) {
-                     const q = query(collection(db, 'members'), where('email', '==', t.email));
-                     const memSnap = await getDocs(q);
-                     if (!memSnap.empty && memSnap.docs[0].data().signatureUrl) {
-                         signatureUrl = memSnap.docs[0].data().signatureUrl;
-                     }
-                }
-
-                enrichedSignatures.push({
-                    role: t.role,
-                    signedByName: t.name || 'Signataire',
-                    signedAt: t.approvedAt || t.updatedAt || new Date().toISOString(),
-                    signatureUrl
-                });
-            }
-        }
-    } catch (e) {
-        console.error('Error fetching approval tokens:', e);
-    }
+    // 1. Prepare enriched signatures using the shared service to prevent logic conflicts
+    const enrichedSignatures = await fetchEnrichedSignatures(meeting);
     
     const html = generateHTMLDocument(meeting, globalNotes, enrichedSignatures);
 
