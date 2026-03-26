@@ -11,3 +11,7 @@
 ## 2025-12-30 - Verification with Firebase Dependencies
 **Learning:** The application's core slices import `firebase.ts` which initializes the app immediately. Without valid environment variables, the app crashes even in a test harness.
 **Action:** When creating a temporary verification entry point (like `main-verify.tsx`), either mock the slices entirely (avoiding imports that touch firebase) or provide dummy `VITE_FIREBASE_` environment variables when running `npm run dev` to bypass the crash. The latter is often easier if the slices are needed.
+
+## 2025-03-26 - [MinutesPage Performance Optimization]
+**Learning:** React arrays rendered via `map()` mapping out table rows with heavy O(N*K) data-parsing operations (like deep checking `minuteEntries.some()` on each agenda item) will block the main thread and drastically reduce list rendering performance.
+**Action:** Extract list items to `React.memo` components when the list rendering contains expensive computations, rather than inlining them directly in the `.map()` loop, and memoize expensive array sorting logic using `useMemo` at the list container level.

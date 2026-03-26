@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useMemo, useCallback } from 'react';
 import {
     Box,
     Typography,
@@ -24,44 +24,23 @@ import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { generateMinutesPDF } from '../../services/pdfServiceMinutes';
 
-const MinutesPage: React.FC = () => {
-    const navigate = useNavigate();
-    const dispatch = useDispatch<AppDispatch>();
-    const { items: meetings, loading } = useSelector((state: RootState) => state.meetings);
-
-    useEffect(() => {
-        dispatch(fetchMeetings());
-    }, [dispatch]);
-
-    // Sort meetings by date descending
-    const sortedMeetings = [...meetings].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-
-    const handleEditMinutes = (meetingId: string) => {
-        // Navigate to Meeting Detail, Tab 1 (Procès-verbal)
-        navigate(`/meetings/${meetingId}`, { state: { tab: 1 } });
-    };
-
-    const handleDownloadPDF = (meeting: any) => {
-        generateMinutesPDF(meeting, meeting.minutes);
-    };
-
-    const getMinutesStatus = (meeting: any) => {
-        // Check if agendaItems have minute entries with content
+// ⚡ Bolt: Extract row into a React.memo component to prevent re-rendering when parent state changes (e.g. navigation)
+// This avoids O(M*K) calculations per row per render.
+const MeetingRow = React.memo(({ meeting, onEdit, onDownload }: { meeting: any, onEdit: (id: string) => void, onDownload: (meeting: any) => void }) => {
+    // ⚡ Bolt: Memoize the status calculation (O(M*K)) which was previously inline and unmemoized
+    const minutesStatus = useMemo(() => {
         const agendaItems = meeting.agendaItems || [];
 
         if (agendaItems.length === 0) {
             return <Chip label="À rédiger" color="warning" size="small" variant="outlined" />;
         }
 
-        // Count items that have minute entries with content
         const itemsWithContent = agendaItems.filter((item: any) => {
-            // Check new format (minuteEntries array)
             if (item.minuteEntries && item.minuteEntries.length > 0) {
                 return item.minuteEntries.some((entry: any) =>
                     entry.content && entry.content.trim().length > 10
                 );
             }
-            // Check legacy format (decision field)
             if (item.decision && item.decision.trim().length > 10) {
                 return true;
             }
@@ -71,16 +50,79 @@ const MinutesPage: React.FC = () => {
         const completionRatio = itemsWithContent.length / agendaItems.length;
 
         if (completionRatio >= 0.8) {
-            // 80%+ items have content = Rédigé
             return <Chip label="Rédigé" color="success" size="small" variant="outlined" />;
         } else if (completionRatio > 0) {
-            // Some items have content = En cours
             return <Chip label="En cours" color="info" size="small" variant="outlined" />;
         }
 
-        // No items have content = À rédiger
         return <Chip label="À rédiger" color="warning" size="small" variant="outlined" />;
-    };
+    }, [meeting.agendaItems]);
+
+    // ⚡ Bolt: Memoize the disable logic (O(M*K)) which was previously calculated on every single render
+    const isPdfDisabled = useMemo(() => {
+        return (!meeting.minutes || meeting.minutes.length < 5) &&
+            !meeting.agendaItems?.some((item: any) =>
+                item.minuteEntries?.some((entry: any) =>
+                    entry.content && entry.content.trim().length > 10
+                )
+            );
+    }, [meeting.minutes, meeting.agendaItems]);
+
+    return (
+        <TableRow hover>
+            <TableCell>
+                {format(new Date(meeting.date), 'd MMMM yyyy', { locale: fr })}
+            </TableCell>
+            <TableCell>{meeting.title}</TableCell>
+            <TableCell>{minutesStatus}</TableCell>
+            <TableCell align="right">
+                <Tooltip title="Télécharger PDF">
+                    <span>
+                        <IconButton
+                            onClick={() => onDownload(meeting)}
+                            disabled={isPdfDisabled}
+                            color="primary"
+                        >
+                            <PictureAsPdf />
+                        </IconButton>
+                    </span>
+                </Tooltip>
+                <Button
+                    startIcon={<Edit />}
+                    size="small"
+                    onClick={() => onEdit(meeting.id)}
+                    sx={{ ml: 1 }}
+                >
+                    Gérer
+                </Button>
+            </TableCell>
+        </TableRow>
+    );
+});
+
+const MinutesPage: React.FC = () => {
+    const navigate = useNavigate();
+    const dispatch = useDispatch<AppDispatch>();
+    const { items: meetings, loading } = useSelector((state: RootState) => state.meetings);
+
+    useEffect(() => {
+        dispatch(fetchMeetings());
+    }, [dispatch]);
+
+    // ⚡ Bolt: Memoize the expensive sorting operation (O(N log N) + date parsing)
+    // Previously ran on every render loop
+    const sortedMeetings = useMemo(() => {
+        return [...meetings].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    }, [meetings]);
+
+    // ⚡ Bolt: Stabilize handlers to prevent invalidating React.memo children
+    const handleEditMinutes = useCallback((meetingId: string) => {
+        navigate(`/meetings/${meetingId}`, { state: { tab: 1 } });
+    }, [navigate]);
+
+    const handleDownloadPDF = useCallback((meeting: any) => {
+        generateMinutesPDF(meeting, meeting.minutes);
+    }, []);
 
     if (loading) {
         return <Typography>Chargement...</Typography>;
@@ -107,40 +149,12 @@ const MinutesPage: React.FC = () => {
                     </TableHead>
                     <TableBody>
                         {sortedMeetings.map((meeting) => (
-                            <TableRow key={meeting.id} hover>
-                                <TableCell>
-                                    {format(new Date(meeting.date), 'd MMMM yyyy', { locale: fr })}
-                                </TableCell>
-                                <TableCell>{meeting.title}</TableCell>
-                                <TableCell>{getMinutesStatus(meeting)}</TableCell>
-                                <TableCell align="right">
-                                    <Tooltip title="Télécharger PDF">
-                                        <IconButton
-                                            onClick={() => handleDownloadPDF(meeting)}
-                                            disabled={
-                                                // Disable if neither legacy minutes nor minuteEntries have content
-                                                (!meeting.minutes || meeting.minutes.length < 5) &&
-                                                !meeting.agendaItems?.some((item: any) =>
-                                                    item.minuteEntries?.some((entry: any) =>
-                                                        entry.content && entry.content.trim().length > 10
-                                                    )
-                                                )
-                                            }
-                                            color="primary"
-                                        >
-                                            <PictureAsPdf />
-                                        </IconButton>
-                                    </Tooltip>
-                                    <Button
-                                        startIcon={<Edit />}
-                                        size="small"
-                                        onClick={() => handleEditMinutes(meeting.id)}
-                                        sx={{ ml: 1 }}
-                                    >
-                                        Gérer
-                                    </Button>
-                                </TableCell>
-                            </TableRow>
+                            <MeetingRow
+                                key={meeting.id}
+                                meeting={meeting}
+                                onEdit={handleEditMinutes}
+                                onDownload={handleDownloadPDF}
+                            />
                         ))}
                         {sortedMeetings.length === 0 && (
                             <TableRow>
