@@ -1,0 +1,16 @@
+--- portail-cce-valdor/src/pages/Minutes/MinutesPage.tsx
++++ portail-cce-valdor/src/pages/Minutes/MinutesPage.tsx
+@@ -19,10 +19,11 @@
+ import type { RootState } from '../../store/rootReducer';
+ import { fetchMeetings } from '../../features/meetings/meetingsSlice';
+ import { format } from 'date-fns';
+ import { fr } from 'date-fns/locale';
+ import { generateMinutesPDF } from '../../services/pdfServiceMinutes';
++import type { Meeting } from '../../types/meeting.types';
+
+ // ⚡ Bolt: Extract row into a React.memo component to prevent re-rendering when parent state changes (e.g. navigation)
+ // This avoids O(M*K) calculations per row per render.
+-const MeetingRow = React.memo(({ meeting, onEdit, onDownload }: { meeting: any, onEdit: (id: string) => void, onDownload: (meeting: any) => void }) => {
++const MeetingRow = React.memo(({ meeting, onEdit, onDownload }: { meeting: Meeting | any, onEdit: (id: string) => void, onDownload: (meeting: Meeting | any) => void }) => {
+     // ⚡ Bolt: Memoize the status calculation (O(M*K)) which was previously inline and unmemoized
+     const minutesStatus = useMemo(() => {
