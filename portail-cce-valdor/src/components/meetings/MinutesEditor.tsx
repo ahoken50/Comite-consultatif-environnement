@@ -87,6 +87,24 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate, readOn
     const [isModeSelectorOpen, setIsModeSelectorOpen] = useState(false);
     const [isAgentWizardOpen, setIsAgentWizardOpen] = useState(false);
 
+    // Progressive Rendering State for Agenda Items
+    // Prevents massive DOM layout thrashing and thread blocking on mount
+const BATCH_SIZE = 5; // Ou une constante importée d'un fichier de configuration
+    const [visibleCount, setVisibleCount] = useState(Math.min(BATCH_SIZE, localAgendaItems.length));
+
+    React.useEffect(() => {
+        setVisibleCount(Math.min(BATCH_SIZE, localAgendaItems.length));
+    }, [localAgendaItems.length]);
+
+    React.useEffect(() => {
+        if (visibleCount < localAgendaItems.length) {
+            const frame = requestAnimationFrame(() => {
+                setVisibleCount(prev => Math.min(prev + BATCH_SIZE, localAgendaItems.length));
+            });
+            return () => cancelAnimationFrame(frame);
+        }
+    }, [visibleCount, localAgendaItems.length]);
+
     // SmartPV Agent hook
     const pvAgent = usePVAgent({
         meeting,
@@ -898,7 +916,7 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate, readOn
                 <Typography variant="subtitle1" gutterBottom fontWeight="bold" sx={{ mb: 2 }}>Points de l'Ordre du Jour</Typography>
 
                 <Grid container spacing={3}>
-                    {localAgendaItems.map((item, index) => (
+                    {localAgendaItems.slice(0, visibleCount).map((item, index) => (
                         <Grid size={{ xs: 12 }} key={item.id}>
                             <AgendaItemEditor
                                 item={item}
