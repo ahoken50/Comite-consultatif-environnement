@@ -64,6 +64,9 @@ function TabPanel(props: TabPanelProps) {
     );
 }
 
+// Optimization: Constant empty array to keep useSelector return values referentially stable.
+const EMPTY_TASKS: any[] = [];
+
 const ProjectDetailPage: React.FC = () => {
     const { id } = useParams<{ id: string }>();
     const navigate = useNavigate();
@@ -82,7 +85,7 @@ const ProjectDetailPage: React.FC = () => {
     const { items: documents } = useSelector((state: RootState) => state.documents);
     const { items: members } = useSelector((state: RootState) => state.members);
     const { user } = useSelector((state: RootState) => state.auth);
-    const tasks = useSelector((state: RootState) => id ? state.projects.tasksByProjectId[id] || [] : []);
+    const tasks = useSelector((state: RootState) => id ? state.projects.tasksByProjectId[id] || EMPTY_TASKS : EMPTY_TASKS);
 
     useEffect(() => {
         if (id) {
