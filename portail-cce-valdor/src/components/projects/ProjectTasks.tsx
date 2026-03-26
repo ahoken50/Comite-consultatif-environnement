@@ -29,10 +29,14 @@ interface ProjectTasksProps {
     project: Project;
 }
 
+// Optimization: Use a constant empty array to prevent unnecessary re-renders
+// when the project has no tasks, keeping the useSelector return value referentially stable.
+const EMPTY_TASKS: ProjectTask[] = [];
+
 const ProjectTasks: React.FC<ProjectTasksProps> = ({ project }) => {
     const dispatch = useDispatch<AppDispatch>();
     const { user } = useSelector((state: RootState) => state.auth);
-    const tasks = useSelector((state: RootState) => state.projects.tasksByProjectId[project.id] || []);
+    const tasks = useSelector((state: RootState) => state.projects.tasksByProjectId[project.id] || EMPTY_TASKS);
     const members = useSelector((state: RootState) => state.members.items);
     // Add Task State
     const [newTaskDescription, setNewTaskDescription] = useState('');
