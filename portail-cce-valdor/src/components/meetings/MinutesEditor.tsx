@@ -37,6 +37,7 @@ interface MinutesEditorProps {
     onUpdate: (updates: Partial<Meeting>) => void;
     readOnly?: boolean;
     members?: any[];
+    documents?: any[]; // Documents linked to agenda items
 }
 
 /**
@@ -56,7 +57,7 @@ interface MinutesEditorProps {
  * @param onUpdate - Callback to update the meeting in Firestore/State.
  * @param readOnly - If true, disables editing (defaults to false).
  */
-const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate, readOnly = false, members = [] }) => {
+const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate, readOnly = false, members = [], documents = [] }) => {
     const { showSuccess, showError } = useToast();
     const {
         globalNotes,
@@ -931,6 +932,7 @@ const BATCH_SIZE = 5; // Ou une constante importée d'un fichier de configuratio
                                 meetingId={meeting.id}
                                 meetingDate={meeting.date}
                                 userRole={userRole}
+                                documents={documents}
                             />
                         </Grid>
                     ))}
@@ -966,6 +968,7 @@ export default React.memo(MinutesEditor, (prevProps, nextProps) => {
         prevProps.meeting.minutesFileUrl === nextProps.meeting.minutesFileUrl &&
         prevProps.meeting.agendaItems === nextProps.meeting.agendaItems &&
         prevProps.onUpdate === nextProps.onUpdate &&
-        prevProps.readOnly === nextProps.readOnly
+        prevProps.readOnly === nextProps.readOnly &&
+        prevProps.documents === nextProps.documents
     );
 });

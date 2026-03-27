@@ -472,6 +472,7 @@ const MeetingDetailPage: React.FC = () => {
                             onUpdate={handleMeetingUpdate}
                             readOnly={!isCoordinator}
                             members={members}
+                            documents={deferredDocuments}
                         />
                     ) : (
                         <Alert severity="info" sx={{ mt: 2 }}>

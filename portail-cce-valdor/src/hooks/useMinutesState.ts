@@ -43,7 +43,11 @@ export const useMinutesState = ({ meeting, onUpdate }: UseMinutesStateProps) => 
         if (isMeetingChange) {
             // Full reset — navigated to a different meeting
             setGlobalNotes(meeting.minutes || '');
-            setLocalAgendaItems(meeting.agendaItems || []);
+            // Safety: ensure every item has a stable ID to prevent cloning
+            const safeItems = (meeting.agendaItems || []).map(item =>
+                item.id ? item : { ...item, id: `item-${Date.now()}-${Math.random().toString(36).slice(2)}` }
+            );
+            setLocalAgendaItems(safeItems);
 
             const decisions: Record<string, string> = {};
             meeting.agendaItems?.forEach(item => {

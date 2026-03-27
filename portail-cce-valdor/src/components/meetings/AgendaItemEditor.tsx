@@ -1,7 +1,7 @@
 import React from 'react';
-import { Box, Grid, TextField, MenuItem, Typography, Button, Switch, FormControlLabel, Checkbox, FormGroup } from '@mui/material';
+import { Box, Grid, TextField, MenuItem, Typography, Button, Switch, FormControlLabel, Checkbox, FormGroup, Chip, Stack } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
-import { Add } from '@mui/icons-material';
+import { Add, AttachFile } from '@mui/icons-material';
 import type { AgendaItem } from '../../types/meeting.types';
 import MinuteEntryEditor from './MinuteEntryEditor';
 
@@ -18,6 +18,7 @@ interface AgendaItemEditorProps {
     meetingId?: string;
     meetingDate?: string;
     userRole?: string;
+    documents?: any[]; // Documents linked to agenda items
 }
 
 /**
@@ -36,9 +37,14 @@ const AgendaItemEditor: React.FC<AgendaItemEditorProps> = ({
     readOnly = false,
     meetingId,
     meetingDate,
-    userRole
+    userRole,
+    documents = []
 }) => {
     const navigate = useNavigate();
+
+    // Filter docs linked to this specific agenda item
+    const linkedDocuments = documents.filter((d: any) => d.agendaItemId === item.id);
+
     
     return (
         <Box sx={{ bgcolor: 'background.default', p: 2, borderRadius: 1 }}>
@@ -49,6 +55,25 @@ const AgendaItemEditor: React.FC<AgendaItemEditorProps> = ({
                 {item.objective} - {item.presenter}
             </Typography>
 
+            {/* Linked documents (pièces jointes) */}
+            {linkedDocuments.length > 0 && (
+                <Stack direction="row" spacing={1} sx={{ mb: 2, flexWrap: 'wrap', gap: 1 }}>
+                    {linkedDocuments.map((doc: any) => (
+                        <Chip
+                            key={doc.id}
+                            icon={<AttachFile />}
+                            label={doc.name}
+                            size="small"
+                            variant="outlined"
+                            component="a"
+                            href={doc.fileUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            clickable
+                        />
+                    ))}
+                </Stack>
+            )}
             {/* Editable minute entries (resolutions + comments) */}
             {item.minuteEntries && item.minuteEntries.length > 0 && (
                 <Box sx={{ mb: 2 }}>

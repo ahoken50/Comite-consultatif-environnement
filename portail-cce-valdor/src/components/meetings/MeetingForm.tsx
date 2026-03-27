@@ -29,6 +29,8 @@ import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrate
 import { CSS } from '@dnd-kit/utilities';
 
 const agendaItemSchema = z.object({
+    // CRITICAL: preserve the existing ID so state updates target the correct item
+    id: z.string().optional(),
     title: z.string().min(1, 'Le titre est requis'),
     description: z.string().optional(),
     // Coerce number, default to 15 if invalid/empty
@@ -557,7 +559,7 @@ const MeetingForm: React.FC<MeetingFormProps> = ({ open, onClose, onSubmit, init
                                     <Typography variant="h6">Ordre du jour</Typography>
                                     <Button
                                         startIcon={<Add />}
-                                        onClick={() => append({ title: '', duration: 15, presenter: '', objective: 'Information', decision: '', description: '', agendaNote: '' })}
+                                        onClick={() => append({ id: Date.now().toString(), title: '', duration: 15, presenter: '', objective: 'Information', decision: '', description: '', agendaNote: '' })}
                                         variant="outlined"
                                         size="small"
                                     >
