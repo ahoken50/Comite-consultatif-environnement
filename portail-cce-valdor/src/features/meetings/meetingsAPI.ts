@@ -9,7 +9,8 @@ import {
     orderBy,
     Timestamp,
     getDoc,
-    FieldValue
+    FieldValue,
+    runTransaction
 } from 'firebase/firestore';
 import { db } from '../../services/firebase';
 import type { Meeting } from '../../types/meeting.types';
@@ -136,29 +137,32 @@ export const meetingsAPI = {
     updateRSVP: async (meetingId: string, userId: string, status: 'present' | 'absent' | 'uncertain', reason?: string): Promise<void> => {
         try {
             const meetingRef = doc(db, COLLECTION_NAME, meetingId);
-            const meetingSnap = await getDoc(meetingRef);
 
-            if (!meetingSnap.exists()) {
-                throw new Error('Meeting not found');
-            }
+            await runTransaction(db, async (transaction) => {
+                const meetingSnap = await transaction.get(meetingRef);
 
-            const meetingData = meetingSnap.data();
-            const currentRSVPs = meetingData.rsvps || [];
+                if (!meetingSnap.exists()) {
+                    throw new Error('Meeting not found');
+                }
 
-            // Remove existing RSVP from this user if exists
-            const otherRSVPs = currentRSVPs.filter((r: any) => r.userId !== userId);
+                const meetingData = meetingSnap.data();
+                const currentRSVPs = meetingData.rsvps || [];
 
-            // Add new RSVP
-            const newRSVP = {
-                userId,
-                status,
-                reason: reason || '',
-                updatedAt: new Date().toISOString()
-            };
+                // Remove existing RSVP from this user if exists (non-mutating)
+                const otherRSVPs = currentRSVPs.filter((r: any) => r.userId !== userId);
 
-            await updateDoc(meetingRef, {
-                rsvps: [...otherRSVPs, newRSVP],
-                dateUpdated: Timestamp.now()
+                // Add new RSVP
+                const newRSVP = {
+                    userId,
+                    status,
+                    reason: reason || '',
+                    updatedAt: new Date().toISOString()
+                };
+
+                transaction.update(meetingRef, {
+                    rsvps: [...otherRSVPs, newRSVP],
+                    dateUpdated: Timestamp.now()
+                });
             });
         } catch (error) {
             console.error('Error updating RSVP:', error);

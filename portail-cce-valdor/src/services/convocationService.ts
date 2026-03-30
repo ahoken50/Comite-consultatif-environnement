@@ -71,7 +71,7 @@ export interface AvisConvocation {
  * Generate a unique RSVP token
  */
 const generateToken = (): string => {
-    return `${Date.now()}-${Math.random().toString(36).substring(2, 15)}`;
+    return crypto.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).substring(2, 15)}`;
 };
 
 /**

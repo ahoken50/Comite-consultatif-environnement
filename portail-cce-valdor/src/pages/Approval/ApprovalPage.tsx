@@ -22,6 +22,7 @@ import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { db, functions } from '../../services/firebase';
 import { httpsCallable } from 'firebase/functions';
 import type { Meeting } from '../../types/meeting.types';
+import DOMPurify from 'dompurify';
 
 const ApprovalPage: React.FC = () => {
     const { meetingId, token } = useParams<{ meetingId: string; token: string }>();
@@ -263,7 +264,7 @@ const ApprovalPage: React.FC = () => {
                     <div
                         className="minutes-content"
                         dangerouslySetInnerHTML={{
-                            __html: meeting?.minutesDraft?.content || meeting?.minutes || "<p>Contenu non disponible.</p>"
+                            __html: DOMPurify.sanitize(meeting?.minutesDraft?.content || meeting?.minutes || "<p>Contenu non disponible.</p>")
                         }}
                     />
                 </Paper>

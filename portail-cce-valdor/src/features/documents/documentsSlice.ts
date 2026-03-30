@@ -89,12 +89,13 @@ const documentsSlice = createSlice({
             })
             .addCase(fetchDocumentsByEntity.fulfilled, (state, action) => {
                 state.loading = false;
-                // PERF: Only replace items if data actually changed (prevents unnecessary selector triggers)
-                const newIds = action.payload.map(d => d.id).sort().join(',');
-                const oldIds = state.items.map(d => d.id).sort().join(',');
-                if (newIds !== oldIds) {
-                    state.items = action.payload;
-                }
+                // Upsert documents: merge new ones by replacing existing with same ID and appending new ones
+                const newDocs = action.payload;
+                const newIds = new Set(newDocs.map(d => d.id));
+                // Keep the ones we didn't just fetch
+                const keptDocs = state.items.filter(d => !newIds.has(d.id));
+                // Combine them
+                state.items = [...keptDocs, ...newDocs];
             })
             // Upload
             .addCase(uploadDocument.pending, (state) => {

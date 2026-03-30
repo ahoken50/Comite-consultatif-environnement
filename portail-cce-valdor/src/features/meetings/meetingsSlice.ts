@@ -1,4 +1,4 @@
-import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
+import { createSlice, createAsyncThunk, createSelector } from '@reduxjs/toolkit';
 import type { Meeting } from '../../types/meeting.types';
 import { meetingsAPI } from './meetingsAPI';
 
@@ -60,11 +60,15 @@ const meetingsSlice = createSlice({
             const index = state.items.findIndex(m => m.id === action.payload.id);
             if (index !== -1) {
                 const existing = state.items[index];
+                // Build lightweight content fingerprints to detect real changes
+                const agendaFingerprint = (items: any[]) =>
+                    items?.map(i => `${i.id}:${i.title}:${i.decision || ''}:${i.minuteEntries?.length || 0}`).join('|') || '';
                 // Skip if same version — prevents unnecessary re-renders
                 // when Firestore echoes back data we just wrote
                 if (
                     existing.dateUpdated === action.payload.dateUpdated &&
                     existing.agendaItems?.length === action.payload.agendaItems?.length &&
+                    agendaFingerprint(existing.agendaItems) === agendaFingerprint(action.payload.agendaItems) &&
                     existing.minutes === action.payload.minutes &&
                     existing.status === action.payload.status &&
                     existing.approvalStatus === action.payload.approvalStatus
@@ -96,12 +100,18 @@ const meetingsSlice = createSlice({
             .addCase(createMeeting.fulfilled, (state, action) => {
                 state.items.unshift(action.payload);
             })
+            .addCase(createMeeting.rejected, (state, action) => {
+                state.error = action.error.message || 'Échec de la création de la réunion';
+            })
             // Update
             .addCase(updateMeeting.fulfilled, (state, action) => {
                 const index = state.items.findIndex(m => m.id === action.payload.id);
                 if (index !== -1) {
                     state.items[index] = { ...state.items[index], ...action.payload.updates };
                 }
+            })
+            .addCase(updateMeeting.rejected, (state, action) => {
+                state.error = action.error.message || 'Échec de la mise à jour de la réunion';
             })
             // Delete
             .addCase(deleteMeeting.fulfilled, (state, action) => {
@@ -131,10 +141,16 @@ export const { upsertMeeting } = meetingsSlice.actions;
 // Selectors
 export const selectAllMeetings = (state: { meetings: MeetingsState }) => state.meetings.items;
 export const selectMeetingsLoading = (state: { meetings: MeetingsState }) => state.meetings.loading;
-export const selectPastMeetings = (state: { meetings: MeetingsState }) => {
-    const now = new Date().toISOString();
-    return state.meetings.items.filter(m => m.date < now);
-};
+export const selectMeetingsError = (state: { meetings: MeetingsState }) => state.meetings.error;
+
+// Memoized selector: only recomputes when meetings.items changes
+export const selectPastMeetings = createSelector(
+    [selectAllMeetings],
+    (items) => {
+        const now = new Date().toISOString();
+        return items.filter(m => m.date < now);
+    }
+);
 
 export default meetingsSlice.reducer;
 

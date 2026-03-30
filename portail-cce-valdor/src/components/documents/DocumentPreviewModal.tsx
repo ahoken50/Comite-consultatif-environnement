@@ -14,6 +14,7 @@ import {
 } from '@mui/material';
 import { Close, Download, OpenInNew } from '@mui/icons-material';
 import type { Document } from '../../types/document.types';
+import DOMPurify from 'dompurify';
 
 import { renderAsync } from 'docx-preview';
 
@@ -270,7 +271,7 @@ const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({ open, onClo
                                     borderBottom: '2px solid #d0d0d0'
                                 },
                             }}>
-                                <div dangerouslySetInnerHTML={{ __html: excelHtml || '' }} />
+                                <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(excelHtml || '') }} />
                             </Box>
                         )}
                     </Box>

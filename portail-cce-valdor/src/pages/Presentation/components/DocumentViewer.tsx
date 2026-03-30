@@ -5,6 +5,7 @@ import type { Attachment } from '../types';
 import * as XLSX from 'xlsx';
 import { renderAsync } from 'docx-preview';
 import { PdfRenderer } from './PdfRenderer';
+import DOMPurify from 'dompurify';
 
 interface DocumentViewerProps {
     activeAttachment: Attachment | null;
@@ -402,7 +403,7 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
                                       #excel-table tr:nth-of-type(even) { background-color: #f8fafc; }
                                     `}
                                     </style>
-                                    <div dangerouslySetInnerHTML={{ __html: excelHtml }} />
+                                    <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(excelHtml) }} />
                                 </Box>
                             ) : (
                                 <Box sx={{ p: 4, textAlign: 'center' }}>
