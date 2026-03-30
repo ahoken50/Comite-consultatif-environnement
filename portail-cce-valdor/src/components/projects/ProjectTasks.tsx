@@ -27,22 +27,34 @@ import { fr } from 'date-fns/locale';
 
 interface ProjectTasksProps {
     project: Project;
+    initialTaskContext?: {
+        sourceMeetingId?: string;
+        sourceAgendaItemId?: string;
+        sourceMinuteEntryOrder?: string;
+        description?: string;
+    };
 }
 
 // Optimization: Use a constant empty array to prevent unnecessary re-renders
 // when the project has no tasks, keeping the useSelector return value referentially stable.
 const EMPTY_TASKS: ProjectTask[] = [];
 
-const ProjectTasks: React.FC<ProjectTasksProps> = ({ project }) => {
+const ProjectTasks: React.FC<ProjectTasksProps> = ({ project, initialTaskContext }) => {
     const dispatch = useDispatch<AppDispatch>();
     const { user } = useSelector((state: RootState) => state.auth);
     const tasks = useSelector((state: RootState) => state.projects.tasksByProjectId[project.id] || EMPTY_TASKS);
     const members = useSelector((state: RootState) => state.members.items);
     // Add Task State
-    const [newTaskDescription, setNewTaskDescription] = useState('');
+    const [newTaskDescription, setNewTaskDescription] = useState(initialTaskContext?.description || '');
     const [dueDate, setDueDate] = useState('');
     const [assigneeId, setAssigneeId] = useState('');
     const [isAdding, setIsAdding] = useState(false);
+
+    useEffect(() => {
+        if (initialTaskContext?.description) {
+            setNewTaskDescription(initialTaskContext.description);
+        }
+    }, [initialTaskContext]);
 
     // Edit State
     const [editingTask, setEditingTask] = useState<ProjectTask | null>(null);
@@ -68,7 +80,10 @@ const ProjectTasks: React.FC<ProjectTasksProps> = ({ project }) => {
                     status: 'pending',
                     createdBy: user.id,
                     assigneeId: assigneeId || user.id,
-                    dueDate: dueDate || undefined
+                    dueDate: dueDate || undefined,
+                    sourceMeetingId: initialTaskContext?.sourceMeetingId,
+                    sourceAgendaItemId: initialTaskContext?.sourceAgendaItemId,
+                    sourceMinuteEntryOrder: initialTaskContext?.sourceMinuteEntryOrder
                 },
                 userId: user.id,
                 userName: user.displayName || user.email || 'Utilisateur',

@@ -58,6 +58,11 @@ from dotenv import load_dotenv
 from core.firebase_init import db, bucket
 from core.config import get_openai_client, get_anthropic_client, configure_resend, MAX_WHISPER_SIZE_MB, SEGMENT_DURATION_MINUTES, SUPPORTED_FORMATS
 from core.utils import get_cors_headers
+from core.firestore_triggers import (
+    on_meeting_updated,
+    on_meeting_deleted,
+    on_recommendation_updated
+)
 
 # Pyannote model loading removed (offloaded to Hugging Face Endpoint)
 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import {
     Box,
     Typography,
@@ -34,6 +34,7 @@ import ProjectRecommendations from '../../components/projects/ProjectRecommendat
 import LinkedResolutions from '../../components/projects/LinkedResolutions';
 import ProjectRegulations from '../../components/projects/ProjectRegulations';
 import ProjectDependencies from '../../components/projects/ProjectDependencies';
+import ProjectTimeline from '../../components/projects/ProjectTimeline';
 import Breadcrumbs from '../../components/common/Breadcrumbs';
 import { AccessControl } from '../../components/auth/AccessControl';
 import { generateProjectSummary, isGroqConfigured } from '../../services/ai/projectSummaryService';
@@ -71,7 +72,10 @@ const ProjectDetailPage: React.FC = () => {
     const { id } = useParams<{ id: string }>();
     const navigate = useNavigate();
     const dispatch = useDispatch<AppDispatch>();
-    const [tabValue, setTabValue] = useState(0);
+    const location = useLocation();
+    
+    // Check if we came from MinuteEntryEditor specifically to create a task
+    const [tabValue, setTabValue] = useState(location.state?.openTaskDialog ? 1 : 0);
     const [editDialogOpen, setEditDialogOpen] = useState(false);
 
     // #11.1 AI Summary state
@@ -255,6 +259,14 @@ const ProjectDetailPage: React.FC = () => {
 
                             <Typography variant="h6" gutterBottom sx={{ mt: 3 }}>Prochaines étapes</Typography>
                             <Typography paragraph sx={{ whiteSpace: 'pre-line' }}>{project.nextSteps}</Typography>
+                            
+                            <Box sx={{ mt: 4 }}>
+                                <ProjectTimeline 
+                                    project={project} 
+                                    tasks={tasks} 
+                                    recommendations={useSelector((state: RootState) => state.governance.recommendations)} 
+                                />
+                            </Box>
                         </Grid>
                         <Grid size={{ xs: 12, md: 4 }}>
                             <Paper variant="outlined" sx={{ p: 2, bgcolor: 'background.default', mb: 2 }}>
@@ -332,7 +344,10 @@ const ProjectDetailPage: React.FC = () => {
                 </TabPanel>
 
                 <TabPanel value={tabValue} index={1}>
-                    <ProjectTasks project={project} />
+                    <ProjectTasks 
+                        project={project} 
+                        initialTaskContext={location.state?.newTaskContext} 
+                    />
                 </TabPanel>
 
                 {/* #2.7 Dependencies Tab */}

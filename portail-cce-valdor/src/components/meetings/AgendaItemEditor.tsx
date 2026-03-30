@@ -100,6 +100,7 @@ const AgendaItemEditor: React.FC<AgendaItemEditorProps> = ({
                             meetingId={meetingId}
                             meetingDate={meetingDate}
                             userRole={userRole}
+                            linkedProjectId={item.linkedProjectId}
                         />
                     ))}
                 </Box>

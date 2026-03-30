@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Box, Grid, TextField, MenuItem, IconButton, Tooltip, CircularProgress, InputAdornment, Typography, Dialog, DialogTitle, DialogContent, DialogActions, Button } from '@mui/material';
-import { AutoMode, Link, Shield, CheckCircle, Warning, HelpOutline, AutoAwesome, Delete } from '@mui/icons-material';
+import { AutoMode, Link, Shield, CheckCircle, Warning, HelpOutline, AutoAwesome, Delete, Assignment as AssignmentIcon } from '@mui/icons-material';
 import type { MinuteEntry } from '../../types/meeting.types';
 import { searchMeetings, searchRegulations } from '../../services/supabaseSearchService';
 import { aiService } from '../../services/ai/UnifiedAIService';
@@ -20,6 +20,7 @@ interface MinuteEntryEditorProps {
     meetingDate?: string;
     siblingEntries?: MinuteEntry[];
     userRole?: string;
+    linkedProjectId?: string;
 }
 
 /**
@@ -38,7 +39,8 @@ const MinuteEntryEditor: React.FC<MinuteEntryEditorProps> = ({
     meetingId,
     meetingDate,
     siblingEntries = [],
-    userRole
+    userRole,
+    linkedProjectId
 }) => {
     const navigate = useNavigate();
     const [isExpanded, setIsExpanded] = useState(false);
@@ -216,6 +218,26 @@ const MinuteEntryEditor: React.FC<MinuteEntryEditorProps> = ({
         });
     };
 
+    const handleCreateTask = () => {
+        if (!linkedProjectId) {
+            alert("Veuillez d'abord lier un projet à ce point de l'ordre du jour.");
+            return;
+        }
+        
+        // Navigate to the project page with state to open the task creation dialog
+        navigate(`/projects/${linkedProjectId}`, {
+            state: {
+                openTaskDialog: true,
+                newTaskContext: {
+                    sourceMeetingId: meetingId,
+                    sourceAgendaItemId: itemId,
+                    sourceMinuteEntryOrder: entry.number || `Entrée ${entryIndex + 1}`,
+                    description: `Suite à la résolution ${entry.number || ''}:\n${entry.content}`
+                }
+            }
+        });
+    };
+
     return (
         <Box
             id={`resolution-${itemId}-${entryIndex}`}
@@ -267,18 +289,31 @@ const MinuteEntryEditor: React.FC<MinuteEntryEditorProps> = ({
                     />
                 </Grid>
                 {entry.type === 'resolution' && meetingId && (userRole === 'coordinator') && (
-                    <Grid size={{ xs: 12, sm: 4 }} sx={{ display: 'flex', alignItems: 'flex-end', pb: 0.5 }}>
-                        <Button
-                            variant="outlined"
-                            size="small"
-                            color="secondary"
-                            onClick={handleCreateRecommendation}
-                            startIcon={<AutoAwesome />}
-                            fullWidth
-                            title="Créer une recommandation au conseil basée sur cette résolution"
-                        >
-                            Promouvoir en Recommandation
-                        </Button>
+                    <Grid size={{ xs: 12, sm: 4 }} sx={{ display: 'flex', alignItems: 'flex-end', pb: 0.5, gap: 1 }}>
+                        {linkedProjectId && (
+                            <Tooltip title="Créer une tâche liée à cette décision dans le projet">
+                                <Button
+                                    variant="outlined"
+                                    size="small"
+                                    color="info"
+                                    onClick={handleCreateTask}
+                                    startIcon={<AssignmentIcon />}
+                                >
+                                    Tâche
+                                </Button>
+                            </Tooltip>
+                        )}
+                        <Tooltip title="Créer une recommandation au conseil basée sur cette résolution">
+                            <Button
+                                variant="outlined"
+                                size="small"
+                                color="secondary"
+                                onClick={handleCreateRecommendation}
+                                startIcon={<AutoAwesome />}
+                            >
+                                Recommander
+                            </Button>
+                        </Tooltip>
                     </Grid>
                 )}
             </Grid>
