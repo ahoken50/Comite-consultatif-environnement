@@ -1,6 +1,6 @@
 """
 Cloud Functions Python pour CCE Val-d'Or
-Transcription audio avec OpenAI Whisper + GÃ©nÃ©ration PV avec Claude
+Transcription audio avec OpenAI Whisper + Génération PV avec Claude
 """
 
 import os
@@ -477,7 +477,7 @@ def build_context_prompt(attendee_names: list, agenda_items: list) -> str:
     parts = []
     
     # Add context about the meeting
-    parts.append("Transcription d'une rÃ©union du ComitÃ© consultatif en environnement de Val-d'Or.")
+    parts.append("Transcription d'une réunion du Comité consultatif en environnement de Val-d'Or.")
     
     # Add attendee names if available
     if attendee_names:
@@ -489,7 +489,7 @@ def build_context_prompt(attendee_names: list, agenda_items: list) -> str:
     if agenda_items:
         topics = ", ".join([item for item in agenda_items if item])
         if topics:
-            parts.append(f"Sujets Ã  l'ordre du jour: {topics}.")
+            parts.append(f"Sujets à l'ordre du jour: {topics}.")
     
     return " ".join(parts)
 
@@ -588,16 +588,16 @@ def transcribe_with_whisper(
     """
     # Base narrative prompt (Zero-shot styling)
     base_prompt = (
-        "Enregistrement audio en franÃ§ais quÃ©bÃ©cois. "
-        "Il sâ€™agit dâ€™une rÃ©union officielle dâ€™un comitÃ© consultatif en environnement. "
-        "La rencontre se dÃ©roule dans une salle de confÃ©rence avec un micro central. "
-        "Les intervenants parlent Ã  tour de rÃ´le, parfois Ã  voix basse ou Ã  distance du micro. "
+        "Enregistrement audio en français québécois. "
+        "Il sâ€™agit dâ€™une réunion officielle dâ€™un comité consultatif en environnement. "
+        "La rencontre se déroule dans une salle de conférence avec un micro central. "
+        "Les intervenants parlent à tour de rôle, parfois à voix basse ou à distance du micro. "
         "Le langage est professionnel, technique et institutionnel. "
-        "Le vocabulaire peut inclure : environnement, dÃ©veloppement durable, politique environnementale, "
+        "Le vocabulaire peut inclure : environnement, développement durable, politique environnementale, "
         "plan dâ€™action, adaptation aux changements climatiques, gestion des eaux pluviales, "
-        "Ã®lots de chaleur, biodiversitÃ©, consultation, rÃ¨glement municipal. "
-        "Les Ã©changes sont naturels et peuvent contenir des hÃ©sitations, des silences et des phrases incomplÃ¨tes. "
-        "Lorsque le propos est inaudible ou incertain, il doit Ãªtre laissÃ© tel quel sans tentative de complÃ©tion."
+        "îlots de chaleur, biodiversité, consultation, règlement municipal. "
+        "Les échanges sont naturels et peuvent contenir des hésitations, des silences et des phrases incomplètes. "
+        "Lorsque le propos est inaudible ou incertain, il doit être laissé tel quel sans tentative de complétion."
     )
 
     # Specific vocabulary integration
@@ -613,7 +613,7 @@ def transcribe_with_whisper(
     
     # Combine narrative + specific vocabulary
     if extras:
-        return f"{base_prompt} Mots clÃ©s spÃ©cifiques pour cette rÃ©union : {', '.join(extras)}."
+        return f"{base_prompt} Mots clés spécifiques pour cette réunion : {', '.join(extras)}."
     
     return base_prompt
 
@@ -632,29 +632,29 @@ CCE_CUSTOM_VOCAB = [
     # CCE MEMBER NAMES
     # =========================================================================
     {"content": "Patricia Boutin"},
-    {"content": "SÃ©bastien Brodeur-Girard", "sounds_like": ["SÃ©bastien Brodeur Girard"]},
-    {"content": "Jacinthe Pothier", "sounds_like": ["Jacinthe PotiÃ¨"]},
-    {"content": "Donald RattÃ©", "sounds_like": ["Donald RatÃ©"]},
-    {"content": "MichaÃ«l Ross", "sounds_like": ["Michael Ross"]},
+    {"content": "Sébastien Brodeur-Girard", "sounds_like": ["Sébastien Brodeur Girard"]},
+    {"content": "Jacinthe Pothier", "sounds_like": ["Jacinthe Potiè"]},
+    {"content": "Donald Ratté", "sounds_like": ["Donald Raté"]},
+    {"content": "Michaël Ross", "sounds_like": ["Michael Ross"]},
     {"content": "Benjamin Turcotte"},
     {"content": "Marguerite Larochelle"},
-    {"content": "CÃ©line Brindamour", "sounds_like": ["CÃ©line Brind'amour"]},
-    {"content": "Jocelyn HÃ©bert", "sounds_like": ["Jocelyn Ã‰bert"]},
+    {"content": "Céline Brindamour", "sounds_like": ["Céline Brind'amour"]},
+    {"content": "Jocelyn Hébert", "sounds_like": ["Jocelyn Ã‰bert"]},
     
     # =========================================================================
     # ROLES & GOVERNANCE
     # =========================================================================
-    {"content": "CCE", "sounds_like": ["C.C.E.", "CÃ©cÃ©"]},
-    {"content": "PrÃ©sident"},
-    {"content": "PrÃ©sidente"},
-    {"content": "Vice-prÃ©sident"},
-    {"content": "Vice-prÃ©sidente"},
-    {"content": "SecrÃ©taire"},
+    {"content": "CCE", "sounds_like": ["C.C.E.", "Cécé"]},
+    {"content": "Président"},
+    {"content": "Présidente"},
+    {"content": "Vice-président"},
+    {"content": "Vice-présidente"},
+    {"content": "Secrétaire"},
     {"content": "Conseiller"},
-    {"content": "ConseillÃ¨re"},
+    {"content": "Conseillère"},
     {"content": "Mairesse"},
     {"content": "Maire"},
-    {"content": "Directeur gÃ©nÃ©ral"},
+    {"content": "Directeur général"},
     {"content": "Greffier"},
     {"content": "Coordonnateur"},
     {"content": "Coordonnatrice"},
@@ -663,14 +663,14 @@ CCE_CUSTOM_VOCAB = [
     # ORGANIZATIONS & LOCATIONS
     # =========================================================================
     {"content": "MRCVO", "sounds_like": ["M.R.C.V.O."]},
-    {"content": "MRC VallÃ©e-de-l'Or"},
+    {"content": "MRC Vallée-de-l'Or"},
     {"content": "SESAT", "sounds_like": ["S.E.S.A.T."]},
     {"content": "OBVAJ", "sounds_like": ["O.B.V.A.J."]},
     {"content": "Val-d'Or", "sounds_like": ["Valdor", "Val d'Or"]},
     {"content": "Abitibi"},
-    {"content": "Abitibi-TÃ©miscamingue"},
+    {"content": "Abitibi-Témiscamingue"},
     {"content": "Rouyn-Noranda"},
-    {"content": "MinistÃ¨re de l'Environnement"},
+    {"content": "Ministère de l'Environnement"},
     {"content": "MELCCFP", "sounds_like": ["M.E.L.C.C.F.P."]},
     {"content": "MAMH", "sounds_like": ["M.A.M.H."]},
     {"content": "MTQ", "sounds_like": ["M.T.Q."]},
@@ -678,19 +678,19 @@ CCE_CUSTOM_VOCAB = [
     # =========================================================================
     # MEETING PROCEDURES
     # =========================================================================
-    {"content": "ProcÃ¨s-verbal", "sounds_like": ["PV"]},
+    {"content": "Procès-verbal", "sounds_like": ["PV"]},
     {"content": "Ordre du jour"},
-    {"content": "RÃ©solution"},
+    {"content": "Résolution"},
     {"content": "Adoption"},
     {"content": "Approbation"},
     {"content": "Amendement"},
     {"content": "Proposition"},
     {"content": "Seconde"},
     {"content": "Vote"},
-    {"content": "UnanimitÃ©"},
-    {"content": "MajoritÃ©"},
+    {"content": "Unanimité"},
+    {"content": "Majorité"},
     {"content": "Quorum"},
-    {"content": "LevÃ©e de la sÃ©ance"},
+    {"content": "Levée de la séance"},
     {"content": "Point d'information"},
     {"content": "Suivi"},
     {"content": "Avis de motion"},
@@ -701,43 +701,43 @@ CCE_CUSTOM_VOCAB = [
     # =========================================================================
     # Climate
     {"content": "Changements climatiques"},
-    {"content": "RÃ©chauffement climatique"},
-    {"content": "Gaz Ã  effet de serre"},
+    {"content": "Réchauffement climatique"},
+    {"content": "Gaz à effet de serre"},
     {"content": "GES", "sounds_like": ["G.E.S."]},
     {"content": "Ã‰missions de carbone"},
     {"content": "Bilan carbone"},
-    {"content": "CarboneutralitÃ©"},
+    {"content": "Carboneutralité"},
     {"content": "ÃŽlot de chaleur"},
-    {"content": "ÃŽlots de fraÃ®cheur"},
+    {"content": "ÃŽlots de fraîcheur"},
     {"content": "Adaptation climatique"},
-    {"content": "RÃ©silience climatique"},
+    {"content": "Résilience climatique"},
     
     # Biodiversity
-    {"content": "BiodiversitÃ©"},
-    {"content": "EspÃ¨ces menacÃ©es"},
-    {"content": "EspÃ¨ces vulnÃ©rables"},
+    {"content": "Biodiversité"},
+    {"content": "Espèces menacées"},
+    {"content": "Espèces vulnérables"},
     {"content": "Habitat faunique"},
-    {"content": "Corridor Ã©cologique"},
+    {"content": "Corridor écologique"},
     {"content": "Milieu naturel"},
-    {"content": "Ã‰cosystÃ¨me"},
+    {"content": "Ã‰cosystème"},
     {"content": "Faune"},
     {"content": "Flore"},
-    {"content": "EspÃ¨ces envahissantes"},
-    {"content": "Agrile du frÃªne"},
-    {"content": "Herbe Ã  poux"},
+    {"content": "Espèces envahissantes"},
+    {"content": "Agrile du frêne"},
+    {"content": "Herbe à poux"},
     {"content": "Berce du Caucase"},
     
     # Water
     {"content": "Gestion des eaux pluviales"},
     {"content": "Eaux de ruissellement"},
-    {"content": "Bassin de rÃ©tention"},
+    {"content": "Bassin de rétention"},
     {"content": "Bassin versant"},
-    {"content": "Noue vÃ©gÃ©talisÃ©e"},
-    {"content": "Nappe phrÃ©atique"},
-    {"content": "AquifÃ¨re"},
+    {"content": "Noue végétalisée"},
+    {"content": "Nappe phréatique"},
+    {"content": "Aquifère"},
     {"content": "Eau potable"},
-    {"content": "Eaux usÃ©es"},
-    {"content": "Station d'Ã©puration"},
+    {"content": "Eaux usées"},
+    {"content": "Station d'épuration"},
     {"content": "Puits Feldman", "sounds_like": ["Puit Feldman"]},
     {"content": "Esker"},
     {"content": "Domaine des Eskers"},
@@ -750,7 +750,7 @@ CCE_CUSTOM_VOCAB = [
     {"content": "Inondation"},
     
     # Waste & Recycling
-    {"content": "MatiÃ¨res rÃ©siduelles"},
+    {"content": "Matières résiduelles"},
     {"content": "Recyclage"},
     {"content": "Compostage"},
     {"content": "Bac brun"},
@@ -761,28 +761,28 @@ CCE_CUSTOM_VOCAB = [
     {"content": "Lieu d'enfouissement"},
     {"content": "LET", "sounds_like": ["L.E.T."]},
     {"content": "Ã‰conomie circulaire"},
-    {"content": "RÃ©duction Ã  la source"},
+    {"content": "Réduction à la source"},
     {"content": "Valorisation"},
     {"content": "3RV", "sounds_like": ["trois R V"]},
     
     # Energy
-    {"content": "EfficacitÃ© Ã©nergÃ©tique"},
+    {"content": "Efficacité énergétique"},
     {"content": "Ã‰nergies renouvelables"},
     {"content": "Ã‰nergie solaire"},
-    {"content": "Ã‰nergie Ã©olienne"},
-    {"content": "Hydro-QuÃ©bec"},
+    {"content": "Ã‰nergie éolienne"},
+    {"content": "Hydro-Québec"},
     {"content": "Ã‰lectrification"},
     {"content": "Bornes de recharge"},
-    {"content": "VÃ©hicules Ã©lectriques"},
+    {"content": "Véhicules électriques"},
     
     # Pollution & Contamination
     {"content": "Contamination"},
-    {"content": "Sol contaminÃ©"},
-    {"content": "Terrain contaminÃ©"},
-    {"content": "DÃ©versement"},
-    {"content": "Pollution atmosphÃ©rique"},
-    {"content": "QualitÃ© de l'air"},
-    {"content": "PoussiÃ¨re"},
+    {"content": "Sol contaminé"},
+    {"content": "Terrain contaminé"},
+    {"content": "Déversement"},
+    {"content": "Pollution atmosphérique"},
+    {"content": "Qualité de l'air"},
+    {"content": "Poussière"},
     {"content": "Bruit"},
     {"content": "Nuisance"},
     
@@ -790,12 +790,12 @@ CCE_CUSTOM_VOCAB = [
     # URBAN PLANNING TERMS
     # =========================================================================
     {"content": "Urbanisme"},
-    {"content": "AmÃ©nagement du territoire"},
+    {"content": "Aménagement du territoire"},
     {"content": "Plan d'urbanisme"},
-    {"content": "SchÃ©ma d'amÃ©nagement"},
+    {"content": "Schéma d'aménagement"},
     {"content": "Zonage"},
-    {"content": "RÃ¨glement de zonage"},
-    {"content": "DÃ©rogation mineure"},
+    {"content": "Règlement de zonage"},
+    {"content": "Dérogation mineure"},
     {"content": "PIIA", "sounds_like": ["P.I.I.A."]},
     {"content": "PAE", "sounds_like": ["P.A.E."]},
     {"content": "PPU", "sounds_like": ["P.P.U."]},
@@ -803,28 +803,28 @@ CCE_CUSTOM_VOCAB = [
     {"content": "Permis de lotissement"},
     {"content": "Certificat d'autorisation"},
     {"content": "Consultation publique"},
-    {"content": "AssemblÃ©e publique"},
-    {"content": "RÃ©fÃ©rendum"},
+    {"content": "Assemblée publique"},
+    {"content": "Référendum"},
     {"content": "Registre"},
     {"content": "Usage conditionnel"},
-    {"content": "Usage dÃ©rogatoire"},
+    {"content": "Usage dérogatoire"},
     {"content": "Coefficient d'emprise"},
     {"content": "Densification"},
     {"content": "Ã‰talement urbain"},
     
     # Green Infrastructure
     {"content": "Verdissement"},
-    {"content": "CanopÃ©e"},
-    {"content": "Indice de canopÃ©e"},
+    {"content": "Canopée"},
+    {"content": "Indice de canopée"},
     {"content": "Plantation d'arbres"},
-    {"content": "ForÃªt urbaine"},
+    {"content": "Forêt urbaine"},
     {"content": "Parc"},
     {"content": "Espace vert"},
     {"content": "Toit vert"},
-    {"content": "Mur vÃ©gÃ©tal"},
+    {"content": "Mur végétal"},
     {"content": "Infrastructure verte"},
-    {"content": "Stationnement permÃ©able"},
-    {"content": "PavÃ© permÃ©able"},
+    {"content": "Stationnement perméable"},
+    {"content": "Pavé perméable"},
     
     # Transportation
     {"content": "Transport actif"},
@@ -833,13 +833,13 @@ CCE_CUSTOM_VOCAB = [
     {"content": "Transport en commun"},
     {"content": "Covoiturage"},
     {"content": "Autopartage"},
-    {"content": "MobilitÃ© durable"},
+    {"content": "Mobilité durable"},
     
     # =========================================================================
     # LEGAL & REGULATORY
     # =========================================================================
-    {"content": "RÃ¨glement municipal"},
-    {"content": "Loi sur la qualitÃ© de l'environnement"},
+    {"content": "Règlement municipal"},
+    {"content": "Loi sur la qualité de l'environnement"},
     {"content": "LQE", "sounds_like": ["L.Q.E."]},
     {"content": "Ã‰tude d'impact"},
     {"content": "BAPE", "sounds_like": ["B.A.P.E."]},
@@ -1954,17 +1954,17 @@ SALAD_MAX_DURATION_HOURS = 2.5
 
 # Custom vocabulary for CCE meetings (improves transcription accuracy)
 CCE_VOCABULARY = (
-    "CCE, Val-d'Or, ComitÃ© consultatif en environnement, "
-    "Patricia Boutin, SÃ©bastien Brodeur-Girard, Jacinthe Pothier, Donald RattÃ©, "
-    "MichaÃ«l Ross, Benjamin Turcotte, Marguerite Larochelle, CÃ©line Brindamour, Jocelyn HÃ©bert, "
-    "Maire, Mairesse, Urbanisme, Travaux publics, Environnement, DÃ©veloppement durable, "
-    "MRCVO, SESAT, SociÃ©tÃ© des eaux souterraines de l'Abitibi-TÃ©miscamingue, "
-    "OBVAJ, Organisme de bassin versant Abitibi-JamÃ©sie, Abitibi, Rouyn, Rouyn-Noranda, "
-    "Protection des berges, Gestion des eaux pluviales, Bassin de rÃ©tention, Noue vÃ©gÃ©talisÃ©e, "
-    "Puits Feldman, Esker, Domaine des Eskers, Nappe phrÃ©atique, AquifÃ¨re, "
-    "BiodiversitÃ©, Changements climatiques, ÃŽlots de chaleur, Verdissement, "
-    "Zonage, RÃ¨glement municipal, DÃ©rogation mineure, PIIA, Consultation publique, "
-    "ProcÃ¨s-verbal, Ordre du jour, RÃ©solution, Adoption"
+    "CCE, Val-d'Or, Comité consultatif en environnement, "
+    "Patricia Boutin, Sébastien Brodeur-Girard, Jacinthe Pothier, Donald Ratté, "
+    "Michaël Ross, Benjamin Turcotte, Marguerite Larochelle, Céline Brindamour, Jocelyn Hébert, "
+    "Maire, Mairesse, Urbanisme, Travaux publics, Environnement, Développement durable, "
+    "MRCVO, SESAT, Société des eaux souterraines de l'Abitibi-Témiscamingue, "
+    "OBVAJ, Organisme de bassin versant Abitibi-Jamésie, Abitibi, Rouyn, Rouyn-Noranda, "
+    "Protection des berges, Gestion des eaux pluviales, Bassin de rétention, Noue végétalisée, "
+    "Puits Feldman, Esker, Domaine des Eskers, Nappe phréatique, Aquifère, "
+    "Biodiversité, Changements climatiques, ÃŽlots de chaleur, Verdissement, "
+    "Zonage, Règlement municipal, Dérogation mineure, PIIA, Consultation publique, "
+    "Procès-verbal, Ordre du jour, Résolution, Adoption"
 )
 
 
@@ -3644,7 +3644,7 @@ def generate_minutes_claude(req: https_fn.CallableRequest) -> dict:
         
         if active_members_list:
             members_context = "\n\n=== LISTE OFFICIELLE DES MEMBRES ACTIFS (POUR VÃ‰RIFICATION DES PRÃ‰SENCES) ===\n" + "\n".join(active_members_list)
-            members_context += "\n\nINSTRUCTION: Utilisez cette liste pour identifier prÃ©cisÃ©ment les membres prÃ©sents et absents. Comparez les locuteurs identifiÃ©s dans la transcription avec cette liste.\n"
+            members_context += "\n\nINSTRUCTION: Utilisez cette liste pour identifier précisément les membres présents et absents. Comparez les locuteurs identifiés dans la transcription avec cette liste.\n"
             system_prompt += members_context
             print(f"[Claude] Injected {len(active_members_list)} active members into prompt context.")
             
@@ -4129,7 +4129,7 @@ def generate_avis_pdf(meeting_date: str, meeting_time: str,
     """
     Generate Avis de Convocation PDF using reportlab.
     Matches the official memo format:
-    - DESTINATAIRE / EXPÃ‰DITEUR / DATE / OBJET header
+    - DESTINATAIRE / EXPÉDITEUR / DATE / OBJET header
     - Body with meeting details and deadline
     - Signature at the bottom
     Returns PDF as bytes for email attachment.
@@ -4259,7 +4259,7 @@ def generate_avis_pdf(meeting_date: str, meeting_time: str,
         elements.append(logo_table)
         elements.append(Spacer(1, 15))
     
-    elements.append(Paragraph("COMITÃ‰ CONSULTATIF EN ENVIRONNEMENT", header_style))
+    elements.append(Paragraph("COMITÉ CONSULTATIF EN ENVIRONNEMENT", header_style))
     elements.append(Paragraph("VILLE DE VAL-D'OR", subheader_style))
     
     # Horizontal line
@@ -4268,23 +4268,23 @@ def generate_avis_pdf(meeting_date: str, meeting_time: str,
     
     # Format today's date in French
     months_fr = {
-        1: "janvier", 2: "fÃ©vrier", 3: "mars", 4: "avril", 5: "mai", 6: "juin",
-        7: "juillet", 8: "aoÃ»t", 9: "septembre", 10: "octobre", 11: "novembre", 12: "dÃ©cembre"
+        1: "janvier", 2: "février", 3: "mars", 4: "avril", 5: "mai", 6: "juin",
+        7: "juillet", 8: "août", 9: "septembre", 10: "octobre", 11: "novembre", 12: "décembre"
     }
     today = datetime.now()
     today_str = f"Le {today.day} {months_fr[today.month]} {today.year}"
     
     # === MEMO HEADER TABLE ===
-    # DESTINATAIRE / EXPÃ‰DITEUR / DATE / OBJET format
+    # DESTINATAIRE / EXPÉDITEUR / DATE / OBJET format
     memo_data = [
         [Paragraph("<b>DESTINATAIRE :</b>", label_style), 
-         Paragraph("Les membres du ComitÃ© consultatif en environnement", value_style)],
-        [Paragraph("<b>EXPÃ‰DITEUR :</b>", label_style), 
+         Paragraph("Les membres du Comité consultatif en environnement", value_style)],
+        [Paragraph("<b>EXPÉDITEUR :</b>", label_style), 
          Paragraph(f"{sender_name}, coordonnateur en environnement", value_style)],
         [Paragraph("<b>DATE :</b>", label_style), 
          Paragraph(today_str, value_style)],
         [Paragraph("<b>OBJET :</b>", label_style), 
-         Paragraph("RÃ©union du ComitÃ© consultatif en environnement", value_style)],
+         Paragraph("Réunion du Comité consultatif en environnement", value_style)],
     ]
     
     memo_table = Table(memo_data, colWidths=[1.3*inch, 4.7*inch])
@@ -4304,13 +4304,13 @@ def generate_avis_pdf(meeting_date: str, meeting_time: str,
     elements.append(Spacer(1, 12))
     
     # Main paragraph with meeting details
-    body_text = f"""Je vous prie de prendre note qu'une assemblÃ©e du ComitÃ© consultatif en environnement 
-    est prÃ©vue le <b>{meeting_date}</b> Ã  <b>{meeting_time}</b> {meeting_location}."""
+    body_text = f"""Je vous prie de prendre note qu'une assemblée du Comité consultatif en environnement 
+    est prévue le <b>{meeting_date}</b> à <b>{meeting_time}</b> {meeting_location}."""
     elements.append(Paragraph(body_text, body_style))
     elements.append(Spacer(1, 8))
     
     # Deadline paragraph
-    deadline_text = f"""Vous avez jusqu'au <b>{deadline}</b> pour faire vos suggestions de point Ã  l'ordre du jour."""
+    deadline_text = f"""Vous avez jusqu'au <b>{deadline}</b> pour faire vos suggestions de point à l'ordre du jour."""
     elements.append(Paragraph(deadline_text, body_style))
     elements.append(Spacer(1, 8))
     
@@ -4349,7 +4349,7 @@ def generate_avis_pdf(meeting_date: str, meeting_time: str,
         fontName='Times-Roman',
         leftIndent=0  # No indent - align with signature image
     )
-    elements.append(Paragraph(f"{sender_name}, secrÃ©taire du ComitÃ©", signature_name_style))
+    elements.append(Paragraph(f"{sender_name}, secrétaire du Comité", signature_name_style))
     
     # Build PDF
     doc.build(elements)
@@ -4383,7 +4383,7 @@ def send_avis_convocation(req: https_fn.CallableRequest):
         if not resend_api_key:
             raise https_fn.HttpsError(
                 code=https_fn.FunctionsErrorCode.FAILED_PRECONDITION,
-                message="RESEND_API_KEY non configurÃ©e"
+                message="RESEND_API_KEY non configurée"
             )
         
         resend.api_key = resend_api_key
@@ -4404,11 +4404,11 @@ def send_avis_convocation(req: https_fn.CallableRequest):
             )
         
         # Use pre-formatted dates from frontend
-        formatted_meeting_date = meeting.get("formattedDate", "Date Ã  confirmer")
+        formatted_meeting_date = meeting.get("formattedDate", "Date à confirmer")
         formatted_deadline = deadline.get("formattedDate", "Date limite")
         sender_email = sender.get("email", "coordonnateur@ville.valdor.qc.ca")
         sender_name = sender.get("name", "Coordonnateur CCE")
-        meeting_title = meeting.get("title", "AssemblÃ©e CCE")
+        meeting_title = meeting.get("title", "Assemblée CCE")
         meeting_location = meeting.get("location", "Ville de Val-d'Or")
         signature_url = sender.get("signatureUrl")
         
@@ -4423,7 +4423,7 @@ def send_avis_convocation(req: https_fn.CallableRequest):
             print(f"[Avis] Meeting time: UTC={meeting_datetime}, Local={meeting_datetime_local}, Formatted={meeting_time}")
         except Exception as tz_error:
             print(f"[Avis] Timezone error: {tz_error}")
-            meeting_time = "Ã€ confirmer"
+            meeting_time = "À confirmer"
         
         # Format location for proper grammar
         location_text = f"dans {meeting_location}" if meeting_location else "au bureau"
@@ -4471,8 +4471,8 @@ def send_avis_convocation(req: https_fn.CallableRequest):
             </p>
             
             <p style="font-size: 16px; color: #333; line-height: 1.6;">
-                Vous trouverez, <strong>en fichier joint</strong>, l'avis de convocation pour la prochaine assemblee du 
-                <strong>Comite consultatif en environnement</strong>, prevue le <strong>{formatted_meeting_date}</strong>.
+                Vous trouverez, <strong>en fichier joint</strong>, l'avis de convocation pour la prochaine assemblée du 
+                <strong>Comité consultatif en environnement</strong>, prévue le <strong>{formatted_meeting_date}</strong>.
             </p>
             
             <!-- Deadline box -->
@@ -4485,7 +4485,7 @@ def send_avis_convocation(req: https_fn.CallableRequest):
             </div>
             
             <p style="font-size: 16px; color: #333; line-height: 1.6;">
-                Merci et bonne journee !
+                Merci et bonne journée !
             </p>
         </div>
         

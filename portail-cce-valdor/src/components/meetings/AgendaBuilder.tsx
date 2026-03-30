@@ -115,6 +115,37 @@ const AgendaBuilder: React.FC<AgendaBuilderProps> = ({ items, onItemsChange, mee
     // causes continuous re-renders and forced reflows with @dnd-kit when adding items
     const visibleCount = items.length;
 
+    // Guard: Ensure all items have unique IDs. Duplicate IDs cause the
+    // "cloning" bug where editing one item overwrites all items sharing the same ID.
+    const deduplicatedRef = React.useRef<string | null>(null);
+    React.useEffect(() => {
+        if (items.length === 0) return;
+        const seen = new Set<string>();
+        let hasDuplicates = false;
+        for (const item of items) {
+            if (!item.id || seen.has(item.id)) {
+                hasDuplicates = true;
+                break;
+            }
+            seen.add(item.id);
+        }
+        // Build a stable fingerprint to avoid infinite loops
+        const fingerprint = items.map(i => i.id).join(',');
+        if (hasDuplicates && deduplicatedRef.current !== fingerprint) {
+            deduplicatedRef.current = fingerprint;
+            const seenIds = new Set<string>();
+            const fixedItems = items.map(item => {
+                if (!item.id || seenIds.has(item.id)) {
+                    return { ...item, id: crypto.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2, 9)}` };
+                }
+                seenIds.add(item.id);
+                return item;
+            });
+            console.warn('[AgendaBuilder] Fixed duplicate agenda item IDs', { original: items.map(i => i.id), fixed: fixedItems.map(i => i.id) });
+            onItemsChange(fixedItems);
+        }
+    }, [items, onItemsChange]);
+
     // Get members for presenter dropdown
     const presenterOptions = [
         ...(members || []).map((m: any) => m.displayName),
@@ -156,7 +187,7 @@ const AgendaBuilder: React.FC<AgendaBuilderProps> = ({ items, onItemsChange, mee
 
     const handleAddItem = () => {
         const newItem: AgendaItem = {
-            id: Date.now().toString(),
+            id: crypto.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
             order: items.length,
             title: 'Nouveau point',
             description: '',
@@ -179,7 +210,14 @@ const AgendaBuilder: React.FC<AgendaBuilderProps> = ({ items, onItemsChange, mee
 
     const handleSaveEdit = () => {
         if (editingItem) {
-            onItemsChange(items.map(item => item.id === editingItem.id ? editingItem : item));
+            // Use findIndex to update only the FIRST item with this ID,
+            // preventing cloning when multiple items share the same ID
+            const targetIndex = items.findIndex(item => item.id === editingItem.id);
+            if (targetIndex !== -1) {
+                const updatedItems = [...items];
+                updatedItems[targetIndex] = editingItem;
+                onItemsChange(updatedItems);
+            }
             setIsEditOpen(false);
             setEditingItem(null);
         }
