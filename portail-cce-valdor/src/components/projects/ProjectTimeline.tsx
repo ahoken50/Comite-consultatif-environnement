@@ -156,7 +156,7 @@ const ProjectTimeline: React.FC<ProjectTimelineProps> = ({ project, tasks, recom
                     zIndex: 0
                 }} />
                 
-                {events.map((event, index) => (
+                {events.map((event) => (
                     <Box key={event.id} sx={{ display: 'flex', mb: 3, position: 'relative', zIndex: 1 }}>
                         <Box sx={{ 
                             display: 'flex', 
