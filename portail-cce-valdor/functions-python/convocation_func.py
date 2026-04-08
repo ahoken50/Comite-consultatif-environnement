@@ -32,6 +32,23 @@ def send_convocation(req: https_fn.CallableRequest) -> Any:
         # (Assuming main.py might handle global config, but safe to redo if needed or just rely on env)
         # resend.api_key = os.environ.get("RESEND_API_KEY") 
         
+        # Calculate strict local time to prevent frontend caching issues or timezone oddities
+        raw_date = meeting_data.get('date', '')
+        extracted_time = meeting_data.get('formattedTime', 'Non spécifiée')
+        try:
+            if raw_date and "T" in raw_date:
+                import datetime
+                from zoneinfo import ZoneInfo
+                cleaned_date = raw_date.replace("Z", "+00:00")
+                dt = datetime.datetime.fromisoformat(cleaned_date)
+                if dt.tzinfo is None:
+                    extracted_time = dt.strftime("%Hh%M")
+                else:
+                    local_dt = dt.astimezone(ZoneInfo("America/Montreal"))
+                    extracted_time = local_dt.strftime("%Hh%M")
+        except Exception as e:
+            print(f"Timezone fallback processing failed: {str(e)}")
+
         for i, recipient in enumerate(recipients):
             # Rate limiting: wait 0.6 seconds between emails (approx 1.6 req/s) to stay under 2 req/s safe limit
             if i > 0:
@@ -65,7 +82,7 @@ def send_convocation(req: https_fn.CallableRequest) -> Any:
                         
                         <div style="background-color: #f9f9f9; padding: 15px; border-radius: 6px; margin: 20px 0;">
                             <p style="margin: 5px 0;"><strong>📅 Date :</strong> {meeting_data.get('formattedDate', meeting_data.get('date'))}</p>
-                            <p style="margin: 5px 0;"><strong>🕐 Heure :</strong> {meeting_data.get('formattedTime', 'Non spécifiée')}</p>
+                            <p style="margin: 5px 0;"><strong>🕐 Heure :</strong> {extracted_time}</p>
                             <p style="margin: 5px 0;"><strong>📍 Lieu :</strong> {meeting_data.get('location', 'Hôtel de Ville')}</p>
                         </div>
                         
