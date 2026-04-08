@@ -64,7 +64,8 @@ def send_convocation(req: https_fn.CallableRequest) -> Any:
                         <p>Vous êtes convoqué(e) à la prochaine assemblée du CCE.</p>
                         
                         <div style="background-color: #f9f9f9; padding: 15px; border-radius: 6px; margin: 20px 0;">
-                            <p style="margin: 5px 0;"><strong>📅 Date :</strong> {meeting_data.get('date')}</p>
+                            <p style="margin: 5px 0;"><strong>📅 Date :</strong> {meeting_data.get('formattedDate', meeting_data.get('date'))}</p>
+                            <p style="margin: 5px 0;"><strong>🕐 Heure :</strong> {meeting_data.get('formattedTime', 'Non spécifiée')}</p>
                             <p style="margin: 5px 0;"><strong>📍 Lieu :</strong> {meeting_data.get('location', 'Hôtel de Ville')}</p>
                         </div>
                         

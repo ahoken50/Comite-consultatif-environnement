@@ -186,6 +186,8 @@ Ville de Val-d'Or`
                 meeting: {
                     title: meeting.title,
                     date: meeting.date,
+                    formattedDate: formattedDate,
+                    formattedTime: formattedTime,
                     location: meeting.location,
                     agendaItems: meeting.agendaItems
                 },
@@ -565,7 +567,9 @@ export const resendConvocationEmails = async (
             month: 'long',
             day: 'numeric'
         };
-        const formattedDate = new Date(meeting.date).toLocaleDateString('fr-CA', dateOptions);
+        const meetingDate = new Date(meeting.date);
+        const formattedDate = meetingDate.toLocaleDateString('fr-CA', dateOptions);
+        const formattedTime = meetingDate.toLocaleTimeString('fr-CA', { hour: '2-digit', minute: '2-digit' });
 
         await sendConvocationEmails({
             meetingId: meeting.id,
@@ -574,6 +578,7 @@ export const resendConvocationEmails = async (
                 title: meeting.title,
                 date: meeting.date,
                 formattedDate: formattedDate,
+                formattedTime: formattedTime,
                 location: meeting.location,
                 agendaItems: meeting.agendaItems
             },

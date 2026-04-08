@@ -113,8 +113,8 @@ service cloud.firestore {
       
       // Convocations subcollection
       match /convocations/{convocationId} {
-         allow read: if isCoordinator(); // Only coordinators can view convocation tracking
-         allow write: if isCoordinator();
+         allow read: if true; // Allowed for public RSVP access
+         allow write: if true; // Allowed for public RSVP response
       }
 
       // Avis de convocations (Phase 1)
