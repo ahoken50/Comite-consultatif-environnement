@@ -20,6 +20,8 @@ import {
 import { db } from './firebase';
 import type { Meeting } from '../types/meeting.types';
 import type { Member } from '../types/member.types';
+import { format } from 'date-fns';
+import { fr } from 'date-fns/locale';
 
 // Types
 export interface ConvocationRecipient {
@@ -128,14 +130,8 @@ export const sendConvocations = async (
 
         // 3. Format meeting date
         const meetingDate = new Date(meeting.date);
-        const dateOptions: Intl.DateTimeFormatOptions = {
-            weekday: 'long',
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric'
-        };
-        const formattedDate = meetingDate.toLocaleDateString('fr-CA', dateOptions);
-        const formattedTime = meetingDate.toLocaleTimeString('fr-CA', { hour: '2-digit', minute: '2-digit' });
+        const formattedDate = format(meetingDate, 'EEEE d MMMM yyyy', { locale: fr });
+        const formattedTime = format(meetingDate, "HH'h'mm", { locale: fr });
 
         // 4. Create convocation record in Firestore
         const convocationData: Omit<Convocation, 'id'> = {
@@ -252,14 +248,8 @@ export const sendAvisConvocation = async (
         deadlineDate.setDate(deadlineDate.getDate() - 15);
 
         // 3. Format dates
-        const dateOptions: Intl.DateTimeFormatOptions = {
-            weekday: 'long',
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric'
-        };
-        const formattedMeetingDate = meetingDate.toLocaleDateString('fr-CA', dateOptions);
-        const formattedDeadline = deadlineDate.toLocaleDateString('fr-CA', dateOptions);
+        const formattedMeetingDate = format(meetingDate, 'EEEE d MMMM yyyy', { locale: fr });
+        const formattedDeadline = format(deadlineDate, 'EEEE d MMMM yyyy', { locale: fr });
 
         // 4. Prepare recipients (no tokens needed for avis)
         const recipients = members.map(member => ({
@@ -561,15 +551,9 @@ export const resendConvocationEmails = async (
             console.warn("Could not regenerate PDF for reminder", e);
         }
 
-        const dateOptions: Intl.DateTimeFormatOptions = {
-            weekday: 'long',
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric'
-        };
         const meetingDate = new Date(meeting.date);
-        const formattedDate = meetingDate.toLocaleDateString('fr-CA', dateOptions);
-        const formattedTime = meetingDate.toLocaleTimeString('fr-CA', { hour: '2-digit', minute: '2-digit' });
+        const formattedDate = format(meetingDate, 'EEEE d MMMM yyyy', { locale: fr });
+        const formattedTime = format(meetingDate, "HH'h'mm", { locale: fr });
 
         await sendConvocationEmails({
             meetingId: meeting.id,
