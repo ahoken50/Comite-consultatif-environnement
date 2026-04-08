@@ -66,14 +66,14 @@ const MeetingChecklist: React.FC<MeetingChecklistProps> = ({ meeting, hasConvoca
         // Roles to exclude from voting count (both keys and French labels)
         const EXCLUDED_ROLES = [
             'coordonnateur', 'coordinator',
-            'observateur', 'observer',
-            'invité', 'guest',
-            'secrétaire', 'secretary'
+            'observateur', 'observatrice', 'observer',
+            'invite', 'guest',
+            'secretaire', 'secretary'
         ];
 
         const activeMembers = members.filter(m => m.isActive);
         const votingMembers = activeMembers.filter(m => {
-            const role = (m.role || '').toLowerCase();
+            const role = (m.role || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
             return !EXCLUDED_ROLES.some(excluded => role.includes(excluded));
         });
 
@@ -82,6 +82,7 @@ const MeetingChecklist: React.FC<MeetingChecklistProps> = ({ meeting, hasConvoca
 
         // Use meeting.quorumRequired if manually overridden, otherwise calculated
         const effectiveQuorumRequired = meeting.quorumRequired || calculatedQuorumRequired;
+        const votingMemberIds = new Set(votingMembers.map(m => m.id));
 
         // Source: Prioritize actual attendees (if meeting started/prepared), fallback to RSVPs
         const sourceAttendees = (meeting.attendees && meeting.attendees.length > 0)
@@ -94,21 +95,10 @@ const MeetingChecklist: React.FC<MeetingChecklistProps> = ({ meeting, hasConvoca
 
         if (sourceAttendees) {
             // Case A: Use Actual Attendance List
-            presentVotingCount = sourceAttendees.filter(a => {
-                if (!a.isPresent) return false;
-                const role = (a.role || '').toLowerCase();
-                return !EXCLUDED_ROLES.some(excluded => role.includes(excluded));
-            }).length;
+            presentVotingCount = sourceAttendees.filter(a => a.isPresent && votingMemberIds.has(a.id)).length;
         } else {
             // Case B: Use RSVPs (Fallback)
-            presentVotingCount = rsvps.filter(r => {
-                if (r.status !== 'present') return false;
-                const member = members.find(m => m.id === r.userId);
-                if (!member) return false;
-
-                const role = (member.role || '').toLowerCase();
-                return !EXCLUDED_ROLES.some(excluded => role.includes(excluded));
-            }).length;
+            presentVotingCount = rsvps.filter(r => r.status === 'present' && votingMemberIds.has(r.userId)).length;
         }
 
         const quorumMet = presentVotingCount >= effectiveQuorumRequired;

@@ -44,35 +44,31 @@ const AttendanceManager: React.FC<AttendanceManagerProps> = ({ meeting, onUpdate
 
     const EXCLUDED_ROLES = [
         'coordonnateur', 'coordinator',
-        'observateur', 'observer',
-        'invité', 'guest',
-        'secrétaire', 'secretary'
+        'observateur', 'observatrice', 'observer',
+        'invite', 'guest',
+        'secretaire', 'secretary'
     ];
 
     const activeMembers = members.filter(m => m.isActive);
     const votingMembers = activeMembers.filter(m => {
-        const role = (m.role || '').toLowerCase();
+        const role = (m.role || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
         return !EXCLUDED_ROLES.some(excluded => role.includes(excluded));
     });
 
     const totalVotingMembersCount = votingMembers.length;
     const quorumRequired = Math.floor(totalVotingMembersCount / 2) + 1;
+    const votingMemberIds = new Set(votingMembers.map(m => m.id));
 
     // Count PRESENT members who have voting rights
-    // Matches by ID first, then Name fallback (for legacy data)
+    // Matches by ID against the calculated votingMembers set
     const presentVotingCount = meeting.attendees?.filter(a => {
         if (!a.isPresent) return false;
-
-        // Check role directly from attendee list (snapshot of time)
-        const role = (a.role || '').toLowerCase();
-
-        // Exclude non-voting roles
-        if (EXCLUDED_ROLES.some(excluded => role.includes(excluded))) return false;
-
-        // Safety check: specific exclusion requested
+        
+        // Safety check specifically requested
         if (a.name.toLowerCase().includes('michaël ross')) return false;
 
-        return true;
+        // Must be an official voting member to count towards quorum
+        return votingMemberIds.has(a.id);
     }).length || 0;
 
     const isQuorumMet = presentVotingCount >= quorumRequired;
