@@ -45,6 +45,17 @@ def send_convocation(req: https_fn.CallableRequest):
         sender = data.get("sender", {})
         agenda_pdf_base64 = data.get("agendaPdf")
         
+        # === EXTENSIVE DEBUG LOGGING ===
+        print(f"[Convocation] ===== DEBUG START =====")
+        print(f"[Convocation] meeting_id: {meeting_id}")
+        print(f"[Convocation] meeting keys: {list(meeting.keys())}")
+        print(f"[Convocation] meeting.date: {meeting.get('date')}")
+        print(f"[Convocation] meeting.formattedDate: {meeting.get('formattedDate')}")
+        print(f"[Convocation] meeting.formattedTime: {meeting.get('formattedTime')}")
+        print(f"[Convocation] meeting.location: {meeting.get('location')}")
+        print(f"[Convocation] recipients count: {len(recipients)}")
+        print(f"[Convocation] ===== DEBUG END =====")
+        
         if not meeting_id or not recipients:
             raise https_fn.HttpsError(
                 code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT,

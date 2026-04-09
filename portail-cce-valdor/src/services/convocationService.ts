@@ -131,7 +131,15 @@ export const sendConvocations = async (
         // 3. Format meeting date
         const meetingDate = new Date(meeting.date);
         const formattedDate = format(meetingDate, 'EEEE d MMMM yyyy', { locale: fr });
-        const formattedTime = format(meetingDate, "HH'h'mm", { locale: fr });
+        const formattedTime = format(meetingDate, "HH 'h' mm", { locale: fr });
+        console.log('📅 [Convocation] Date debug:', {
+            rawDate: meeting.date,
+            parsedDate: meetingDate.toISOString(),
+            localString: meetingDate.toString(),
+            formattedDate,
+            formattedTime,
+            timezoneOffset: meetingDate.getTimezoneOffset()
+        });
 
         // 4. Create convocation record in Firestore
         const convocationData: Omit<Convocation, 'id'> = {
@@ -553,7 +561,12 @@ export const resendConvocationEmails = async (
 
         const meetingDate = new Date(meeting.date);
         const formattedDate = format(meetingDate, 'EEEE d MMMM yyyy', { locale: fr });
-        const formattedTime = format(meetingDate, "HH'h'mm", { locale: fr });
+        const formattedTime = format(meetingDate, "HH 'h' mm", { locale: fr });
+        console.log('📅 [Resend Convocation] Date debug:', {
+            rawDate: meeting.date,
+            formattedDate,
+            formattedTime
+        });
 
         await sendConvocationEmails({
             meetingId: meeting.id,
