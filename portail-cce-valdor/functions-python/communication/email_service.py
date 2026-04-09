@@ -14,7 +14,7 @@ def configure_resend():
 
 @https_fn.on_call(
     memory=options.MemoryOption.GB_1,
-    timeout_sec=300,  # Increased timeout for rate limiting (e.g. 50 emails * 1.5s = 75s)
+    timeout_sec=300,
     region="us-central1"
 )
 def send_convocation(req: https_fn.CallableRequest):
@@ -43,7 +43,7 @@ def send_convocation(req: https_fn.CallableRequest):
         meeting = data.get("meeting", {})
         recipients = data.get("recipients", [])
         sender = data.get("sender", {})
-        agenda_pdf_base64 = data.get("agendaPdf") # Expecting Base64 string
+        agenda_pdf_base64 = data.get("agendaPdf")
         
         if not meeting_id or not recipients:
             raise https_fn.HttpsError(
@@ -51,16 +51,11 @@ def send_convocation(req: https_fn.CallableRequest):
                 message="meetingId et recipients requis"
             )
         
-        # Format meeting date (Fixing Timezone and Encoding)
-        # Parse ISO date (UTC)
+        # Format meeting date with proper timezone (handles DST automatically)
+        from zoneinfo import ZoneInfo
         utc_date = datetime.fromisoformat(meeting.get("date", "").replace("Z", "+00:00"))
-        
-        # Convert to Eastern Time (UTC-5 for simplicity or use pytz if available, but stdlib is safer without deps)
-        # Assuming Standard Time (-5) or Daylight Saving (-4).
-        # A robust way without pytz is just subtracting 5 hours, which is "close enough" for most CCE meetings 
-        # unless they happen exactly at midnight switch.
-        # Ideally, we should use a library, but let's stick to simple offset for now.
-        local_date = utc_date - timedelta(hours=5) 
+        eastern_tz = ZoneInfo("America/Montreal")
+        local_date = utc_date.astimezone(eastern_tz)
         
         days = {
             0: "lundi", 1: "mardi", 2: "mercredi", 3: "jeudi", 
@@ -174,7 +169,6 @@ def send_convocation(req: https_fn.CallableRequest):
         
         for i, recipient in enumerate(recipients):
             # Rate limiting: wait 1.1 seconds between emails
-            # This ensures we stay well below the 2 req/s limit (approx 0.9 req/s)
             if i > 0:
                 time.sleep(1.1)
 
@@ -201,17 +195,14 @@ def send_convocation(req: https_fn.CallableRequest):
                     try:
                         resend.Emails.send(email_params)
                         sent_successfully = True
-                        break # Success, exit retry loop
+                        break
                     except Exception as e:
                         last_error_msg = str(e)
-                        # Check if it's a rate limit error
                         if "429" in str(e) or "Too Many Requests" in str(e):
-                             # Exponential backoff: 2s, 4s, 8s + random jitter
                             sleep_time = (2 ** (attempt + 1)) + random.uniform(0, 1)
                             print(f"[Convocation] Rate limited for {recipient.get('email')}. Retrying in {sleep_time:.2f}s... (Attempt {attempt+1}/{max_retries})")
                             time.sleep(sleep_time)
                         else:
-                            # Not a rate limit error, raise immediately to outer except block
                             raise e
 
                 if sent_successfully:
@@ -250,7 +241,7 @@ def send_convocation(req: https_fn.CallableRequest):
 
 
 @https_fn.on_call(
-    memory=options.MemoryOption.MB_512,  # Increased for PDF generation
+    memory=options.MemoryOption.MB_512,
     timeout_sec=180,
     region="us-central1"
 )
@@ -610,5 +601,3 @@ def send_approval_notification(req: https_fn.CallableRequest) -> Any:
     except Exception as e:
         print(f"Error sending approval notification: {e}")
         return {"success": False, "error": str(e)}
-
-
