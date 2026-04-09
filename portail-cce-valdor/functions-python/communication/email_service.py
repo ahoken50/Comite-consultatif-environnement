@@ -51,26 +51,48 @@ def send_convocation(req: https_fn.CallableRequest):
                 message="meetingId et recipients requis"
             )
         
-        # Format meeting date with proper timezone (handles DST automatically)
-        from zoneinfo import ZoneInfo
-        utc_date = datetime.fromisoformat(meeting.get("date", "").replace("Z", "+00:00"))
-        eastern_tz = ZoneInfo("America/Montreal")
-        local_date = utc_date.astimezone(eastern_tz)
+        # Use pre-formatted date/time from frontend (browser timezone is always correct)
+        # Fall back to server-side conversion only if frontend values are missing
+        frontend_date = meeting.get("formattedDate")
+        frontend_time = meeting.get("formattedTime")
         
-        days = {
-            0: "lundi", 1: "mardi", 2: "mercredi", 3: "jeudi", 
-            4: "vendredi", 5: "samedi", 6: "dimanche"
-        }
-        months = {
-            1: "janvier", 2: "février", 3: "mars", 4: "avril", 5: "mai", 6: "juin",
-            7: "juillet", 8: "août", 9: "septembre", 10: "octobre", 11: "novembre", 12: "décembre"
-        }
-        
-        day_str = days[local_date.weekday()]
-        month_str = months[local_date.month]
-        
-        formatted_date = f"{day_str} {local_date.day} {month_str} {local_date.year}"
-        formatted_time = local_date.strftime("%H h %M")
+        if frontend_date and frontend_time:
+            formatted_date = frontend_date
+            # Frontend sends "17h00" format, convert to "17 h 00" for email consistency
+            formatted_time = frontend_time.replace("h", " h ")
+            if "  " in formatted_time:
+                formatted_time = formatted_time.replace("  ", " ")
+            print(f"[Convocation] Using frontend time: {formatted_date} at {formatted_time}")
+            
+            # Still need local_date for filename
+            from zoneinfo import ZoneInfo
+            try:
+                utc_date = datetime.fromisoformat(meeting.get("date", "").replace("Z", "+00:00"))
+                local_date = utc_date.astimezone(ZoneInfo("America/Montreal"))
+            except:
+                local_date = datetime.now()
+        else:
+            # Fallback: server-side conversion
+            from zoneinfo import ZoneInfo
+            utc_date = datetime.fromisoformat(meeting.get("date", "").replace("Z", "+00:00"))
+            eastern_tz = ZoneInfo("America/Montreal")
+            local_date = utc_date.astimezone(eastern_tz)
+            
+            days = {
+                0: "lundi", 1: "mardi", 2: "mercredi", 3: "jeudi", 
+                4: "vendredi", 5: "samedi", 6: "dimanche"
+            }
+            months = {
+                1: "janvier", 2: "février", 3: "mars", 4: "avril", 5: "mai", 6: "juin",
+                7: "juillet", 8: "août", 9: "septembre", 10: "octobre", 11: "novembre", 12: "décembre"
+            }
+            
+            day_str = days[local_date.weekday()]
+            month_str = months[local_date.month]
+            
+            formatted_date = f"{day_str} {local_date.day} {month_str} {local_date.year}"
+            formatted_time = local_date.strftime("%H h %M")
+            print(f"[Convocation] Fallback server time: {formatted_date} at {formatted_time}")
         
         # Prepare Attachments
         attachments = []
