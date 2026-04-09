@@ -288,62 +288,6 @@ from ai_agents.speaker_profiles import (
     identify_speakers_in_transcript
 )
 
-                        "Content-Type": "application/json"
-                    },
-                    json={
-                        "model": "llama-3.1-8b-instant",
-                        "messages": [{"role": "user", "content": batch_prompt}],
-                        "temperature": 0.3,
-                        "max_tokens": 200
-                    },
-                    timeout=30
-                )
-                
-                if response.ok:
-                    result = response.json()
-                    content = result["choices"][0]["message"]["content"]
-                    groq_mapping = json_lib.loads(content)
-                    
-                    for label, name in groq_mapping.items():
-                        if name in known_member_names and label not in speaker_mapping:
-                            speaker_mapping[label] = name
-                            print(f"[Identify] {label} -> {name} (GROQ batch)")
-        except Exception as groq_err:
-            print(f"[Identify] GROQ batch failed: {groq_err}")
-    
-    print(f"[Identify] Identified {len(speaker_mapping)} speakers")
-    
-    # Apply mapping to segments
-    identified_segments = []
-    for segment in segments:
-        new_segment = segment.copy()
-        original_speaker = segment.get("speaker", "S0")
-        new_segment["speaker"] = speaker_mapping.get(original_speaker, original_speaker)
-        new_segment["original_speaker"] = original_speaker
-        identified_segments.append(new_segment)
-    
-    # Rebuild text with identified names
-    full_text_parts = []
-    for seg in identified_segments:
-        start_seconds = seg['start']
-        m = int(start_seconds // 60)
-        s = int(start_seconds % 60)
-        timestamp = f"[{m:02d}:{s:02d}]"
-        
-        speaker_label = f"[{seg['speaker']}]"
-        full_text_parts.append(f"{timestamp} {speaker_label} {seg['text']}")
-    
-    return {
-        "text": "\n\n".join(full_text_parts),
-        "segments": identified_segments,
-        "duration_seconds": formatted_output.get("duration_seconds", 0),
-        "speaker_mapping": speaker_mapping
-    }
-
-# =============================================================================
-# SALAD CLOUD INTEGRATION (Disabled - kept for reference)
-# =============================================================================
-
 SALAD_API_URL = "https://api.salad.com/api/public/organizations/vvd/inference-endpoints/transcribe/jobs"
 
 # Salad API Limits (from documentation)
