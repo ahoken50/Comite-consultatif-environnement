@@ -701,6 +701,14 @@ def transcribe_whisper(req: https_fn.CallableRequest) -> dict:
                 "audioRecording.transcriptionStatus": "error",
                 "audioRecording.transcriptionError": str(e),
                 "dateUpdated": datetime.now().isoformat()
+            })
+        except Exception as ex:
+            pass
+            
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.INTERNAL,
+            message=str(e)
+        )
 from ai_agents.claude_service import (
     generate_minutes_claude,
     finalize_draft_claude,
