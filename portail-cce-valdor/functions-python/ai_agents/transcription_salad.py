@@ -279,11 +279,3 @@ def format_salad_output(output_data: dict) -> str:
             formatted_lines.append(f"{ts_str} {text}")
         
     return "\n".join(formatted_lines)
-
-
-# =============================================================================
-# LEGACY WHISPER IMPLEMENTATION (KEPT FOR REFERENCE)
-# =============================================================================
-
-def transcribe_whisper_legacy_local(
-    meeting_id: str,
