@@ -7,6 +7,8 @@ from firebase_admin import firestore, storage
 from core.firebase_init import db, bucket
 from core.config import get_openai_client, get_anthropic_client
 from ai_agents.transcription import format_timestamp, clean_hallucinations, build_context_prompt
+from audio_utils import extract_audio_segment_embedding
+from auto_migration import ensure_migration_completed
 
 # =============================================================================
 # SPEAKER IDENTIFICATION - Multi-Strategy System
@@ -168,102 +170,6 @@ def get_meeting_attendees(meeting_id: str) -> list:
     except Exception as e:
         print(f"[Meeting] Error fetching attendees: {e}")
         return []
-
-
-
-        
-
-
-        
-
-
-
-        
-
-        
-
-        
-
-        
-
-        
-
-
-        
-
-            
-
-        
-        # Clean up temp files
-        if not is_local:
-            os.unlink(input_path)
-        os.unlink(output_path)
-        
-        # Upload segment to temporary storage for remote access
-        # Both Modal and HF need a URL they can access
-        bucket = storage.bucket()
-        temp_blob_path = f"temp_audio_segments/{int(time.time())}_{start_sec}_{end_sec}.wav"
-        temp_blob = bucket.blob(temp_blob_path)
-        temp_blob.upload_from_filename(output_path)
-        
-        # Generate signed URL (expires in 15 minutes)
-        try:
-            signed_url = temp_blob.generate_signed_url(
-                version="v4",
-                expiration=timedelta(minutes=15),
-                method="GET"
-            )
-        except TypeError as e:
-            print(f"[VoiceEmbed] Signed URL generation failed: {e}")
-            # Fallback for older libraries or different signatures
-            try:
-                signed_url = temp_blob.generate_signed_url(
-                    expiration=timedelta(minutes=15),
-                    method="GET"
-                )
-                print("[VoiceEmbed] Fallback to v2 signing succeeded")
-            except Exception as e2:
-                print(f"[VoiceEmbed] Fallback signing failed: {e2}")
-                raise e
-        
-        print(f"[VoiceEmbed] Sending segment to {endpoint_url.split('//')[1].split('/')[0]} ({duration:.1f}s)")
-        
-        # Call endpoint with headers (supports both Modal and HF)
-        headers = {"Content-Type": "application/json"}
-        if hf_token:
-            headers["Authorization"] = f"Bearer {hf_token}"
-        
-        # Modal uses "url", HF uses "inputs" - send both for compatibility
-        payload = {"url": signed_url, "inputs": signed_url}
-        
-        modal_response = requests.post(
-            endpoint_url,
-            headers=headers,
-            json=payload,
-            timeout=600  # Increased to 10m to handle cold start
-        )
-        
-        if not modal_response.ok:
-            print(f"[VoiceEmbed] Endpoint error: {modal_response.status_code} - {modal_response.text}")
-            return []
-        
-        result = modal_response.json()
-        print(f"[VoiceEmbed] Raw result type: {type(result)}")
-        
-        # Handle both list (direct) and dict (wrapped) responses
-        if isinstance(result, list):
-            embedding = result
-        else:
-            embedding = result.get("embedding", [])
-            
-        print(f"[VoiceEmbed] Got embedding with {len(embedding)} dimensions")
-        return embedding
-        
-    except Exception as e:
-        print(f"[VoiceEmbed] Error: {e}")
-        return []
-
-
 def compare_embedding_with_speakers(segment_embedding: list, enrolled_speakers: list = None, limit: int = 10) -> dict:
     """
     Match a segment embedding with speakers using pgvector (Phase 2 - Primary).
