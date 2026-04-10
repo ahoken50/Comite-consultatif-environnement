@@ -4,15 +4,6 @@ from firebase_admin import firestore
 from firebase_functions import https_fn, options
 from core.config import get_anthropic_client
 
-            })
-        except:
-            pass
-            
-        raise https_fn.HttpsError(
-            code=https_fn.FunctionsErrorCode.INTERNAL,
-            message=str(e)
-        )
-
 
 @https_fn.on_call(
     timeout_sec=540,  # 9 minutes timeout for generation
