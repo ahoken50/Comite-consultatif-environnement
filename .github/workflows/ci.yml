@@ -121,7 +121,7 @@ jobs:
         PROJECT_ID: ${{ secrets.VITE_FIREBASE_PROJECT_ID }}
       run: |
         echo "Attempting to delete conflicting functions..."
-        firebase functions:delete syncMeetingToSupabase syncProjectToSupabase syncRegulationToSupabase transcribeAudioV2 get_migration_status send_convocation --region us-central1 --force --project "$PROJECT_ID" || true
+        firebase functions:delete python:on_meeting_deleted python:on_meeting_updated python:on_recommendation_updated python:check_transcription on_meeting_deleted on_meeting_updated on_recommendation_updated check_transcription syncMeetingToSupabase syncProjectToSupabase syncRegulationToSupabase transcribeAudioV2 get_migration_status send_convocation --region us-central1 --force --project "$PROJECT_ID" || true
         echo "Deletion command finished (ignored errors if functions didn't exist)."
 
     - name: Deploy to Firebase (Hosting, Functions, Rules & Indexes)
