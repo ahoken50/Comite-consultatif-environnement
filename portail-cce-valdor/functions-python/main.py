@@ -732,6 +732,8 @@ from pdf.pdf_convocation import generate_avis_pdf
 # SPEECHMATICS COST PROTECTION & JOB MANAGEMENT
 # =============================================================================
 
+SPEECHMATICS_API_BASE = "https://eu1.asr.api.speechmatics.com/v2"
+
 def list_speechmatics_jobs(status_filter: str = "running") -> list:
     """
     List Speechmatics jobs by status.

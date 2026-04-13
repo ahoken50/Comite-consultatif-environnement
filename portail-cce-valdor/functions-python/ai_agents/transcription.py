@@ -237,6 +237,8 @@ def transcribe_with_whisper(
     return formatted_text
 
 
+def build_custom_whisper_prompt(attendee_names: list = None, agenda_items: list = None) -> str:
+
     """
     Build a context prompt to help Whisper with proper nouns and terminology.
     Using a narrative style to set the context and disable auto-completion behavior.

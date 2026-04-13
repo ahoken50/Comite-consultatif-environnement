@@ -26,7 +26,7 @@ def on_meeting_updated(event: firestore_fn.Event[firestore_fn.Change[firestore_f
     if before_agenda == after_agenda and before_data.get("title") == after_data.get("title") and before_data.get("date") == after_data.get("date"):
         return
 
-    print(f"[Triggers] Meeting {meetingId} updated. Verifying linked projects...")
+    print(f"[Triggers] Meeting {meeting_id} updated. Verifying linked projects...")
 
     # For each agenda item that has linked projects
     updates_needed = {} # projectId -> [list of modified linkedResolutions]
@@ -107,7 +107,7 @@ def on_meeting_deleted(event: firestore_fn.Event[firestore_fn.DocumentSnapshot])
     if not meeting_id:
         return
 
-    print(f"[Triggers] Meeting {meetingId} deleted. Cleaning up linked projects...")
+    print(f"[Triggers] Meeting {meeting_id} deleted. Cleaning up linked projects...")
 
     projects_ref = db.collection("projects").where("linkedMeetingIds", "array_contains", meeting_id)
     projects_snap = projects_ref.stream()
@@ -153,7 +153,7 @@ def on_recommendation_updated(event: firestore_fn.Event[firestore_fn.Change[fire
     if before_status == after_status or after_status != "accepted":
         return
 
-    print(f"[Triggers] Recommendation {recommendationId} was accepted. Updating projects...")
+    print(f"[Triggers] Recommendation {recommendation_id} was accepted. Updating projects...")
 
     linked_project_ids = after_data.get("linkedProjectIds", [])
     if not linked_project_ids:

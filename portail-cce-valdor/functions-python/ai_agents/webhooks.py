@@ -7,7 +7,7 @@ from firebase_admin import firestore, storage
 from firebase_functions import https_fn, options
 from core.firebase_init import db, bucket
 from core.config import get_openai_client, get_anthropic_client
-from ai_agents.transcription import format_speechmatics_output, format_timestamp, clean_hallucinations, build_context_prompt
+from ai_agents.transcription import format_speechmatics_output, format_timestamp, clean_hallucinations, build_context_prompt, submit_speechmatics_job
 from ai_agents.speaker_profiles import get_enrolled_speakers, compare_embedding_with_speakers
 from audio_utils import extract_audio_segment_embedding
 
@@ -151,6 +151,9 @@ def speechmatics_webhook(req: https_fn.Request) -> https_fn.Response:
         # =====================================================================
         # SPEAKER IDENTIFICATION - Multi-Strategy (runs after transcription)
         # =====================================================================
+        speaker_mapping = {}
+        warnings = {}
+        unidentified = []
         try:
             print(f"[Speaker ID] Starting identification for meeting {meeting_id}")
             
@@ -168,7 +171,7 @@ def speechmatics_webhook(req: https_fn.Request) -> https_fn.Response:
             if enrolled_speakers and len(enrolled_speakers) > 0:
                 segments = formatted.get("segments", [])
                 known_member_names = [s["name"] for s in enrolled_speakers]
-                speaker_mapping = {}  # {"S0": "Michaël Ross", ...}
+                # speaker_mapping = {}  # mapped from above
                 meeting_context = {"type": "Régulière"}
                 
                 # === NEW ROBUST IDENTIFICATION LOGIC ===
