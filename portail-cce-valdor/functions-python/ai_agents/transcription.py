@@ -530,8 +530,7 @@ def submit_speechmatics_job(file_url: str, meeting_id: str, language_code: str =
     # We prioritize the env var, and fall back to the known URL for 'comite-cce'.
     
     known_urls = {
-        # "comite-cce": "https://speechmatics-webhook-bubhsf2gpa-uc.a.run.app" 
-        # COMMENTED OUT: Use standard URL or env var to avoid stale hardcoded URLs
+        "comite-cce": "https://speechmatics-webhook-bubhsf2gpa-uc.a.run.app" 
     }
     
     project_id = os.environ.get("GCLOUD_PROJECT", "comite-cce")
