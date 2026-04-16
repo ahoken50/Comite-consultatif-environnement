@@ -279,7 +279,7 @@ def build_custom_whisper_prompt(attendee_names: list = None, agenda_items: list 
 # SPEECHMATICS INTEGRATION (Primary Transcription Provider)
 # =============================================================================
 
-SPEECHMATICS_API_BASE = "https://eu1.asr.api.speechmatics.com/v2"  # EU region
+SPEECHMATICS_API_BASE = os.environ.get("SPEECHMATICS_API_BASE", "https://us2.asr.api.speechmatics.com/v2")  # US region
 
 # Custom dictionary for CCE meetings (Speechmatics format)
 # Each entry can have optional "sounds_like" for pronunciation hints
