@@ -204,13 +204,16 @@ function parseEmbeddedEntries(
     const resolutionRegex = /(?:\*\*|__)?R[ÉE]SOLUTION(?:\*\*|__)?(?:[\s:]*(\d{2}-\d+))?[\s:.-]*/gi;
     // Regex to find COMMENTAIRE XX-A or COMMENTAIRE (without number)
     const commentaireRegex = /(?:\*\*|__)?COMMENTAIRE(?:\*\*|__)?(?:[\s:]*(\d{2}-[A-Z]))?[\s:.-]*/gi;
+    // Regex to find NOTE
+    const noteRegex = /(?:\*\*|__)?NOTE(?:\*\*|__)?(?:[\s:]*(\d{2}-[A-Z]))?[\s:.-]*/gi;
 
     const resMatches = [...content.matchAll(resolutionRegex)];
     const comMatches = [...content.matchAll(commentaireRegex)];
+    const noteMatches = [...content.matchAll(noteRegex)];
 
     // Collect all markers with their positions
     interface Marker {
-        type: 'resolution' | 'comment';
+        type: 'resolution' | 'comment' | 'note';
         number: string;
         position: number;
         fullMatch: string;
@@ -230,6 +233,15 @@ function parseEmbeddedEntries(
     for (const match of comMatches) {
         markers.push({
             type: 'comment',
+            number: match[1] || '',
+            position: match.index || 0,
+            fullMatch: match[0]
+        });
+    }
+
+    for (const match of noteMatches) {
+        markers.push({
+            type: 'note',
             number: match[1] || '',
             position: match.index || 0,
             fullMatch: match[0]
@@ -261,10 +273,11 @@ function parseEmbeddedEntries(
             if (marker.type === 'resolution') {
                 entryNumber = generateNextResolutionNumber(meetingNumber, usedResolutionNumbers);
                 usedResolutionNumbers.push(entryNumber);
-            } else {
+            } else if (marker.type === 'comment') {
                 entryNumber = generateNextCommentNumber(meetingNumber, usedCommentNumbers);
                 usedCommentNumbers.push(entryNumber);
             }
+            // Notes ne sont pas numérotées automatiquement
             console.log(`[Parser] Auto-numbered embedded ${marker.type}: ${entryNumber}`);
         }
 
@@ -326,6 +339,9 @@ function cleanContent(content: string): string {
 
     // Remove COMMENTAIRE headers
     cleaned = cleaned.replace(/(?:\*\*|__)?COMMENTAIRE(?:\*\*|__)?[\s:]*(\d{2}-[A-Z])?[\s:.-]*/gi, '');
+
+    // Remove NOTE headers
+    cleaned = cleaned.replace(/(?:\*\*|__)?NOTE(?:\*\*|__)?[\s:]*(\d{2}-[A-Z])?[\s:.-]*/gi, '');
 
     // Remove ## headers
     cleaned = cleaned.replace(/^##\s+.+$/gm, '');
