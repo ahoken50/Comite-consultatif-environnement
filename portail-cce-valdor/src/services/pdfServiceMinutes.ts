@@ -216,18 +216,45 @@ const generateHTMLDocument = (meeting: Meeting, _globalNotes?: string, enrichedS
         return r;
     };
 
-    // Roles that go in "ÉTAIENT PRÉSENT(E)S"
+    // Roles that go in "ÉTAIENT PRÉSENT(E)S" (committee members)
     const memberCategoryRoles = new Set(['member', 'president', 'vice_president', 'elected_official']);
     const isMemberRole = (role: string) => memberCategoryRoles.has(normalizeRole(role));
 
-    // All absents (not present, any role)
-    const absents = meetingAttendees.filter(a => !a.isPresent);
+    // Roles that should NOT appear in "ÉTAIENT ABSENT(E)S" — if not present, they simply don't show
+    const excludeFromAbsents = new Set(['observer', 'coordinator', 'guest']);
 
     // Presents: members/president/VP/élu who are checked as present
     const presents = meetingAttendees.filter(a => a.isPresent && isMemberRole(a.role));
 
     // Others present: coordinator, observer, guest who are present
     const othersPresent = meetingAttendees.filter(a => a.isPresent && !isMemberRole(a.role));
+
+    // Absents: Build from TWO sources:
+    // 1. Attendees marked as !isPresent (but exclude observer/coordinator/guest)
+    // 2. Active members from members collection who are NOT in the attendees list at all
+    const attendeeIds = new Set(meetingAttendees.map(a => a.id));
+    const attendeeNames = new Set(meetingAttendees.map(a => a.name.toLowerCase()));
+
+    const absentsFromAttendees = meetingAttendees
+        .filter(a => !a.isPresent && !excludeFromAbsents.has(normalizeRole(a.role)));
+
+    const absentsFromMembers = members
+        .filter(m => {
+            if (!m.isActive) return false;
+            // Already in attendees list? Skip (handled above)
+            if (attendeeIds.has(m.id) || attendeeNames.has((m.displayName || '').toLowerCase())) return false;
+            // Only include member-category roles in absents
+            const role = normalizeRole(m.role || 'member');
+            return isMemberRole(role) && !excludeFromAbsents.has(role);
+        })
+        .map(m => ({
+            id: m.id,
+            name: m.displayName || m.name || '',
+            role: m.role || 'member',
+            isPresent: false
+        }));
+
+    const absents = [...absentsFromAttendees, ...absentsFromMembers];
 
     // Role label mapping for PDF display
     const getRoleLabelPDF = (role: string, name: string = ''): string => {
