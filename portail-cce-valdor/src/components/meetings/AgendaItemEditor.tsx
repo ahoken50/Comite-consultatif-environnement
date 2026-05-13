@@ -313,7 +313,7 @@ const AgendaItemEditor: React.FC<AgendaItemEditorProps> = ({
                         fullWidth
                         multiline
                         rows={4}
-                        label={item.minuteType === 'none' ? "Contenu du point (Sans décision formelle)" : "Décision finale"}
+                        label={(!item.minuteType || item.minuteType === 'other') ? "Contenu du point (Sans décision formelle)" : "Décision finale"}
                         placeholder={
                             item.minuteType === 'resolution'
                                 ? "CONSIDÉRANT que...\n\nIL EST RÉSOLU..."
