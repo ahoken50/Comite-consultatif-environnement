@@ -76,7 +76,7 @@ const ProjectDependencies: React.FC<ProjectDependenciesProps> = ({ project, onUp
             const newDependency: ProjectDependency = {
                 id: `${project.id}-${selectedProject.id}-${Date.now()}`,
                 dependsOnProjectId: selectedProject.id,
-                dependsOnProjectCode: selectedProject.code,
+                dependsOnProjectCode: selectedProject.code || '',
                 dependsOnProjectName: selectedProject.name,
                 dependencyType,
                 createdAt: new Date().toISOString(),

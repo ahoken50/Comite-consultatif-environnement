@@ -106,10 +106,13 @@ const ProjectDecisions: React.FC<ProjectDecisionsProps> = ({ project }) => {
                     id: Date.now().toString(),
                     date: new Date(date).toISOString(),
                     description: description,
-                    createdBy: user.id,
-                    fileUrl,
-                    fileName
+                    createdBy: user.id
                 };
+                
+                if (fileUrl) {
+                    decision.fileUrl = fileUrl;
+                    decision.fileName = fileName;
+                }
 
                 await dispatch(addCaucusDecision({
                     projectId: project.id,
