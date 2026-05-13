@@ -195,23 +195,37 @@ export const useMinutesState = ({ meeting, onUpdate }: UseMinutesStateProps) => 
     }, [hasUnsavedChanges, handleSave]);
 
     const handleClearAll = useCallback(() => {
-        if (!window.confirm('Êtes-vous sûr de vouloir effacer tout le contenu du procès-verbal ?')) return;
+        if (!window.confirm('Êtes-vous sûr de vouloir réinitialiser le procès-verbal ?\n\nCette action supprimera toutes les résolutions, commentaires, notes et délibérations importées et remettra les points de l\'ordre du jour à leur état initial.')) return;
 
-        setGlobalNotes('');
-        setItemDecisions({});
-        setLocalAgendaItems(prev => prev.map(item => {
-            const { minuteType, ...itemWithoutMinuteType } = item;
+        // Restore agenda items to their original ODJ state from Firestore
+        const originalItems = (meeting.agendaItems || []).map(item => {
+            // eslint-disable-next-line @typescript-eslint/no-unused-vars
+            const { minuteType, ...rest } = item;
             return {
-                ...itemWithoutMinuteType,
+                ...rest,
                 minuteNumber: '',
                 decision: '',
+                description: item.description || '',
                 proposer: '',
                 seconder: '',
                 minuteEntries: []
             };
-        }));
-        setHasUnsavedChanges(true);
-    }, []);
+        });
+
+        setGlobalNotes('');
+        setItemDecisions({});
+        setLocalAgendaItems(originalItems);
+        setHasUnsavedChanges(false);
+
+        // Persist immediately to Firebase so the reset is saved
+        selfSaveRef.current = true;
+        onUpdate({
+            minutes: '',
+            agendaItems: originalItems
+        });
+
+        showSuccess('Procès-verbal réinitialisé à l\'état initial de l\'ordre du jour');
+    }, [meeting.agendaItems, onUpdate, showSuccess]);
 
     return {
         globalNotes,
