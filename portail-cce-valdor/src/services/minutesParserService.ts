@@ -203,11 +203,11 @@ function parseEmbeddedEntries(
     const entries: MinuteEntry[] = [];
 
     // Regex to find RÉSOLUTION XX-N or RÉSOLUTION (without number)
-    const resolutionRegex = /(?:\*\*|__)?R[ÉE]SOLUTION(?:\*\*|__)?(?:[\s:]*(\d{2}-\d+))?[\s:.\-*]*/gi;
+    const resolutionRegex = /(?:\*\*|__)?R[ÉE]SOLUTION(?:\*\*|__)?(?:[\s:]*(\d{2}-\d+))?[\s:.\-*]*/g;
     // Regex to find COMMENTAIRE XX-A or COMMENTAIRE (without number)
-    const commentaireRegex = /(?:\*\*|__)?COMMENTAIRE(?:\*\*|__)?(?:[\s:]*(\d{2}-[A-Z]))?[\s:.\-*]*/gi;
+    const commentaireRegex = /(?:\*\*|__)?COMMENTAIRE(?:\*\*|__)?(?:[\s:]*(\d{2}-[A-Z]))?[\s:.\-*]*/g;
     // Regex to find NOTE
-    const noteRegex = /(?:\*\*|__)?NOTE(?:\*\*|__)?(?:[\s:]*(\d{2}-[A-Z]))?[\s:.\-*]*/gi;
+    const noteRegex = /(?:\*\*|__)?NOTE(?:\*\*|__)?(?:[\s:]*(\d{2}-[A-Z]))?[\s:.\-*]*/g;
 
     const resMatches = [...content.matchAll(resolutionRegex)];
     const comMatches = [...content.matchAll(commentaireRegex)];
@@ -341,13 +341,13 @@ function cleanContent(content: string): string {
     let cleaned = content;
 
     // Remove RÉSOLUTION headers
-    cleaned = cleaned.replace(/(?:\*\*|__)?R[ÉE]SOLUTION(?:\*\*|__)?[\s:]*(\d{2}-\d+)?[\s:.-]*/gi, '');
+    cleaned = cleaned.replace(/(?:\*\*|__)?R[ÉE]SOLUTION(?:\*\*|__)?[\s:]*(\d{2}-\d+)?[\s:.\-*]*/g, '');
 
     // Remove COMMENTAIRE headers
-    cleaned = cleaned.replace(/(?:\*\*|__)?COMMENTAIRE(?:\*\*|__)?[\s:]*(\d{2}-[A-Z])?[\s:.-]*/gi, '');
+    cleaned = cleaned.replace(/(?:\*\*|__)?COMMENTAIRE(?:\*\*|__)?[\s:]*(\d{2}-[A-Z])?[\s:.\-*]*/g, '');
 
     // Remove NOTE headers
-    cleaned = cleaned.replace(/(?:\*\*|__)?NOTE(?:\*\*|__)?[\s:]*(\d{2}-[A-Z])?[\s:.-]*/gi, '');
+    cleaned = cleaned.replace(/(?:\*\*|__)?NOTE(?:\*\*|__)?[\s:]*(\d{2}-[A-Z])?[\s:.\-*]*/g, '');
 
     // Remove ## headers
     cleaned = cleaned.replace(/^##\s+.+$/gm, '');
