@@ -287,6 +287,7 @@ const BATCH_SIZE = 5; // Ou une constante importée d'un fichier de configuratio
                     minuteType: parsed.minuteType ?? item.minuteType,
                     minuteNumber: parsed.minuteNumber ?? item.minuteNumber ?? '',
                     decision: parsed.decision ?? item.decision ?? '',
+                    description: parsed.description ?? item.description ?? '',
                     proposer: parsed.proposer ?? item.proposer ?? '',
                     seconder: parsed.seconder ?? item.seconder ?? ''
                 };
@@ -493,6 +494,8 @@ const BATCH_SIZE = 5; // Ou une constante importée d'un fichier de configuratio
                                         ...item,
                                         // NEW: Copy all minute entries (resolutions + comments)
                                         minuteEntries: matchedPV.minuteEntries ?? item.minuteEntries,
+                                        // NEW: Copy description (narratif)
+                                        description: matchedPV.description ?? item.description,
                                         // Legacy fields (kept for backward compatibility)
                                         minuteType: matchedPV.minuteType ?? item.minuteType,
                                         minuteNumber: matchedPV.minuteNumber ?? item.minuteNumber ?? '',

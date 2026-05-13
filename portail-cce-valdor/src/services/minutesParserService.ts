@@ -96,34 +96,12 @@ export const parseMinutesDraft = (
                 section.description = embeddedEntries.preface;
                 console.log(`[Parser] Found ${embeddedEntries.entries.length} embedded entries in section ${orderNumber}`);
             }
-            // Otherwise, create a single entry based on title type (if content exists)
+            // S'il n'y a aucun marqueur (ni RÉS, ni COM, ni NOTE), tout le texte est du narratif
             else if (cleanedContent) {
-                if (primaryEntryType !== 'none') {
-                    let entryNumber = '';
-                    if (autoNumber && meetingNumber) {
-                        if (primaryEntryType === 'resolution') {
-                            entryNumber = generateNextResolutionNumber(meetingNumber, usedResolutionNumbers);
-                            usedResolutionNumbers.push(entryNumber);
-                        } else {
-                            entryNumber = generateNextCommentNumber(meetingNumber, usedCommentNumbers);
-                            usedCommentNumbers.push(entryNumber);
-                        }
-                        console.log(`[Parser] Auto-generated ${primaryEntryType} number: ${entryNumber}`);
-                    }
-
-                    section.minuteEntries.push({
-                        type: primaryEntryType,
-                        number: entryNumber,
-                        content: cleanedContent
-                    });
-
-                    section.minuteType = primaryEntryType;
-                    section.minuteNumber = entryNumber;
-                } else {
-                    // For 'none' type (Ouverture, Levée, etc.), content is already in decision
-                    // Create an entry without type/number to allow content display
-                    console.log(`[Parser] Section ${orderNumber} is type 'none' - content preserved: ${cleanedContent.substring(0, 50)}...`);
-                }
+                section.description = cleanedContent;
+                section.minuteEntries = [];
+                section.decision = '';
+                console.log(`[Parser] Section ${orderNumber} a du texte sans marqueur - sauvegardé comme narratif (description).`);
             }
 
             sections.push(section);
