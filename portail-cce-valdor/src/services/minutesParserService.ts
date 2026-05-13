@@ -89,19 +89,37 @@ export const parseMinutesDraft = (
 
             // If embedded entries found, use those
             if (embeddedEntries.entries.length > 0) {
-                section.minuteEntries = embeddedEntries.entries;
-                section.minuteType = embeddedEntries.entries[0].type;
-                section.minuteNumber = embeddedEntries.entries[0].number;
-                section.decision = embeddedEntries.entries[0].content;
-                section.description = embeddedEntries.preface;
-                console.log(`[Parser] Found ${embeddedEntries.entries.length} embedded entries in section ${orderNumber}`);
+                const newEntries: MinuteEntry[] = [];
+
+                if (embeddedEntries.preface) {
+                    newEntries.push({
+                        type: 'note',
+                        number: '',
+                        content: embeddedEntries.preface
+                    });
+                }
+
+                newEntries.push(...embeddedEntries.entries);
+
+                section.minuteEntries = newEntries;
+                section.minuteType = newEntries[0].type;
+                section.minuteNumber = newEntries[0].number;
+                section.decision = newEntries[0].content;
+                section.description = ''; // Force empty narrative
+                console.log(`[Parser] Found ${embeddedEntries.entries.length} embedded entries + ${embeddedEntries.preface ? 1 : 0} narrative note in section ${orderNumber}`);
             }
             // S'il n'y a aucun marqueur (ni RÉS, ni COM, ni NOTE), tout le texte est du narratif
             else if (cleanedContent) {
-                section.description = cleanedContent;
-                section.minuteEntries = [];
-                section.decision = '';
-                console.log(`[Parser] Section ${orderNumber} a du texte sans marqueur - sauvegardé comme narratif (description).`);
+                section.minuteEntries = [{
+                    type: 'note',
+                    number: '',
+                    content: cleanedContent
+                }];
+                section.minuteType = 'note';
+                section.minuteNumber = '';
+                section.decision = cleanedContent;
+                section.description = '';
+                console.log(`[Parser] Section ${orderNumber} a du texte sans marqueur - sauvegardé comme NOTE.`);
             }
 
             sections.push(section);
