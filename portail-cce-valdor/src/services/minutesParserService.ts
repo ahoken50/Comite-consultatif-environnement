@@ -28,7 +28,7 @@ interface ParseOptions {
  * - "Décision" or "Adoption" in header = resolution
  * - "Information" or "Consultation" = comment  
  * - "Ouverture", "Levée", "Varia" = none (but content still preserved)
- * - Embedded RÉSOLUTION/COMMENTAIRE headers create additional entries
+ * - Embedded RÉSOLUTION/COMMENTAIRE/NOTE/DÉCISION headers create additional entries
  */
 export const parseMinutesDraft = (
     draftContent: string,
@@ -38,7 +38,7 @@ export const parseMinutesDraft = (
 
     console.log(`[Parser] Starting parse with meetingNumber: ${meetingNumber}, autoNumber: ${autoNumber}`);
 
-
+    // Split on ## headers (lookahead keeps the header in the section)
     const rawSections = draftContent.split(/(?=^##\s+)/m);
     const sections: ParsedPVSection[] = [];
     let intro = '';
@@ -70,13 +70,13 @@ export const parseMinutesDraft = (
             const primaryEntryType = determineEntryType(fullTitle);
             console.log(`[Parser] Section ${orderNumber}: "${fullTitle}" -> primaryType: ${primaryEntryType}`);
 
-            // Parse for embedded RÉSOLUTION/COMMENTAIRE markers
+            // Parse for embedded RÉSOLUTION/COMMENTAIRE/NOTE/DÉCISION markers
             const embeddedEntries = parseEmbeddedEntries(rawContent, meetingNumber, autoNumber, usedResolutionNumbers, usedCommentNumbers);
 
             // Clean content for display (remove headers but keep text)
             const cleanedContent = cleanContent(rawContent);
 
-            const section: ParsedPVSection & { description?: string } = {
+            const section: ParsedPVSection = {
                 title: `${orderNumber}. ${fullTitle}`,
                 orderNumber,
                 content: cleanedContent,
@@ -84,13 +84,13 @@ export const parseMinutesDraft = (
                 minuteEntries: [],
                 // ALWAYS set decision for content preservation (for Ouverture, etc.)
                 decision: cleanedContent,
-                description: ''
             };
 
             // If embedded entries found, use those
             if (embeddedEntries.entries.length > 0) {
                 const newEntries: MinuteEntry[] = [];
 
+                // Preface text (narrative before the first marker) becomes a NOTE
                 if (embeddedEntries.preface) {
                     newEntries.push({
                         type: 'note',
@@ -105,10 +105,9 @@ export const parseMinutesDraft = (
                 section.minuteType = newEntries[0].type;
                 section.minuteNumber = newEntries[0].number;
                 section.decision = newEntries[0].content;
-                section.description = ''; // Force empty narrative
                 console.log(`[Parser] Found ${embeddedEntries.entries.length} embedded entries + ${embeddedEntries.preface ? 1 : 0} narrative note in section ${orderNumber}`);
             }
-            // S'il n'y a aucun marqueur (ni RÉS, ni COM, ni NOTE), tout le texte est du narratif
+            // No markers at all: entire text becomes a NOTE
             else if (cleanedContent) {
                 section.minuteEntries = [{
                     type: 'note',
@@ -118,8 +117,7 @@ export const parseMinutesDraft = (
                 section.minuteType = 'note';
                 section.minuteNumber = '';
                 section.decision = cleanedContent;
-                section.description = '';
-                console.log(`[Parser] Section ${orderNumber} a du texte sans marqueur - sauvegardé comme NOTE.`);
+                console.log(`[Parser] Section ${orderNumber} has no markers - saved as NOTE.`);
             }
 
             sections.push(section);
@@ -173,7 +171,7 @@ export const parseMinutesDraft = (
         presenter: '',
         objective: sec.entryType === 'resolution' ? 'Décision' :
             sec.entryType === 'comment' ? 'Information' : '',
-        description: (sec as any).description || '',
+        description: '',
         minuteEntries: sec.minuteEntries,
         minuteType: sec.minuteType,
         minuteNumber: sec.minuteNumber || (sec.minuteEntries[0]?.number || ''),
@@ -186,8 +184,14 @@ export const parseMinutesDraft = (
 };
 
 /**
- * Parse embedded RÉSOLUTION and COMMENTAIRE entries within content.
+ * Parse embedded RÉSOLUTION, COMMENTAIRE, NOTE and DÉCISION entries within content.
  * Returns an array of MinuteEntry objects found in the text.
+ *
+ * AI output formats handled:
+ *   **RÉSOLUTION 16-02**
+ *   **COMMENTAIRE 16-B :** texte...
+ *   **DÉCISION :** texte...
+ *   **NOTE :** texte...
  */
 function parseEmbeddedEntries(
     content: string,
@@ -196,18 +200,21 @@ function parseEmbeddedEntries(
     usedResolutionNumbers: string[],
     usedCommentNumbers: string[]
 ): { preface: string; entries: MinuteEntry[] } {
-    const entries: MinuteEntry[] = [];
 
-    // Regex to find RÉSOLUTION XX-N or RÉSOLUTION (without number)
-    const resolutionRegex = /(?:\*\*|__)?R[ÉE]SOLUTION(?:\*\*|__)?(?:[\s:]*(\d{2}-\d+))?[\s:.\-*]*/g;
-    // Regex to find COMMENTAIRE XX-A or COMMENTAIRE (without number)
-    const commentaireRegex = /(?:\*\*|__)?COMMENTAIRE(?:\*\*|__)?(?:[\s:]*(\d{2}-[A-Z]))?[\s:.\-*]*/g;
-    // Regex to find NOTE
-    const noteRegex = /(?:\*\*|__)?NOTE(?:\*\*|__)?(?:[\s:]*(\d{2}-[A-Z]))?[\s:.\-*]*/g;
+    // Single unified regex that catches all marker types in one pass.
+    // Handles: **RÉSOLUTION 16-02**, **COMMENTAIRE 16-A :**, **DÉCISION :**, **NOTE :**
+    // The key: ** can wrap the whole keyword+number, and number comes BEFORE closing **.
+    const markerRegex = /(?:\*\*|__)?(?:R[ÉE]SOLUTION|COMMENTAIRE|D[ÉE]CISION|NOTE)\s*(?:\d{1,2}-(?:\d+|[A-Z]))?(?:\*\*|__)?[\s:.\-*]*/g;
 
-    const resMatches = [...content.matchAll(resolutionRegex)];
-    const comMatches = [...content.matchAll(commentaireRegex)];
-    const noteMatches = [...content.matchAll(noteRegex)];
+    // Type detection tests (applied to each match string)
+    const resolutionTest = /R[ÉE]SOLUTION/;
+    const commentaireTest = /COMMENTAIRE/;
+    const decisionTest = /D[ÉE]CISION/;
+    // NOTE is the fallback
+
+    const numberExtract = /(\d{1,2}-(?:\d+|[A-Z]))/;
+
+    const allMatches = [...content.matchAll(markerRegex)];
 
     // Collect all markers with their positions
     interface Marker {
@@ -219,30 +226,26 @@ function parseEmbeddedEntries(
 
     const markers: Marker[] = [];
 
-    for (const match of resMatches) {
-        markers.push({
-            type: 'resolution',
-            number: match[1] || '',
-            position: match.index || 0,
-            fullMatch: match[0]
-        });
-    }
+    for (const match of allMatches) {
+        const text = match[0];
+        let type: 'resolution' | 'comment' | 'note';
 
-    for (const match of comMatches) {
-        markers.push({
-            type: 'comment',
-            number: match[1] || '',
-            position: match.index || 0,
-            fullMatch: match[0]
-        });
-    }
+        if (resolutionTest.test(text)) {
+            type = 'resolution';
+        } else if (commentaireTest.test(text) || decisionTest.test(text)) {
+            type = 'comment';
+        } else {
+            type = 'note';
+        }
 
-    for (const match of noteMatches) {
+        const numMatch = text.match(numberExtract);
+        const number = numMatch ? numMatch[1] : '';
+
         markers.push({
-            type: 'note',
-            number: match[1] || '',
+            type,
+            number,
             position: match.index || 0,
-            fullMatch: match[0]
+            fullMatch: text
         });
     }
 
@@ -260,6 +263,7 @@ function parseEmbeddedEntries(
     preface = cleanContent(preface);
 
     // Extract content for each marker
+    const entries: MinuteEntry[] = [];
     for (let i = 0; i < markers.length; i++) {
         const marker = markers[i];
         const startPos = marker.position + marker.fullMatch.length;
@@ -329,21 +333,16 @@ function determineEntryType(title: string): 'resolution' | 'comment' | 'none' {
 }
 
 /**
- * Clean content by removing headers and delimiters.
+ * Clean content by removing marker headers and delimiters.
+ * Does NOT strip narrative text — only removes the label lines themselves.
  */
 function cleanContent(content: string): string {
     if (!content) return '';
 
     let cleaned = content;
 
-    // Remove RÉSOLUTION headers
-    cleaned = cleaned.replace(/(?:\*\*|__)?R[ÉE]SOLUTION(?:\*\*|__)?[\s:]*(\d{2}-\d+)?[\s:.\-*]*/g, '');
-
-    // Remove COMMENTAIRE headers
-    cleaned = cleaned.replace(/(?:\*\*|__)?COMMENTAIRE(?:\*\*|__)?[\s:]*(\d{2}-[A-Z])?[\s:.\-*]*/g, '');
-
-    // Remove NOTE headers
-    cleaned = cleaned.replace(/(?:\*\*|__)?NOTE(?:\*\*|__)?[\s:]*(\d{2}-[A-Z])?[\s:.\-*]*/g, '');
+    // Remove marker headers (RÉSOLUTION, COMMENTAIRE, NOTE, DÉCISION with optional ** and numbers)
+    cleaned = cleaned.replace(/(?:\*\*|__)?(?:R[ÉE]SOLUTION|COMMENTAIRE|D[ÉE]CISION|NOTE)\s*(?:\d{1,2}-(?:\d+|[A-Z]))?(?:\*\*|__)?[\s:.\-*]*/g, '');
 
     // Remove ## headers
     cleaned = cleaned.replace(/^##\s+.+$/gm, '');
