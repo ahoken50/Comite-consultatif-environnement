@@ -273,7 +273,7 @@ const generateHTMLDocument = (meeting: Meeting, _globalNotes?: string, enrichedS
 
     const formatName = (a: typeof presents[0]) => {
         const roleLabel = getRoleLabelPDF(a.role, a.name);
-        return roleLabel ? `${a.name}, ${roleLabel}` : a.name;
+        return roleLabel ? `${a.name} (${roleLabel})` : a.name;
     };
 
     // Get president and secretary for signatures
