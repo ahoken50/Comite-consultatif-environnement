@@ -39,7 +39,7 @@ export const parseMinutesDraft = (
     console.log(`[Parser] Starting parse with meetingNumber: ${meetingNumber}, autoNumber: ${autoNumber}`);
 
 
-    const rawSections = draftContent.split(/^---+$/m);
+    const rawSections = draftContent.split(/(?=^##\s+)/m);
     const sections: ParsedPVSection[] = [];
     let intro = '';
 

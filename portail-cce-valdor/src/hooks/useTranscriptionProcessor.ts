@@ -54,7 +54,7 @@ export const useTranscriptionProcessor = ({
                         return {
                             ...item,
                             minuteEntries: matched.minuteEntries, // Helper to sync arrays
-                            description: matched.description || item.description, // Copier le narratif
+                            description: matched.description ?? item.description, // Copier le narratif
                             // Legacy
                             minuteType: matched.minuteType,
                             minuteNumber: matched.minuteNumber,
