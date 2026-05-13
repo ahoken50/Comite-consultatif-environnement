@@ -86,10 +86,12 @@ const ConvocationDashboard: React.FC<ConvocationDashboardProps> = ({ meeting, on
                 );
 
                 if (!exists) {
+                    // Look up real role from members collection
+                    const memberRecord = members.find(m => m.id === recipient.memberId || m.displayName === recipient.name);
                     newAttendees.push({
                         id: recipient.memberId || Date.now().toString() + Math.random(),
                         name: recipient.name,
-                        role: 'Membre', // Default role, could be improved if member role is available
+                        role: memberRecord?.role || 'member',
                         isPresent: true
                     });
                     addedCount++;

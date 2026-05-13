@@ -174,8 +174,20 @@ const formatContentHTML = (text: string): string => {
 
 /**
  * Generate the complete HTML document for the PV
+ * @param members - Optional array of members from Firestore to enrich attendee roles
  */
-const generateHTMLDocument = (meeting: Meeting, _globalNotes?: string, enrichedSignatures: any[] = []): string => {
+const generateHTMLDocument = (meeting: Meeting, _globalNotes?: string, enrichedSignatures: any[] = [], members: any[] = []): string => {
+
+    // Enrich attendee roles from the members collection (fixes stale 'Membre' roles in Firestore)
+    const enrichedAttendees = (meeting.attendees || []).map(attendee => {
+        const matchedMember = members.find(m => m.id === attendee.id || m.displayName === attendee.name);
+        if (matchedMember && matchedMember.role) {
+            return { ...attendee, role: matchedMember.role };
+        }
+        return attendee;
+    });
+    // Use enriched attendees for all subsequent processing
+    const meetingAttendees = enrichedAttendees;
     const meetingNum = extractMeetingNumber(meeting.title);
 
     // Format date
@@ -209,13 +221,13 @@ const generateHTMLDocument = (meeting: Meeting, _globalNotes?: string, enrichedS
     const isMemberRole = (role: string) => memberCategoryRoles.has(normalizeRole(role));
 
     // All absents (not present, any role)
-    const absents = meeting.attendees?.filter(a => !a.isPresent) || [];
+    const absents = meetingAttendees.filter(a => !a.isPresent);
 
     // Presents: members/president/VP/élu who are checked as present
-    const presents = meeting.attendees?.filter(a => a.isPresent && isMemberRole(a.role)) || [];
+    const presents = meetingAttendees.filter(a => a.isPresent && isMemberRole(a.role));
 
     // Others present: coordinator, observer, guest who are present
-    const othersPresent = meeting.attendees?.filter(a => a.isPresent && !isMemberRole(a.role)) || [];
+    const othersPresent = meetingAttendees.filter(a => a.isPresent && !isMemberRole(a.role));
 
     // Role label mapping for PDF display
     const getRoleLabelPDF = (role: string, name: string = ''): string => {
@@ -238,10 +250,11 @@ const generateHTMLDocument = (meeting: Meeting, _globalNotes?: string, enrichedS
     };
 
     // Get president and secretary for signatures
-    const president = meeting.attendees?.find(a =>
-        a.role?.toLowerCase().includes('président') && !a.role?.toLowerCase().includes('vice')
-    );
-    const secretary = meeting.attendees?.find(a => a.role?.toLowerCase().includes('secrétaire'));
+    const president = meetingAttendees.find(a => {
+        const nr = normalizeRole(a.role);
+        return nr === 'president';
+    });
+    const secretary = meetingAttendees.find(a => a.role?.toLowerCase().includes('secrétaire'));
     const presidentName = president ? president.name : 'Président(e)';
     const secretaryName = secretary ? secretary.name : 'Secrétaire';
 
@@ -780,12 +793,12 @@ const generateHTMLDocument = (meeting: Meeting, _globalNotes?: string, enrichedS
  * Generate PDF from HTML using native browser print
  * This approach respects CSS page-break rules for resolution blocks
  */
-export const generateMinutesPDF = async (meeting: Meeting, globalNotes?: string, windowRef?: Window | null): Promise<PDFGenerationResult> => {
+export const generateMinutesPDF = async (meeting: Meeting, globalNotes?: string, windowRef?: Window | null, members: any[] = []): Promise<PDFGenerationResult> => {
     
     // 1. Prepare enriched signatures using the shared service to prevent logic conflicts
     const enrichedSignatures = await fetchEnrichedSignatures(meeting);
     
-    const html = generateHTMLDocument(meeting, globalNotes, enrichedSignatures);
+    const html = generateHTMLDocument(meeting, globalNotes, enrichedSignatures, members);
 
     // Use provided window or open a new one
     let printWindow = windowRef;

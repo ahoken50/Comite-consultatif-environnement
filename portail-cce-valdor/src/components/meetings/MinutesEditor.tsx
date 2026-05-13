@@ -142,7 +142,7 @@ const BATCH_SIZE = 5; // Ou une constante importée d'un fichier de configuratio
             minutes: globalNotes,
             agendaItems: localAgendaItems
         };
-        generateMinutesPDF(meetingForPdf, globalNotes);
+        generateMinutesPDF(meetingForPdf, globalNotes, null, members);
     };
 
     const handleDraftGenerated = React.useCallback((draft: MinutesDraft) => {
@@ -228,7 +228,7 @@ const BATCH_SIZE = 5; // Ou une constante importée d'un fichier de configuratio
 
             if (result.success && result.sanitizedMeeting) {
                 // 3. Generate PDF with the SANITIZED object, using the existing window
-                await generateMinutesPDF(result.sanitizedMeeting, result.sanitizedMeeting.minutes, printWindow);
+                await generateMinutesPDF(result.sanitizedMeeting, result.sanitizedMeeting.minutes, printWindow, members);
                 showSuccess('PDF Anonymisé généré !');
             } else {
                 if (printWindow) printWindow.close();
