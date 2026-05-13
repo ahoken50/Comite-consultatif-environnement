@@ -696,20 +696,20 @@ const generateHTMLDocument = (meeting: Meeting, _globalNotes?: string, enrichedS
         <section class="attendance">
             ${presents.length > 0 ? `
             <div class="attendance-group">
-                <h3>Étaient présents</h3>
+                <h3>ÉTAIENT PRÉSENT(E)S</h3>
                 <div>${presents.map(formatName).join(', ')}.</div>
-            </div>
-            ` : ''}
-            ${othersPresent.length > 0 ? `
-            <div class="attendance-group">
-                <h3>Étaient aussi présents</h3>
-                <div>${othersPresent.map(formatName).join(', ')}.</div>
             </div>
             ` : ''}
             ${absents.length > 0 ? `
             <div class="attendance-group">
-                <h3>Étaient absents</h3>
+                <h3>ÉTAIENT ABSENT(E)S</h3>
                 <div>${absents.map(formatName).join(', ')}.</div>
+            </div>
+            ` : ''}
+            ${othersPresent.length > 0 ? `
+            <div class="attendance-group">
+                <h3>ÉTAIENT AUSSI PRÉSENT(E)S</h3>
+                <div>${othersPresent.map(formatName).join(', ')}.</div>
             </div>
             ` : ''}
         </section>
