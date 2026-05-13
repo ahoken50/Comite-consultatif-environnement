@@ -76,23 +76,25 @@ export const parseMinutesDraft = (
             // Clean content for display (remove headers but keep text)
             const cleanedContent = cleanContent(rawContent);
 
-            const section: ParsedPVSection = {
+            const section: ParsedPVSection & { description?: string } = {
                 title: `${orderNumber}. ${fullTitle}`,
                 orderNumber,
                 content: cleanedContent,
                 entryType: primaryEntryType,
                 minuteEntries: [],
                 // ALWAYS set decision for content preservation (for Ouverture, etc.)
-                decision: cleanedContent
+                decision: cleanedContent,
+                description: ''
             };
 
             // If embedded entries found, use those
-            if (embeddedEntries.length > 0) {
-                section.minuteEntries = embeddedEntries;
-                section.minuteType = embeddedEntries[0].type;
-                section.minuteNumber = embeddedEntries[0].number;
-                section.decision = embeddedEntries[0].content;
-                console.log(`[Parser] Found ${embeddedEntries.length} embedded entries in section ${orderNumber}`);
+            if (embeddedEntries.entries.length > 0) {
+                section.minuteEntries = embeddedEntries.entries;
+                section.minuteType = embeddedEntries.entries[0].type;
+                section.minuteNumber = embeddedEntries.entries[0].number;
+                section.decision = embeddedEntries.entries[0].content;
+                section.description = embeddedEntries.preface;
+                console.log(`[Parser] Found ${embeddedEntries.entries.length} embedded entries in section ${orderNumber}`);
             }
             // Otherwise, create a single entry based on title type (if content exists)
             else if (cleanedContent) {
@@ -175,7 +177,7 @@ export const parseMinutesDraft = (
         presenter: '',
         objective: sec.entryType === 'resolution' ? 'Décision' :
             sec.entryType === 'comment' ? 'Information' : '',
-        description: '',
+        description: (sec as any).description || '',
         minuteEntries: sec.minuteEntries,
         minuteType: sec.minuteType,
         minuteNumber: sec.minuteNumber || (sec.minuteEntries[0]?.number || ''),
@@ -197,15 +199,15 @@ function parseEmbeddedEntries(
     autoNumber: boolean,
     usedResolutionNumbers: string[],
     usedCommentNumbers: string[]
-): MinuteEntry[] {
+): { preface: string; entries: MinuteEntry[] } {
     const entries: MinuteEntry[] = [];
 
     // Regex to find RÉSOLUTION XX-N or RÉSOLUTION (without number)
-    const resolutionRegex = /(?:\*\*|__)?R[ÉE]SOLUTION(?:\*\*|__)?(?:[\s:]*(\d{2}-\d+))?[\s:.-]*/gi;
+    const resolutionRegex = /(?:\*\*|__)?R[ÉE]SOLUTION(?:\*\*|__)?(?:[\s:]*(\d{2}-\d+))?[\s:.\-*]*/gi;
     // Regex to find COMMENTAIRE XX-A or COMMENTAIRE (without number)
-    const commentaireRegex = /(?:\*\*|__)?COMMENTAIRE(?:\*\*|__)?(?:[\s:]*(\d{2}-[A-Z]))?[\s:.-]*/gi;
+    const commentaireRegex = /(?:\*\*|__)?COMMENTAIRE(?:\*\*|__)?(?:[\s:]*(\d{2}-[A-Z]))?[\s:.\-*]*/gi;
     // Regex to find NOTE
-    const noteRegex = /(?:\*\*|__)?NOTE(?:\*\*|__)?(?:[\s:]*(\d{2}-[A-Z]))?[\s:.-]*/gi;
+    const noteRegex = /(?:\*\*|__)?NOTE(?:\*\*|__)?(?:[\s:]*(\d{2}-[A-Z]))?[\s:.\-*]*/gi;
 
     const resMatches = [...content.matchAll(resolutionRegex)];
     const comMatches = [...content.matchAll(commentaireRegex)];
@@ -252,10 +254,14 @@ function parseEmbeddedEntries(
     markers.sort((a, b) => a.position - b.position);
 
     if (markers.length === 0) {
-        return [];
+        return { preface: cleanContent(content), entries: [] };
     }
 
     console.log(`[Parser] Found ${markers.length} embedded markers: ${markers.map(m => `${m.type}(${m.number})`).join(', ')}`);
+
+    // Extract the preface (discussion before the first marker)
+    let preface = content.substring(0, markers[0].position).trim();
+    preface = cleanContent(preface);
 
     // Extract content for each marker
     for (let i = 0; i < markers.length; i++) {
@@ -288,7 +294,7 @@ function parseEmbeddedEntries(
         });
     }
 
-    return entries;
+    return { preface, entries };
 }
 
 /**
