@@ -74,6 +74,21 @@ const AgendaItemEditor: React.FC<AgendaItemEditorProps> = ({
                     ))}
                 </Stack>
             )}
+
+            {/* Editable Description (Narrative text / Context) */}
+            <TextField
+                fullWidth
+                multiline
+                minRows={2}
+                label="Contexte / Délibérations (Narratif)"
+                placeholder="Résumé des discussions avant la décision..."
+                value={item.description || ''}
+                onChange={(e) => onAgendaItemChange(item.id, 'description', e.target.value)}
+                disabled={readOnly}
+                variant="outlined"
+                sx={{ mb: 3 }}
+            />
+
             {/* Editable minute entries (resolutions + comments) */}
             {item.minuteEntries && item.minuteEntries.length > 0 && (
                 <Box sx={{ mb: 2 }}>
@@ -298,7 +313,7 @@ const AgendaItemEditor: React.FC<AgendaItemEditorProps> = ({
                         fullWidth
                         multiline
                         rows={4}
-                        label="Contenu du PV"
+                        label={item.minuteType === 'none' ? "Contenu du point (Sans décision formelle)" : "Décision finale"}
                         placeholder={
                             item.minuteType === 'resolution'
                                 ? "CONSIDÉRANT que...\n\nIL EST RÉSOLU..."

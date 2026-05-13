@@ -262,6 +262,11 @@ const generateHTMLDocument = (meeting: Meeting, _globalNotes?: string, enrichedS
 
         // Render minute entries
         if (item.minuteEntries && item.minuteEntries.length > 0) {
+            // Render narrative description (context) first
+            if (item.description) {
+                sectionsHTML += formatContentHTML(item.description);
+            }
+
             // Sort entries: comments first, then notes, then resolutions
             const sortedEntries = [...item.minuteEntries].sort((a, b) => {
                 const order = { comment: 0, note: 1, resolution: 2 };
