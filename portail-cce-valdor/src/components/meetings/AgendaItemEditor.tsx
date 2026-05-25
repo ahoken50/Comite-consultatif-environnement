@@ -272,30 +272,7 @@ const AgendaItemEditor: React.FC<AgendaItemEditorProps> = ({
                         </Grid>
                     </Grid>
 
-                    {item.minuteType === 'resolution' && (
-                        <Grid container spacing={2} sx={{ mb: 2 }}>
-                            <Grid size={{ xs: 12, sm: 6 }}>
-                                <TextField
-                                    fullWidth
-                                    label="Proposé par"
-                                    size="small"
-                                    value={item.proposer || ''}
-                                    onChange={(e) => onAgendaItemChange(item.id, 'proposer', e.target.value)}
-                                    disabled={readOnly}
-                                />
-                            </Grid>
-                            <Grid size={{ xs: 12, sm: 6 }}>
-                                <TextField
-                                    fullWidth
-                                    label="Appuyé par"
-                                    size="small"
-                                    value={item.seconder || ''}
-                                    onChange={(e) => onAgendaItemChange(item.id, 'seconder', e.target.value)}
-                                    disabled={readOnly}
-                                />
-                            </Grid>
-                        </Grid>
-                    )}
+
 
                     <TextField
                         fullWidth

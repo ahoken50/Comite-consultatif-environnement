@@ -283,6 +283,11 @@ Produire un PROCÈS-VERBAL officiel, structuré et conforme aux pratiques munici
 3. **FIDÉLITÉ STRICTE AU CONTENU**
    - Reformulation permise UNIQUEMENT si le sens est clair et explicite
 
+4. **UNANIMITÉ DES RÉSOLUTIONS**
+   - Au CCE de Val-d'Or, toutes les résolutions sont adoptées à l'unanimité.
+   - Il n'y a JAMAIS de proposeur ni de secondeur (aucune mention de "proposé par" ou "appuyé par").
+   - Termine toujours le texte d'une résolution par la mention explicite en italique ou normale : "Adopté à l'unanimité."
+
 ## CONSIGNES DE FORMATTAGE
 
 1. **NUMÉROTATION OBLIGATOIRE** : Chaque point commence par son numéro (ex. « 1. Ouverture »)
@@ -519,7 +524,7 @@ ${pvContent.substring(0, 200000)}
 NUMÉROTATION: Assemblée #${numbering.assemblyNumber}
 
 Extrais:
-1. Toutes les RÉSOLUTIONS avec leur numéro, contenu, proposeur et secondeur
+1. Toutes les RÉSOLUTIONS avec leur numéro et contenu
 2. Tous les COMMENTAIRES avec leur numéro et contenu
 3. Les PRÉSENCES (présents, absents, invités)
 4. Les informations du HEADER
@@ -530,8 +535,6 @@ FORMAT JSON ATTENDU:
     {
       "number": "09-35",
       "content": "L'ordre du jour est adopté...",
-      "proposer": "M. Ross",
-      "seconder": "Mme Boutin",
       "odjItemId": ""
     }
   ],

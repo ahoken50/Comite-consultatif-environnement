@@ -242,13 +242,26 @@ const BATCH_SIZE = 5; // Ou une constante importée d'un fichier de configuratio
     };
 
     const handleGenerateSummary = async () => {
-        if (!meeting.audioRecording?.transcription) {
+        const recordings = (Array.isArray(meeting.audioRecordings) ? meeting.audioRecordings : []) || (meeting.audioRecording ? [meeting.audioRecording] : []);
+        const fullTranscription = recordings
+            .map(r => r.transcription)
+            .filter(t => !!t)
+            .join('\n\n--- TRANSCRIPTION SUIVANTE ---\n\n');
+
+        if (!fullTranscription.trim()) {
             showError("Veuillez d'abord transcrire l'audio pour générer un résumé.");
             return;
         }
 
-        if (globalNotes && !window.confirm("Le champ 'Notes Générales' n'est pas vide. Voulez-vous remplacer son contenu par le résumé IA ?")) {
-            return;
+        if (globalNotes) {
+            const hasFullPV = globalNotes.includes("PROCÈS-VERBAL") || globalNotes.includes("RÉSOLUTION") || globalNotes.includes("COMMENTAIRE");
+            const warningMsg = hasFullPV
+                ? "⚠️ Attention : Un procès-verbal complet semble déjà rédigé dans ce champ. Générer un résumé d'introduction va écraser et remplacer tout le texte existant. Voulez-vous continuer ?"
+                : "Le champ 'Notes Générales' n'est pas vide. Voulez-vous remplacer son contenu par le résumé IA ?";
+            
+            if (!window.confirm(warningMsg)) {
+                return;
+            }
         }
 
         try {
@@ -257,12 +270,12 @@ const BATCH_SIZE = 5; // Ou une constante importée d'un fichier de configuratio
             // Dynamically import service
             const { generateExecutiveSummaryClaude } = await import('../../services/claudeService');
 
-            const result = await generateExecutiveSummaryClaude(meeting.audioRecording.transcription);
+            const result = await generateExecutiveSummaryClaude(fullTranscription);
 
             if (result.success && result.summary) {
                 setGlobalNotes(result.summary);
                 setHasUnsavedChanges(true);
-                showSuccess("Résumé généré avec succès !");
+                showSuccess("Résumé d'introduction généré avec succès !");
             } else {
                 showError(result.error || "Erreur lors de la génération");
             }
@@ -580,7 +593,7 @@ const BATCH_SIZE = 5; // Ou une constante importée d'un fichier de configuratio
                                 color="secondary"
                                 startIcon={<SmartToy />}
                                 onClick={() => setIsModeSelectorOpen(true)}
-                                disabled={!meeting.audioRecording?.transcription}
+                                disabled={!meeting.audioRecording?.transcription && !(meeting.audioRecordings?.some(r => r.transcription))}
                                 title="Générer le PV automatiquement avec l'agent IA"
                             >
                                 SmartPV (Agent IA)
@@ -594,7 +607,7 @@ const BATCH_SIZE = 5; // Ou une constante importée d'un fichier de configuratio
                                 <input
                                     type="file"
                                     hidden
-                                    accept=".pdf,.docx,.doc"
+                                    accept=".pdf,.docx"
                                     onChange={handleFileUploadWrapper}
                                 />
                             </Button>
@@ -897,10 +910,10 @@ const BATCH_SIZE = 5; // Ou une constante importée d'un fichier de configuratio
                             startIcon={<AutoAwesome />}
                             size="small"
                             onClick={handleGenerateSummary}
-                            disabled={!meeting.audioRecording?.transcription}
-                            title="Génère un résumé exécutif basé sur la transcription audio"
+                            disabled={!meeting.audioRecording?.transcription && !(meeting.audioRecordings?.some(r => r.transcription))}
+                            title="Rédiger un résumé d'introduction basé sur l'audio (attention : écrase le champ)"
                         >
-                            Générer avec IA
+                            Rédiger l'introduction (IA)
                         </Button>
                     )}
                 </Box>
