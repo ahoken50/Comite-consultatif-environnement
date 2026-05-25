@@ -476,157 +476,156 @@ async def identify_speakers_in_transcript(
         
         # fuse_scores returns None if below threshold, so we just check best_name
         if best_name:
-             # 1. MARGIN CHECK (Top 2 Comparison)
-             # If strictly voice based, check if the runner-up is too close.
-             if voice_scores:
-                 sorted_voice = sorted(voice_scores.items(), key=lambda x: x[1], reverse=True)
-                 if len(sorted_voice) >= 2:
-                     winner = sorted_voice[0]
-                     runner_up = sorted_voice[1]
-                     margin = winner[1] - runner_up[1]
-                     
-                     # If margin is slim (< 0.05), it's risky.
-                     # However, if Context supports the winner, we proceed.
-                     context_support_winner = linguistic_scores.get(winner[0], 0) + auto_id_scores.get(winner[0], 0)
-                     context_support_runner = linguistic_scores.get(runner_up[0], 0) + auto_id_scores.get(runner_up[0], 0)
-                     
-                     if margin < 0.05 and context_support_winner <= context_support_runner:
-                         # Ambiguous: Voice is close, and context doesn't clarify.
-                         print(f"[Identify] AMBIGUITY: {winner[0]} vs {runner_up[0]} (Margin {margin:.3f}). Skipping.")
-                         best_name = None 
-                         rejection_reason = "Ambiguous Voice Match"
- 
-             # 2. GENDER / ROLE GUARD
-             # If we picked someone, ensure it doesn't contradict linguistic gender cues.
-             if best_name:
-                 # Heuristic: Check titles in name
-                 is_female_candidate = "Mme" in best_name or "Madame" in best_name or "Conseillère" in best_name
-                 is_male_candidate = "M." in best_name or "Monsieur" in best_name or "Conseiller " in best_name # Space to avoid matching Conseillère
-                 
-                 # Check linguistic cues in text (Context)
-                 # "Mme la Présidente", "Elle" -> Female
-                 text_female_cues = ["madame", "mme", "présidente", "conseillère", "mairesse"]
-                 text_male_cues = ["monsieur", "m.", "président", "conseiller", "maire"]
-                 
-                 found_female = any(cue in combined_text.lower() for cue in text_female_cues)
-                 found_male = any(cue in combined_text.lower() for cue in text_male_cues)
-                 
-                 if is_male_candidate and found_female and not found_male:
-                     print(f"[Identify] GENDER GUARD: Rejecting {best_name} (Male) because text implies Female.")
-                     best_name = None
-                     rejection_reason = "Gender Mismatch (M->F)"
-                 elif is_female_candidate and found_male and not found_female:
-                     print(f"[Identify] GENDER GUARD: Rejecting {best_name} (Female) because text implies Male.")
-                     best_name = None
-                     rejection_reason = "Gender Mismatch (F->M)"
- 
-         if best_name:
-             final_decision = best_name
-             speaker_mapping[speaker_label] = best_name
-             print(f"[Identify] {speaker_label} -> {best_name} (score: {best_score:.2f}, voice: {bool(voice_scores)})")
-             
-             # Auto-Learning logic (Restored)
-             voice_conf = voice_scores.get(best_name, 0)
-             if voice_available and segment_embedding:
-                 # BUGFIX: Increased voice_conf strictness from 0.55 to 0.70 to prevent profile pollution
-                 if 0.70 <= voice_conf <= 0.85 and best_score > 0.65:
-                      try:
-                          print(f"[AutoLearn] Autonomous Reinforcement triggered for {best_name}!")
-                          # Write directly to Supabase (primary store)
-                          from supabase_embeddings import add_embedding, is_duplicate as emb_is_dup
-                          member_ref = db.collection("members").where("displayName", "==", best_name).limit(1).get()
-                          member_id_for_learn = member_ref[0].id if member_ref else ""
-                          if not emb_is_dup(best_name, segment_embedding, threshold=0.95):
-                              add_embedding(best_name, segment_embedding, member_id_for_learn, sample_source="auto_learn")
-                              from supabase_embeddings import get_embedding_count
-                              count = get_embedding_count(best_name)
-                              # Update Firestore metadata only
-                              if member_ref:
-                                  member_ref[0].reference.update({
-                                      "lastVoiceUpdate": datetime.now().isoformat(),
-                                      "voiceSampleCount": count
-                                  })
-                              print(f"[AutoLearn] Successfully learned new sample for {best_name} ({count} total)")
-                          else:
-                              print(f"[AutoLearn] Skipping duplicate for {best_name}")
-                      except Exception as e:
-                          print(f"[AutoLearn] Failed to auto-learn: {e}")
-         else:
-             unidentified.append((speaker_label, combined_text))
-             if rejection_reason:
-                 print(f"[Identify] Unidentified {speaker_label}: {rejection_reason}")
-     
-     # For remaining unidentified, make ONE batch GROQ call
-     if unidentified and len(unidentified) <= 5:
-         try:
-             import json as json_lib
-             groq_api_key = os.environ.get("GROQ_API_KEY")
-             if groq_api_key:
-                 batch_prompt = f"""Analyse ces segments de transcription d'une réunion CCE.
- Membres présents: {', '.join(known_member_names)}
- 
- Pour chaque intervenant, identifie qui parle:
- """
-                 for label, text in unidentified:
-                     batch_prompt += f"\n{label}: \"{text[:200]}...\""
-                 
-                 batch_prompt += """
- 
- Retourne un JSON simple avec le mapping: {"S0": "Nom Complet", "S1": "Autre Nom"}
- UNIQUEMENT le JSON, sans explication."""
-                 
-                 response = requests.post(
-                     "https://api.groq.com/openai/v1/chat/completions",
-                     headers={
-                         "Authorization": f"Bearer {groq_api_key}",
-                         "Content-Type": "application/json"
-                     },
-                     json={
-                         "model": "llama-3.1-8b-instant",
-                         "messages": [{"role": "user", "content": batch_prompt}],
-                         "temperature": 0.3,
-                         "max_tokens": 200
-                     },
-                     timeout=30
-                 )
-                 
-                 if response.ok:
-                     result = response.json()
-                     content = result["choices"][0]["message"]["content"]
-                     groq_mapping = json_lib.loads(content)
-                     
-                     for label, name in groq_mapping.items():
-                         if name in known_member_names and label not in speaker_mapping:
-                             speaker_mapping[label] = name
-                             print(f"[Identify] {label} -> {name} (GROQ batch)")
-         except Exception as groq_err:
-             print(f"[Identify] GROQ batch failed: {groq_err}")
-     
-     print(f"[Identify] Identified {len(speaker_mapping)} speakers")
-     
-     # Apply mapping to segments
-     identified_segments = []
-     for segment in segments:
-         new_segment = segment.copy()
-         original_speaker = segment.get("speaker", "S0")
-         new_segment["speaker"] = speaker_mapping.get(original_speaker, original_speaker)
-         new_segment["original_speaker"] = original_speaker
-         identified_segments.append(new_segment)
-     
-     # Rebuild text with identified names
-     full_text_parts = []
-     for seg in identified_segments:
-         start_seconds = seg['start']
-         m = int(start_seconds // 60)
-         s = int(start_seconds % 60)
-         timestamp = f"[{m:02d}:{s:02d}]"
-         
-         speaker_label = f"[{seg['speaker']}]"
-         full_text_parts.append(f"{timestamp} {speaker_label} {seg['text']}")
-     
-     return {
-         "text": "\n\n".join(full_text_parts),
-         "segments": identified_segments,
-         "duration_seconds": formatted_output.get("duration_seconds", 0),
-         "speaker_mapping": speaker_mapping
-     }
+            # 1. MARGIN CHECK (Top 2 Comparison)
+            # If strictly voice based, check if the runner-up is too close.
+            if voice_scores:
+                sorted_voice = sorted(voice_scores.items(), key=lambda x: x[1], reverse=True)
+                if len(sorted_voice) >= 2:
+                    winner = sorted_voice[0]
+                    runner_up = sorted_voice[1]
+                    margin = winner[1] - runner_up[1]
+                    
+                    # If margin is slim (< 0.05), it's risky.
+                    # However, if Context supports the winner, we proceed.
+                    context_support_winner = linguistic_scores.get(winner[0], 0) + auto_id_scores.get(winner[0], 0)
+                    context_support_runner = linguistic_scores.get(runner_up[0], 0) + auto_id_scores.get(runner_up[0], 0)
+                    
+                    if margin < 0.05 and context_support_winner <= context_support_runner:
+                        # Ambiguous: Voice is close, and context doesn't clarify.
+                        print(f"[Identify] AMBIGUITY: {winner[0]} vs {runner_up[0]} (Margin {margin:.3f}). Skipping.")
+                        best_name = None 
+                        rejection_reason = "Ambiguous Voice Match"
+
+            # 2. GENDER / ROLE GUARD
+            # If we picked someone, ensure it doesn't contradict linguistic gender cues.
+            if best_name:
+                # Heuristic: Check titles in name
+                is_female_candidate = "Mme" in best_name or "Madame" in best_name or "Conseillère" in best_name
+                is_male_candidate = "M." in best_name or "Monsieur" in best_name or "Conseiller " in best_name
+                
+                # Check linguistic cues in text (Context)
+                text_female_cues = ["madame", "mme", "présidente", "conseillère", "mairesse"]
+                text_male_cues = ["monsieur", "m.", "président", "conseiller", "maire"]
+                
+                found_female = any(cue in combined_text.lower() for cue in text_female_cues)
+                found_male = any(cue in combined_text.lower() for cue in text_male_cues)
+                
+                if is_male_candidate and found_female and not found_male:
+                    print(f"[Identify] GENDER GUARD: Rejecting {best_name} (Male) because text implies Female.")
+                    best_name = None
+                    rejection_reason = "Gender Mismatch (M->F)"
+                elif is_female_candidate and found_male and not found_female:
+                    print(f"[Identify] GENDER GUARD: Rejecting {best_name} (Female) because text implies Male.")
+                    best_name = None
+                    rejection_reason = "Gender Mismatch (F->M)"
+
+        if best_name:
+            final_decision = best_name
+            speaker_mapping[speaker_label] = best_name
+            print(f"[Identify] {speaker_label} -> {best_name} (score: {best_score:.2f}, voice: {bool(voice_scores)})")
+            
+            # Auto-Learning logic (Restored)
+            voice_conf = voice_scores.get(best_name, 0)
+            if voice_available and segment_embedding:
+                # BUGFIX: Increased voice_conf strictness from 0.55 to 0.70 to prevent profile pollution
+                if 0.70 <= voice_conf <= 0.85 and best_score > 0.65:
+                    try:
+                        print(f"[AutoLearn] Autonomous Reinforcement triggered for {best_name}!")
+                        # Write directly to Supabase (primary store)
+                        from supabase_embeddings import add_embedding, is_duplicate as emb_is_dup
+                        member_ref = db.collection("members").where("displayName", "==", best_name).limit(1).get()
+                        member_id_for_learn = member_ref[0].id if member_ref else ""
+                        if not emb_is_dup(best_name, segment_embedding, threshold=0.95):
+                            add_embedding(best_name, segment_embedding, member_id_for_learn, sample_source="auto_learn")
+                            from supabase_embeddings import get_embedding_count
+                            count = get_embedding_count(best_name)
+                            # Update Firestore metadata only
+                            if member_ref:
+                                member_ref[0].reference.update({
+                                    "lastVoiceUpdate": datetime.now().isoformat(),
+                                    "voiceSampleCount": count
+                                })
+                            print(f"[AutoLearn] Successfully learned new sample for {best_name} ({count} total)")
+                        else:
+                            print(f"[AutoLearn] Skipping duplicate for {best_name}")
+                    except Exception as e:
+                        print(f"[AutoLearn] Failed to auto-learn: {e}")
+        else:
+            unidentified.append((speaker_label, combined_text))
+            if rejection_reason:
+                print(f"[Identify] Unidentified {speaker_label}: {rejection_reason}")
+    
+    # For remaining unidentified, make ONE batch GROQ call
+    if unidentified and len(unidentified) <= 5:
+        try:
+            import json as json_lib
+            groq_api_key = os.environ.get("GROQ_API_KEY")
+            if groq_api_key:
+                batch_prompt = f"""Analyse ces segments de transcription d'une réunion CCE.
+Membres présents: {', '.join(known_member_names)}
+
+Pour chaque intervenant, identifie qui parle:
+"""
+                for label, text in unidentified:
+                    batch_prompt += f"\n{label}: \"{text[:200]}...\""
+                
+                batch_prompt += """
+
+Retourne un JSON simple avec le mapping: {"S0": "Nom Complet", "S1": "Autre Nom"}
+UNIQUEMENT le JSON, sans explication."""
+                
+                response = requests.post(
+                    "https://api.groq.com/openai/v1/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {groq_api_key}",
+                        "Content-Type": "application/json"
+                    },
+                    json={
+                        "model": "llama-3.1-8b-instant",
+                        "messages": [{"role": "user", "content": batch_prompt}],
+                        "temperature": 0.3,
+                        "max_tokens": 200
+                    },
+                    timeout=30
+                )
+                
+                if response.ok:
+                    result = response.json()
+                    content = result["choices"][0]["message"]["content"]
+                    groq_mapping = json_lib.loads(content)
+                    
+                    for label, name in groq_mapping.items():
+                        if name in known_member_names and label not in speaker_mapping:
+                            speaker_mapping[label] = name
+                            print(f"[Identify] {label} -> {name} (GROQ batch)")
+        except Exception as groq_err:
+            print(f"[Identify] GROQ batch failed: {groq_err}")
+    
+    print(f"[Identify] Identified {len(speaker_mapping)} speakers")
+    
+    # Apply mapping to segments
+    identified_segments = []
+    for segment in segments:
+        new_segment = segment.copy()
+        original_speaker = segment.get("speaker", "S0")
+        new_segment["speaker"] = speaker_mapping.get(original_speaker, original_speaker)
+        new_segment["original_speaker"] = original_speaker
+        identified_segments.append(new_segment)
+    
+    # Rebuild text with identified names
+    full_text_parts = []
+    for seg in identified_segments:
+        start_seconds = seg['start']
+        m = int(start_seconds // 60)
+        s = int(start_seconds % 60)
+        timestamp = f"[{m:02d}:{s:02d}]"
+        
+        speaker_label = f"[{seg['speaker']}]"
+        full_text_parts.append(f"{timestamp} {speaker_label} {seg['text']}")
+    
+    return {
+        "text": "\n\n".join(full_text_parts),
+        "segments": identified_segments,
+        "duration_seconds": formatted_output.get("duration_seconds", 0),
+        "speaker_mapping": speaker_mapping
+    }
