@@ -199,6 +199,14 @@ service cloud.firestore {
       allow create: if isAuthenticated();
       allow update, delete: if isAuthenticated() && (resource.data.userId == request.auth.uid || isCoordinator());
     }
+    
+    // Collaborative Item Locks
+    // - Read: All authenticated users (so they see who locks what in real time)
+    // - Create/Update/Delete: Any authenticated user (to acquire/refresh/release locks)
+    match /item_locks/{lockId} {
+      allow read, write: if isAuthenticated();
+    }
+
     // PV Extracts
     match /extracts/{extractId} {
       allow read: if isAuthenticated();

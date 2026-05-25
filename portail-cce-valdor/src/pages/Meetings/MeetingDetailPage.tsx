@@ -293,13 +293,8 @@ const MeetingDetailPage: React.FC = () => {
         { label: meeting?.title || 'Détail de la réunion' }
     ], [meeting?.title]);
 
-    // Early return moved to after all hooks to satisfy Rules of Hooks
-    if (!meeting) {
-        return <Typography>Réunion non trouvée</Typography>;
-    }
-
     const handleApproval = useCallback((role: 'president' | 'elected_official' | 'coordinator' | 'admin_bypass') => {
-        if (!id || !currentMember) return;
+        if (!id || !currentMember || !meeting) return;
 
         const newSignature = {
             role,
@@ -334,7 +329,12 @@ const MeetingDetailPage: React.FC = () => {
                 approvalStatus: newStatus as any
             }
         }));
-    }, [id, currentMember, meeting.approvalSignatures, meeting.approvalStatus, dispatch]);
+    }, [id, currentMember, meeting?.approvalSignatures, meeting?.approvalStatus, dispatch]);
+
+    // Early return moved to after all hooks to satisfy Rules of Hooks
+    if (!meeting) {
+        return <Typography>Réunion non trouvée</Typography>;
+    }
 
     return (
         <Box>
