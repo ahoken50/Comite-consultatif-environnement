@@ -1,9 +1,12 @@
 import React from 'react';
 import { Box, Grid, TextField, MenuItem, Typography, Button, Switch, FormControlLabel, Checkbox, FormGroup, Chip, Stack } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
-import { Add, AttachFile } from '@mui/icons-material';
+import { Add, AttachFile, Warning } from '@mui/icons-material';
 import type { AgendaItem } from '../../types/meeting.types';
 import MinuteEntryEditor from './MinuteEntryEditor';
+import { db } from '../../services/firebase';
+import { doc, setDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
+import { useAuth } from '../../hooks/useAuth';
 
 interface AgendaItemEditorProps {
     item: AgendaItem;
@@ -45,9 +48,131 @@ const AgendaItemEditor: React.FC<AgendaItemEditorProps> = ({
     // Filter docs linked to this specific agenda item
     const linkedDocuments = documents.filter((d: any) => d.agendaItemId === item.id);
 
-    
+    const { user } = useAuth();
+    const [activeLock, setActiveLock] = React.useState<{ userId: string; userName: string; timestamp: number } | null>(null);
+    const [isLockedByMe, setIsLockedByMe] = React.useState(false);
+    const lockTimerRef = React.useRef<any>(null);
+    const releaseTimeoutRef = React.useRef<any>(null);
+
+    const acquireLock = async () => {
+        if (!meetingId || !item.id || !user) return;
+        try {
+            const lockRef = doc(db, 'item_locks', `${meetingId}_${item.id}`);
+            const userName = user.displayName || user.email || 'Utilisateur';
+            const lockData = {
+                userId: user.id || user.uid || '',
+                userName,
+                timestamp: Date.now(),
+                meetingId,
+                itemId: item.id
+            };
+            await setDoc(lockRef, lockData);
+            setIsLockedByMe(true);
+        } catch (err) {
+            console.error('Failed to acquire lock:', err);
+        }
+    };
+
+    const releaseLock = async () => {
+        if (!meetingId || !item.id || !user || !isLockedByMe) return;
+        try {
+            const lockRef = doc(db, 'item_locks', `${meetingId}_${item.id}`);
+            await deleteDoc(lockRef);
+            setIsLockedByMe(false);
+        } catch (err) {
+            console.error('Failed to release lock:', err);
+        }
+    };
+
+    const handleContainerFocus = () => {
+        if (readOnly || (activeLock && activeLock.userId !== user?.id)) return;
+        
+        if (releaseTimeoutRef.current) {
+            clearTimeout(releaseTimeoutRef.current);
+            releaseTimeoutRef.current = null;
+        }
+
+        if (!isLockedByMe) {
+            acquireLock();
+            if (lockTimerRef.current) clearInterval(lockTimerRef.current);
+            lockTimerRef.current = setInterval(acquireLock, 30000);
+        }
+    };
+
+    const handleContainerBlur = (e: React.FocusEvent) => {
+        if (e.currentTarget.contains(e.relatedTarget as Node)) {
+            return;
+        }
+
+        if (lockTimerRef.current) {
+            clearInterval(lockTimerRef.current);
+            lockTimerRef.current = null;
+        }
+
+        releaseTimeoutRef.current = setTimeout(() => {
+            releaseLock();
+        }, 1000);
+    };
+
+    React.useEffect(() => {
+        if (!meetingId || !item.id || !user) return;
+
+        const lockRef = doc(db, 'item_locks', `${meetingId}_${item.id}`);
+        const unsubscribe = onSnapshot(lockRef, (snapshot) => {
+            if (snapshot.exists()) {
+                const data = snapshot.data() as { userId: string; userName: string; timestamp: number };
+                const isExpired = Date.now() - data.timestamp > 60000;
+                
+                if (data.userId !== (user.id || user.uid) && !isExpired) {
+                    setActiveLock(data);
+                    setIsLockedByMe(false);
+                } else {
+                    setActiveLock(null);
+                    if (data.userId === (user.id || user.uid)) {
+                        setIsLockedByMe(true);
+                    }
+                }
+            } else {
+                setActiveLock(null);
+                setIsLockedByMe(false);
+            }
+        }, (err) => {
+            console.error("Lock listener error:", err);
+        });
+
+        return () => {
+            unsubscribe();
+            if (lockTimerRef.current) clearInterval(lockTimerRef.current);
+            if (releaseTimeoutRef.current) clearTimeout(releaseTimeoutRef.current);
+        };
+    }, [meetingId, item.id, user]);
+
+    const isActuallyReadOnly = readOnly || (activeLock !== null);
+
     return (
-        <Box sx={{ bgcolor: 'background.default', p: 2, borderRadius: 1 }}>
+        <Box 
+            sx={{ bgcolor: 'background.default', p: 2, borderRadius: 1, position: 'relative' }}
+            onFocus={handleContainerFocus}
+            onBlur={handleContainerBlur}
+        >
+            {activeLock && (
+                <Box sx={{ 
+                    bgcolor: 'warning.light', 
+                    p: 1, 
+                    borderRadius: 1, 
+                    mb: 2, 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    gap: 1,
+                    border: '1px solid',
+                    borderColor: 'warning.main'
+                }}>
+                    <Warning color="warning" fontSize="small" />
+                    <Typography variant="body2" color="warning.contrastText" sx={{ fontWeight: 'bold' }}>
+                        ⚠️ {activeLock.userName} modifie actuellement ce point. Saisie désactivée temporairement.
+                    </Typography>
+                </Box>
+            )}
             <Typography variant="subtitle2" gutterBottom>
                 {index + 1}. {item.title}
             </Typography>
@@ -97,7 +222,7 @@ const AgendaItemEditor: React.FC<AgendaItemEditorProps> = ({
                             itemId={item.id}
                             onChange={onMinuteEntryChange}
                             onDelete={onDeleteMinuteEntry}
-                            readOnly={readOnly}
+                            readOnly={isActuallyReadOnly}
                             itemTitle={item.title}
                             itemDescription={item.description || ''}
                             meetingId={meetingId}
@@ -110,7 +235,7 @@ const AgendaItemEditor: React.FC<AgendaItemEditorProps> = ({
             )}
 
             {/* Button to add new entry */}
-            {!readOnly && (
+            {!isActuallyReadOnly && (
                 <Button
                     variant="outlined"
                     size="small"
@@ -130,7 +255,7 @@ const AgendaItemEditor: React.FC<AgendaItemEditorProps> = ({
                             <Switch
                                 checked={!!item.isRecommendationToCouncil}
                                 onChange={(e) => onAgendaItemChange(item.id, 'isRecommendationToCouncil', e.target.checked)}
-                                disabled={readOnly}
+                                disabled={isActuallyReadOnly}
                                 color="warning"
                             />
                         }
@@ -176,7 +301,7 @@ const AgendaItemEditor: React.FC<AgendaItemEditorProps> = ({
                                                         }
                                                         onAgendaItemChange(item.id, 'councilIncludedEntryIndices', next);
                                                     }}
-                                                    disabled={readOnly}
+                                                    disabled={isActuallyReadOnly}
                                                     size="small"
                                                 />
                                             }
@@ -195,7 +320,7 @@ const AgendaItemEditor: React.FC<AgendaItemEditorProps> = ({
                                 })}
                             </FormGroup>
                             
-                            {!readOnly && (
+                            {!isActuallyReadOnly && (
                                 <Button
                                     variant="contained"
                                     color="warning"
@@ -253,7 +378,7 @@ const AgendaItemEditor: React.FC<AgendaItemEditorProps> = ({
                                 size="small"
                                 value={item.minuteType || 'other'}
                                 onChange={(e) => onAgendaItemChange(item.id, 'minuteType', e.target.value)}
-                                disabled={readOnly}
+                                disabled={isActuallyReadOnly}
                             >
                                 <MenuItem value="other">Note simple</MenuItem>
                                 <MenuItem value="resolution">Résolution</MenuItem>
@@ -267,7 +392,7 @@ const AgendaItemEditor: React.FC<AgendaItemEditorProps> = ({
                                 size="small"
                                 value={item.minuteNumber || ''}
                                 onChange={(e) => onAgendaItemChange(item.id, 'minuteNumber', e.target.value)}
-                                disabled={readOnly}
+                                disabled={isActuallyReadOnly}
                             />
                         </Grid>
                     </Grid>
@@ -287,11 +412,27 @@ const AgendaItemEditor: React.FC<AgendaItemEditorProps> = ({
                         value={itemDecision || ''}
                         onChange={(e) => onDecisionChange(item.id, e.target.value)}
                         variant="outlined"
-                        disabled={readOnly}
+                        disabled={isActuallyReadOnly}
                     />
                 </>
             )}
         </Box>
     );
 };
-export default React.memo(AgendaItemEditor);
+export default React.memo(AgendaItemEditor, (prevProps, nextProps) => {
+    return (
+        prevProps.item.id === nextProps.item.id &&
+        prevProps.item.title === nextProps.item.title &&
+        prevProps.item.description === nextProps.item.description &&
+        prevProps.itemDecision === nextProps.itemDecision &&
+        prevProps.readOnly === nextProps.readOnly &&
+        prevProps.index === nextProps.index &&
+        prevProps.meetingId === nextProps.meetingId &&
+        prevProps.meetingDate === nextProps.meetingDate &&
+        prevProps.userRole === nextProps.userRole &&
+        // Shallow check for minuteEntries
+        JSON.stringify(prevProps.item.minuteEntries) === JSON.stringify(nextProps.item.minuteEntries) &&
+        // Shallow check for documents length to detect upload/unlink
+        prevProps.documents?.length === nextProps.documents?.length
+    );
+});

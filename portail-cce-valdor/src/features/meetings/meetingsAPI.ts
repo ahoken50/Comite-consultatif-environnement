@@ -63,14 +63,26 @@ export const meetingsAPI = {
     fetchAll: async (): Promise<Meeting[]> => {
         const q = query(collection(db, COLLECTION_NAME), orderBy('date', 'desc'));
         const snapshot = await getDocs(q);
-        return snapshot.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data(),
-            // Convert Timestamps to ISO strings
-            date: (doc.data().date?.toDate ? doc.data().date.toDate().toISOString() : doc.data().date) || new Date().toISOString(),
-            dateCreated: (doc.data().dateCreated?.toDate ? doc.data().dateCreated.toDate().toISOString() : doc.data().dateCreated),
-            dateUpdated: (doc.data().dateUpdated?.toDate ? doc.data().dateUpdated.toDate().toISOString() : doc.data().dateUpdated),
-        } as Meeting));
+        return snapshot.docs.map(doc => {
+            const data = doc.data();
+
+            // Point 11: Omit heavy transcriptions for list views (cockpit dashboard speed)
+            if (data.audioRecording && 'transcription' in data.audioRecording) {
+                data.audioRecording = { ...data.audioRecording, transcription: undefined };
+            }
+            if (Array.isArray(data.audioRecordings)) {
+                data.audioRecordings = data.audioRecordings.map(r => ({ ...r, transcription: undefined }));
+            }
+
+            return {
+                id: doc.id,
+                ...data,
+                // Convert Timestamps to ISO strings
+                date: (data.date?.toDate ? data.date.toDate().toISOString() : data.date) || new Date().toISOString(),
+                dateCreated: (data.dateCreated?.toDate ? data.dateCreated.toDate().toISOString() : data.dateCreated),
+                dateUpdated: (data.dateUpdated?.toDate ? data.dateUpdated.toDate().toISOString() : data.dateUpdated),
+            } as Meeting;
+        });
     },
 
     fetchById: async (id: string): Promise<Meeting | null> => {

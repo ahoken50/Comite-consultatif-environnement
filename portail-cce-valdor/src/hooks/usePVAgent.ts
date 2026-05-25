@@ -40,6 +40,7 @@ interface UsePVAgentReturn {
 
     // Actions
     start: (audioFile?: File, existingTranscription?: string) => void;
+    resume: (savedState: AgentState) => void;
     validateStep: (result: boolean | unknown) => void;
     cancel: () => void;
     reset: () => void;
@@ -132,8 +133,82 @@ export const usePVAgent = (options: UsePVAgentOptions): UsePVAgentReturn => {
                     throw new Error('Agent cancelled');
                 }
                 setState(newState);
+                // Save progress to local storage
+                localStorage.setItem(`pv_agent_session_${meeting.id}`, JSON.stringify(newState));
             });
 
+            // Clear session on successful completion
+            localStorage.removeItem(`pv_agent_session_${meeting.id}`);
+            onComplete?.(finalState);
+        } catch (error) {
+            if ((error as Error).message !== 'Agent cancelled') {
+                onError?.(error as Error);
+            }
+        } finally {
+            setIsRunning(false);
+            validationResolverRef.current = null;
+        }
+    }, [
+        meeting, members, isRunning, onComplete, onError, onStepComplete,
+        skipTranscription, skipIdentification, maxReflectionIterations,
+        enableHistoricalComparison, enableLearning,
+    ]);
+
+    const resume = useCallback(async (savedState: AgentState) => {
+        if (isRunning) return;
+
+        cancelledRef.current = false;
+        setIsRunning(true);
+        setState(savedState);
+
+        const config: AgentConfig = {
+            meeting,
+            members,
+            // Skip steps that are already completed in savedState
+            skipTranscription: skipTranscription || (!savedState.results.transcription && !!savedState.results.cleaning?.cleanedText),
+            skipIdentification,
+            maxReflectionIterations,
+            enableHistoricalComparison,
+            enableLearning,
+            // Callbacks
+            onStepComplete: (stepId, result) => {
+                console.log(`[PVAgent] Step ${stepId} completed (resumed)`);
+                onStepComplete?.(stepId, result);
+            },
+            onValidationRequired: (_stepId, _result) => {
+                return new Promise<boolean | unknown>((resolve) => {
+                    validationResolverRef.current = resolve;
+                });
+            },
+            onError: (stepId, error) => {
+                console.error(`[PVAgent] Step ${stepId} failed (resumed):`, error);
+                onError?.(error);
+            },
+            onProgress: (stepId, progress) => {
+                setState(prev => {
+                    if (!prev) return prev;
+                    return {
+                        ...prev,
+                        steps: prev.steps.map(s =>
+                            s.id === stepId ? { ...s, progress } : s
+                        ),
+                    };
+                });
+            },
+        };
+
+        try {
+            const finalState = await runPVAgent(config, savedState, (newState) => {
+                if (cancelledRef.current) {
+                    throw new Error('Agent cancelled');
+                }
+                setState(newState);
+                // Save progress to local storage
+                localStorage.setItem(`pv_agent_session_${meeting.id}`, JSON.stringify(newState));
+            });
+
+            // Clear session on successful completion
+            localStorage.removeItem(`pv_agent_session_${meeting.id}`);
             onComplete?.(finalState);
         } catch (error) {
             if ((error as Error).message !== 'Agent cancelled') {
@@ -163,14 +238,16 @@ export const usePVAgent = (options: UsePVAgentOptions): UsePVAgentReturn => {
             validationResolverRef.current = null;
         }
         setIsRunning(false);
-    }, []);
+        localStorage.removeItem(`pv_agent_session_${meeting.id}`);
+    }, [meeting.id]);
 
     const reset = useCallback(() => {
         setState(null);
         setIsRunning(false);
         cancelledRef.current = false;
         validationResolverRef.current = null;
-    }, []);
+        localStorage.removeItem(`pv_agent_session_${meeting.id}`);
+    }, [meeting.id]);
 
     const getStepProgress = useCallback(() => {
         if (!state) return 0;
@@ -210,7 +287,9 @@ export const usePVAgent = (options: UsePVAgentOptions): UsePVAgentReturn => {
         state,
         isRunning,
         currentStep,
+        // Actions
         start,
+        resume,
         validateStep,
         cancel,
         reset,

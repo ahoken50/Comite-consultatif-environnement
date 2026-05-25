@@ -22,7 +22,6 @@ import type { RootState } from '../../store/rootReducer';
 import { fetchMeetings } from '../../features/meetings/meetingsSlice';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { generateMinutesPDF } from '../../services/pdfServiceMinutes';
 import type { Meeting } from '../../types/meeting.types';
 
 // ⚡ Bolt: Extract row into a React.memo component to prevent re-rendering when parent state changes (e.g. navigation)
@@ -121,7 +120,8 @@ const MinutesPage: React.FC = () => {
         navigate(`/meetings/${meetingId}`, { state: { tab: 1 } });
     }, [navigate]);
 
-    const handleDownloadPDF = useCallback((meeting: any) => {
+    const handleDownloadPDF = useCallback(async (meeting: any) => {
+        const { generateMinutesPDF } = await import('../../services/pdfServiceMinutes');
         generateMinutesPDF(meeting, meeting.minutes);
     }, []);
 

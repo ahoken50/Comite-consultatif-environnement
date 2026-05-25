@@ -63,6 +63,55 @@ const getGoogle = () => createGoogleGenerativeAI({
     apiKey: import.meta.env.VITE_GOOGLE_AI_API,
 });
 
+interface FallbackConfig {
+    primaryProvider: 'groq' | 'google';
+    primaryModel: string;
+    fallbackProvider: 'groq' | 'google';
+    fallbackModel: string;
+    prompt: string;
+    temperature?: number;
+    maxTokens?: number;
+    timeout?: number;
+}
+
+export const generateTextWithFallback = async (config: FallbackConfig): Promise<{ text: string }> => {
+    const { primaryProvider, primaryModel, fallbackProvider, fallbackModel, prompt, temperature = 0.2, maxTokens, timeout } = config;
+    try {
+        console.log(`[AI Routing] Trying primary provider: ${primaryProvider} with model ${primaryModel}`);
+        const modelInstance = primaryProvider === 'groq' ? getGroq()(primaryModel) : getGoogle()(primaryModel);
+        
+        const textOptions: any = {
+            model: modelInstance,
+            prompt,
+            temperature,
+        };
+        if (maxTokens) textOptions.maxTokens = maxTokens;
+        if (timeout) textOptions.timeout = timeout;
+
+        const res = await generateText(textOptions);
+        return { text: res.text };
+    } catch (primaryError: any) {
+        console.warn(`[AI Routing] Primary provider ${primaryProvider} failed: ${primaryError?.message || primaryError}. Falling back to ${fallbackProvider} with model ${fallbackModel}`);
+        try {
+            const modelInstance = fallbackProvider === 'groq' ? getGroq()(fallbackModel) : getGoogle()(fallbackModel);
+            
+            const textOptions: any = {
+                model: modelInstance,
+                prompt,
+                temperature,
+            };
+            if (maxTokens) textOptions.maxTokens = maxTokens;
+            if (timeout) textOptions.timeout = timeout;
+
+            const res = await generateText(textOptions);
+            return { text: res.text };
+        } catch (fallbackError: any) {
+            console.error(`[AI Routing] Fallback provider ${fallbackProvider} also failed: ${fallbackError?.message || fallbackError}`);
+            throw primaryError; // Throw the original error
+        }
+    }
+};
+
 // ============================================================================
 // Step Definitions (10 steps)
 // ============================================================================
@@ -429,6 +478,25 @@ export const runCleaningStep = async (
         }
     }
 
+    // 3.5 Token Pruning: Remove excessive lexical filler verbal tics (Point 3)
+    // Clean common French hesitations and filler phrases to save 20-30% context size safely
+    const originalLength = text.length;
+    
+    // Replace hesitations (e.g. "euh...", "euh", "bah", "ben")
+    text = text.replace(/\b(?:euh+|bah+|ben+|hein+)\b(?:[\s.,!?]+)?/gi, '');
+    
+    // Safely remove redundant verbal tics while keeping context (only matching where they are tics, e.g. "en fait," or surrounded by spaces)
+    // We target common ones: "en fait", "je veux dire", "tu sais", "du coup" when used as fillers
+    text = text.replace(/\b(?:du coup|en fait|je veux dire|tu sais)(?:[\s.,!?]+)/gi, ' ');
+    
+    // Remove stuttering / word repetitions (e.g. "je... je", "nous nous")
+    text = text.replace(/\b(\w+)\b[\s.,]+(?:\b\1\b)/gi, '$1');
+    
+    // Cleanup double spaces created by the regex replacements
+    text = text.replace(/[ ]{2,}/g, ' ');
+    
+    console.log(`[TokenPruning] Reduced transcript size from ${originalLength} to ${text.length} chars (saved ${((originalLength - text.length)/originalLength * 100).toFixed(1)}% context tokens)`);
+
     // 4. Clean up excessive whitespace
     text = text.replace(/\n{3,}/g, '\n\n').trim();
 
@@ -709,27 +777,38 @@ export const runODJAnalysisStep = async (
     cleaning: CleaningResult,
     onProgress?: (msg: string, pct?: number) => void
 ): Promise<ODJAnalysisResult> => {
-    const groq = getGroq();
     const text = cleaning.cleanedText;
 
-    // Batch processing configuration
-    const CHUNK_SIZE = 100000; // 100k chars ~ 25k tokens (forces batching for 2h+ meetings)
-    const OVERLAP = 5000;      // 5k chars overlap to avoid cutting sentences/context
+    // Dynamic batch configuration (Point 5)
+    let chunkSize = 100000;
+    let overlap = 8000; // Increased base overlap to 8k
+    
+    if (text.length > 400000) {
+        // Very long meetings (4h+): use slightly larger chunks (120k) and wider overlap (15k) to maintain context
+        chunkSize = 120000;
+        overlap = 15000;
+        console.log(`[ODJ] Very long transcript detected (${text.length} chars). Adapting chunk size to ${chunkSize} and overlap to ${overlap}.`);
+    } else if (text.length > 200000) {
+        // Long meetings: 10k overlap
+        chunkSize = 100000;
+        overlap = 10000;
+        console.log(`[ODJ] Long transcript detected (${text.length} chars). Adapting overlap to ${overlap}.`);
+    }
 
     const chunks: string[] = [];
 
-    if (text.length <= CHUNK_SIZE) {
+    if (text.length <= chunkSize) {
         chunks.push(text);
     } else {
-        console.log(`[ODJ] Text length ${text.length} > ${CHUNK_SIZE}, splitting into batches...`);
+        console.log(`[ODJ] Text length ${text.length} > ${chunkSize}, splitting into batches...`);
         let currentPos = 0;
         while (currentPos < text.length) {
-            let endPos = Math.min(currentPos + CHUNK_SIZE, text.length);
+            let endPos = Math.min(currentPos + chunkSize, text.length);
 
             // Try to break at a newline to avoid cutting words
             if (endPos < text.length) {
                 const lastNewline = text.lastIndexOf('\n', endPos);
-                if (lastNewline > currentPos + (CHUNK_SIZE / 2)) {
+                if (lastNewline > currentPos + (chunkSize / 2)) {
                     endPos = lastNewline;
                 }
             }
@@ -737,7 +816,7 @@ export const runODJAnalysisStep = async (
             chunks.push(text.substring(currentPos, endPos));
 
             if (endPos >= text.length) break;
-            currentPos = endPos - OVERLAP;
+            currentPos = endPos - overlap;
         }
         console.log(`[ODJ] Created ${chunks.length} batches.`);
     }
@@ -756,12 +835,14 @@ export const runODJAnalysisStep = async (
         // Retry logic
         for (let attempt = 1; attempt <= 2; attempt++) {
             try {
-                const { text: rawResult } = await generateText({
-                    model: groq('llama-3.3-70b-versatile'),
+                const { text: rawResult } = await generateTextWithFallback({
+                    primaryProvider: 'groq',
+                    primaryModel: 'llama-3.3-70b-versatile',
+                    fallbackProvider: 'google',
+                    fallbackModel: 'gemini-2.5-flash',
                     prompt,
                     temperature: 0.3,
-                    maxTokens: 60000,
-                } as any);
+                });
 
                 let cleaned = rawResult.replace(/<think>[\s\S]*?<\/think>/gi, '')
                     .replace(/```(?:json)?/g, '').replace(/```/g, '');
@@ -776,10 +857,10 @@ export const runODJAnalysisStep = async (
 
                 let parsed: any;
                 try {
-                    parsed = JSON.parse(cleaned);
+                    parsed = JSON5.parse(cleaned);
                 } catch {
                     console.warn(`[ODJ] Extraction Batch ${batchIdx + 1} failed parse, repairing...`);
-                    parsed = JSON.parse(repairJSON(cleaned));
+                    parsed = JSON5.parse(repairJSON(cleaned));
                 }
 
                 if (Array.isArray(parsed.topics)) {
@@ -825,15 +906,16 @@ export const runODJAnalysisStep = async (
             console.log(`[ODJ] 🔍 Prompt length: ${mappingPrompt.length} chars`);
             console.log(`[ODJ] 🔍 Prompt ends with: ${mappingPrompt.slice(-200)}`);
 
-            const google = getGoogle();
-            const { text: rawResult } = await generateText({
-                model: google('gemini-2.5-flash-lite-preview-09-2025'), // Update strictly to user requested model
+            const { text: rawResult } = await generateTextWithFallback({
+                primaryProvider: 'google',
+                primaryModel: 'gemini-2.5-flash',
+                fallbackProvider: 'groq',
+                fallbackModel: 'llama-3.3-70b-versatile',
                 prompt: mappingPrompt,
-                temperature: 0.2,           // Very low for structured precision
-                maxTokens: 8192,            // Gemini 1.5 output limit
-                maxRetries: 2,
+                temperature: 0.2,
+                maxTokens: 8192,
                 timeout: 180000,
-            } as any);
+            });
 
             // ========== DEBUG: LOG RAW RESULT ==========
             console.log(`[ODJ] Raw LLM response length: ${rawResult.length} chars`);
@@ -896,19 +978,19 @@ export const runODJAnalysisStep = async (
             }
 
             try {
-                mappingResult = JSON.parse(cleaned);
-                console.log(`[ODJ] ✅ Direct JSON parse success`);
+                mappingResult = JSON5.parse(cleaned);
+                console.log(`[ODJ] ✅ Direct JSON5 parse success`);
                 console.log(`[ODJ] Parsed ${mappingResult.mappedItems?.length || 0} items from JSON`);
                 break; // Success
             } catch (e1) {
-                console.warn(`[ODJ] Direct parse failed, trying repair...`);
+                console.warn(`[ODJ] Direct JSON5 parse failed, trying repair...`);
                 console.error(`[ODJ] Parse error:`, e1);
                 console.log(`[ODJ] Failed JSON sample (first 1000 chars):\n${cleaned.substring(0, 1000)}`);
 
                 try {
                     const repaired = repairJSON(cleaned);
-                    mappingResult = JSON.parse(repaired);
-                    console.log(`[ODJ] ✅ Repaired JSON parse success`);
+                    mappingResult = JSON5.parse(repaired);
+                    console.log(`[ODJ] ✅ Repaired JSON5 parse success`);
                     console.log(`[ODJ] Parsed ${mappingResult.mappedItems?.length || 0} items after repair`);
                     break;
                 } catch (e2) {
@@ -1231,14 +1313,15 @@ Réponds UNIQUEMENT avec le JSON de corrections.`;
 
         let refinementResult;
         try {
-            const google = getGoogle();
-            const refineResponse = await generateText({
-                model: google('gemini-2.5-flash-lite-preview-09-2025'),
+            const refineResponse = await generateTextWithFallback({
+                primaryProvider: 'google',
+                primaryModel: 'gemini-2.5-flash',
+                fallbackProvider: 'groq',
+                fallbackModel: 'llama-3.3-70b-versatile',
                 prompt: refinementPrompt,
                 temperature: 0.2,
                 maxTokens: 8192,
-                maxRetries: 2,
-            } as any);
+            });
 
             let cleaned = refineResponse.text.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
 
@@ -1253,7 +1336,7 @@ Réponds UNIQUEMENT avec le JSON de corrections.`;
             const end = cleaned.lastIndexOf('}');
             if (start !== -1 && end !== -1) {
                 const refinementJSON = cleaned.substring(start, end + 1);
-                refinementResult = JSON.parse(refinementJSON);
+                refinementResult = JSON5.parse(refinementJSON);
                 console.log(`[ODJ] ✅ Refinement: ${refinementResult?.corrections?.length || 0} corrections identifiées`);
             } else {
                 throw new Error("No JSON object found in Refinement response");
@@ -1376,8 +1459,6 @@ export const runClassificationStep = async (
     odjAnalysis: ODJAnalysisResult,
     onProgress?: (msg: string, pct?: number) => void
 ): Promise<ClassificationResult> => {
-    const groq = getGroq();
-
     const prompt = getClassificationPrompt(config.meeting, odjAnalysis);
 
     onProgress?.('Analyse thématique et extraction des sentiments...', 20);
@@ -1387,12 +1468,14 @@ export const runClassificationStep = async (
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
         try {
-            const { text: rawResult } = await generateText({
-                model: groq('llama-3.3-70b-versatile'),
+            const { text: rawResult } = await generateTextWithFallback({
+                primaryProvider: 'groq',
+                primaryModel: 'llama-3.3-70b-versatile',
+                fallbackProvider: 'google',
+                fallbackModel: 'gemini-2.5-flash',
                 prompt,
-                temperature: attempt === 1 ? 0.3 : 0.1, // Lower temp on retry
-                maxTokens: 60000,
-            } as any);
+                temperature: attempt === 1 ? 0.3 : 0.1,
+            });
 
             console.log(`[Classif] Raw LLM response length: ${rawResult.length} chars`);
             let cleaned = rawResult.replace(/<think>[\s\S]*?<\/think>/gi, '');
@@ -1409,10 +1492,10 @@ export const runClassificationStep = async (
 
             let parsed: any;
             try {
-                parsed = JSON.parse(cleaned);
+                parsed = JSON5.parse(cleaned);
             } catch {
-                console.warn(`[Classif] JSON parse failed on attempt ${attempt}, repairing...`);
-                parsed = JSON.parse(repairJSON(cleaned));
+                console.warn(`[Classif] JSON5 parse failed on attempt ${attempt}, repairing...`);
+                parsed = JSON5.parse(repairJSON(cleaned));
             }
 
             return {
@@ -1483,15 +1566,16 @@ const extractStructuredData = async (
     pvContent: string,
     numbering: CCENumbering
 ): Promise<Omit<DraftingResult, 'pvContent'>> => {
-    const groq = getGroq();
-
     const prompt = getDraftingExtractionPrompt(pvContent, numbering);
 
     const maxAttempts = 2;
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
         try {
-            const { text: rawResult } = await generateText({
-                model: groq('llama-3.3-70b-versatile'),
+            const { text: rawResult } = await generateTextWithFallback({
+                primaryProvider: 'groq',
+                primaryModel: 'llama-3.3-70b-versatile',
+                fallbackProvider: 'google',
+                fallbackModel: 'gemini-2.5-flash',
                 prompt,
                 temperature: 0.1,
             });
@@ -2073,10 +2157,17 @@ export const runPVAgent = async (
     const maxReflectionIterations = config.maxReflectionIterations ?? 3;
 
     try {
+        const isStepDone = (stepId: AgentStepId) => {
+            const step = currentState.steps.find(s => s.id === stepId);
+            return step && (step.status === 'completed' || step.status === 'skipped') && currentState.results[stepId] !== undefined;
+        };
+
         // ================================================================
         // STEP 1: TRANSCRIPTION
         // ================================================================
-        if (config.skipTranscription && config.existingTranscription) {
+        if (isStepDone('transcription')) {
+            console.log("[PVAgent] Resuming: skipping Transcription step as it is already completed");
+        } else if (config.skipTranscription && config.existingTranscription) {
             currentState = updateStepStatus(currentState, 'transcription', 'skipped');
             currentState = updateStepResult(currentState, 'transcription', {
                 text: config.existingTranscription,
@@ -2113,7 +2204,9 @@ export const runPVAgent = async (
         // ================================================================
         // STEP 2: IDENTIFICATION
         // ================================================================
-        if (config.skipIdentification) {
+        if (isStepDone('identification')) {
+            console.log("[PVAgent] Resuming: skipping Speaker Identification step as it is already completed");
+        } else if (config.skipIdentification) {
             currentState = updateStepStatus(currentState, 'identification', 'skipped');
             currentState = updateStepResult(currentState, 'identification', {
                 speakerMapping: {},
@@ -2138,91 +2231,122 @@ export const runPVAgent = async (
         // ================================================================
         // STEP 3: CLEANING
         // ================================================================
-        currentState = updateStepStatus(currentState, 'cleaning', 'running');
-        onStateChange(currentState);
+        if (isStepDone('cleaning')) {
+            console.log("[PVAgent] Resuming: skipping Cleaning step as it is already completed");
+        } else {
+            currentState = updateStepStatus(currentState, 'cleaning', 'running');
+            onStateChange(currentState);
 
-        const cleaning = await runCleaningStep(config, transcriptionResult, identificationResult);
+            const cleaning = await runCleaningStep(config, transcriptionResult, identificationResult);
 
-        currentState = updateStepResult(currentState, 'cleaning', cleaning, 'completed');
-        onStateChange(currentState);
+            currentState = updateStepResult(currentState, 'cleaning', cleaning, 'completed');
+            onStateChange(currentState);
+        }
+
+        const cleaning = currentState.results.cleaning!;
 
         // ================================================================
         // STEP 4: ANALYSE ODJ
         // ================================================================
-        currentState = updateStepStatus(currentState, 'odj_analysis', 'running');
-        onStateChange(currentState);
+        if (isStepDone('odj_analysis')) {
+            console.log("[PVAgent] Resuming: skipping ODJ Analysis step as it is already completed");
+        } else {
+            currentState = updateStepStatus(currentState, 'odj_analysis', 'running');
+            onStateChange(currentState);
 
-        const odjAnalysis = await runODJAnalysisStep(config, cleaning, createOnProgress('odj_analysis'));
+            const odjAnalysis = await runODJAnalysisStep(config, cleaning, createOnProgress('odj_analysis'));
 
-        currentState = updateStepResult(currentState, 'odj_analysis', odjAnalysis, 'awaiting');
-        onStateChange(currentState);
+            currentState = updateStepResult(currentState, 'odj_analysis', odjAnalysis, 'awaiting');
+            onStateChange(currentState);
 
-        // User validation for ODJ analysis
-        if (config.onValidationRequired) {
-            const validationResult = await config.onValidationRequired('odj_analysis', odjAnalysis);
-            if (validationResult === false) throw new Error('Étape annulée par l\'utilisateur');
-            if (validationResult !== true && typeof validationResult === 'object') {
-                currentState = updateStepResult(currentState, 'odj_analysis', validationResult, 'awaiting');
+            // User validation for ODJ analysis
+            if (config.onValidationRequired) {
+                const validationResult = await config.onValidationRequired('odj_analysis', odjAnalysis);
+                if (validationResult === false) throw new Error('Étape annulée par l\'utilisateur');
+                if (validationResult !== true && typeof validationResult === 'object') {
+                    currentState = updateStepResult(currentState, 'odj_analysis', validationResult, 'awaiting');
+                }
             }
-        }
 
-        currentState = updateStepStatus(currentState, 'odj_analysis', 'completed');
-        onStateChange(currentState);
+            currentState = updateStepStatus(currentState, 'odj_analysis', 'completed');
+            onStateChange(currentState);
+        }
 
         const finalODJAnalysis = currentState.results.odj_analysis!;
 
         // ================================================================
         // STEP 5: CLASSIFICATION
         // ================================================================
-        currentState = updateStepStatus(currentState, 'classification', 'running');
-        onStateChange(currentState);
+        if (isStepDone('classification')) {
+            console.log("[PVAgent] Resuming: skipping Classification step as it is already completed");
+        } else {
+            currentState = updateStepStatus(currentState, 'classification', 'running');
+            onStateChange(currentState);
 
-        const classification = await runClassificationStep(config, finalODJAnalysis, createOnProgress('classification'));
+            const classification = await runClassificationStep(config, finalODJAnalysis, createOnProgress('classification'));
 
-        currentState = updateStepResult(currentState, 'classification', classification, 'completed');
-        onStateChange(currentState);
+            currentState = updateStepResult(currentState, 'classification', classification, 'completed');
+            onStateChange(currentState);
+        }
+
+        const classification = currentState.results.classification!;
 
         // ================================================================
         // STEP 6: RÉDACTION
         // ================================================================
-        currentState = updateStepStatus(currentState, 'drafting', 'running');
-        onStateChange(currentState);
+        if (isStepDone('drafting')) {
+            console.log("[PVAgent] Resuming: skipping Drafting step as it is already completed");
+        } else {
+            currentState = updateStepStatus(currentState, 'drafting', 'running');
+            onStateChange(currentState);
 
-        const drafting = await runDraftingStep(
-            config,
-            finalODJAnalysis,
-            classification,
-            cleaning,
-            numbering,
-            createOnProgress('drafting')
-        );
+            const drafting = await runDraftingStep(
+                config,
+                finalODJAnalysis,
+                classification,
+                cleaning,
+                numbering,
+                createOnProgress('drafting')
+            );
 
-        currentState = updateStepResult(currentState, 'drafting', drafting, 'completed');
-        onStateChange(currentState);
+            currentState = updateStepResult(currentState, 'drafting', drafting, 'completed');
+            onStateChange(currentState);
+        }
+
+        const drafting = currentState.results.drafting!;
 
         // ================================================================
         // STEP 7: RÉFLEXION (loop)
         // ================================================================
-        currentState = updateStepStatus(currentState, 'reflection', 'running');
-        onStateChange(currentState);
+        if (isStepDone('reflection')) {
+            console.log("[PVAgent] Resuming: skipping Reflection step as it is already completed");
+        } else {
+            currentState = updateStepStatus(currentState, 'reflection', 'running');
+            onStateChange(currentState);
 
-        const reflection = await runReflectionStep(
-            config,
-            drafting,
-            cleaning,
-            maxReflectionIterations,
-            createOnProgress('reflection')
-        );
+            const reflection = await runReflectionStep(
+                config,
+                drafting,
+                cleaning,
+                maxReflectionIterations,
+                createOnProgress('reflection')
+            );
 
-        currentState = updateStepResult(currentState, 'reflection', reflection, 'completed');
-        onStateChange(currentState);
+            currentState = updateStepResult(currentState, 'reflection', reflection, 'completed');
+            onStateChange(currentState);
+        }
+
+        const reflection = currentState.results.reflection!;
 
         // ================================================================
         // STEP 8: COMPARAISON (optional)
         // ================================================================
         let comparison: ComparisonResult;
 
-        if (config.enableHistoricalComparison !== false) {
+        if (isStepDone('comparison')) {
+            console.log("[PVAgent] Resuming: skipping Comparison step as it is already completed");
+            comparison = currentState.results.comparison!;
+        } else if (config.enableHistoricalComparison !== false) {
             currentState = updateStepStatus(currentState, 'comparison', 'running');
             onStateChange(currentState);
 

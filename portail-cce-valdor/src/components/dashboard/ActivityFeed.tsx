@@ -1,5 +1,6 @@
-import React from 'react';
-import { Card, CardHeader, List, ListItem, ListItemAvatar, ListItemText, Avatar, Typography, Box, ListItemButton } from '@mui/material';
+import React, { useState, useEffect } from 'react';
+import { getRecentActivities } from '../../services/activityLogService';
+import { Card, CardHeader, List, ListItem, ListItemAvatar, ListItemText, Avatar, Typography, Box, ListItemButton, Button, CircularProgress } from '@mui/material';
 import {
     Add,
     Edit,
@@ -52,6 +53,30 @@ const getActivityIcon = (type: ActivityType): { icon: React.ReactElement; color:
 
 const ActivityFeed: React.FC<ActivityFeedProps> = ({ activities }) => {
     const navigate = useNavigate();
+    const [localActivities, setLocalActivities] = useState<ActivityLog[]>(activities);
+    const [loadingMore, setLoadingMore] = useState(false);
+    const [hasMore, setHasMore] = useState(activities.length === 10);
+
+    useEffect(() => {
+        setLocalActivities(activities);
+        setHasMore(activities.length === 10);
+    }, [activities]);
+
+    const handleLoadMore = async () => {
+        setLoadingMore(true);
+        try {
+            const nextLimit = localActivities.length + 10;
+            const newActivities = await getRecentActivities(nextLimit);
+            setLocalActivities(newActivities);
+            if (newActivities.length < nextLimit) {
+                setHasMore(false);
+            }
+        } catch (error) {
+            console.error('Failed to load more activities:', error);
+        } finally {
+            setLoadingMore(false);
+        }
+    };
 
     const handleActivityClick = (activity: ActivityLog) => {
         switch (activity.targetType) {
@@ -71,66 +96,80 @@ const ActivityFeed: React.FC<ActivityFeedProps> = ({ activities }) => {
     };
 
     return (
-        <Card sx={{ height: '100%' }}>
+        <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
             <CardHeader title="Activité récente" sx={{ borderBottom: 1, borderColor: 'divider' }} />
-            <List>
-                {activities.length === 0 ? (
-                    <ListItem>
-                        <ListItemText
-                            primary={
-                                <Typography variant="body2" color="text.secondary" align="center">
-                                    Aucune activité récente
-                                </Typography>
-                            }
-                            secondary={
-                                <Typography variant="caption" color="text.disabled" align="center" component="p">
-                                    Les actions effectuées apparaîtront ici
-                                </Typography>
-                            }
-                        />
-                    </ListItem>
-                ) : (
-                    activities.map((activity, index) => {
-                        const { icon, color } = getActivityIcon(activity.type);
-                        // Use safeDate to handle Firestore Timestamps and invalid values
-                        const activityDate = safeDate(activity.timestamp) || new Date();
-                        const timeAgo = formatDistanceToNow(activityDate, {
-                            addSuffix: true,
-                            locale: fr
-                        });
+            <Box sx={{ flexGrow: 1, overflowY: 'auto' }}>
+                <List>
+                    {localActivities.length === 0 ? (
+                        <ListItem>
+                            <ListItemText
+                                primary={
+                                    <Typography variant="body2" color="text.secondary" align="center">
+                                        Aucune activité récente
+                                    </Typography>
+                                }
+                                secondary={
+                                    <Typography variant="caption" color="text.disabled" align="center" component="p">
+                                        Les actions effectuées apparaîtront ici
+                                    </Typography>
+                                }
+                            />
+                        </ListItem>
+                    ) : (
+                        localActivities.map((activity, index) => {
+                            const { icon, color } = getActivityIcon(activity.type);
+                            // Use safeDate to handle Firestore Timestamps and invalid values
+                            const activityDate = safeDate(activity.timestamp) || new Date();
+                            const timeAgo = formatDistanceToNow(activityDate, {
+                                addSuffix: true,
+                                locale: fr
+                            });
 
-                        return (
-                            <ListItem
-                                key={activity.id}
-                                divider={index < activities.length - 1}
-                                disablePadding
-                            >
-                                <ListItemButton onClick={() => handleActivityClick(activity)}>
-                                    <ListItemAvatar>
-                                        <Avatar sx={{ bgcolor: 'transparent', color }}>
-                                            {icon}
-                                        </Avatar>
-                                    </ListItemAvatar>
-                                    <ListItemText
-                                        primary={
-                                            <Typography variant="body2">
-                                                <Box component="span" sx={{ fontWeight: 600 }}>
-                                                    {activity.userName}
-                                                </Box>{' '}
-                                                {ActivityTypeLabels[activity.type]}{' '}
-                                                <Box component="span" sx={{ fontWeight: 600, color: 'primary.main' }}>
-                                                    {activity.targetName}
-                                                </Box>
-                                            </Typography>
-                                        }
-                                        secondary={timeAgo}
-                                    />
-                                </ListItemButton>
-                            </ListItem>
-                        );
-                    })
-                )}
-            </List>
+                            return (
+                                <ListItem
+                                    key={activity.id}
+                                    divider={index < localActivities.length - 1}
+                                    disablePadding
+                                >
+                                    <ListItemButton onClick={() => handleActivityClick(activity)}>
+                                        <ListItemAvatar>
+                                            <Avatar sx={{ bgcolor: 'transparent', color }}>
+                                                {icon}
+                                            </Avatar>
+                                        </ListItemAvatar>
+                                        <ListItemText
+                                            primary={
+                                                <Typography variant="body2">
+                                                    <Box component="span" sx={{ fontWeight: 600 }}>
+                                                        {activity.userName}
+                                                    </Box>{' '}
+                                                    {ActivityTypeLabels[activity.type]}{' '}
+                                                    <Box component="span" sx={{ fontWeight: 600, color: 'primary.main' }}>
+                                                        {activity.targetName}
+                                                    </Box>
+                                                </Typography>
+                                            }
+                                            secondary={timeAgo}
+                                        />
+                                    </ListItemButton>
+                                </ListItem>
+                            );
+                        })
+                    )}
+                </List>
+            </Box>
+            {hasMore && (
+                <Box sx={{ p: 1.5, borderTop: 1, borderColor: 'divider', textAlign: 'center' }}>
+                    <Button
+                        size="small"
+                        onClick={handleLoadMore}
+                        disabled={loadingMore}
+                        startIcon={loadingMore ? <CircularProgress size={16} /> : null}
+                    >
+                        {loadingMore ? 'Chargement...' : 'Voir plus d\'activités'}
+                    </Button>
+                </Box>
+            )}
         </Card>
     );
 };

@@ -33,6 +33,9 @@ import {
     Accordion,
     AccordionSummary,
     AccordionDetails,
+    Tabs,
+    Tab,
+    Grid,
 } from '@mui/material';
 import {
     CheckCircle as CheckCircleIcon,
@@ -134,12 +137,14 @@ const PVAgentWizard: React.FC<PVAgentWizardProps> = ({
     const [editedAnalysis, setEditedAnalysis] = React.useState<ODJAnalysisResult | null>(null);
     const [userComments, setUserComments] = React.useState('');
     const [userEdits, setUserEdits] = React.useState('');
+    const [validationTab, setValidationTab] = React.useState(0);
 
     // Reset edited state when step changes
     React.useEffect(() => {
         setEditedAnalysis(null);
         setUserComments('');
         setUserEdits('');
+        setValidationTab(0);
     }, [state?.currentStepIndex]);
 
     const handleValidate = (approved: boolean) => {
@@ -420,6 +425,7 @@ const PVAgentWizard: React.FC<PVAgentWizardProps> = ({
                 const draftingResult = state?.results.drafting;
 
                 if (isAwaitingValidation) {
+                    const finalVal = userEdits || comparisonResult?.finalContent || reflectionResult?.finalContent || draftingResult?.pvContent || '';
                     return (
                         <Box>
                             <Alert severity="info" sx={{ mb: 2 }}>
@@ -447,17 +453,58 @@ const PVAgentWizard: React.FC<PVAgentWizardProps> = ({
                                 </Box>
                             )}
 
-                            <IsolatedTextField
-                                fullWidth
-                                multiline
-                                minRows={10}
-                                maxRows={20}
-                                label="Contenu du PV FINAL (modifiable)"
-                                initialValue={userEdits || comparisonResult?.finalContent || reflectionResult?.finalContent || draftingResult?.pvContent || ''}
-                                onChange={(val: string) => setUserEdits(val)}
-                                variant="outlined"
-                                sx={{ mb: 2 }}
-                            />
+                            <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}>
+                                <Tabs value={validationTab} onChange={(_, newValue) => setValidationTab(newValue)} aria-label="validation view tabs">
+                                    <Tab label="📝 Édition Simple" />
+                                    <Tab label="🔍 Comparaison Côte-à-Côte" />
+                                </Tabs>
+                            </Box>
+
+                            {validationTab === 0 ? (
+                                <IsolatedTextField
+                                    fullWidth
+                                    multiline
+                                    minRows={10}
+                                    maxRows={20}
+                                    label="Contenu du PV FINAL (modifiable)"
+                                    initialValue={finalVal}
+                                    onChange={(val: string) => setUserEdits(val)}
+                                    variant="outlined"
+                                    sx={{ mb: 2 }}
+                                />
+                            ) : (
+                                <Grid container spacing={2} sx={{ mb: 2 }}>
+                                    <Grid size={{ xs: 12, md: 6 }}>
+                                        <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: 1 }}>
+                                            <span>📄</span> Premier jet rédigé (IA)
+                                        </Typography>
+                                        <TextField
+                                            fullWidth
+                                            multiline
+                                            minRows={12}
+                                            maxRows={20}
+                                            value={draftingResult?.pvContent || ''}
+                                            variant="outlined"
+                                            disabled
+                                            sx={{ bgcolor: 'action.hover' }}
+                                        />
+                                    </Grid>
+                                    <Grid size={{ xs: 12, md: 6 }}>
+                                        <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: 1, color: 'primary.main' }}>
+                                            <span>✨</span> PV Corrigé & Validé (Modifiable)
+                                        </Typography>
+                                        <IsolatedTextField
+                                            fullWidth
+                                            multiline
+                                            minRows={12}
+                                            maxRows={20}
+                                            initialValue={finalVal}
+                                            onChange={(val: string) => setUserEdits(val)}
+                                            variant="outlined"
+                                        />
+                                    </Grid>
+                                </Grid>
+                            )}
 
                             <IsolatedTextField
                                 fullWidth

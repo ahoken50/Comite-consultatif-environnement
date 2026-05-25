@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
-import { Box, Grid, TextField, MenuItem, IconButton, Tooltip, CircularProgress, InputAdornment, Typography, Dialog, DialogTitle, DialogContent, DialogActions, Button } from '@mui/material';
+import { Box, Grid, TextField, MenuItem, IconButton, Tooltip, CircularProgress, InputAdornment, Typography, Dialog, DialogTitle, DialogContent, DialogActions, Button, Chip } from '@mui/material';
 import { AutoMode, Link, Shield, CheckCircle, Warning, HelpOutline, AutoAwesome, Delete, Assignment as AssignmentIcon } from '@mui/icons-material';
 import type { MinuteEntry } from '../../types/meeting.types';
 import { searchMeetings, searchRegulations } from '../../services/supabaseSearchService';
 import { aiService } from '../../services/ai/UnifiedAIService';
 import { useNavigate } from 'react-router-dom';
 import JurisprudenceChatBox from '../search/JurisprudenceChatBox';
+import { useSelector } from 'react-redux';
+import type { RootState } from '../../store/rootReducer';
 
 interface MinuteEntryEditorProps {
     entry: MinuteEntry;
@@ -46,6 +48,64 @@ const MinuteEntryEditor: React.FC<MinuteEntryEditorProps> = ({
     const [isExpanded, setIsExpanded] = useState(false);
     const [isDrafting, setIsDrafting] = useState(false);
     const [showChat, setShowChat] = useState(false);
+
+    // Fetch linked project details from Redux
+    const linkedProject = useSelector((state: RootState) => 
+        linkedProjectId ? state.projects.items.find(p => p.id === linkedProjectId) : undefined
+    );
+
+    const getProjectStatusChip = () => {
+        if (!linkedProject) return null;
+
+        let color: 'default' | 'primary' | 'secondary' | 'error' | 'info' | 'success' | 'warning' = 'info';
+        let statusText = '';
+
+        switch (linkedProject.status) {
+            case 'completed':
+                color = 'success';
+                statusText = 'Terminé';
+                break;
+            case 'in_progress':
+                color = 'primary';
+                statusText = 'En cours';
+                break;
+            case 'pending':
+                color = 'warning';
+                statusText = 'En attente';
+                break;
+            case 'blocked':
+                color = 'error';
+                statusText = 'Bloqué';
+                break;
+            case 'financing_received':
+                color = 'success';
+                statusText = 'Financement reçu';
+                break;
+            case 'to_clarify':
+                color = 'secondary';
+                statusText = 'À clarifier';
+                break;
+            default:
+                statusText = linkedProject.status || 'Inconnu';
+        }
+
+        const percentage = linkedProject.completionPercentage !== undefined ? `${linkedProject.completionPercentage}%` : '0%';
+        const label = `Projet : ${linkedProject.name} (${statusText} - ${percentage})`;
+
+        return (
+            <Tooltip title={`Ouvrir le projet : ${linkedProject.name}`}>
+                <Chip
+                    icon={<AssignmentIcon />}
+                    label={label}
+                    color={color}
+                    variant="outlined"
+                    size="small"
+                    onClick={() => navigate(`/projects/${linkedProject.id}`)}
+                    sx={{ cursor: 'pointer', mb: 1.5, fontWeight: 'bold' }}
+                />
+            </Tooltip>
+        );
+    };
 
     const handleFieldChange = (field: string, value: any) => {
         onChange(itemId, entryIndex, field, value);
@@ -317,6 +377,7 @@ const MinuteEntryEditor: React.FC<MinuteEntryEditorProps> = ({
                     </Grid>
                 )}
             </Grid>
+            {getProjectStatusChip()}
             <TextField
                 fullWidth
                 multiline

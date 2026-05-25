@@ -13,7 +13,6 @@ import {
 } from '@mui/material';
 import { Save, PictureAsPdf, UploadFile, DeleteSweep, Shield, Send, AutoAwesome, SmartToy } from '@mui/icons-material';
 import type { Meeting, AgendaItem, AudioRecording, MinutesDraft } from '../../types/meeting.types';
-import { generateMinutesPDF } from '../../services/pdfServiceMinutes';
 // import { sanitizeMinutes } from '../../services/geminiService'; // Removed in favor of Claude
 import MinutesImportDialog from './MinutesImportDialog';
 import ApprovalRequestDialog from './ApprovalRequestDialog';
@@ -106,6 +105,20 @@ const BATCH_SIZE = 5; // Ou une constante importée d'un fichier de configuratio
         }
     }, [visibleCount, localAgendaItems.length]);
 
+    const [savedAgentSession, setSavedAgentSession] = React.useState<any | null>(null);
+
+    React.useEffect(() => {
+        const saved = localStorage.getItem(`pv_agent_session_${meeting.id}`);
+        if (saved) {
+            try {
+                const parsed = JSON.parse(saved);
+                setSavedAgentSession(parsed);
+            } catch (err) {
+                console.error("Failed to parse saved agent session:", err);
+            }
+        }
+    }, [meeting.id]);
+
     // SmartPV Agent hook
     const pvAgent = usePVAgent({
         meeting,
@@ -134,7 +147,7 @@ const BATCH_SIZE = 5; // Ou une constante importée d'un fichier de configuratio
         setHasUnsavedChanges
     });
 
-    const handleGeneratePDF = () => {
+    const handleGeneratePDF = async () => {
         // Create a temporary meeting object with current state
         // Use localAgendaItems directly without overwriting decision
         const meetingForPdf: Meeting = {
@@ -142,6 +155,7 @@ const BATCH_SIZE = 5; // Ou une constante importée d'un fichier de configuratio
             minutes: globalNotes,
             agendaItems: localAgendaItems
         };
+        const { generateMinutesPDF } = await import('../../services/pdfServiceMinutes');
         generateMinutesPDF(meetingForPdf, globalNotes, null, members);
     };
 
@@ -228,6 +242,7 @@ const BATCH_SIZE = 5; // Ou une constante importée d'un fichier de configuratio
 
             if (result.success && result.sanitizedMeeting) {
                 // 3. Generate PDF with the SANITIZED object, using the existing window
+                const { generateMinutesPDF } = await import('../../services/pdfServiceMinutes');
                 await generateMinutesPDF(result.sanitizedMeeting, result.sanitizedMeeting.minutes, printWindow, members);
                 showSuccess('PDF Anonymisé généré !');
             } else {
@@ -583,6 +598,42 @@ const BATCH_SIZE = 5; // Ou une constante importée d'un fichier de configuratio
 
     return (
         <Box>
+            {savedAgentSession && (
+                <Alert
+                    severity="warning"
+                    sx={{ mb: 3 }}
+                    action={
+                        <Box sx={{ display: 'flex', gap: 1 }}>
+                            <Button
+                                color="warning"
+                                variant="contained"
+                                size="small"
+                                onClick={() => {
+                                    setIsAgentWizardOpen(true);
+                                    pvAgent.resume(savedAgentSession);
+                                    setSavedAgentSession(null);
+                                }}
+                            >
+                                Reprendre la génération
+                            </Button>
+                            <Button
+                                color="inherit"
+                                size="small"
+                                onClick={() => {
+                                    localStorage.removeItem(`pv_agent_session_${meeting.id}`);
+                                    setSavedAgentSession(null);
+                                }}
+                            >
+                                Ignorer
+                            </Button>
+                        </Box>
+                    }
+                >
+                    <Typography variant="body2" fontWeight="bold">
+                        ⚠️ Une session SmartPV s'est interrompue pour cette réunion. Vous pouvez reprendre là où elle s'était arrêtée.
+                    </Typography>
+                </Alert>
+            )}
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
                 <Typography variant="h6">Rédaction du Procès-Verbal</Typography>
                 <Box sx={{ display: 'flex', gap: 2 }}>
@@ -846,6 +897,8 @@ const BATCH_SIZE = 5; // Ou une constante importée d'un fichier de configuratio
                             .join('\n\n--- TRANSCRIPTION SUIVANTE ---\n\n');
 
                         pvAgent.start(undefined, fullTranscription);
+                    } else if (mode === 'summary') {
+                        handleGenerateSummary();
                     }
                     // Classic mode just closes the dialog - user continues manually
                 }}
