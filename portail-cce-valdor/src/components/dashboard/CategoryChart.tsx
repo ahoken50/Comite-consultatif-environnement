@@ -14,13 +14,20 @@ interface CategoryChartProps {
 }
 
 const CategoryChart: React.FC<CategoryChartProps> = ({ data }) => {
+    const [isMounted, setIsMounted] = React.useState(false);
+
+    React.useEffect(() => {
+        setIsMounted(true);
+    }, []);
+
     return (
         <Card sx={{ height: '100%' }}>
             <CardHeader title="Répartition par catégorie" sx={{ borderBottom: 1, borderColor: 'divider' }} />
             <CardContent>
                 <div style={{ width: '100%', height: 300 }}>
                     {data.length > 0 ? (
-                        <ResponsiveContainer width="99%" height="100%" minWidth={0} minHeight={0}>
+                        isMounted ? (
+                            <ResponsiveContainer width="99%" height="100%" minWidth={0} minHeight={0}>
                             <PieChart>
                                 <Pie
                                     data={data}
@@ -40,6 +47,7 @@ const CategoryChart: React.FC<CategoryChartProps> = ({ data }) => {
                                 <Legend verticalAlign="bottom" height={36} />
                             </PieChart>
                         </ResponsiveContainer>
+                        ) : null
                     ) : (
                         <div style={{
                             display: 'flex',

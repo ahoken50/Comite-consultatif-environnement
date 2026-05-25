@@ -85,8 +85,16 @@ export const projectsAPI = {
     },
 
     addTask: async (projectId: string, task: Omit<ProjectTask, 'id' | 'projectId' | 'dateCreated'>): Promise<ProjectTask> => {
+        // Clean undefined properties to prevent Firestore crashes
+        const cleanedTask = Object.entries(task).reduce((acc, [key, value]) => {
+            if (value !== undefined) {
+                acc[key] = value;
+            }
+            return acc;
+        }, {} as any);
+
         const docRef = await addDoc(collection(db, COLLECTION_NAME, projectId, 'tasks'), {
-            ...task,
+            ...cleanedTask,
             projectId,
             dateCreated: Timestamp.now(),
         });
@@ -100,7 +108,14 @@ export const projectsAPI = {
 
     updateTask: async (projectId: string, taskId: string, updates: Partial<ProjectTask>): Promise<void> => {
         const docRef = doc(db, COLLECTION_NAME, projectId, 'tasks', taskId);
-        await updateDoc(docRef, updates);
+        // Clean undefined properties to prevent Firestore crashes
+        const cleanedUpdates = Object.entries(updates).reduce((acc, [key, value]) => {
+            if (value !== undefined) {
+                acc[key] = value;
+            }
+            return acc;
+        }, {} as any);
+        await updateDoc(docRef, cleanedUpdates);
     },
 
     deleteTask: async (projectId: string, taskId: string): Promise<void> => {

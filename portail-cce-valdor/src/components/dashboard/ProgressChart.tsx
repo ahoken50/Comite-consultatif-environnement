@@ -14,6 +14,11 @@ interface ProgressChartProps {
 
 const ProgressChart: React.FC<ProgressChartProps> = ({ data }) => {
     const hasData = data.some(d => d.completed > 0 || d.new > 0);
+    const [isMounted, setIsMounted] = React.useState(false);
+
+    React.useEffect(() => {
+        setIsMounted(true);
+    }, []);
 
     return (
         <Card sx={{ height: '100%' }}>
@@ -21,7 +26,8 @@ const ProgressChart: React.FC<ProgressChartProps> = ({ data }) => {
             <CardContent>
                 <div style={{ width: '100%', height: 300 }}>
                     {hasData ? (
-                        <ResponsiveContainer width="99%" height="100%" minWidth={0} minHeight={0}>
+                        isMounted ? (
+                            <ResponsiveContainer width="99%" height="100%" minWidth={0} minHeight={0}>
                             <LineChart data={data} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
                                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
                                 <XAxis dataKey="name" axisLine={false} tickLine={false} />
@@ -47,6 +53,7 @@ const ProgressChart: React.FC<ProgressChartProps> = ({ data }) => {
                                 />
                             </LineChart>
                         </ResponsiveContainer>
+                        ) : null
                     ) : (
                         <div style={{
                             display: 'flex',
