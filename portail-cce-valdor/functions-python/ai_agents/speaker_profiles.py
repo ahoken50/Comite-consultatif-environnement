@@ -202,7 +202,12 @@ def compare_embedding_with_speakers(segment_embedding: list, enrolled_speakers: 
                     name = row.get("speaker_name")
                     similarity = row.get("avg_similarity", 0.0)
                     if similarity is not None:
-                        scores[name] = max(0.0, min(1.0, float(similarity)))
+                        raw_sim = float(similarity)
+                        # Uniform score mapping with 0.35 raw threshold guard
+                        if raw_sim < 0.35:
+                            scores[name] = 0.0
+                        else:
+                            scores[name] = (raw_sim + 1) / 2
                 
                 print(f"[PGVector] Matched {len(scores)} speakers via pgvector")
                 return scores
@@ -282,8 +287,11 @@ def compare_embedding_with_speakers_local(segment_embedding: list, enrolled_spea
         else:
             avg_sim = top_n[0] * 0.5 + top_n[1] * 0.3 + top_n[2] * 0.2
         
-        # Normalize cosine similarity (-1..1) to score (0..1)
-        score = (avg_sim + 1) / 2
+        # Normalize cosine similarity (-1..1) to score (0..1) with a strict 0.35 threshold guard
+        if avg_sim < 0.35:
+            score = 0.0
+        else:
+            score = (avg_sim + 1) / 2
         
         # Consistency bonus: if multiple vectors agree, boost confidence
         if len(top_n) >= 3 and all(s > 0.5 for s in top_n):
@@ -386,9 +394,10 @@ async def identify_speakers_in_transcript(
     
     if meeting_id:
         try:
-            attendees = get_meeting_attendees(meeting_id) # Need to ensure this function exists/works
+            attendees = get_meeting_attendees(meeting_id)
             if attendees:
-                present_names = [a.get("name") for a in attendees if a.get("role") != "Invité"]
+                # Exclude absent members (isPresent: false) and guests to avoid false matching candidates
+                present_names = [a.get("name") for a in attendees if a.get("role") != "Invité" and a.get("isPresent", True) is not False]
                 
                 # Filter enrolled list to only present members
                 # This prevents "Michael Ross" false positives if he isn't there!
@@ -487,8 +496,19 @@ async def identify_speakers_in_transcript(
                     
                     # If margin is slim (< 0.05), it's risky.
                     # However, if Context supports the winner, we proceed.
-                    context_support_winner = linguistic_scores.get(winner[0], 0) + auto_id_scores.get(winner[0], 0)
-                    context_support_runner = linguistic_scores.get(runner_up[0], 0) + auto_id_scores.get(runner_up[0], 0)
+                    # Incorporate all contextual and linguistic strategies to resolve narrow voice margins
+                    context_support_winner = (
+                        context_scores.get(winner[0], 0) +
+                        linguistic_scores.get(winner[0], 0) +
+                        mention_scores.get(winner[0], 0) +
+                        auto_id_scores.get(winner[0], 0)
+                    )
+                    context_support_runner = (
+                        context_scores.get(runner_up[0], 0) +
+                        linguistic_scores.get(runner_up[0], 0) +
+                        mention_scores.get(runner_up[0], 0) +
+                        auto_id_scores.get(runner_up[0], 0)
+                    )
                     
                     if margin < 0.05 and context_support_winner <= context_support_runner:
                         # Ambiguous: Voice is close, and context doesn't clarify.

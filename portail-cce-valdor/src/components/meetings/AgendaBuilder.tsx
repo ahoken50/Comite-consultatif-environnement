@@ -478,15 +478,29 @@ const AgendaBuilder: React.FC<AgendaBuilderProps> = ({ items, onItemsChange, mee
 
 export default React.memo(AgendaBuilder, (prevProps, nextProps) => {
     return (
-        prevProps.items === nextProps.items &&
         prevProps.meetingId === nextProps.meetingId &&
-        prevProps.meeting === nextProps.meeting &&
-        prevProps.documents === nextProps.documents &&
         prevProps.readOnly === nextProps.readOnly &&
         prevProps.canPropose === nextProps.canPropose &&
         prevProps.onItemsChange === nextProps.onItemsChange &&
         prevProps.onDocumentUpload === nextProps.onDocumentUpload &&
         prevProps.onDocumentUnlink === nextProps.onDocumentUnlink &&
-        prevProps.onDocumentDelete === nextProps.onDocumentDelete
+        prevProps.onDocumentDelete === nextProps.onDocumentDelete &&
+        prevProps.documents?.length === nextProps.documents?.length &&
+        // Verify key meeting fields needed for PDF generation instead of full object reference
+        prevProps.meeting?.id === nextProps.meeting?.id &&
+        prevProps.meeting?.title === nextProps.meeting?.title &&
+        prevProps.meeting?.date === nextProps.meeting?.date &&
+        // Deep array verification for items to bypass reference equality issues
+        prevProps.items?.length === nextProps.items?.length &&
+        (prevProps.items || []).every((item, idx) => {
+            const nextItem = nextProps.items?.[idx];
+            return item.id === nextItem?.id &&
+                   item.title === nextItem?.title &&
+                   item.duration === nextItem?.duration &&
+                   item.presenter === nextItem?.presenter &&
+                   item.objective === nextItem?.objective &&
+                   item.agendaNote === nextItem?.agendaNote &&
+                   item.description === nextItem?.description;
+        })
     );
 });

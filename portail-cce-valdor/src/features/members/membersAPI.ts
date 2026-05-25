@@ -14,14 +14,20 @@ const COLLECTION_NAME = 'members';
 
 export const fetchMembers = async (): Promise<Member[]> => {
     const querySnapshot = await getDocs(collection(db, COLLECTION_NAME));
-    return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Member));
+    return querySnapshot.docs.map(doc => {
+        const data = doc.data() as any;
+        if (data.embedding) delete data.embedding;
+        return { id: doc.id, ...data } as Member;
+    });
 };
 
 export const fetchMemberById = async (id: string): Promise<Member | null> => {
     const docRef = doc(db, COLLECTION_NAME, id);
     const docSnap = await getDoc(docRef);
     if (docSnap.exists()) {
-        return { id: docSnap.id, ...docSnap.data() } as Member;
+        const data = docSnap.data() as any;
+        if (data.embedding) delete data.embedding;
+        return { id: docSnap.id, ...data } as Member;
     }
     return null;
 };
@@ -75,7 +81,9 @@ export const ensureMemberProfile = async (user: any): Promise<Member> => {
 
         if (!querySnapshot.empty) {
             const doc = querySnapshot.docs[0];
-            const foundMember = { id: doc.id, ...doc.data() } as Member;
+            const data = doc.data() as any;
+            if (data.embedding) delete data.embedding;
+            const foundMember = { id: doc.id, ...data } as Member;
 
             return foundMember;
         }

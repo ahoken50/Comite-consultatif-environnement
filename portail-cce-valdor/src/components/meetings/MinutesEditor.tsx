@@ -1032,12 +1032,30 @@ export default React.memo(MinutesEditor, (prevProps, nextProps) => {
         prevProps.meeting.audioRecording?.transcription === nextProps.meeting.audioRecording?.transcription &&
         prevProps.meeting.audioRecording?.transcriptionStatus === nextProps.meeting.audioRecording?.transcriptionStatus &&
         prevProps.meeting.audioRecording?.storagePath === nextProps.meeting.audioRecording?.storagePath &&
-        prevProps.meeting.audioRecordings === nextProps.meeting.audioRecordings &&
         prevProps.meeting.minutesDraft === nextProps.meeting.minutesDraft &&
         prevProps.meeting.minutesFileUrl === nextProps.meeting.minutesFileUrl &&
-        prevProps.meeting.agendaItems === nextProps.meeting.agendaItems &&
         prevProps.onUpdate === nextProps.onUpdate &&
         prevProps.readOnly === nextProps.readOnly &&
-        prevProps.documents === nextProps.documents
+        prevProps.documents === nextProps.documents &&
+        // Deep array verification for audioRecordings to bypass reference equality issues
+        prevProps.meeting.audioRecordings?.length === nextProps.meeting.audioRecordings?.length &&
+        (prevProps.meeting.audioRecordings || []).every((rec, idx) => {
+            const nextRec = nextProps.meeting.audioRecordings?.[idx];
+            return rec.fileUrl === nextRec?.fileUrl &&
+                   rec.transcriptionStatus === nextRec?.transcriptionStatus &&
+                   rec.transcription === nextRec?.transcription;
+        }) &&
+        // Deep array verification for agendaItems to bypass reference equality issues
+        prevProps.meeting.agendaItems?.length === nextProps.meeting.agendaItems?.length &&
+        (prevProps.meeting.agendaItems || []).every((item, idx) => {
+            const nextItem = nextProps.meeting.agendaItems?.[idx];
+            return item.id === nextItem?.id &&
+                   item.title === nextItem?.title &&
+                   item.duration === nextItem?.duration &&
+                   item.objective === nextItem?.objective &&
+                   item.isRecommendationToCouncil === nextItem?.isRecommendationToCouncil &&
+                   JSON.stringify(item.minuteEntries) === JSON.stringify(nextItem?.minuteEntries) &&
+                   JSON.stringify(item.councilIncludedEntryIndices) === JSON.stringify(nextItem?.councilIncludedEntryIndices);
+        })
     );
 });

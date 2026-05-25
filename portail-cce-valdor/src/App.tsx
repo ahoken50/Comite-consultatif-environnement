@@ -85,6 +85,7 @@ function App() {
           const memberDocRef = doc(db, 'members', user.uid);
           const memberDoc = await getDoc(memberDocRef);
           let memberData: any = memberDoc.exists() ? { id: memberDoc.id, ...memberDoc.data() } : null;
+          if (memberData && memberData.embedding) delete memberData.embedding;
 
           // Fallback: If not found by ID, search by email (Legacy/Manually created members)
           if (!memberData && user.email) {
@@ -96,6 +97,7 @@ function App() {
                 const foundDoc = querySnapshot.docs[0];
                 console.log("Member found by email lookup:", foundDoc.id);
                 memberData = { id: foundDoc.id, ...foundDoc.data() };
+                if (memberData && memberData.embedding) delete memberData.embedding;
               }
             } catch (e) {
               console.warn("Failed to query member by email:", e);
