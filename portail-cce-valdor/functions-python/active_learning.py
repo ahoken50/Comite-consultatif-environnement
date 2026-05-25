@@ -689,3 +689,192 @@ def _empty_trends() -> Dict:
         "insights": ["Pas assez de données pour analyser les tendances"],
         "dataPoints": 0,
     }
+
+
+def clean_and_optimize_all_speaker_embeddings(db_client: Any) -> Dict[str, Any]:
+    """
+    Active ML Clean-up and Robustness maintenance:
+    1. Fetches all embeddings for all speakers from Supabase.
+    2. Performs intra-speaker outlier detection (purges vectors with similarity < 0.65 to their speaker centroid).
+    3. Performs inter-speaker overlap detection (purges vectors with high cross-speaker similarity > 0.85).
+    4. Performs diversity check (purges duplicates with similarity > 0.96).
+    5. Updates statistics in Firestore active_learning_stats.
+    """
+    print("[ActiveLearning] Starting AI/ML voice embedding cleaning & optimization...")
+    results = {
+        "success": True,
+        "totalEvaluated": 0,
+        "outliersRemoved": 0,
+        "overlapsRemoved": 0,
+        "duplicatesRemoved": 0,
+        "cleanedSpeakers": [],
+        "errors": []
+    }
+    
+    try:
+        from supabase import create_client
+        import os
+        from supabase_embeddings import delete_embedding_by_id
+        
+        supabase_url = os.environ.get("SUPABASE_URL")
+        supabase_key = os.environ.get("SUPABASE_KEY")
+        if not supabase_url or not supabase_key:
+            return {"success": False, "message": "Supabase not configured"}
+            
+        supabase = create_client(supabase_url, supabase_key)
+        
+        # 1. Fetch all embeddings rows
+        rows_res = supabase.table("speaker_embeddings").select(
+            "id, speaker_name, embedding, sample_source, created_at"
+        ).execute()
+        
+        if not rows_res.data:
+            return {"success": True, "message": "No embeddings to clean", **results}
+            
+        # Group embeddings by speaker
+        speakers_data = defaultdict(list)
+        for row in rows_res.data:
+            name = row.get("speaker_name")
+            emb = row.get("embedding")
+            if isinstance(emb, str):
+                emb = json.loads(emb)
+            if name and isinstance(emb, list) and len(emb) > 0:
+                speakers_data[name].append({
+                    "id": row["id"],
+                    "vector": emb,
+                    "source": row.get("sample_source", "unknown"),
+                    "created_at": row.get("created_at", "")
+                })
+                results["totalEvaluated"] += 1
+                
+        to_delete_ids = set()
+        
+        # 2. Intra-Speaker Outlier Detection & Duplicate Detection
+        for name, samples in speakers_data.items():
+            num_samples = len(samples)
+            if num_samples < 3:
+                # Not enough samples to reliably calculate outliers, skip outlier check but check duplicates
+                if num_samples >= 2:
+                    for i in range(num_samples):
+                        for j in range(i + 1, num_samples):
+                            sim = cosine_similarity(samples[i]["vector"], samples[j]["vector"])
+                            if sim > 0.96:
+                                older = samples[i] if samples[i]["created_at"] < samples[j]["created_at"] else samples[j]
+                                to_delete_ids.add(older["id"])
+                                results["duplicatesRemoved"] += 1
+                continue
+                
+            # For speakers with >= 3 samples:
+            avg_sims = {}
+            for i, s_i in enumerate(samples):
+                sims = []
+                for j, s_j in enumerate(samples):
+                    if i == j:
+                        continue
+                    sim = cosine_similarity(s_i["vector"], s_j["vector"])
+                    sims.append(sim)
+                    
+                    # Duplicate check
+                    if j > i and sim > 0.96:
+                        older = s_i if s_i["created_at"] < s_j["created_at"] else s_j
+                        to_delete_ids.add(older["id"])
+                        results["duplicatesRemoved"] += 1
+                        
+                avg_sims[s_i["id"]] = sum(sims) / len(sims) if sims else 0.0
+                
+            # Find outliers: average similarity to other vectors of same speaker is < 0.65
+            for s_id, avg_sim in avg_sims.items():
+                if avg_sim < 0.65:
+                    print(f"[ActiveLearning] Outlier detected for speaker '{name}': ID {s_id} (avg_sim={avg_sim:.3f})")
+                    to_delete_ids.add(s_id)
+                    results["outliersRemoved"] += 1
+                    if name not in results["cleanedSpeakers"]:
+                        results["cleanedSpeakers"].append(name)
+                        
+        # 3. Inter-Speaker Overlap Detection (Cross-Contamination)
+        all_speaker_names = list(speakers_data.keys())
+        for i, name_a in enumerate(all_speaker_names):
+            samples_a = speakers_data[name_a]
+            for j, name_b in enumerate(all_speaker_names):
+                if i >= j:
+                    continue
+                samples_b = speakers_data[name_b]
+                
+                for sa in samples_a:
+                    if sa["id"] in to_delete_ids:
+                        continue
+                    for sb in samples_b:
+                        if sb["id"] in to_delete_ids:
+                            continue
+                        
+                        cross_sim = cosine_similarity(sa["vector"], sb["vector"])
+                        if cross_sim > 0.85:
+                            sims_sa_to_a = [cosine_similarity(sa["vector"], other["vector"]) for other in samples_a if other["id"] != sa["id"]]
+                            sims_sb_to_b = [cosine_similarity(sb["vector"], other["vector"]) for other in samples_b if other["id"] != sb["id"]]
+                            
+                            avg_a = sum(sims_sa_to_a) / len(sims_sa_to_a) if sims_sa_to_a else 0.0
+                            avg_b = sum(sims_sb_to_b) / len(sims_sb_to_b) if sims_sb_to_b else 0.0
+                            
+                            if avg_a < avg_b:
+                                print(f"[ActiveLearning] Impostor detected: embedding of '{name_a}' (ID {sa['id']}) is too close to '{name_b}' (ID {sb['id']}) (cross_sim={cross_sim:.3f}). Purging from '{name_a}'")
+                                to_delete_ids.add(sa["id"])
+                                results["overlapsRemoved"] += 1
+                                if name_a not in results["cleanedSpeakers"]:
+                                    results["cleanedSpeakers"].append(name_a)
+                            else:
+                                print(f"[ActiveLearning] Impostor detected: embedding of '{name_b}' (ID {sb['id']}) is too close to '{name_a}' (ID {sa['id']}) (cross_sim={cross_sim:.3f}). Purging from '{name_b}'")
+                                to_delete_ids.add(sb["id"])
+                                results["overlapsRemoved"] += 1
+                                if name_b not in results["cleanedSpeakers"]:
+                                    results["cleanedSpeakers"].append(name_b)
+                                    
+        # 4. Perform actual deletions
+        deleted_count = 0
+        for doc_id in to_delete_ids:
+            success = delete_embedding_by_id(doc_id)
+            if success:
+                deleted_count += 1
+            else:
+                results["errors"].append(f"Failed to delete {doc_id}")
+                
+        results["deletedCount"] = deleted_count
+        results["message"] = f"Cleaned up {deleted_count} vector(s). Outliers: {results['outliersRemoved']}, Overlaps: {results['overlapsRemoved']}, Duplicates: {results['duplicatesRemoved']}"
+        print(f"[ActiveLearning] Clean-up finished: {results['message']}")
+        
+        # 5. Update Firestore active_learning_stats
+        if db_client:
+            try:
+                db_client.collection("active_learning_stats").add({
+                    "timestamp": datetime.now().isoformat(),
+                    "totalEvaluated": results["totalEvaluated"],
+                    "outliersRemoved": results["outliersRemoved"],
+                    "overlapsRemoved": results["overlapsRemoved"],
+                    "duplicatesRemoved": results["duplicatesRemoved"],
+                    "deletedCount": deleted_count,
+                    "message": results["message"],
+                    "source": "ml_auto_maintenance"
+                })
+            except Exception as fire_err:
+                print(f"[ActiveLearning] Failed to log stats in Firestore: {fire_err}")
+                
+        # Update members count cache
+        for name in results["cleanedSpeakers"]:
+            try:
+                member_ref = db_client.collection("members").where("displayName", "==", name).limit(1).get()
+                if member_ref:
+                    from supabase_embeddings import get_embedding_count
+                    count = get_embedding_count(name)
+                    member_ref[0].reference.update({
+                        "voiceSampleCount": count,
+                        "lastVoiceUpdate": datetime.now().isoformat()
+                    })
+            except Exception as cache_err:
+                print(f"[ActiveLearning] Failed to update cache for {name}: {cache_err}")
+                
+        return results
+        
+    except Exception as e:
+        print(f"[ActiveLearning] Global error in cleaning: {e}")
+        import traceback
+        traceback.print_exc()
+        return {"success": False, "message": str(e), **results}

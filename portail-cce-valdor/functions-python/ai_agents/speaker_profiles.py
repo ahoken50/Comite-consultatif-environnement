@@ -40,7 +40,7 @@ def get_enrolled_speakers() -> list:
             test_result = supabase.table("speaker_embeddings").select("id").limit(1).execute()
             supabase_phase2_ready = True
         except:
-            # speaker_embeddings doesn't exist - Phase 2 not deployed yet
+            -- Phase 2 not deployed yet
             print("[Speakers Phase 2] Supabase Phase 2 tables not found")
             
             # Try auto-migration
@@ -170,6 +170,8 @@ def get_meeting_attendees(meeting_id: str) -> list:
     except Exception as e:
         print(f"[Meeting] Error fetching attendees: {e}")
         return []
+
+
 def compare_embedding_with_speakers(segment_embedding: list, enrolled_speakers: list = None, limit: int = 10) -> dict:
     """
     Match a segment embedding with speakers using pgvector (Phase 2 - Primary).
@@ -189,27 +191,10 @@ def compare_embedding_with_speakers(segment_embedding: list, enrolled_speakers: 
             supabase = create_client(supabase_url, supabase_key)
             
             # Appeler la fonction SQL match_speakers via RPC
-            # Attention: Supabase Python client n'a pas de support direct pour les fonctions SQL avec paramètres complexes
-            # On doit faire la requête SQL manuellement
-            
-            # Convertir l'embedding en format PostgreSQL
-            embedding_str = "[" + ",".join(str(x) for x in segment_embedding) + "]"
-            
-            # Exécuter la requête SQL
-            query = f"""
-                SELECT speaker_name, similarity, match_count, avg_similarity, sample_sources
-                FROM match_speakers('[{embedding_str}]'::vector(512), {limit})
-            """
-            
             result = supabase.rpc('match_speakers', {
-                'target_embedding': embedding_str,
+                'target_embedding': segment_embedding,
                 'limit_count': limit
-            })
-            
-            # Alternative: faire une requête directe avec execute_sql (si disponible)
-            # Pour l'instant, on fait fallback sur le calcul local
-            print(f"[PGVector] Using fallback to local computation (RPC not fully supported)")
-            raise Exception("RPC fallback needed")
+            }).execute()
             
             if result.data:
                 scores = {}
@@ -510,7 +495,7 @@ async def identify_speakers_in_transcript(
                          print(f"[Identify] AMBIGUITY: {winner[0]} vs {runner_up[0]} (Margin {margin:.3f}). Skipping.")
                          best_name = None 
                          rejection_reason = "Ambiguous Voice Match"
-
+ 
              # 2. GENDER / ROLE GUARD
              # If we picked someone, ensure it doesn't contradict linguistic gender cues.
              if best_name:
@@ -534,114 +519,114 @@ async def identify_speakers_in_transcript(
                      print(f"[Identify] GENDER GUARD: Rejecting {best_name} (Female) because text implies Male.")
                      best_name = None
                      rejection_reason = "Gender Mismatch (F->M)"
-
-        if best_name:
-            final_decision = best_name
-            speaker_mapping[speaker_label] = best_name
-            print(f"[Identify] {speaker_label} -> {best_name} (score: {best_score:.2f}, voice: {bool(voice_scores)})")
-            
-            # Auto-Learning logic (Restored)
-            voice_conf = voice_scores.get(best_name, 0)
-            if voice_available and segment_embedding:
-                # BUGFIX: Increased voice_conf strictness from 0.55 to 0.70 to prevent profile pollution
-                if 0.70 <= voice_conf <= 0.85 and best_score > 0.65:
-                     try:
-                         print(f"[AutoLearn] Autonomous Reinforcement triggered for {best_name}!")
-                         # Write directly to Supabase (primary store)
-                         from supabase_embeddings import add_embedding, is_duplicate as emb_is_dup
-                         member_ref = db.collection("members").where("displayName", "==", best_name).limit(1).get()
-                         member_id_for_learn = member_ref[0].id if member_ref else ""
-                         if not emb_is_dup(best_name, segment_embedding, threshold=0.95):
-                             add_embedding(best_name, segment_embedding, member_id_for_learn, sample_source="auto_learn")
-                             from supabase_embeddings import get_embedding_count
-                             count = get_embedding_count(best_name)
-                             # Update Firestore metadata only
-                             if member_ref:
-                                 member_ref[0].reference.update({
-                                     "lastVoiceUpdate": datetime.now().isoformat(),
-                                     "voiceSampleCount": count
-                                 })
-                             print(f"[AutoLearn] Successfully learned new sample for {best_name} ({count} total)")
-                         else:
-                             print(f"[AutoLearn] Skipping duplicate for {best_name}")
-                     except Exception as e:
-                         print(f"[AutoLearn] Failed to auto-learn: {e}")
-        else:
-            unidentified.append((speaker_label, combined_text))
-            if rejection_reason:
-                print(f"[Identify] Unidentified {speaker_label}: {rejection_reason}")
-    
-    # For remaining unidentified, make ONE batch GROQ call
-    if unidentified and len(unidentified) <= 5:
-        try:
-            import json as json_lib
-            groq_api_key = os.environ.get("GROQ_API_KEY")
-            if groq_api_key:
-                batch_prompt = f"""Analyse ces segments de transcription d'une réunion CCE.
-Membres présents: {', '.join(known_member_names)}
-
-Pour chaque intervenant, identifie qui parle:
-"""
-                for label, text in unidentified:
-                    batch_prompt += f"\n{label}: \"{text[:200]}...\""
-                
-                batch_prompt += """
-
-Retourne un JSON simple avec le mapping: {"S0": "Nom Complet", "S1": "Autre Nom"}
-UNIQUEMENT le JSON, sans explication."""
-                
-                response = requests.post(
-                    "https://api.groq.com/openai/v1/chat/completions",
-                    headers={
-                        "Authorization": f"Bearer {groq_api_key}",
-                        "Content-Type": "application/json"
-                    },
-                    json={
-                        "model": "llama-3.1-8b-instant",
-                        "messages": [{"role": "user", "content": batch_prompt}],
-                        "temperature": 0.3,
-                        "max_tokens": 200
-                    },
-                    timeout=30
-                )
-                
-                if response.ok:
-                    result = response.json()
-                    content = result["choices"][0]["message"]["content"]
-                    groq_mapping = json_lib.loads(content)
-                    
-                    for label, name in groq_mapping.items():
-                        if name in known_member_names and label not in speaker_mapping:
-                            speaker_mapping[label] = name
-                            print(f"[Identify] {label} -> {name} (GROQ batch)")
-        except Exception as groq_err:
-            print(f"[Identify] GROQ batch failed: {groq_err}")
-    
-    print(f"[Identify] Identified {len(speaker_mapping)} speakers")
-    
-    # Apply mapping to segments
-    identified_segments = []
-    for segment in segments:
-        new_segment = segment.copy()
-        original_speaker = segment.get("speaker", "S0")
-        new_segment["speaker"] = speaker_mapping.get(original_speaker, original_speaker)
-        new_segment["original_speaker"] = original_speaker
-        identified_segments.append(new_segment)
-    
-    # Rebuild text with identified names
-    full_text_parts = []
-    for seg in identified_segments:
-        start_seconds = seg['start']
-        m = int(start_seconds // 60)
-        s = int(start_seconds % 60)
-        timestamp = f"[{m:02d}:{s:02d}]"
-        
-        speaker_label = f"[{seg['speaker']}]"
-        full_text_parts.append(f"{timestamp} {speaker_label} {seg['text']}")
-    
-    return {
-        "text": "\n\n".join(full_text_parts),
-        "segments": identified_segments,
-        "duration_seconds": formatted_output.get("duration_seconds", 0),
-        "speaker_mapping": speaker_mapping
-    }
+ 
+         if best_name:
+             final_decision = best_name
+             speaker_mapping[speaker_label] = best_name
+             print(f"[Identify] {speaker_label} -> {best_name} (score: {best_score:.2f}, voice: {bool(voice_scores)})")
+             
+             # Auto-Learning logic (Restored)
+             voice_conf = voice_scores.get(best_name, 0)
+             if voice_available and segment_embedding:
+                 # BUGFIX: Increased voice_conf strictness from 0.55 to 0.70 to prevent profile pollution
+                 if 0.70 <= voice_conf <= 0.85 and best_score > 0.65:
+                      try:
+                          print(f"[AutoLearn] Autonomous Reinforcement triggered for {best_name}!")
+                          # Write directly to Supabase (primary store)
+                          from supabase_embeddings import add_embedding, is_duplicate as emb_is_dup
+                          member_ref = db.collection("members").where("displayName", "==", best_name).limit(1).get()
+                          member_id_for_learn = member_ref[0].id if member_ref else ""
+                          if not emb_is_dup(best_name, segment_embedding, threshold=0.95):
+                              add_embedding(best_name, segment_embedding, member_id_for_learn, sample_source="auto_learn")
+                              from supabase_embeddings import get_embedding_count
+                              count = get_embedding_count(best_name)
+                              # Update Firestore metadata only
+                              if member_ref:
+                                  member_ref[0].reference.update({
+                                      "lastVoiceUpdate": datetime.now().isoformat(),
+                                      "voiceSampleCount": count
+                                  })
+                              print(f"[AutoLearn] Successfully learned new sample for {best_name} ({count} total)")
+                          else:
+                              print(f"[AutoLearn] Skipping duplicate for {best_name}")
+                      except Exception as e:
+                          print(f"[AutoLearn] Failed to auto-learn: {e}")
+         else:
+             unidentified.append((speaker_label, combined_text))
+             if rejection_reason:
+                 print(f"[Identify] Unidentified {speaker_label}: {rejection_reason}")
+     
+     # For remaining unidentified, make ONE batch GROQ call
+     if unidentified and len(unidentified) <= 5:
+         try:
+             import json as json_lib
+             groq_api_key = os.environ.get("GROQ_API_KEY")
+             if groq_api_key:
+                 batch_prompt = f"""Analyse ces segments de transcription d'une réunion CCE.
+ Membres présents: {', '.join(known_member_names)}
+ 
+ Pour chaque intervenant, identifie qui parle:
+ """
+                 for label, text in unidentified:
+                     batch_prompt += f"\n{label}: \"{text[:200]}...\""
+                 
+                 batch_prompt += """
+ 
+ Retourne un JSON simple avec le mapping: {"S0": "Nom Complet", "S1": "Autre Nom"}
+ UNIQUEMENT le JSON, sans explication."""
+                 
+                 response = requests.post(
+                     "https://api.groq.com/openai/v1/chat/completions",
+                     headers={
+                         "Authorization": f"Bearer {groq_api_key}",
+                         "Content-Type": "application/json"
+                     },
+                     json={
+                         "model": "llama-3.1-8b-instant",
+                         "messages": [{"role": "user", "content": batch_prompt}],
+                         "temperature": 0.3,
+                         "max_tokens": 200
+                     },
+                     timeout=30
+                 )
+                 
+                 if response.ok:
+                     result = response.json()
+                     content = result["choices"][0]["message"]["content"]
+                     groq_mapping = json_lib.loads(content)
+                     
+                     for label, name in groq_mapping.items():
+                         if name in known_member_names and label not in speaker_mapping:
+                             speaker_mapping[label] = name
+                             print(f"[Identify] {label} -> {name} (GROQ batch)")
+         except Exception as groq_err:
+             print(f"[Identify] GROQ batch failed: {groq_err}")
+     
+     print(f"[Identify] Identified {len(speaker_mapping)} speakers")
+     
+     # Apply mapping to segments
+     identified_segments = []
+     for segment in segments:
+         new_segment = segment.copy()
+         original_speaker = segment.get("speaker", "S0")
+         new_segment["speaker"] = speaker_mapping.get(original_speaker, original_speaker)
+         new_segment["original_speaker"] = original_speaker
+         identified_segments.append(new_segment)
+     
+     # Rebuild text with identified names
+     full_text_parts = []
+     for seg in identified_segments:
+         start_seconds = seg['start']
+         m = int(start_seconds // 60)
+         s = int(start_seconds % 60)
+         timestamp = f"[{m:02d}:{s:02d}]"
+         
+         speaker_label = f"[{seg['speaker']}]"
+         full_text_parts.append(f"{timestamp} {speaker_label} {seg['text']}")
+     
+     return {
+         "text": "\n\n".join(full_text_parts),
+         "segments": identified_segments,
+         "duration_seconds": formatted_output.get("duration_seconds", 0),
+         "speaker_mapping": speaker_mapping
+     }

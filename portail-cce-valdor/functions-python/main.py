@@ -3567,3 +3567,40 @@ def get_ml_dashboard(req: https_fn.CallableRequest) -> dict:
             message=str(e)
         )
 
+
+# -----------------------------------------------------------------------------
+# Clean and optimize speaker embeddings (Active ML maintenance)
+# -----------------------------------------------------------------------------
+@https_fn.on_call(
+    timeout_sec=540,
+    memory=options.MemoryOption.GB_1,
+)
+def clean_and_optimize_speaker_embeddings(req: https_fn.CallableRequest) -> dict:
+    """
+    Firebase Cloud Function to clean and optimize all speaker voice embeddings,
+    purging outliers, overlaps and duplicates to make profiles robust.
+    """
+    if not req.auth:
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.UNAUTHENTICATED,
+            message="Authentication required."
+        )
+
+    try:
+        global db
+        if db is None:
+            db = firestore.client()
+
+        from active_learning import clean_and_optimize_all_speaker_embeddings as clean_fn
+        results = clean_fn(db_client=db)
+        return results
+
+    except Exception as e:
+        print(f"[ML Maintenance] Error: {e}")
+        import traceback
+        traceback.print_exc()
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.INTERNAL,
+            message=str(e)
+        )
+

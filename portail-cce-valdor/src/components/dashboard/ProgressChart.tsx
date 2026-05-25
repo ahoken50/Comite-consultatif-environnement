@@ -27,7 +27,7 @@ const ProgressChart: React.FC<ProgressChartProps> = ({ data }) => {
                 <div style={{ width: '100%', height: 300 }}>
                     {hasData ? (
                         isMounted ? (
-                            <ResponsiveContainer width="99%" height="100%" minWidth={0} minHeight={0}>
+                            <ResponsiveContainer width="99%" height={300}>
                             <LineChart data={data} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
                                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
                                 <XAxis dataKey="name" axisLine={false} tickLine={false} />

@@ -311,3 +311,15 @@ def _cap_embeddings(supabase, speaker_name: str, max_count: int = 20):
             print(f"[SupabaseEmb] Capped: removed {len(to_delete)} oldest for '{speaker_name}'")
     except Exception as e:
         print(f"[SupabaseEmb] Cap error: {e}")
+
+
+def delete_embedding_by_id(embedding_id: str) -> bool:
+    """Delete a single embedding vector by its database row UUID."""
+    try:
+        supabase = _get_supabase_client()
+        supabase.table("speaker_embeddings").delete().eq("id", embedding_id).execute()
+        print(f"[SupabaseEmb] Deleted embedding row {embedding_id}")
+        return True
+    except Exception as e:
+        print(f"[SupabaseEmb] Error deleting embedding {embedding_id}: {e}")
+        return False
