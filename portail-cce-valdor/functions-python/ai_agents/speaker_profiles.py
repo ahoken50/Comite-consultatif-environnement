@@ -40,7 +40,7 @@ def get_enrolled_speakers() -> list:
             test_result = supabase.table("speaker_embeddings").select("id").limit(1).execute()
             supabase_phase2_ready = True
         except:
-            -- Phase 2 not deployed yet
+            # Phase 2 not deployed yet
             print("[Speakers Phase 2] Supabase Phase 2 tables not found")
             
             # Try auto-migration
