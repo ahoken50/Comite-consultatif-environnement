@@ -771,7 +771,7 @@ const generateHTMLDocument = (meeting: Meeting, _globalNotes?: string, enrichedS
             <div class="signature-block">
                 <div class="signature-line">
                 ${(() => {
-            const sig = enrichedSignatures.find(s => s.role === 'president' || s.role === 'elected_official' || s.role === 'vice_president');
+            const sig = enrichedSignatures.find(s => s.role === 'president' || s.role === 'vice_president');
             if (sig) {
                 if (sig.signatureUrl) {
                     return `<img src="${sig.signatureUrl}" crossorigin="anonymous" style="max-width: 200px; max-height: 70px; object-fit: contain; margin-bottom: 2px;" />`;
@@ -784,10 +784,10 @@ const generateHTMLDocument = (meeting: Meeting, _globalNotes?: string, enrichedS
         })()}
                 </div>
                 <div class="signature-name">${(() => {
-            const sig = enrichedSignatures.find(s => s.role === 'president' || s.role === 'elected_official' || s.role === 'vice_president');
+            const sig = enrichedSignatures.find(s => s.role === 'president' || s.role === 'vice_president');
             return sig ? sig.signedByName : presidentName;
         })()}</div>
-                <div class="signature-role">Président(e) / Élu(e) Responsable</div>
+                <div class="signature-role">Présidente</div>
             </div>
             <div class="signature-block">
                 <div class="signature-line">
@@ -808,7 +808,7 @@ const generateHTMLDocument = (meeting: Meeting, _globalNotes?: string, enrichedS
             const sig = enrichedSignatures.find(s => s.role === 'coordinator' || s.role === 'admin_bypass');
             return sig ? sig.signedByName : secretaryName;
         })()}</div>
-                <div class="signature-role">Secrétaire / Coordonnateur</div>
+                <div class="signature-role">Secrétaire</div>
             </div>
         </section>
     </div>

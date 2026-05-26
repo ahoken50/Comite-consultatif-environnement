@@ -583,7 +583,7 @@ export const generateResolutionHTML = (
         <div class="sig-block">
             <div class="sig-line">
             ${(() => {
-                const sig = enrichedSignatures.find(s => s.role === 'president' || s.role === 'elected_official' || s.role === 'vice_president');
+                const sig = enrichedSignatures.find(s => s.role === 'president' || s.role === 'vice_president');
                 if (sig) {
                     if (sig.signatureUrl) {
                         return '<img src="' + sig.signatureUrl + '" crossorigin="anonymous" onerror="this.remove()" style="max-width: 200px; max-height: 70px; object-fit: contain; margin-bottom: 2px;" />';
@@ -596,10 +596,10 @@ export const generateResolutionHTML = (
             })()}
             </div>
             <div class="sig-name">${(() => {
-                const sig = enrichedSignatures.find(s => s.role === 'president' || s.role === 'elected_official' || s.role === 'vice_president');
+                const sig = enrichedSignatures.find(s => s.role === 'president' || s.role === 'vice_president');
                 return sig ? sig.signedByName : presidentName;
             })()}</div>
-            <div class="sig-role">Président(e) / Élu(e) Responsable</div>
+            <div class="sig-role">Présidente</div>
         </div>
         <div class="sig-block">
             <div class="sig-line">
@@ -620,7 +620,7 @@ export const generateResolutionHTML = (
                 const sig = enrichedSignatures.find(s => s.role === 'coordinator' || s.role === 'admin_bypass');
                 return sig ? sig.signedByName : secretaryName;
             })()}</div>
-            <div class="sig-role">Secrétaire / Coordonnateur</div>
+            <div class="sig-role">Secrétaire</div>
         </div>
     </div>
     ` : `
