@@ -63,7 +63,7 @@ const ApprovalRequestDialog: React.FC<ApprovalRequestDialogProps> = ({ open, onC
     const substitutes = members.filter(m => m.isActive && m.isSubstitute);
     const coordinators = members.filter(m => m.isActive && m.role === 'coordinator'); // For testing
 
-    const hasCandidates = isCircular ? circularCandidates.length > 0 : (presidents.length > 0 || elected.length > 0 || substitutes.length > 0 || coordinators.length > 0);
+    const hasCandidates = isCircular ? (circularCandidates.length > 0 || coordinators.length > 0) : (presidents.length > 0 || elected.length > 0 || substitutes.length > 0 || coordinators.length > 0);
 
     const handleSend = async () => {
         if (!selectedMemberId) return;
@@ -140,6 +140,16 @@ const ApprovalRequestDialog: React.FC<ApprovalRequestDialogProps> = ({ open, onC
                                             {m.displayName} ({m.role === 'president' ? 'Président' : m.role === 'vice_president' ? 'Vice-Président' : m.role === 'elected_official' ? 'Élu' : 'Membre'})
                                         </MenuItem>
                                     ))}
+
+                                    {/* Tests (Coordination / Secrétariat) */}
+                                    {coordinators.length > 0 && [
+                                        <ListSubheader key="header-test-circular" style={{ pointerEvents: 'none' }}>Tests (Coordination / Secrétariat)</ListSubheader>,
+                                        ...coordinators.map(m => (
+                                            <MenuItem key={m.id} value={m.id}>
+                                                🧪 Envoyer un test à : {m.displayName} (Secrétaire)
+                                            </MenuItem>
+                                        ))
+                                    ]}
                                 </>
                             ) : (
                                 <>
