@@ -5,7 +5,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 import type { AppDispatch } from '../../store/store';
 import type { RootState } from '../../store/rootReducer';
-import { fetchMeetings, createMeeting, deleteMeeting } from '../../features/meetings/meetingsSlice';
+import { fetchMeetings, createMeeting, deleteMeeting, updateMeeting } from '../../features/meetings/meetingsSlice';
 import { fetchProjects } from '../../features/projects/projectsSlice';
 import MeetingCard from '../../components/meetings/MeetingCard';
 import MeetingForm from '../../components/meetings/MeetingForm';
@@ -29,28 +29,32 @@ const MeetingsPage: React.FC = () => {
     }, [dispatch]);
 
     // Form data might not have IDs for new items yet
-    const handleCreateMeeting = async (data: Omit<Partial<Meeting>, 'agendaItems'> & { agendaItems?: Partial<AgendaItem>[] }) => {
+    const handleCreateMeeting = async (data: Omit<Partial<Meeting>, 'agendaItems'> & { agendaItems?: Partial<AgendaItem>[], consignedMeetingIdsToUpdate?: string[] }) => {
         try {
+            const { consignedMeetingIdsToUpdate, ...meetingData } = data;
             const resultAction = await dispatch(createMeeting({
-                ...data,
+                ...meetingData,
                 // Ensure array even if not provided
-                attendees: data.attendees || [],
+                attendees: meetingData.attendees || [],
                 // agendaItems is part of data from SmartPlanning
                 minutes: '',
             } as Meeting));
 
             if (createMeeting.fulfilled.match(resultAction)) {
+                const newMeetingId = resultAction.payload.id;
                 setIsFormOpen(false);
                 setIsSmartPlanningOpen(false);
                 showSuccess('Réunion créée avec succès !');
 
-                // Indexing is now handled automatically by Cloud Functions (Supabase)
-                /*
-                const newMeetingId = resultAction.payload.id;
-                if (newMeetingId) {
-                   // Trigger background sync if needed
+                // If we consigned circular meetings, link them to the new meeting
+                if (consignedMeetingIdsToUpdate && consignedMeetingIdsToUpdate.length > 0 && newMeetingId) {
+                    for (const circularId of consignedMeetingIdsToUpdate) {
+                        await dispatch(updateMeeting({
+                            id: circularId,
+                            updates: { consignedMeetingId: newMeetingId }
+                        })).unwrap();
+                    }
                 }
-                */
             } else {
                 showError('Erreur lors de la création de la réunion');
             }

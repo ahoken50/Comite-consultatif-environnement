@@ -36,6 +36,7 @@ const SmartPlanningDialog: React.FC<SmartPlanningDialogProps> = ({ open, onClose
     const { items: meetings } = useSelector((state: RootState) => state.meetings);
 
     const [selectedProjects, setSelectedProjects] = useState<Record<string, boolean>>({});
+    const [selectedCirculars, setSelectedCirculars] = useState<Record<string, boolean>>({});
     const [includeReview, setIncludeReview] = useState(true);
     const [includeVaria, setIncludeVaria] = useState(true);
     const [includeQuestions, setIncludeQuestions] = useState(true);
@@ -56,6 +57,15 @@ const SmartPlanningDialog: React.FC<SmartPlanningDialogProps> = ({ open, onClose
             !standardTitles.some(t => item.title.toLowerCase().includes(t.toLowerCase()))
         );
     }, [lastCompletedMeeting]);
+
+    // Find approved circular meetings that have not been consigned
+    const approvedCircularMeetings = useMemo(() => {
+        return meetings.filter(m => 
+            m.type === 'circular' && 
+            m.approvalStatus === 'approved' && 
+            !m.consignedMeetingId
+        );
+    }, [meetings]);
 
     const [meetingDate, setMeetingDate] = useState(() => {
         const d = new Date();
@@ -82,8 +92,14 @@ const SmartPlanningDialog: React.FC<SmartPlanningDialogProps> = ({ open, onClose
                 initialSelection[p.id] = !!isPriority;
             });
             setSelectedProjects(initialSelection);
+
+            const initialCirculars: Record<string, boolean> = {};
+            approvedCircularMeetings.forEach(m => {
+                initialCirculars[m.id] = true; // Auto-select to ensure consignation
+            });
+            setSelectedCirculars(initialCirculars);
         }
-    }, [open, activeProjects]);
+    }, [open, activeProjects, approvedCircularMeetings]);
 
     const handleProjectToggle = (id: string) => {
         setSelectedProjects(prev => ({ ...prev, [id]: !prev[id] }));
@@ -109,6 +125,20 @@ const SmartPlanningDialog: React.FC<SmartPlanningDialogProps> = ({ open, onClose
                 presenter: 'Secrétaire',
                 objective: 'Décision',
                 order: order++
+            });
+
+            // Consign approved circular resolutions
+            approvedCircularMeetings.forEach(m => {
+                if (selectedCirculars[m.id]) {
+                    agendaItems.push({
+                        title: `Consignation de la résolution écrite : ${m.title}`,
+                        description: `Consignation formelle au procès-verbal de la résolution écrite adoptée hors séance par consensus unanime (100% des membres votants) le ${new Date(m.date).toLocaleDateString()}.\nPreuves de consentement archivées sous l'ID : ${m.id}`,
+                        duration: 5,
+                        presenter: 'Secrétaire',
+                        objective: 'Information',
+                        order: order++
+                    });
+                }
             });
         }
 
@@ -174,13 +204,18 @@ const SmartPlanningDialog: React.FC<SmartPlanningDialogProps> = ({ open, onClose
             order: order++
         });
 
+        const consignedMeetingIdsToUpdate = approvedCircularMeetings
+            .filter(m => selectedCirculars[m.id])
+            .map(m => m.id);
+
         const meetingData = {
             title: `Réunion CCE du ${new Date(meetingDate).toLocaleDateString()}`,
             date: meetingDate + 'T19:00:00', // Default 7 PM
             type: 'regular',
             status: 'scheduled',
             location: 'Salle du Conseil (Hôtel de Ville)', // Default
-            agendaItems
+            agendaItems,
+            consignedMeetingIdsToUpdate
         };
 
         onConfirm(meetingData);
@@ -231,6 +266,36 @@ const SmartPlanningDialog: React.FC<SmartPlanningDialogProps> = ({ open, onClose
                                 label="Inclure période de questions"
                             />
                         </FormGroup>
+                        {approvedCircularMeetings.length > 0 && (
+                            <Box sx={{ mt: 3 }}>
+                                <Typography variant="subtitle2" color="primary.main" fontWeight="bold" gutterBottom>
+                                    Résolutions écrites à consigner
+                                </Typography>
+                                <FormGroup sx={{ gap: 1 }}>
+                                    {approvedCircularMeetings.map(m => (
+                                        <FormControlLabel
+                                            key={m.id}
+                                            control={
+                                                <Checkbox 
+                                                    checked={!!selectedCirculars[m.id]} 
+                                                    onChange={(e) => setSelectedCirculars(prev => ({ ...prev, [m.id]: e.target.checked }))} 
+                                                />
+                                            }
+                                            label={
+                                                <Box>
+                                                    <Typography variant="body2" fontWeight="medium">
+                                                        {m.title}
+                                                    </Typography>
+                                                    <Typography variant="caption" color="text.secondary">
+                                                        Adoptée hors séance le {new Date(m.date).toLocaleDateString()}
+                                                    </Typography>
+                                                </Box>
+                                            }
+                                        />
+                                    ))}
+                                </FormGroup>
+                            </Box>
+                        )}
                     </Grid>
                     <Grid size={{ xs: 12, md: 6 }}>
                         <Typography variant="subtitle1" gutterBottom fontWeight="bold" sx={{ display: 'flex', justifyContent: 'space-between' }}>

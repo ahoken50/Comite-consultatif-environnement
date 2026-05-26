@@ -732,12 +732,15 @@ const generateHTMLDocument = (meeting: Meeting, _globalNotes?: string, enrichedS
                 <img src="/logo-cce.png" alt="Logo CCE" class="logo-cce" onerror="this.style.display='none';">
             </div>
             
-            <h1>Procès-Verbal</h1>
+            <h1>${meeting.type === 'circular' ? 'Procès-Verbal Spécial' : 'Procès-Verbal'}</h1>
             <h2>Comité Consultatif en Environnement (CCE)</h2>
             <div class="meeting-info">
-                <strong class="assembly-number">${meetingNum.replace(/^0/, '')}e assemblée ordinaire</strong><br>
-                Tenue le ${dayName} ${dayOfMonth} ${monthName} ${year}, ${timeStr}<br>
-                ${meeting.location || 'Salle de conférence des bureaux du Service permis, inspection et environnement'}
+                ${meeting.type === 'circular'
+                    ? `<strong>Résolution Écrite Adoptée Hors Séance</strong><br>Adoptée le ${dayName} ${dayOfMonth} ${monthName} ${year}`
+                    : `<strong class="assembly-number">${meetingNum.replace(/^0/, '')}e assemblée ${meeting.type === 'special' ? 'extraordinaire' : 'ordinaire'}</strong><br>
+                       Tenue le ${dayName} ${dayOfMonth} ${monthName} ${year}, ${timeStr}<br>
+                       ${meeting.location || 'Salle de conférence des bureaux du Service permis, inspection et environnement'}`
+                }
             </div>
         </header>
 
@@ -766,6 +769,73 @@ const generateHTMLDocument = (meeting: Meeting, _globalNotes?: string, enrichedS
         <!-- CONTENU -->
         ${sectionsHTML}
 
+        ${meeting.type === 'circular' ? `
+        <!-- SIGNATURES CIRCULAIRES -->
+        <h3 style="margin-top: 30px; border-bottom: 2px solid #1a365d; padding-bottom: 5px; font-size: 1.1em; color: #1a365d; page-break-inside: avoid; page-break-after: avoid;">CONSENTEMENTS ET SIGNATURES (100% UNANIMITÉ)</h3>
+        <div class="circular-signatures-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 15px; margin-bottom: 30px;">
+            ${(() => {
+                const votingRoles = ['president', 'vice_president', 'member'];
+                const votingMembers = members.filter(m => m.isActive && votingRoles.includes(m.role));
+                
+                const displayMembers = votingMembers.length > 0 ? votingMembers : (meeting.approvalSignatures || []).map(s => ({
+                    id: s.signedBy,
+                    displayName: s.signedByName,
+                    role: s.role,
+                    signatureUrl: undefined
+                }));
+
+                return displayMembers.map(m => {
+                    const sig = enrichedSignatures.find(s => s.signedBy === m.id);
+                    const hasSigned = !!sig;
+                    
+                    let sigContent = '<div style="color: #c53030; font-weight: bold; font-style: italic; font-size: 0.9em;">En attente de signature</div>';
+                    let traceContent = '';
+                    
+                    if (hasSigned) {
+                        if (sig.consentType === 'email') {
+                            sigContent = `<div class="digital-signature" style="color: #2b6cb0; border: 1px dashed #2b6cb0; padding: 6px; border-radius: 4px; font-size: 0.8em; background-color: #ebf8ff; line-height: 1.3;">
+                                <strong>Accord écrit consigné</strong><br>
+                                le ${new Date(sig.signedAt).toLocaleDateString('fr-CA')}<br>
+                                par la coordination
+                            </div>`;
+                            if (sig.emailConsentText) {
+                                traceContent = `<div class="email-trace" style="margin-top: 8px; font-size: 0.7em; color: #4a5568; background: #f7fafc; padding: 6px; border: 1px solid #e2e8f0; border-radius: 4px; white-space: pre-wrap; font-family: monospace; max-height: 90px; overflow: hidden; text-overflow: ellipsis; text-align: left; line-height: 1.2;">
+                                    <strong>Preuve de traçabilité :</strong><br>
+                                    ${sig.emailConsentText}
+                                </div>`;
+                            }
+                        } else {
+                            if (sig.signatureUrl) {
+                                sigContent = `<img src="${sig.signatureUrl}" crossorigin="anonymous" style="max-width: 180px; max-height: 55px; object-fit: contain; margin-bottom: 2px;" />`;
+                            } else {
+                                const dt = sig.signedAt ? new Date(sig.signedAt) : new Date();
+                                const dateStr = !isNaN(dt.getTime()) ? dt.toLocaleDateString('fr-CA') : '';
+                                sigContent = `<div class="digital-signature" style="color: #2f855a; border: 1px solid #2f855a; padding: 6px; border-radius: 4px; font-size: 0.8em; background-color: #f0fff4; line-height: 1.3;">
+                                    <strong>Signature Électronique</strong><br>
+                                    le ${dateStr}
+                                </div>`;
+                            }
+                        }
+                    }
+
+                    return `
+                        <div class="signature-block" style="border: 1px solid #e2e8f0; padding: 12px; border-radius: 6px; background: #fff; page-break-inside: avoid; text-align: center;">
+                            <div style="font-weight: bold; border-bottom: 1px solid #edf2f7; padding-bottom: 4px; margin-bottom: 8px; font-size: 0.9em; text-align: left;">
+                                ${m.displayName}
+                                <span style="font-size: 0.8em; font-weight: normal; color: #718096; display: block; margin-top: 2px;">
+                                    ${getRoleLabelPDF(m.role, m.displayName).toUpperCase()}
+                                </span>
+                            </div>
+                            <div class="signature-line" style="min-height: 60px; display: flex; align-items: center; justify-content: center;">
+                                ${sigContent}
+                            </div>
+                            ${traceContent}
+                        </div>
+                    `;
+                }).join('');
+            })()}
+        </div>
+        ` : `
         <!-- SIGNATURES -->
         <section class="signatures">
             <div class="signature-block">
@@ -811,6 +881,7 @@ const generateHTMLDocument = (meeting: Meeting, _globalNotes?: string, enrichedS
                 <div class="signature-role">Secrétaire</div>
             </div>
         </section>
+        `}
     </div>
 </body>
 </html>`;

@@ -1,7 +1,8 @@
 export const MeetingType = {
     REGULAR: 'regular',
     SPECIAL: 'special',
-    URGENT: 'urgent'
+    URGENT: 'urgent',
+    CIRCULAR: 'circular'
 } as const;
 
 export type MeetingType = typeof MeetingType[keyof typeof MeetingType];
@@ -119,16 +120,19 @@ export interface Meeting {
     approvalStatus?: 'draft' | 'waiting_approval' | 'approved' | 'final';
     approvalSignatures?: ApprovalSignature[];
     isApprovalAvailable?: boolean; // Controls if non-coordinators can see/use sign buttons
+    consignedMeetingId?: string; // ID of the regular meeting where this circular meeting was consigned
 
     dateCreated: string;
     dateUpdated: string;
 }
 
 export interface ApprovalSignature {
-    role: 'president' | 'elected_official' | 'coordinator' | 'admin_bypass';
+    role: 'president' | 'elected_official' | 'coordinator' | 'admin_bypass' | 'member' | 'vice_president';
     signedBy: string; // User ID
     signedByName: string;
     signedAt: string; // ISO string
+    consentType?: 'digital' | 'email';
+    emailConsentText?: string;
 }
 
 // RSVP and Quorum types

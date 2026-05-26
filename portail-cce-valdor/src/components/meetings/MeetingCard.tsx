@@ -30,6 +30,7 @@ const MeetingCard: React.FC<MeetingCardProps> = React.memo(({ meeting, onClick, 
             case MeetingType.REGULAR: return 'Régulière';
             case MeetingType.SPECIAL: return 'Spéciale';
             case MeetingType.URGENT: return 'Urgence';
+            case MeetingType.CIRCULAR: return 'PV Spécial (Résolution Écrite)';
             default: return type;
         }
     };

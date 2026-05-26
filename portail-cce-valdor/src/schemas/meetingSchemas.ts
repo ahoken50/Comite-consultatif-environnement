@@ -8,7 +8,8 @@ import { MeetingType, MeetingStatus } from '../types/meeting.types';
 export const MeetingTypeSchema = z.enum([
     MeetingType.REGULAR,
     MeetingType.SPECIAL,
-    MeetingType.URGENT
+    MeetingType.URGENT,
+    MeetingType.CIRCULAR
 ]);
 
 export const MeetingStatusSchema = z.enum([
@@ -69,10 +70,12 @@ export const AttendeeSchema = z.object({
 });
 
 export const ApprovalSignatureSchema = z.object({
-    role: z.enum(['president', 'elected_official', 'coordinator']),
+    role: z.enum(['president', 'elected_official', 'coordinator', 'admin_bypass', 'member', 'vice_president']),
     signedBy: z.string(),
     signedByName: z.string(),
-    signedAt: z.string() // ISO Date
+    signedAt: z.string(), // ISO Date
+    consentType: z.enum(['digital', 'email']).optional(),
+    emailConsentText: z.string().optional()
 });
 
 // ==========================================
@@ -130,6 +133,7 @@ export const MeetingSchema = z.object({
 
     approvalStatus: z.enum(['draft', 'waiting_approval', 'approved', 'final']).optional(),
     approvalSignatures: z.array(ApprovalSignatureSchema).optional(),
+    consignedMeetingId: z.string().optional(),
 
     dateCreated: z.string(),
     dateUpdated: z.string()

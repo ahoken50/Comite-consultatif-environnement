@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import {
     Box, Paper, Typography, Button, Stepper, Step, StepLabel, Chip,
-    Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions, FormControlLabel, Switch, Alert, CircularProgress
+    Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions, FormControlLabel, Switch, Alert, CircularProgress,
+    LinearProgress, Avatar, TextField, Tooltip, IconButton
 } from '@mui/material';
-import { Gavel, VerifiedUser, HowToReg, AdminPanelSettings, Warning, PictureAsPdf } from '@mui/icons-material';
+import { Gavel, VerifiedUser, HowToReg, AdminPanelSettings, Warning, PictureAsPdf, Email, CheckCircle, Close } from '@mui/icons-material';
 import type { Member, MemberRole } from '../../types/member.types';
-import type { Meeting } from '../../types/meeting.types';
+import type { Meeting, ApprovalSignature } from '../../types/meeting.types';
 
 interface MeetingApprovalCardProps {
     meeting: Meeting;
@@ -17,13 +18,383 @@ interface MeetingApprovalCardProps {
 const APPROVAL_ROLES: MemberRole[] = ['coordinator', 'president', 'vice_president', 'elected_official'];
 
 import { updateMeeting } from '../../features/meetings/meetingsSlice';
-import { useDispatch } from 'react-redux';
+import { useDispatch, useSelector } from 'react-redux';
 import type { AppDispatch } from '../../store/store';
+import type { RootState } from '../../store/rootReducer';
+import { fetchMembers } from '../../features/members/membersSlice';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { db } from '../../services/firebase';
 import { generateExtractAndUpload, fetchEnrichedSignatures } from '../../services/pdfServiceExtract';
 
-// ... (existing helper functions)
+interface CircularApprovalFlowProps {
+    meeting: Meeting;
+    currentUser: Member | null;
+}
+
+const CircularApprovalFlow: React.FC<CircularApprovalFlowProps> = ({ meeting, currentUser }) => {
+    const dispatch = useDispatch<AppDispatch>();
+    const { items: members } = useSelector((state: RootState) => state.members);
+    const [consignDialogOpen, setConsignDialogOpen] = useState(false);
+    const [selectedMember, setSelectedMember] = useState<Member | null>(null);
+    const [emailText, setEmailText] = useState('');
+    const [viewEmailOpen, setViewEmailOpen] = useState(false);
+    const [activeEmailText, setActiveEmailText] = useState('');
+    const [activeEmailMemberName, setActiveEmailMemberName] = useState('');
+    const [isGeneratingExtraits, setIsGeneratingExtraits] = useState(false);
+
+    useEffect(() => {
+        if (members.length === 0) {
+            dispatch(fetchMembers());
+        }
+    }, [dispatch, members.length]);
+
+    const votingMembers = members.filter((m: Member) => m.isActive && ['president', 'vice_president', 'member'].includes(m.role));
+    const signatures = meeting.approvalSignatures || [];
+
+    const getMemberSignature = (memberId: string) => {
+        return signatures.find(s => s.signedBy === memberId);
+    };
+
+    const totalVoting = votingMembers.length;
+    const signedCount = votingMembers.filter((m: Member) => getMemberSignature(m.id)).length;
+    const consensusPercentage = totalVoting > 0 ? Math.round((signedCount / totalVoting) * 100) : 0;
+    const isFullyApproved = signedCount === totalVoting && totalVoting > 0;
+
+    const isCoordinator = currentUser?.role === 'coordinator';
+    const isCurrentUserVoting = currentUser && currentUser.isActive && ['president', 'vice_president', 'member'].includes(currentUser.role);
+    const hasCurrentUserSigned = currentUser && !!getMemberSignature(currentUser.id);
+
+    const handleSelfSign = () => {
+        if (!currentUser) return;
+        const newSig: ApprovalSignature = {
+            role: currentUser.role as any,
+            signedBy: currentUser.id,
+            signedByName: currentUser.displayName,
+            signedAt: new Date().toISOString(),
+            consentType: 'digital' as const
+        };
+        const updatedSignatures = [...signatures, newSig];
+        const newSignedCount = votingMembers.filter((m: Member) => m.id === currentUser.id || getMemberSignature(m.id)).length;
+        const newStatus = newSignedCount === totalVoting ? 'approved' : 'waiting_approval';
+
+        dispatch(updateMeeting({
+            id: meeting.id,
+            updates: {
+                approvalSignatures: updatedSignatures,
+                approvalStatus: newStatus as any
+            }
+        }));
+    };
+
+    const handleOpenConsign = (member: Member) => {
+        setSelectedMember(member);
+        setEmailText('');
+        setConsignDialogOpen(true);
+    };
+
+    const handleCloseConsign = () => {
+        setConsignDialogOpen(false);
+        setSelectedMember(null);
+        setEmailText('');
+    };
+
+    const handleConfirmConsign = () => {
+        if (!selectedMember) return;
+        const newSig: ApprovalSignature = {
+            role: selectedMember.role as any,
+            signedBy: selectedMember.id,
+            signedByName: selectedMember.displayName,
+            signedAt: new Date().toISOString(),
+            consentType: 'email' as const,
+            emailConsentText: emailText
+        };
+        const updatedSignatures = [...signatures, newSig];
+        const newSignedCount = votingMembers.filter((m: Member) => m.id === selectedMember.id || getMemberSignature(m.id)).length;
+        const newStatus = newSignedCount === totalVoting ? 'approved' : 'waiting_approval';
+
+        dispatch(updateMeeting({
+            id: meeting.id,
+            updates: {
+                approvalSignatures: updatedSignatures,
+                approvalStatus: newStatus as any
+            }
+        }));
+        handleCloseConsign();
+    };
+
+    const handleRemoveSignature = (memberId: string) => {
+        const updatedSignatures = signatures.filter(s => s.signedBy !== memberId);
+        const newSignedCount = votingMembers.filter((m: Member) => m.id !== memberId && getMemberSignature(m.id)).length;
+        const newStatus = newSignedCount === totalVoting ? 'approved' : (newSignedCount > 0 ? 'waiting_approval' : 'draft');
+
+        dispatch(updateMeeting({
+            id: meeting.id,
+            updates: {
+                approvalSignatures: updatedSignatures,
+                approvalStatus: newStatus as any
+            }
+        }));
+    };
+
+    const handleViewEmail = (memberName: string, text: string) => {
+        setActiveEmailMemberName(memberName);
+        setActiveEmailText(text);
+        setViewEmailOpen(true);
+    };
+
+    const handleGenerateExtraits = async () => {
+        if (!meeting.agendaItems || meeting.agendaItems.length === 0) return;
+        setIsGeneratingExtraits(true);
+        try {
+            const enrichedSignatures = await fetchEnrichedSignatures(meeting);
+            let count = 0;
+            for (let i = 0; i < meeting.agendaItems.length; i++) {
+                const item = meeting.agendaItems[i];
+                const userName = currentUser?.displayName || 'Système';
+                await generateExtractAndUpload(meeting, item, userName, i + 1, enrichedSignatures);
+                count++;
+            }
+            alert(`Succès! ${count} extraits générés et enregistrés dans le registre.`);
+        } catch (error) {
+            console.error('Extraction error:', error);
+            alert("Erreur lors de la génération PDF.");
+        } finally {
+            setIsGeneratingExtraits(false);
+        }
+    };
+
+    const getRoleLabel = (role: string) => {
+        switch (role) {
+            case 'president': return 'Président(e)';
+            case 'vice_president': return 'Vice-Président(e)';
+            case 'member': return 'Membre Votant';
+            default: return role;
+        }
+    };
+
+    return (
+        <Paper sx={{ p: 3, mb: 3 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                    <Gavel color="primary" />
+                    <Typography variant="h6" fontWeight="bold">Résolution Écrite (Procès-Verbal Spécial)</Typography>
+                    {isFullyApproved && <Chip label="Unanimité Atteinte" color="success" size="small" />}
+                </Box>
+            </Box>
+
+            <Alert severity="info" sx={{ mb: 3 }}>
+                Conformément à l'article 1.3 du règlement, une résolution écrite doit être approuvée formellement par <strong>la totalité des membres ayant droit de vote (100%)</strong> pour posséder la même valeur qu'une résolution adoptée en séance.
+            </Alert>
+
+            {/* Progress and Stats */}
+            <Box sx={{ mb: 4, p: 2, bgcolor: 'background.default', borderRadius: 2, border: '1px solid', borderColor: 'divider' }}>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                    <Typography variant="subtitle2" color="text.secondary">Taux de consensus</Typography>
+                    <Typography variant="subtitle1" fontWeight="bold" color="primary.main">
+                        {consensusPercentage}% ({signedCount} / {totalVoting} votants)
+                    </Typography>
+                </Box>
+                <LinearProgress 
+                    variant="determinate" 
+                    value={consensusPercentage} 
+                    sx={{ height: 10, borderRadius: 5, bgcolor: '#e0e0e0', '& .MuiLinearProgress-bar': { borderRadius: 5 } }}
+                />
+            </Box>
+
+            {/* Voting Members List */}
+            <Typography variant="subtitle1" fontWeight="bold" sx={{ mb: 2 }}>Membres Votants et Statut des Signatures</Typography>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, mb: 4 }}>
+                {votingMembers.map((member: Member) => {
+                    const signature = getMemberSignature(member.id);
+                    const isSigned = !!signature;
+
+                    return (
+                        <Paper 
+                            key={member.id} 
+                            variant="outlined" 
+                            sx={{ 
+                                p: 2, 
+                                display: 'flex', 
+                                alignItems: 'center', 
+                                justifyContent: 'space-between',
+                                bgcolor: isSigned ? 'rgba(76, 175, 80, 0.04)' : 'transparent',
+                                borderColor: isSigned ? 'success.light' : 'divider',
+                                transition: 'all 0.2s'
+                            }}
+                        >
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                                <Avatar sx={{ 
+                                    bgcolor: member.role === 'president' ? 'primary.main' : member.role === 'vice_president' ? 'secondary.main' : 'grey.600',
+                                    color: '#fff'
+                                }}>
+                                    {member.displayName.charAt(0)}
+                                </Avatar>
+                                <Box>
+                                    <Typography variant="subtitle2" fontWeight="bold">
+                                        {member.displayName}
+                                    </Typography>
+                                    <Typography variant="caption" color="text.secondary">
+                                        {getRoleLabel(member.role)}
+                                    </Typography>
+                                </Box>
+                            </Box>
+
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                {isSigned ? (
+                                    <>
+                                        {signature.consentType === 'email' ? (
+                                            <Tooltip title="Voir l'accord courriel">
+                                                <Chip 
+                                                    icon={<Email />} 
+                                                    label="Accord Courriel" 
+                                                    color="info" 
+                                                    variant="outlined"
+                                                    onClick={() => handleViewEmail(member.displayName, signature.emailConsentText || '')}
+                                                    sx={{ cursor: 'pointer' }}
+                                                />
+                                            </Tooltip>
+                                        ) : (
+                                            <Chip 
+                                                icon={<CheckCircle />} 
+                                                label="Signé Électroniquement" 
+                                                color="success" 
+                                                variant="outlined"
+                                            />
+                                        )}
+                                        {isCoordinator && (
+                                            <Tooltip title="Retirer la signature">
+                                                <IconButton 
+                                                    size="small" 
+                                                    color="error" 
+                                                    onClick={() => handleRemoveSignature(member.id)}
+                                                    sx={{ ml: 1 }}
+                                                >
+                                                    <Close fontSize="small" />
+                                                </IconButton>
+                                            </Tooltip>
+                                        )}
+                                    </>
+                                ) : (
+                                    <>
+                                        <Chip 
+                                            label="En attente" 
+                                            color="default" 
+                                            variant="outlined" 
+                                            sx={{ borderStyle: 'dashed' }}
+                                        />
+                                        {isCoordinator && (
+                                            <Button 
+                                                size="small" 
+                                                variant="contained" 
+                                                color="info" 
+                                                onClick={() => handleOpenConsign(member)}
+                                                startIcon={<Email />}
+                                                sx={{ ml: 1, textTransform: 'none' }}
+                                            >
+                                                Consigner
+                                            </Button>
+                                        )}
+                                    </>
+                                )}
+                            </Box>
+                        </Paper>
+                    );
+                })}
+            </Box>
+
+            {/* Bottom Actions Panel */}
+            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, p: 2, border: '1px solid', borderColor: 'divider', borderRadius: 2, bgcolor: isFullyApproved ? 'rgba(76, 175, 80, 0.05)' : 'rgba(0, 0, 0, 0.01)' }}>
+                {isCurrentUserVoting && !hasCurrentUserSigned && (
+                    <Button
+                        variant="contained"
+                        color="success"
+                        size="large"
+                        startIcon={<CheckCircle />}
+                        onClick={handleSelfSign}
+                        sx={{ px: 4, py: 1.5, borderRadius: 2, boxShadow: 2 }}
+                    >
+                        Signer électroniquement la résolution
+                    </Button>
+                )}
+
+                {hasCurrentUserSigned && !isFullyApproved && (
+                    <Typography variant="body2" color="success.main" fontWeight="bold">
+                        Votre approbation a été enregistrée avec succès. En attente de l'approbation des autres membres.
+                    </Typography>
+                )}
+
+                {isFullyApproved ? (
+                    <Box sx={{ textAlign: 'center', width: '100%' }}>
+                        <Typography variant="subtitle1" fontWeight="bold" color="success.main" gutterBottom sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1 }}>
+                            <CheckCircle /> Unanimité atteinte ! La résolution est adoptée.
+                        </Typography>
+                        {isCoordinator && (
+                            <Box sx={{ mt: 2, display: 'flex', justifyContent: 'center', gap: 2 }}>
+                                <Button
+                                    variant="contained"
+                                    color="primary"
+                                    startIcon={isGeneratingExtraits ? <CircularProgress size={20} color="inherit" /> : <PictureAsPdf />}
+                                    onClick={handleGenerateExtraits}
+                                    disabled={isGeneratingExtraits}
+                                >
+                                    {isGeneratingExtraits ? 'Génération en cours...' : 'Générer les Extraits de PV'}
+                                </Button>
+                            </Box>
+                        )}
+                    </Box>
+                ) : (
+                    <Typography variant="body2" color="text.secondary">
+                        Le procès-verbal spécial sera marqué comme "Approuvé" automatiquement dès que 100% des signatures seront obtenues.
+                    </Typography>
+                )}
+            </Box>
+
+            {/* Consign Email Consent Dialog */}
+            <Dialog open={consignDialogOpen} onClose={handleCloseConsign} fullWidth maxWidth="sm">
+                <DialogTitle>Consigner un Accord par Courriel</DialogTitle>
+                <DialogContent>
+                    <DialogContentText sx={{ mb: 2 }}>
+                        Vous consignez le vote de <strong>{selectedMember?.displayName}</strong>. 
+                        Veuillez copier-coller ci-dessous le corps du courriel ou la preuve écrite de son consentement pour assurer la traçabilité.
+                    </DialogContentText>
+                    <TextField
+                        autoFocus
+                        multiline
+                        rows={6}
+                        fullWidth
+                        variant="outlined"
+                        placeholder="Copier-coller le courriel d'accord ici..."
+                        value={emailText}
+                        onChange={(e) => setEmailText(e.target.value)}
+                        sx={{ fontFamily: 'monospace' }}
+                    />
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={handleCloseConsign}>Annuler</Button>
+                    <Button onClick={handleConfirmConsign} color="primary" variant="contained" disabled={!emailText.trim()}>
+                        Enregistrer l'accord
+                    </Button>
+                </DialogActions>
+            </Dialog>
+
+            {/* View Email Consent Dialog */}
+            <Dialog open={viewEmailOpen} onClose={() => setViewEmailOpen(false)} fullWidth maxWidth="sm">
+                <DialogTitle>Preuve de Consentement par Courriel</DialogTitle>
+                <DialogContent>
+                    <DialogContentText sx={{ mb: 1 }}>
+                        Consignée pour <strong>{activeEmailMemberName}</strong> :
+                    </DialogContentText>
+                    <Paper variant="outlined" sx={{ p: 2, bgcolor: '#f5f5f5', whiteSpace: 'pre-wrap', maxHeight: 300, overflowY: 'auto', fontFamily: 'monospace' }}>
+                        {activeEmailText}
+                    </Paper>
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={() => setViewEmailOpen(false)}>Fermer</Button>
+                </DialogActions>
+            </Dialog>
+        </Paper>
+    );
+};
 
 /**
  * MeetingApprovalCard Component
@@ -47,6 +418,15 @@ import { generateExtractAndUpload, fetchEnrichedSignatures } from '../../service
  */
 const MeetingApprovalCard: React.FC<MeetingApprovalCardProps> = ({ meeting, currentUser, onApprove }) => {
     const dispatch = useDispatch<AppDispatch>();
+
+    if (meeting.type === 'circular') {
+        return (
+            <CircularApprovalFlow
+                meeting={meeting}
+                currentUser={currentUser}
+            />
+        );
+    }
     const steps = ['Brouillon', 'Vérification', 'Approuvé'];
 
     // Warning dialog state

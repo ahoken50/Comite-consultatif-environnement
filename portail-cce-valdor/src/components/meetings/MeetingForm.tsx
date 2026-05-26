@@ -500,7 +500,9 @@ const MeetingForm: React.FC<MeetingFormProps> = ({ open, onClose, onSubmit, init
                                             {Object.values(MeetingType).map((type) => (
                                                 <MenuItem key={type} value={type}>
                                                     {type === MeetingType.REGULAR ? 'Régulière' :
-                                                        type === MeetingType.SPECIAL ? 'Spéciale' : 'Urgence'}
+                                                        type === MeetingType.SPECIAL ? 'Spéciale' :
+                                                            type === MeetingType.CIRCULAR ? 'PV Spécial (Résolution Écrite)' :
+                                                                type === MeetingType.URGENT ? 'Urgence' : type}
                                                 </MenuItem>
                                             ))}
                                         </TextField>
