@@ -48,7 +48,7 @@ const CircularApprovalFlow: React.FC<CircularApprovalFlowProps> = ({ meeting, cu
         }
     }, [dispatch, members.length]);
 
-    const votingMembers = members.filter((m: Member) => m.isActive && ['president', 'vice_president', 'member'].includes(m.role));
+    const votingMembers = members.filter((m: Member) => m.isActive && ['president', 'vice_president', 'member', 'elected_official'].includes(m.role));
     const signatures = meeting.approvalSignatures || [];
 
     const getMemberSignature = (memberId: string) => {
@@ -61,7 +61,7 @@ const CircularApprovalFlow: React.FC<CircularApprovalFlowProps> = ({ meeting, cu
     const isFullyApproved = signedCount === totalVoting && totalVoting > 0;
 
     const isCoordinator = currentUser?.role === 'coordinator';
-    const isCurrentUserVoting = currentUser && currentUser.isActive && ['president', 'vice_president', 'member'].includes(currentUser.role);
+    const isCurrentUserVoting = currentUser && currentUser.isActive && ['president', 'vice_president', 'member', 'elected_official'].includes(currentUser.role);
     const hasCurrentUserSigned = currentUser && !!getMemberSignature(currentUser.id);
 
     const handleSelfSign = () => {
@@ -168,6 +168,7 @@ const CircularApprovalFlow: React.FC<CircularApprovalFlowProps> = ({ meeting, cu
             case 'president': return 'Président(e)';
             case 'vice_president': return 'Vice-Président(e)';
             case 'member': return 'Membre Votant';
+            case 'elected_official': return 'Élu(e) Responsable';
             default: return role;
         }
     };
@@ -183,7 +184,7 @@ const CircularApprovalFlow: React.FC<CircularApprovalFlowProps> = ({ meeting, cu
             </Box>
 
             <Alert severity="info" sx={{ mb: 3 }}>
-                Conformément à l'article 1.3 du règlement, une résolution écrite doit être approuvée formellement par <strong>la totalité des membres ayant droit de vote (100%)</strong> pour posséder la même valeur qu'une résolution adoptée en séance.
+                Conformément à l'article 1.3 du règlement, une résolution écrite doit être approuvée formellement par <strong>la totalité des membres requis et l'élu responsable (unanimité)</strong> pour posséder la même valeur qu'une résolution adoptée en séance.
             </Alert>
 
             {/* Progress and Stats */}
@@ -191,7 +192,7 @@ const CircularApprovalFlow: React.FC<CircularApprovalFlowProps> = ({ meeting, cu
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
                     <Typography variant="subtitle2" color="text.secondary">Taux de consensus</Typography>
                     <Typography variant="subtitle1" fontWeight="bold" color="primary.main">
-                        {consensusPercentage}% ({signedCount} / {totalVoting} votants)
+                        {consensusPercentage}% ({signedCount} / {totalVoting} signataires requis)
                     </Typography>
                 </Box>
                 <LinearProgress 
@@ -344,7 +345,7 @@ const CircularApprovalFlow: React.FC<CircularApprovalFlowProps> = ({ meeting, cu
                     </Box>
                 ) : (
                     <Typography variant="body2" color="text.secondary">
-                        Le procès-verbal spécial sera marqué comme "Approuvé" automatiquement dès que 100% des signatures seront obtenues.
+                        Le procès-verbal spécial sera marqué comme "Approuvé" automatiquement dès que l'unanimité des signatures sera obtenue.
                     </Typography>
                 )}
             </Box>

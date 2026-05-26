@@ -745,6 +745,25 @@ const generateHTMLDocument = (meeting: Meeting, _globalNotes?: string, enrichedS
         </header>
 
         <!-- PRÉSENCES -->
+        ${meeting.type === 'circular' ? `
+        <section class="attendance">
+            <div class="attendance-group">
+                <h3>MEMBRES ET APPROBATEURS REQUIS (UNANIMITÉ REQUISE)</h3>
+                <div>${(() => {
+                    const votingRoles = ['president', 'vice_president', 'member', 'elected_official'];
+                    const votingMembers = members.filter(m => m.isActive && votingRoles.includes(m.role));
+                    
+                    const displayMembers = votingMembers.length > 0 ? votingMembers : (meeting.approvalSignatures || []).map(s => ({
+                        id: s.signedBy,
+                        displayName: s.signedByName,
+                        role: s.role
+                    }));
+
+                    return displayMembers.map(m => `${m.displayName} (${getRoleLabelPDF(m.role, m.displayName)})`).join(', ');
+                })()}.</div>
+            </div>
+        </section>
+        ` : `
         <section class="attendance">
             ${presents.length > 0 ? `
             <div class="attendance-group">
@@ -765,16 +784,17 @@ const generateHTMLDocument = (meeting: Meeting, _globalNotes?: string, enrichedS
             </div>
             ` : ''}
         </section>
+        `}
 
         <!-- CONTENU -->
         ${sectionsHTML}
 
         ${meeting.type === 'circular' ? `
         <!-- SIGNATURES CIRCULAIRES -->
-        <h3 style="margin-top: 30px; border-bottom: 2px solid #1a365d; padding-bottom: 5px; font-size: 1.1em; color: #1a365d; page-break-inside: avoid; page-break-after: avoid;">CONSENTEMENTS ET SIGNATURES (100% UNANIMITÉ)</h3>
+        <h3 style="margin-top: 30px; border-bottom: 2px solid #1a365d; padding-bottom: 5px; font-size: 1.1em; color: #1a365d; page-break-inside: avoid; page-break-after: avoid;">CONSENTEMENTS ET SIGNATURES REQUIS (UNANIMITÉ)</h3>
         <div class="circular-signatures-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 15px; margin-bottom: 30px;">
             ${(() => {
-                const votingRoles = ['president', 'vice_president', 'member'];
+                const votingRoles = ['president', 'vice_president', 'member', 'elected_official'];
                 const votingMembers = members.filter(m => m.isActive && votingRoles.includes(m.role));
                 
                 const displayMembers = votingMembers.length > 0 ? votingMembers : (meeting.approvalSignatures || []).map(s => ({
