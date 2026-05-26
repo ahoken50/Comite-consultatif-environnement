@@ -534,9 +534,10 @@ const generateHTMLDocument = (meeting: Meeting, _globalNotes?: string, enrichedS
         }
 
         .considerant-row {
-            display: flex;
             margin-bottom: 8px;
-            align-items: baseline;
+            overflow: hidden; /* Clear floats */
+            page-break-inside: avoid;
+            break-inside: avoid;
         }
         
         .considerant-label {
@@ -544,12 +545,13 @@ const generateHTMLDocument = (meeting: Meeting, _globalNotes?: string, enrichedS
             font-size: 12px;
             font-weight: 700;
             color: var(--primary-color);
-            min-width: 110px; /* Largeur fixe pour l'alignement */
-            flex-shrink: 0;
+            float: left;
+            width: 110px;
         }
 
         .considerant-text {
-            flex-grow: 1;
+            margin-left: 110px;
+            display: block;
         }
 
         .il-est-resolu {
@@ -676,13 +678,13 @@ const generateHTMLDocument = (meeting: Meeting, _globalNotes?: string, enrichedS
             }
 
             .resolution-block {
-                page-break-inside: avoid !important;
-                break-inside: avoid !important;
+                page-break-inside: avoid;
+                break-inside: avoid;
             }
 
             .content-section {
-                page-break-inside: avoid;
-                break-inside: avoid;
+                page-break-inside: auto;
+                break-inside: auto;
             }
 
             .section-title {

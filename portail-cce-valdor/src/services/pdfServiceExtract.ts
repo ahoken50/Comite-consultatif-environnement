@@ -398,9 +398,10 @@ const generateExtractHTML = (
         }
 
         .considerant-row {
-            display: flex;
             margin-bottom: 8px;
-            align-items: baseline;
+            overflow: hidden; /* Clear floats */
+            page-break-inside: avoid;
+            break-inside: avoid;
         }
 
         .considerant-label {
@@ -408,12 +409,13 @@ const generateExtractHTML = (
             font-size: 12px;
             font-weight: 700;
             color: #1e4e3d;
-            min-width: 110px;
-            flex-shrink: 0;
+            float: left;
+            width: 110px;
         }
 
         .considerant-text {
-            flex-grow: 1;
+            margin-left: 110px;
+            display: block;
         }
 
         .il-est-resolu-container {
