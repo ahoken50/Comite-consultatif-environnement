@@ -241,18 +241,31 @@ const ApprovalPage: React.FC = () => {
     }
 
     const hasStructuredMinutes = meeting?.agendaItems && meeting.agendaItems.some(item => item.minuteEntries && item.minuteEntries.length > 0);
+    const isCircular = meeting?.type === 'circular';
 
     return (
         <Container maxWidth="lg" sx={{ py: 4 }}>
             <Box sx={{ mb: 4, textAlign: 'center' }}>
-                <Typography variant="h4" gutterBottom>
-                    Approbation du Procès-verbal
+                <Typography variant="h4" gutterBottom sx={{ fontWeight: 'bold', color: isCircular ? '#1e4e3d' : '#1976d2' }}>
+                    {isCircular ? "Signature de la Résolution Écrite (PV Spécial)" : "Approbation du Procès-verbal"}
                 </Typography>
                 <Typography variant="subtitle1" color="text.secondary">
                     {meeting?.title} - {meeting?.date && new Date(meeting.date).toLocaleDateString('fr-CA')}
                 </Typography>
-                <Typography variant="body2" sx={{ mt: 1 }}>
-                    Connecté en tant que : <strong>{approvalData?.name} ({approvalData?.role})</strong>
+                {isCircular && (
+                    <Typography variant="body2" color="error" sx={{ fontWeight: 'bold', mt: 1 }}>
+                        ⚠️ Règle municipale : Accord unanime requis (100% des voix des membres votants)
+                    </Typography>
+                )}
+                <Typography variant="body2" sx={{ mt: 1.5 }}>
+                    Connecté en tant que : <strong>{approvalData?.name} ({
+                        approvalData?.role === 'president' ? 'Présidente' : 
+                        approvalData?.role === 'vice_president' ? 'Vice-Président' : 
+                        approvalData?.role === 'elected_official' ? 'Élu(e) Responsable' : 
+                        approvalData?.role === 'coordinator' ? 'Secrétaire (Coordonnateur)' : 
+                        approvalData?.role === 'member' ? 'Membre' : 
+                        approvalData?.role
+                    })</strong>
                 </Typography>
             </Box>
 
@@ -335,17 +348,19 @@ const ApprovalPage: React.FC = () => {
                 </Box>
             )}
 
-            <Paper elevation={1} sx={{ p: 3, mb: 4, bgcolor: '#f8f9fa' }}>
+            <Paper elevation={1} sx={{ p: 3, mb: 4, bgcolor: '#f8f9fa', borderLeft: isCircular ? '4px solid #c5a065' : 'none' }}>
                 <Typography variant="h6" gutterBottom>
-                    Commentaire général
+                    {isCircular ? "Remarques ou commentaires d'accompagnement" : "Commentaire général"}
                 </Typography>
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                    Utilisez cet espace pour tout commentaire global sur le procès-verbal.
+                    {isCircular 
+                        ? "Utilisez cet espace pour toute remarque additionnelle ou commentaire d'accompagnement à associer à cette résolution écrite."
+                        : "Utilisez cet espace pour tout commentaire global sur le procès-verbal."}
                 </Typography>
                 <TextField
                     fullWidth
                     variant="outlined"
-                    label="Commentaire général"
+                    label={isCircular ? "Remarques additionnelles" : "Commentaire général"}
                     multiline
                     rows={3}
                     value={generalComment}
