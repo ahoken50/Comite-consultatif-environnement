@@ -128,63 +128,54 @@ const ApprovalRequestDialog: React.FC<ApprovalRequestDialogProps> = ({ open, onC
                             onChange={(e) => setSelectedMemberId(e.target.value)}
                         >
                             {isCircular ? (
-                                <>
-                                    {circularCandidates.length > 1 && (
-                                        <MenuItem value="all_pending" style={{ fontWeight: 'bold', color: '#1a365d' }}>
+                                [
+                                    circularCandidates.length > 1 ? (
+                                        <MenuItem key="all_pending" value="all_pending" style={{ fontWeight: 'bold', color: '#1a365d' }}>
                                             📢 Envoyer à tous les membres en attente ({circularCandidates.length})
                                         </MenuItem>
-                                    )}
-                                    <ListSubheader>Membres en attente de signature</ListSubheader>
-                                    {circularCandidates.map(m => (
+                                    ) : null,
+                                    <ListSubheader key="header-circular">Membres en attente de signature</ListSubheader>,
+                                    ...circularCandidates.map(m => (
                                         <MenuItem key={m.id} value={m.id}>
                                             {m.displayName} ({m.role === 'president' ? 'Président' : m.role === 'vice_president' ? 'Vice-Président' : m.role === 'elected_official' ? 'Élu' : 'Membre'})
                                         </MenuItem>
-                                    ))}
-
-                                    {/* Tests (Coordination / Secrétariat) */}
-                                    {coordinators.length > 0 && [
+                                    )),
+                                    ...(coordinators.length > 0 ? [
                                         <ListSubheader key="header-test-circular" style={{ pointerEvents: 'none' }}>Tests (Coordination / Secrétariat)</ListSubheader>,
                                         ...coordinators.map(m => (
                                             <MenuItem key={m.id} value={m.id}>
                                                 🧪 Envoyer un test à : {m.displayName} (Secrétaire)
                                             </MenuItem>
                                         ))
-                                    ]}
-                                </>
+                                    ] : [])
+                                ].filter(Boolean)
                             ) : (
-                                <>
-                                    {/* Présidence */}
-                                    {presidents.length > 0 && [
+                                [
+                                    ...(presidents.length > 0 ? [
                                         <ListSubheader key="header-pres" style={{ pointerEvents: 'none' }}>Présidence</ListSubheader>,
                                         ...presidents.map(m => (
                                             <MenuItem key={m.id} value={m.id}>{m.displayName} ({m.role === 'vice_president' ? 'Vice-Président' : 'Président'})</MenuItem>
                                         ))
-                                    ]}
-
-                                    {/* Élus */}
-                                    {elected.length > 0 && [
+                                    ] : []),
+                                    ...(elected.length > 0 ? [
                                         <ListSubheader key="header-elected" style={{ pointerEvents: 'none' }}>Élus Responsables</ListSubheader>,
                                         ...elected.map(m => (
                                             <MenuItem key={m.id} value={m.id}>{m.displayName}</MenuItem>
                                         ))
-                                    ]}
-
-                                    {/* Suppléants */}
-                                    {substitutes.length > 0 && [
+                                    ] : []),
+                                    ...(substitutes.length > 0 ? [
                                         <ListSubheader key="header-sub" style={{ pointerEvents: 'none' }}>Suppléants</ListSubheader>,
                                         ...substitutes.map(m => (
                                             <MenuItem key={m.id} value={m.id}>{m.displayName}</MenuItem>
                                         ))
-                                    ]}
-
-                                    {/* Tests */}
-                                    {coordinators.length > 0 && [
+                                    ] : []),
+                                    ...(coordinators.length > 0 ? [
                                         <ListSubheader key="header-test" style={{ pointerEvents: 'none' }}>Tests (Coordination)</ListSubheader>,
                                         ...coordinators.map(m => (
                                             <MenuItem key={m.id} value={m.id}>{m.displayName}</MenuItem>
                                         ))
-                                    ]}
-                                </>
+                                    ] : [])
+                                ]
                             )}
                         </Select>
                     </FormControl>
