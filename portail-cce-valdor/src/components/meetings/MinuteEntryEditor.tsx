@@ -397,41 +397,40 @@ const MinuteEntryEditor: React.FC<MinuteEntryEditorProps> = ({
                             {!readOnly && (
                                 <>
                                     {entry.type === 'resolution' && (
-                                        <>
-                                            <Tooltip title="✨ 'Magic Draft' : Rédiger avec IA">
-                                                <IconButton
-                                                    onClick={handleMagicDraft}
-                                                    color="primary"
-                                                    disabled={isDrafting}
-                                                    size="small"
-                                                    sx={{
-                                                        bgcolor: 'primary.50',
-                                                        '&:hover': { bgcolor: 'primary.100' },
-                                                        border: '1px solid',
-                                                        borderColor: 'primary.main'
-                                                    }}
-                                                >
-                                                    {isDrafting ? <CircularProgress size={20} /> : <AutoMode fontSize="small" />}
-                                                </IconButton>
-                                            </Tooltip>
-
-                                            <Tooltip title="❓ Questionner la Jurisprudence">
-                                                <IconButton
-                                                    onClick={() => setShowChat(true)}
-                                                    color="info"
-                                                    size="small"
-                                                    sx={{
-                                                        bgcolor: 'info.50',
-                                                        '&:hover': { bgcolor: 'info.100' },
-                                                        border: '1px solid',
-                                                        borderColor: 'info.main'
-                                                    }}
-                                                >
-                                                    <HelpOutline fontSize="small" />
-                                                </IconButton>
-                                            </Tooltip>
-                                        </>
+                                        <Tooltip title="✨ 'Magic Draft' : Rédiger avec IA">
+                                            <IconButton
+                                                onClick={handleMagicDraft}
+                                                color="primary"
+                                                disabled={isDrafting}
+                                                size="small"
+                                                sx={{
+                                                    bgcolor: 'primary.50',
+                                                    '&:hover': { bgcolor: 'primary.100' },
+                                                    border: '1px solid',
+                                                    borderColor: 'primary.main'
+                                                }}
+                                            >
+                                                {isDrafting ? <CircularProgress size={20} /> : <AutoMode fontSize="small" />}
+                                            </IconButton>
+                                        </Tooltip>
                                     )}
+
+                                    <Tooltip title="❓ Questionner la Jurisprudence">
+                                        <IconButton
+                                            onClick={() => setShowChat(true)}
+                                            color="info"
+                                            size="small"
+                                            sx={{
+                                                bgcolor: 'info.50',
+                                                '&:hover': { bgcolor: 'info.100' },
+                                                border: '1px solid',
+                                                borderColor: 'info.main'
+                                            }}
+                                        >
+                                            <HelpOutline fontSize="small" />
+                                        </IconButton>
+                                    </Tooltip>
+
                                     <Tooltip title="🔗 Auto-Connecteur : Lier règlements détectés">
                                         <IconButton
                                             onClick={handleAutoLink}

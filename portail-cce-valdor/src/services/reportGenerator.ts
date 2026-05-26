@@ -1,15 +1,36 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import type { ReportSection } from '../types/report.types';
+import { collection, getDocs } from 'firebase/firestore';
+import { db } from './firebase';
 
-// Mock data fetchers for now - in real app, these would fetch from Firestore or Redux
-const fetchProjectData = async (_year: number | string) => {
-    // This would fetch actual data
-    return [
-        { title: 'Reaménagement Parc', status: 'En cours', budget: '50 000$', date: '2024-03-15' },
-        { title: 'Étude Qualité Air', status: 'Terminé', budget: '15 000$', date: '2024-01-10' },
-        { title: 'Plantation Arbres', status: 'Planifié', budget: '5 000$', date: '2024-05-20' },
-    ];
+// Fetch actual project data from Firestore for the specified year
+const fetchProjectData = async (year: number | string) => {
+    try {
+        const querySnapshot = await getDocs(collection(db, 'projects'));
+        const allProjects = querySnapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+        } as any));
+
+        // Filter projects by year
+        const filtered = allProjects.filter(p => {
+            if (!p.dateCreated) return false;
+            const date = new Date(p.dateCreated);
+            return date.getFullYear().toString() === year.toString();
+        });
+
+        // Format for the report
+        return filtered.map(p => ({
+            title: p.name || 'Sans titre',
+            status: p.status || 'N/A',
+            budget: p.budget || 'N/A',
+            date: p.dateCreated ? p.dateCreated.split('T')[0] : 'N/A'
+        }));
+    } catch (e) {
+        console.error("Failed to fetch projects for report:", e);
+        return [];
+    }
 };
 
 export const generateCustomReport = async (sections: ReportSection[]) => {
@@ -81,11 +102,56 @@ export const generateCustomReport = async (sections: ReportSection[]) => {
 
             case 'stats':
                 addSectionTitle(section.title);
-                // Simple Stats Row
+                
+                let projectCount = 0;
+                let meetingCount = 0;
+                let resolutionCount = 0;
+                
+                try {
+                    const projectsSnap = await getDocs(collection(db, 'projects'));
+                    const meetingsSnap = await getDocs(collection(db, 'meetings'));
+                    
+                    const yearFilter = section.config.year ? section.config.year.toString() : '';
+                    
+                    const filteredProjects = projectsSnap.docs.filter(docSnap => {
+                        const data = docSnap.data();
+                        if (!yearFilter) return true;
+                        if (!data.dateCreated) return false;
+                        const date = new Date(data.dateCreated);
+                        return date.getFullYear().toString() === yearFilter;
+                    });
+                    
+                    const filteredMeetings = meetingsSnap.docs.filter(docSnap => {
+                        const data = docSnap.data();
+                        if (!yearFilter) return true;
+                        if (!data.date) return false;
+                        const date = new Date(data.date);
+                        return date.getFullYear().toString() === yearFilter;
+                    });
+                    
+                    projectCount = filteredProjects.length;
+                    meetingCount = filteredMeetings.length;
+                    
+                    // Sum resolutions across filtered meetings
+                    filteredMeetings.forEach(docSnap => {
+                        const data = docSnap.data();
+                        if (data.agendaItems && Array.isArray(data.agendaItems)) {
+                            data.agendaItems.forEach((item: any) => {
+                                if (item.minuteEntries && Array.isArray(item.minuteEntries)) {
+                                    resolutionCount += item.minuteEntries.filter((e: any) => e.type === 'resolution').length;
+                                }
+                            });
+                        }
+                    });
+                } catch (err) {
+                    console.error("Error calculating actual stats:", err);
+                }
+
+                // Stats Row
                 const stats = [
-                    { label: 'Projets', value: '12' },
-                    { label: 'Réunions', value: '8' },
-                    { label: 'Résolutions', value: '24' }
+                    { label: 'Projets', value: projectCount.toString() },
+                    { label: 'Réunions', value: meetingCount.toString() },
+                    { label: 'Résolutions', value: resolutionCount.toString() }
                 ];
 
                 let xOffset = 20;

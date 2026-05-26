@@ -112,6 +112,21 @@ const SmartPlanningDialog: React.FC<SmartPlanningDialogProps> = ({ open, onClose
             });
         }
 
+        // Add rollover items from the last completed meeting
+        if (includeRollover && rolloverItems.length > 0) {
+            rolloverItems.forEach(item => {
+                agendaItems.push({
+                    title: item.title,
+                    description: item.description,
+                    duration: item.duration || 15,
+                    presenter: item.presenter || 'Tous',
+                    objective: item.objective || 'Information/Direction',
+                    linkedProjectId: item.linkedProjectId || undefined,
+                    order: order++
+                });
+            });
+        }
+
         // Add selected projects
         activeProjects.forEach(p => {
             if (selectedProjects[p.id]) {
