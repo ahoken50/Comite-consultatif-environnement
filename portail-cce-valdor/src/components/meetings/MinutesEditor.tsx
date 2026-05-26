@@ -873,6 +873,7 @@ const BATCH_SIZE = 5; // Ou une constante importée d'un fichier de configuratio
                 open={isApprovalDialogOpen}
                 onClose={() => setIsApprovalDialogOpen(false)}
                 meetingId={meeting.id}
+                meeting={meeting}
                 onSuccess={() => showSuccess("Lien d'approbation envoyé avec succès !")}
             />
 
