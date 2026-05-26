@@ -513,25 +513,107 @@ def send_approval_link(req: https_fn.CallableRequest) -> Any:
             "used": False
         })
 
+        # Fetch meeting context from Firestore to adapt the email layout
+        meeting_snap = db.collection("meetings").document(meeting_id).get()
+        meeting_data = meeting_snap.to_dict() if meeting_snap.exists else {}
+        is_circular = meeting_data.get("type") == "circular"
+        meeting_title = meeting_data.get("title", "Procès-verbal")
+        meeting_date_raw = meeting_data.get("date", "")
+        
+        try:
+            meeting_date_formatted = datetime.fromisoformat(meeting_date_raw.replace("Z", "+00:00")).strftime("%Y-%m-%d")
+        except:
+            meeting_date_formatted = ""
+
         # Construct Link - format must match route: /approve/:meetingId/:token
         base_url = "https://comite-cce.web.app"
         approval_link = f"{base_url}/approve/{meeting_id}/{token}"
 
-        # Send Email via Resend
+        # Customize wording and visuals based on the meeting type
+        if is_circular:
+            subject = f"✒️ Signature Requise : Résolution Écrite unanime (PV Spécial) – {meeting_title}"
+            email_header = "PROCÈS-VERBAL SPÉCIAL / RÉSOLUTION ÉCRITE"
+            email_body = f"""
+            <h2 style="color: #1e4e3d; font-family: Arial, sans-serif; font-size: 20px; margin-top: 0;">Demande de Signature Électronique</h2>
+            <p style="font-size: 16px; color: #333; line-height: 1.6;">Bonjour <strong>{name}</strong>,</p>
+            <p style="font-size: 16px; color: #333; line-height: 1.6;">
+                Une résolution écrite hors séance (<strong>Procès-Verbal Spécial</strong>) a été rédigée et requiert votre approbation ainsi que votre signature électronique.
+            </p>
+            
+            <div style="background-color: #f9fbfa; border-left: 4px solid #c5a065; padding: 20px; margin: 25px 0; border-radius: 0 8px 8px 0;">
+                <p style="margin: 0 0 10px 0; font-size: 16px;">
+                    <strong style="color: #1e4e3d;">📄 Titre :</strong> {meeting_title}
+                </p>
+                <p style="margin: 0 0 10px 0; font-size: 16px;">
+                    <strong style="color: #1e4e3d;">📅 Date d'émission :</strong> {meeting_date_formatted or 'Date récente'}
+                </p>
+                <p style="margin: 0; font-size: 16px; color: #d32f2f;">
+                    <strong style="color: #d32f2f;">⚠️ Règle :</strong> Approbation unanime requise (100% des voix)
+                </p>
+            </div>
+
+            <p style="font-size: 16px; color: #333; line-height: 1.6;">
+                En cliquant sur le lien sécurisé ci-dessous, vous pourrez réviser la formulation de la résolution, lire les commentaires d'accompagnement, et y apposer votre signature officielle.
+            </p>
+            """
+        else:
+            subject = f"✍️ Action requise : Approbation du procès-verbal – {meeting_title}"
+            email_header = "PROCÈS-VERBAL DE SÉANCE CCE"
+            email_body = f"""
+            <h2 style="color: #1e4e3d; font-family: Arial, sans-serif; font-size: 20px; margin-top: 0;">Approbation de Procès-Verbal</h2>
+            <p style="font-size: 16px; color: #333; line-height: 1.6;">Bonjour <strong>{name}</strong>,</p>
+            <p style="font-size: 16px; color: #333; line-height: 1.6;">
+                Le procès-verbal de la réunion du CCE (<strong>{meeting_title}</strong>) est rédigé et prêt pour votre révision.
+            </p>
+            <p style="font-size: 16px; color: #333; line-height: 1.6;">
+                Veuillez cliquer sur le lien sécurisé ci-dessous pour accéder au document complet, soumettre vos corrections éventuelles, ou accorder votre approbation officielle.
+            </p>
+            """
+
+        # Send Email via Resend with Premium visual style
         html_content = f"""
         <!DOCTYPE html>
-        <html>
-        <body style="font-family: Arial, sans-serif; padding: 20px;">
-            <h2>Demande d'approbation de Procès-Verbal</h2>
-            <p>Bonjour {name},</p>
-            <p>Le procès-verbal de la réunion est prêt pour votre révision et approbation.</p>
-            <p>Veuillez cliquer sur le lien ci-dessous pour accéder au document sécurisé :</p>
-            <p style="text-align: center; margin: 30px 0;">
-                <a href="{approval_link}" style="background-color: #1976d2; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; font-weight: bold;">
-                    Réviser et Approuver
-                </a>
-            </p>
-            <p>Ce lien est valide pour 7 jours.</p>
+        <html lang="fr">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        </head>
+        <body style="font-family: Georgia, 'Times New Roman', serif; background-color: #f9fbfa; margin: 0; padding: 20px;">
+            <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+                <!-- Header -->
+                <div style="background-color: #1e4e3d; padding: 30px; text-align: center;">
+                    <h1 style="color: #ffffff; margin: 0; font-size: 22px; font-family: Arial, sans-serif; letter-spacing: 1px;">
+                        CCE VAL-D'OR
+                    </h1>
+                    <p style="color: #c5a065; margin: 10px 0 0 0; font-size: 13px; text-transform: uppercase; letter-spacing: 2px; font-family: Arial, sans-serif;">
+                        {email_header}
+                    </p>
+                </div>
+                
+                <!-- Content -->
+                <div style="padding: 30px;">
+                    {email_body}
+                    
+                    <p style="text-align: center; margin: 35px 0;">
+                        <a href="{approval_link}" style="display: inline-block; background-color: #1e4e3d; color: #ffffff; padding: 15px 30px; text-decoration: none; border-radius: 5px; font-weight: bold; font-family: Arial, sans-serif; font-size: 16px; box-shadow: 0 2px 5px rgba(0,0,0,0.2);">
+                            Réviser et Approuver
+                        </a>
+                    </p>
+                    
+                    <p style="font-size: 14px; color: #666; font-style: italic;">
+                        Ce lien sécurisé est strictement personnel et valide pour une durée de 7 jours.
+                    </p>
+                </div>
+                
+                <!-- Footer -->
+                <div style="background-color: #f9fbfa; padding: 25px; border-top: 1px solid #eee; text-align: center;">
+                    <p style="margin: 0; font-size: 14px; color: #666; font-family: Arial, sans-serif;">
+                        Cordialement,<br>
+                        <strong>Secrétariat du Comité consultatif en environnement</strong><br>
+                        Ville de Val-d'Or
+                    </p>
+                </div>
+            </div>
         </body>
         </html>
         """
@@ -539,7 +621,7 @@ def send_approval_link(req: https_fn.CallableRequest) -> Any:
         r = resend.Emails.send({
             "from": "CCE Val-d'Or <coordination_cce@ccevvd.com>",
             "to": [email],
-            "subject": "Action requise : Approbation de procès-verbal",
+            "subject": subject,
             "html": html_content
         })
 
