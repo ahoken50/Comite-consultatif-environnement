@@ -637,9 +637,38 @@ const BATCH_SIZE = 5; // Ou une constante importée d'un fichier de configuratio
                     </Typography>
                 </Alert>
             )}
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-                <Typography variant="h6">Rédaction du Procès-Verbal</Typography>
-                <Box sx={{ display: 'flex', gap: 2 }}>
+            <Box sx={{ 
+                display: 'flex', 
+                flexDirection: { xs: 'column', lg: 'row' }, 
+                justifyContent: 'space-between', 
+                alignItems: { xs: 'stretch', lg: 'center' }, 
+                gap: 2,
+                mb: 3,
+                borderBottom: '1px solid #e0e0e0',
+                pb: 2
+            }}>
+                <Typography variant="h6" sx={{ fontWeight: 'bold', color: '#1e4e3d', minWidth: 'max-content' }}>
+                    Rédaction du Procès-Verbal
+                </Typography>
+                <Box sx={{ 
+                    display: 'flex', 
+                    flexWrap: 'wrap', 
+                    gap: 1, 
+                    justifyContent: { xs: 'flex-start', lg: 'flex-end' },
+                    '& .MuiButton-root': {
+                        textTransform: 'none',
+                        borderRadius: 2,
+                        fontWeight: 600,
+                        whiteSpace: 'nowrap',
+                        px: 2,
+                        py: 0.75,
+                        fontSize: '0.85rem',
+                        boxShadow: 'none',
+                        '&:hover': {
+                            boxShadow: 'none'
+                        }
+                    }
+                }}>
                     {!readOnly && (
                         <>
                             <Button
