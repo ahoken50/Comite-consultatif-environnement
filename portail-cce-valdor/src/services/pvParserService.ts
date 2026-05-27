@@ -1,5 +1,4 @@
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
-import mammoth from 'mammoth';
 import { type AgendaItem, type MinuteEntry } from '../types/meeting.types';
 import { extractTextFromPDF } from './ocrService';
 import { extractPVWithGroq, mapAIExtractedToAgendaItems } from './groqService';
@@ -98,7 +97,8 @@ const extractAttendeesFromText = (text: string): string[] => {
 // ============================================================================
 export const parseMinutesDOCX = async (file: File): Promise<ParsedPVData> => {
     const arrayBuffer = await file.arrayBuffer();
-    const result = await mammoth.extractRawText({ arrayBuffer: arrayBuffer });
+    const mammoth = await import('mammoth');
+    const result = await mammoth.default.extractRawText({ arrayBuffer: arrayBuffer });
     const fullText = result.value;
 
     return parseRawTextToPV(fullText);

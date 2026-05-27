@@ -24,8 +24,6 @@ interface DocumentPreviewModalProps {
     document: Document | null;
 }
 
-// Import XLSX for Excel handling
-import * as XLSX from 'xlsx';
 
 const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({ open, onClose, document }) => {
     const containerRef = React.useRef<HTMLDivElement>(null);
@@ -87,7 +85,8 @@ const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({ open, onClo
             } else if (isExcel) {
                 fetch(document.url)
                     .then(response => response.arrayBuffer())
-                    .then(arrayBuffer => {
+                    .then(async (arrayBuffer) => {
+                        const XLSX = await import('xlsx');
                         const workbook = XLSX.read(arrayBuffer, { type: 'array' });
                         const sheets = workbook.SheetNames;
 
@@ -119,8 +118,9 @@ const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({ open, onClo
     }, [open, document]);
 
     // Handle Excel Sheet change
-    const handleSheetChange = (_event: React.SyntheticEvent, newValue: string) => {
+    const handleSheetChange = async (_event: React.SyntheticEvent, newValue: string) => {
         if (excelWorkbook && newValue) {
+            const XLSX = await import('xlsx');
             setActiveSheet(newValue);
             const worksheet = excelWorkbook.Sheets[newValue];
             const html = XLSX.utils.sheet_to_html(worksheet, { id: 'excel-table' });

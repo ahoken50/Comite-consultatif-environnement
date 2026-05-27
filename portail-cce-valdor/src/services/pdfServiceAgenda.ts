@@ -1,8 +1,6 @@
 import type { Meeting } from '../types/meeting.types';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import html2pdf from 'html2pdf.js';
-
 export interface PDFGenerationResult {
     success: boolean;
     error?: string;
@@ -403,6 +401,7 @@ export const generateAgendaPDFBase64 = async (meeting: Meeting): Promise<string>
 
     try {
         await new Promise(resolve => setTimeout(resolve, 300));
+        const { default: html2pdf } = await import('html2pdf.js');
         const pdfBase64 = await html2pdf().from(targetElement).set(opt).outputPdf('datauristring');
 
         if (typeof pdfBase64 === 'string' && pdfBase64.includes(',')) {

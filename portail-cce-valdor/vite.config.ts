@@ -23,8 +23,14 @@ export default defineConfig({
             if (id.includes('firebase')) {
               return 'vendor-firebase';
             }
-            if (id.includes('jspdf') || id.includes('pdfmake') || id.includes('html2canvas') || id.includes('xlsx') || id.includes('mammoth')) {
-              return 'vendor-pdf-excel';
+            if (id.includes('jspdf') || id.includes('html2canvas') || id.includes('html2pdf')) {
+              return 'vendor-jspdf';
+            }
+            if (id.includes('xlsx')) {
+              return 'vendor-xlsx';
+            }
+            if (id.includes('mammoth')) {
+              return 'vendor-mammoth';
             }
             if (id.includes('react-big-calendar') || id.includes('recharts') || id.includes('dnd-kit')) {
               return 'vendor-widgets';
@@ -42,4 +48,3 @@ export default defineConfig({
     css: false,
   },
 })
-

@@ -1,5 +1,3 @@
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
 import type { ReportSection } from '../types/report.types';
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from './firebase';
@@ -34,6 +32,8 @@ const fetchProjectData = async (year: number | string) => {
 };
 
 export const generateCustomReport = async (sections: ReportSection[]) => {
+    const { default: jsPDF } = await import('jspdf');
+    const { default: autoTable } = await import('jspdf-autotable');
     const doc = new jsPDF();
     const pageWidth = doc.internal.pageSize.width;
     const pageHeight = doc.internal.pageSize.height;
@@ -237,6 +237,7 @@ export const generateAnnualSummaryReport = async (year: number) => {
     const summaryText = await aiService.generateAnnualSummary(year, context);
 
     // 4. Generate high-fidelity PDF
+    const { default: jsPDF } = await import('jspdf');
     const doc = new jsPDF();
     const pageWidth = doc.internal.pageSize.width;
     const pageHeight = doc.internal.pageSize.height;
