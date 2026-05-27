@@ -74,6 +74,13 @@ function App() {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
         try {
+          // Point 43: Get role from Custom Claims first
+          const tokenResult = await user.getIdTokenResult();
+          const customClaimsRole = tokenResult.claims.role as string | undefined;
+          if (customClaimsRole) {
+            console.log("Authenticated with role from custom claims:", customClaimsRole);
+          }
+
           // Fetch additional user data from Firestore
           // Fetch user data from 'users' collection (Auth profile)
           const userDocRef = doc(db, 'users', user.uid);
@@ -150,7 +157,7 @@ function App() {
               id: user.uid,
               email: user.email || '',
               displayName: userData.displayName || user.displayName || '',
-              role: userData.role as any,
+              role: (customClaimsRole || userData.role) as any,
               memberId: userData.memberId,
               isActive: userData.isActive ?? true,
               createdAt: userData.createdAt,

@@ -55,6 +55,8 @@ interface SpeakerCorrectionTranscriptionProps {
     meetingId: string;
     audioUrl?: string;
     audioDuration?: number;
+    currentTime?: number;
+    onSeek?: (seconds: number) => void;
     onTranscriptionUpdate?: (newTranscription: string) => void;
     onCorrectionMade?: (original: string, corrected: string) => void;
 }
@@ -65,6 +67,8 @@ export const SpeakerCorrectionTranscription: React.FC<SpeakerCorrectionTranscrip
     meetingId,
     audioUrl,
     audioDuration = 0,
+    currentTime = 0,
+    onSeek,
     onTranscriptionUpdate,
     onCorrectionMade,
 }) => {
@@ -401,14 +405,31 @@ export const SpeakerCorrectionTranscription: React.FC<SpeakerCorrectionTranscrip
                         );
                     }
 
-                    // 3. TEXT (with split capability)
+                    // 3. TEXT (with split capability, dynamic highlighting and click-to-seek)
+                    const { start, end } = estimateSegmentTime(transcription, segment.position, audioDuration);
+                    const isActive = currentTime >= start && currentTime <= end;
+
                     return (
                         <Box
                             component="span"
                             key={idx}
+                            onClick={() => {
+                                if (onSeek && segment.content.trim()) {
+                                    onSeek(start);
+                                }
+                            }}
                             sx={{
                                 position: 'relative',
                                 display: 'inline',
+                                cursor: onSeek ? 'pointer' : 'default',
+                                bgcolor: isActive ? '#e0f2fe' : 'transparent',
+                                borderBottom: isActive ? '2px solid #0284c7' : 'none',
+                                transition: 'all 0.3s ease',
+                                px: isActive ? 0.5 : 0,
+                                borderRadius: isActive ? '4px' : 0,
+                                '&:hover': {
+                                    bgcolor: isActive ? '#bae6fd' : 'action.hover',
+                                },
                                 '&:hover .split-btn': { opacity: 1 }
                             }}
                         >
@@ -418,6 +439,7 @@ export const SpeakerCorrectionTranscription: React.FC<SpeakerCorrectionTranscrip
                                     className="split-btn"
                                     size="small"
                                     onClick={(e) => {
+                                        e.stopPropagation(); // Prevent seeking when splitting speaker
                                         setSplitAnchorEl(e.currentTarget);
                                         setActiveSplitSegment(segment);
                                     }}

@@ -113,6 +113,24 @@ const TranscriptionViewer: React.FC<TranscriptionViewerProps> = ({
     const [playingSegmentId, setPlayingSegmentId] = useState<string | null>(null);
     const audioRef = React.useRef<HTMLAudioElement | null>(null);
 
+    // Point 37 & Point C: Main Audio Player states and hooks
+    const [mainAudioTime, setMainAudioTime] = useState(0);
+    const mainAudioRef = React.useRef<HTMLAudioElement | null>(null);
+    const mainAudioUrl = meeting.audioRecording?.fileUrl || (Array.isArray(meeting.audioRecordings) && meeting.audioRecordings.length > 0 ? meeting.audioRecordings[0].fileUrl : undefined);
+
+    const handleMainAudioTimeUpdate = () => {
+        if (mainAudioRef.current) {
+            setMainAudioTime(mainAudioRef.current.currentTime);
+        }
+    };
+
+    const handleSeekMainAudio = (seconds: number) => {
+        if (mainAudioRef.current) {
+            mainAudioRef.current.currentTime = seconds;
+            mainAudioRef.current.play().catch(console.error);
+        }
+    };
+
     const playAudioSegment = (url: string | undefined, start: number | undefined, end: number | undefined, segId: string) => {
         if (!url) {
             showToast?.('Aucun fichier audio lié à cet extrait', 'error');
@@ -527,25 +545,78 @@ const TranscriptionViewer: React.FC<TranscriptionViewerProps> = ({
             )}
 
             {/* Transcription Section */}
-            <Paper sx={{ p: 2, mb: 3 }}>
+            <Paper sx={{ p: 3, mb: 3, borderRadius: 3, boxShadow: '0 4px 20px rgba(0,0,0,0.05)' }}>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                    <Typography variant="subtitle1" fontWeight={600}>
-                        📝 Transcription
+                    <Typography variant="subtitle1" fontWeight={700} sx={{ color: '#1e4e3d' }}>
+                        📝 Transcription Interactive
                     </Typography>
                     <Button
                         size="small"
                         startIcon={<ContentCopy />}
                         onClick={() => copyToClipboard(transcription)}
                     >
-                        Copier
+                        Copier tout
                     </Button>
                 </Box>
+
+                {/* Point 37: Sleek custom audio player embedded */}
+                {mainAudioUrl && (
+                    <Box sx={{ mb: 2, display: 'flex', flexDirection: 'column', gap: 1, bgcolor: '#f8fafc', p: 2, borderRadius: 2, border: '1px solid #e2e8f0' }}>
+                        <Typography variant="caption" fontWeight="bold" color="text.secondary">
+                            🎧 Lecteur Audio de Séance (Cliquez sur le texte pour sauter)
+                        </Typography>
+                        <audio
+                            ref={mainAudioRef}
+                            src={mainAudioUrl}
+                            controls
+                            onTimeUpdate={handleMainAudioTimeUpdate}
+                            style={{ width: '100%', height: 40 }}
+                        />
+                    </Box>
+                )}
+
+                {/* Point C: Division par sujet de l'enregistrement */}
+                {(() => {
+                    const agendaItemsWithAudio = (meeting.agendaItems || []).filter(item => item.audioSegment && item.audioSegment.start !== undefined);
+                    if (agendaItemsWithAudio.length === 0) return null;
+
+                    return (
+                        <Paper variant="outlined" sx={{ p: 2, mb: 2, bgcolor: '#f0fdf4', borderColor: '#bbf7d0', borderRadius: 2 }}>
+                            <Typography variant="subtitle2" sx={{ fontWeight: 'bold', color: '#166534', mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
+                                📂 Division par Sujet (Audio de Séance)
+                            </Typography>
+                            <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                                {agendaItemsWithAudio.map((item, idx) => (
+                                    <Chip
+                                        key={item.id}
+                                        icon={<span>⏱️</span>}
+                                        label={`${idx + 1}. ${item.title} (${Math.round(item.audioSegment!.start)}s - ${item.audioSegment!.end ? Math.round(item.audioSegment!.end) + 's' : 'fin'})`}
+                                        onClick={() => {
+                                            handleSeekMainAudio(item.audioSegment!.start);
+                                        }}
+                                        sx={{
+                                            bgcolor: 'white',
+                                            color: '#1e3a8a',
+                                            borderColor: '#3b82f6',
+                                            fontWeight: 600,
+                                            '&:hover': { bgcolor: '#eff6ff' }
+                                        }}
+                                        variant="outlined"
+                                    />
+                                ))}
+                            </Box>
+                        </Paper>
+                    );
+                })()}
+
                 <SpeakerCorrectionTranscription
                     transcription={transcription}
                     members={members}
                     meetingId={meeting.id}
                     audioUrl={meeting.audioRecording?.fileUrl}
                     audioDuration={meeting.audioRecording?.duration || 0}
+                    currentTime={mainAudioTime}
+                    onSeek={handleSeekMainAudio}
                     onTranscriptionUpdate={onTranscriptionUpdate}
                     onCorrectionMade={(original, corrected) => {
                         showToast?.(`Locuteur corrigé: ${original} → ${corrected}`, 'success');

@@ -18,6 +18,7 @@ export interface AgendaItem {
     objective?: string;
     agendaNote?: string;
     decision?: string;
+    audioSegment?: { start: number; end?: number; audioUrl?: string };
 }
 
 export interface PresentationMeeting {
