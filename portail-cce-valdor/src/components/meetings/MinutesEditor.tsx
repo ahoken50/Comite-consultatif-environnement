@@ -9,7 +9,8 @@ import {
     Divider,
     Grid,
     Alert,
-    Snackbar
+    Snackbar,
+    Drawer
 } from '@mui/material';
 import { Save, PictureAsPdf, UploadFile, DeleteSweep, Shield, Send, AutoAwesome, SmartToy } from '@mui/icons-material';
 import type { Meeting, AgendaItem, AudioRecording, MinutesDraft } from '../../types/meeting.types';
@@ -22,6 +23,7 @@ import AgendaItemEditor from './AgendaItemEditor';
 import CrossValidationPanel from './CrossValidationPanel';
 import PVModeSelector from './PVModeSelector';
 import PVAgentWizard from './PVAgentWizard';
+import JurisprudenceAssistant from './JurisprudenceAssistant';
 import { useMinutesFile } from '../../hooks/useMinutesFile';
 import { useToast } from '../../hooks/useToast';
 import { useTranscriptionProcessor } from '../../hooks/useTranscriptionProcessor';
@@ -86,6 +88,7 @@ const MinutesEditor: React.FC<MinutesEditorProps> = ({ meeting, onUpdate, readOn
     const [isApprovalDialogOpen, setIsApprovalDialogOpen] = useState(false);
     const [isModeSelectorOpen, setIsModeSelectorOpen] = useState(false);
     const [isAgentWizardOpen, setIsAgentWizardOpen] = useState(false);
+    const [isJurisprudenceOpen, setIsJurisprudenceOpen] = useState(false);
 
     // Progressive Rendering State for Agenda Items
     // Prevents massive DOM layout thrashing and thread blocking on mount
@@ -640,6 +643,16 @@ const BATCH_SIZE = 5; // Ou une constante importée d'un fichier de configuratio
                     {!readOnly && (
                         <>
                             <Button
+                                variant="outlined"
+                                color="primary"
+                                startIcon={<AutoAwesome />}
+                                onClick={() => setIsJurisprudenceOpen(true)}
+                                title="Consulter la jurisprudence et l'historique des résolutions par IA sémantique"
+                                sx={{ color: '#1e4e3d', borderColor: '#1e4e3d', '&:hover': { borderColor: '#143529', bgcolor: 'rgba(30, 78, 61, 0.04)' } }}
+                            >
+                                Jurisprudence IA
+                            </Button>
+                            <Button
                                 variant="contained"
                                 color="secondary"
                                 startIcon={<SmartToy />}
@@ -862,6 +875,17 @@ const BATCH_SIZE = 5; // Ou une constante importée d'un fichier de configuratio
                     }
                 </Alert>
             )}
+
+            <Drawer
+                anchor="right"
+                open={isJurisprudenceOpen}
+                onClose={() => setIsJurisprudenceOpen(false)}
+                PaperProps={{ sx: { width: { xs: '100%', sm: 480 } } }}
+            >
+                <JurisprudenceAssistant
+                    onClose={() => setIsJurisprudenceOpen(false)}
+                />
+            </Drawer>
 
             <MinutesImportDialog
                 open={isImportOpen}

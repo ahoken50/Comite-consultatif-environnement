@@ -18,11 +18,13 @@ import {
     InputLabel,
     Select,
     MenuItem,
-    CircularProgress
+    CircularProgress,
+    Drawer
 } from '@mui/material';
-import { Search, Gavel, Assignment } from '@mui/icons-material';
+import { Search, Gavel, Assignment, AutoAwesome } from '@mui/icons-material';
 import { useDispatch, useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
+import JurisprudenceAssistant from '../../components/meetings/JurisprudenceAssistant';
 import type { AppDispatch } from '../../store/store';
 import type { RootState } from '../../store/rootReducer';
 import { fetchMeetings } from '../../features/meetings/meetingsSlice';
@@ -50,6 +52,8 @@ const ResolutionsPage: React.FC = () => {
     const navigate = useNavigate();
     const [searchTerm, setSearchTerm] = useState('');
     const [statusFilter, setStatusFilter] = useState<string>('all'); // [NEW]
+    const [isJurisprudenceOpen, setIsJurisprudenceOpen] = useState(false);
+    const [jurisprudenceQuery, setJurisprudenceQuery] = useState('');
 
     const { items: meetings } = useSelector((state: RootState) => state.meetings);
     const { items: projects } = useSelector((state: RootState) => state.projects);
@@ -213,6 +217,27 @@ const ResolutionsPage: React.FC = () => {
                         Registre des Résolutions
                     </Typography>
                 </Box>
+                <Button
+                    variant="contained"
+                    startIcon={<AutoAwesome />}
+                    onClick={() => {
+                        setJurisprudenceQuery(searchTerm);
+                        setIsJurisprudenceOpen(true);
+                    }}
+                    sx={{
+                        bgcolor: '#1e4e3d',
+                        color: '#ffffff',
+                        '&:hover': {
+                            bgcolor: '#143529'
+                        },
+                        fontWeight: 'bold',
+                        textTransform: 'none',
+                        borderRadius: 2,
+                        boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+                    }}
+                >
+                    Assistant Jurisprudence IA
+                </Button>
             </Box>
 
             <Paper sx={{ p: 2, mb: 3 }}>
@@ -357,6 +382,18 @@ const ResolutionsPage: React.FC = () => {
                     </TableBody>
                 </Table>
             </TableContainer>
+
+            <Drawer
+                anchor="right"
+                open={isJurisprudenceOpen}
+                onClose={() => setIsJurisprudenceOpen(false)}
+                PaperProps={{ sx: { width: { xs: '100%', sm: 480 } } }}
+            >
+                <JurisprudenceAssistant
+                    onClose={() => setIsJurisprudenceOpen(false)}
+                    initialQuery={jurisprudenceQuery}
+                />
+            </Drawer>
         </Box>
     );
 };

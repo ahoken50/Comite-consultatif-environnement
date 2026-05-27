@@ -346,6 +346,74 @@ const RecommendationDetailsDialog: React.FC<RecommendationDetailsDialogProps> = 
                         </Box>
                     )}
 
+                    {recommendation.impactAnalysis && (
+                        <Box sx={{ mb: 3, p: 2, bgcolor: '#f9fbf9', borderRadius: 2, border: '1px solid #e2ece5' }}>
+                            <Typography variant="subtitle2" fontWeight="bold" color="#1e4e3d" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                📊 Aide à la Décision (Analyse d'Impact CCE)
+                            </Typography>
+                            <Grid container spacing={2} sx={{ mt: 0.5 }}>
+                                {recommendation.impactAnalysis.environmentalImpact && (
+                                    <Grid size={{ xs: 12, sm: 6 }}>
+                                        <Typography variant="caption" color="textSecondary" display="block">Impact Environnemental</Typography>
+                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5 }}>
+                                            <Box sx={{ flexGrow: 1, height: 8, bgcolor: '#e0e0e0', borderRadius: 4, overflow: 'hidden' }}>
+                                                <Box sx={{ 
+                                                    height: '100%', 
+                                                    width: recommendation.impactAnalysis.environmentalImpact === 'positive' ? '100%' : recommendation.impactAnalysis.environmentalImpact === 'neutral' ? '50%' : '15%',
+                                                    bgcolor: recommendation.impactAnalysis.environmentalImpact === 'positive' ? '#2e7d32' : recommendation.impactAnalysis.environmentalImpact === 'neutral' ? '#c5a065' : '#d32f2f'
+                                                }} />
+                                            </Box>
+                                            <Chip 
+                                                label={recommendation.impactAnalysis.environmentalImpact === 'positive' ? 'Positif' : recommendation.impactAnalysis.environmentalImpact === 'neutral' ? 'Neutre' : 'Négatif'} 
+                                                size="small" 
+                                                color={recommendation.impactAnalysis.environmentalImpact === 'positive' ? 'success' : recommendation.impactAnalysis.environmentalImpact === 'neutral' ? 'warning' : 'error'}
+                                                variant="filled"
+                                                sx={{ height: 20, fontSize: '0.75rem', fontWeight: 'bold' }}
+                                            />
+                                        </Box>
+                                    </Grid>
+                                )}
+                                {recommendation.impactAnalysis.implementationEffort && (
+                                    <Grid size={{ xs: 12, sm: 6 }}>
+                                        <Typography variant="caption" color="textSecondary" display="block">Effort d'Implantation</Typography>
+                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5 }}>
+                                            <Box sx={{ flexGrow: 1, height: 8, bgcolor: '#e0e0e0', borderRadius: 4, overflow: 'hidden' }}>
+                                                <Box sx={{ 
+                                                    height: '100%', 
+                                                    width: recommendation.impactAnalysis.implementationEffort === 'low' ? '30%' : recommendation.impactAnalysis.implementationEffort === 'medium' ? '65%' : '100%',
+                                                    bgcolor: recommendation.impactAnalysis.implementationEffort === 'low' ? '#2e7d32' : recommendation.impactAnalysis.implementationEffort === 'medium' ? '#ed6c02' : '#d32f2f'
+                                                }} />
+                                            </Box>
+                                            <Chip 
+                                                label={recommendation.impactAnalysis.implementationEffort === 'low' ? 'Faible' : recommendation.impactAnalysis.implementationEffort === 'medium' ? 'Moyen' : 'Élevé'} 
+                                                size="small" 
+                                                color={recommendation.impactAnalysis.implementationEffort === 'low' ? 'success' : recommendation.impactAnalysis.implementationEffort === 'medium' ? 'warning' : 'error'}
+                                                variant="filled"
+                                                sx={{ height: 20, fontSize: '0.75rem', fontWeight: 'bold' }}
+                                            />
+                                        </Box>
+                                    </Grid>
+                                )}
+                                {recommendation.impactAnalysis.financial && (
+                                    <Grid size={{ xs: 12, sm: 6 }}>
+                                        <Typography variant="caption" color="textSecondary">Estimation Financière</Typography>
+                                        <Typography variant="body2" fontWeight="bold" color="text.primary">
+                                            {recommendation.impactAnalysis.financial}
+                                        </Typography>
+                                    </Grid>
+                                )}
+                                {recommendation.impactAnalysis.social && (
+                                    <Grid size={{ xs: 12, sm: 6 }}>
+                                        <Typography variant="caption" color="textSecondary">Impact Social / Acceptabilité</Typography>
+                                        <Typography variant="body2" fontWeight="bold">
+                                            {recommendation.impactAnalysis.social === 'low' ? 'Faible impact' : recommendation.impactAnalysis.social === 'medium' ? 'Moyen' : 'Élevé / Populaire'}
+                                        </Typography>
+                                    </Grid>
+                                )}
+                            </Grid>
+                        </Box>
+                    )}
+
                     <Box sx={{ mb: 2 }}>
                         <Typography variant="subtitle2" gutterBottom>Pièces Jointes / Annexes:</Typography>
                         {attachments.length > 0 && (

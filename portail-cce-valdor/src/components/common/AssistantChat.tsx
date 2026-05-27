@@ -10,9 +10,10 @@ import {
     Avatar,
     IconButton,
     Fade,
-    Divider
+    Divider,
+    Drawer
 } from '@mui/material';
-import { SmartToy, Send, Close, Chat } from '@mui/icons-material';
+import { SmartToy, Send, Close, Chat, AutoAwesome } from '@mui/icons-material';
 import { useDispatch, useSelector } from 'react-redux';
 import type { AppDispatch } from '../../store/store';
 import type { RootState } from '../../store/rootReducer';
@@ -21,6 +22,7 @@ import { fetchMeetings } from '../../features/meetings/meetingsSlice';
 // @ts-expect-error
 import { getGenerativeModel } from 'firebase/ai';
 import { vertexAI } from '../../services/firebase';
+import JurisprudenceAssistant from '../meetings/JurisprudenceAssistant';
 
 interface Message {
     id: string;
@@ -32,6 +34,7 @@ interface Message {
 const AssistantChat: React.FC = () => {
     const dispatch = useDispatch<AppDispatch>();
     const [isOpen, setIsOpen] = useState(false);
+    const [isJurisprudenceOpen, setIsJurisprudenceOpen] = useState(false);
     const [messages, setMessages] = useState<Message[]>([
         { id: '1', text: 'Bonjour ! Je suis l\'assistant IA du CCE. Comment puis-je vous aider aujourd\'hui ?', sender: 'ai', timestamp: new Date() }
     ]);
@@ -81,6 +84,21 @@ const AssistantChat: React.FC = () => {
         }]);
 
         try {
+            // RAG Integration: perform a quick semantic search on Supabase
+            let supabaseRAGContext = "";
+            try {
+                const { searchResolutions } = await import('../../services/supabaseSearchService');
+                const hits = await searchResolutions(userText, { matchCount: 4, matchThreshold: 0.3 });
+                if (hits && hits.hits && hits.hits.length > 0) {
+                    supabaseRAGContext = "\n\nVoici des résolutions de la jurisprudence passée du CCE qui pourraient être pertinentes pour cette question:\n" +
+                        hits.hits.map((h: any, i: number) =>
+                            `[RÉSOLUTION ${h.document.number || i + 1} - Réunion: ${h.document.meetingTitle} (${h.document.date ? new Date(h.document.date).toLocaleDateString('fr-CA') : 'Date inconnue'})]\nContenu:\n${h.document.content}`
+                        ).join('\n\n---\n\n');
+                }
+            } catch (err) {
+                console.warn("Supabase RAG search failed inside AssistantChat:", err);
+            }
+
             const model = getGenerativeModel(vertexAI, { model: 'gemini-2.0-flash' });
 
             // Prepare Context
@@ -116,14 +134,17 @@ const AssistantChat: React.FC = () => {
             
             Contexte actuel complet (JSON):
             ${JSON.stringify(contextData)}
+            
+            ${supabaseRAGContext ? `CONTEXTE JURISPRUDENCE (RAG Sémantique) :
+            Ces résolutions proviennent de la base de données sémantique Supabase (pgvector) après avoir cherché le sens de la question de l'utilisateur :
+            ${supabaseRAGContext}` : ''}
 
             Instructions:
             1. Réponds de manière concise et utile en français.
             2. Tu as maintenant accès aux détails complets : descriptions des projets, décisions du caucus, résolutions passées (numéros et contenu), et sujets des réunions (ordre du jour détaillé).
-            3. Si on te demande de chercher une résolution, cherche dans 'meetings.agenda.resolutions' ou 'projects.resolution'.
+            3. Si on te demande de chercher une résolution ou des décisions passées, utilise la section CONTEXTE JURISPRUDENCE ci-dessus ou cherches dans 'meetings.agenda.resolutions' ou 'projects.resolution'.
             4. Si on te demande des détails sur un projet, utilise sa description, ses décisions de caucus et ses prochaines étapes.
             5. Si on te demande les sujets d'une réunion, liste les titres de l'agenda.
-            
             Question de l'utilisateur: "${userText}"
             `;
 
@@ -212,9 +233,19 @@ const AssistantChat: React.FC = () => {
                                 Assistant CCE
                             </Typography>
                         </Box>
-                        <IconButton size="small" onClick={() => setIsOpen(false)} sx={{ color: 'inherit' }}>
-                            <Close />
-                        </IconButton>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                            <IconButton 
+                                size="small" 
+                                onClick={() => setIsJurisprudenceOpen(true)} 
+                                sx={{ color: '#c5a065' }}
+                                title="Consulter la Jurisprudence sémantique IA"
+                            >
+                                <AutoAwesome fontSize="small" />
+                            </IconButton>
+                            <IconButton size="small" onClick={() => setIsOpen(false)} sx={{ color: 'inherit' }}>
+                                <Close />
+                            </IconButton>
+                        </Box>
                     </Box>
 
                     <Box sx={{ flexGrow: 1, overflow: 'auto', p: 2, bgcolor: '#f5f5f5' }}>
@@ -268,6 +299,17 @@ const AssistantChat: React.FC = () => {
                     </Box>
                 </Paper>
             </Fade>
+
+            <Drawer
+                anchor="right"
+                open={isJurisprudenceOpen}
+                onClose={() => setIsJurisprudenceOpen(false)}
+                PaperProps={{ sx: { width: { xs: '100%', sm: 480 }, zIndex: 1100 } }}
+            >
+                <JurisprudenceAssistant
+                    onClose={() => setIsJurisprudenceOpen(false)}
+                />
+            </Drawer>
         </>
     );
 };
