@@ -16,6 +16,12 @@ export const MeetingStatus = {
 
 export type MeetingStatus = typeof MeetingStatus[keyof typeof MeetingStatus];
 
+export interface AudioSegment {
+    start: number;       // elapsed seconds from recording start
+    end?: number;        // end second of this topic
+    audioUrl?: string;   // specific audio recording url if multiple files
+}
+
 export interface AgendaItem {
     id: string;
     order?: number;
@@ -40,6 +46,7 @@ export interface AgendaItem {
     // NEW: Council Recommendation settings
     isRecommendationToCouncil?: boolean;
     councilIncludedEntryIndices?: number[]; // indices of `minuteEntries` to include. If undefined, all are included.
+    audioSegment?: AudioSegment; // NEW: Audio division by subject segment
 }
 
 // NEW: Interface for individual minute entry (resolution or comment)

@@ -54,11 +54,14 @@ const SortableItem = React.memo(({ item, onDelete, onEdit, linkedDocuments, read
         setNodeRef,
         transform,
         transition,
+        isDragging,
     } = useSortable({ id: item.id });
 
     const style = {
         transform: CSS.Transform.toString(transform),
         transition,
+        opacity: isDragging ? 0.65 : 1,
+        zIndex: isDragging ? 9999 : 'auto',
     };
 
     return (
@@ -78,7 +81,14 @@ const SortableItem = React.memo(({ item, onDelete, onEdit, linkedDocuments, read
                     </Box>
                 )
             }
-            sx={{ bgcolor: 'background.paper', mb: 1, borderRadius: 1, boxShadow: 1 }}
+            sx={{
+                bgcolor: isDragging ? '#f0f9ff' : 'background.paper',
+                mb: 1,
+                borderRadius: 2,
+                boxShadow: isDragging ? '0 10px 15px -3px rgba(59, 130, 246, 0.2)' : '0 1px 3px 0 rgba(0, 0, 0, 0.05)',
+                border: isDragging ? '1px dashed #3b82f6' : '1px solid #e2e8f0',
+                transition: 'all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1)',
+            }}
         >
             {!readOnly && (
                 <ListItemIcon {...attributes} {...listeners} sx={{ cursor: 'grab' }}>

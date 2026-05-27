@@ -58,7 +58,8 @@ export const usePresentationData = (meetingId?: string) => {
                         attachments: attachments,
                         objective: item.objective,
                         agendaNote: item.agendaNote,
-                        decision: item.decision
+                        decision: item.decision,
+                        audioSegment: item.audioSegment || null
                     };
                 });
 
@@ -139,6 +140,42 @@ export const usePresentationData = (meetingId?: string) => {
         }
     }, [meeting]);
 
+    const saveItemAudioSegment = useCallback(async (itemId: string, segment: { start: number; end?: number; audioUrl?: string }) => {
+        if (!meeting) return;
+
+        try {
+            const updatedAgenda = meeting.agenda.map(item => {
+                if (item.id === itemId) {
+                    return { ...item, audioSegment: segment };
+                }
+                return item;
+            });
+
+            // Update local state immediately for UI responsiveness
+            setMeeting(prev => prev ? { ...prev, agenda: updatedAgenda } : null);
+
+            // Update Firestore
+            const meetingRef = doc(db, 'meetings', meeting.id);
+            await updateDoc(meetingRef, {
+                agendaItems: updatedAgenda.map(item => ({
+                    id: item.id,
+                    title: item.title,
+                    description: item.description,
+                    duration: item.durationInMinutes,
+                    presenter: item.presenter,
+                    actualDuration: item.actualDuration || 0,
+                    objective: item.objective || '',
+                    agendaNote: item.agendaNote || '',
+                    decision: item.decision || '',
+                    audioSegment: item.audioSegment || null
+                }))
+            });
+
+        } catch (err) {
+            console.error("Error saving audio segment:", err);
+        }
+    }, [meeting]);
+
     const saveNote = useCallback(async (itemId: string, content: string) => {
         if (!meeting) return;
         try {
@@ -154,5 +191,5 @@ export const usePresentationData = (meetingId?: string) => {
         }
     }, [meeting]);
 
-    return { meeting, loading, error, saveItemDuration, saveNote };
+    return { meeting, loading, error, saveItemDuration, saveNote, saveItemAudioSegment };
 };

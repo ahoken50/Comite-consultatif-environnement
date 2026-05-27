@@ -21,7 +21,7 @@ const getBroadcastChannel = (id: string) => new BroadcastChannel(`cce_presentati
 
 const PresentationControlPage: React.FC = () => {
     const { id: meetingId } = useParams<{ id: string }>();
-    const { meeting, loading, error, saveItemDuration, saveNote } = usePresentationData(meetingId);
+    const { meeting, loading, error, saveItemDuration, saveNote, saveItemAudioSegment } = usePresentationData(meetingId);
 
     const [currentIndex, setCurrentIndex] = useState(0);
     const [documentPage, setDocumentPage] = useState(1); // Controlled document page
@@ -49,6 +49,19 @@ const PresentationControlPage: React.FC = () => {
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
     const recordingIntervalRef = useRef<number | null>(null);
     const [pendingRecovery, setPendingRecovery] = useState<string | null>(null); // ID of crashed recording
+    
+    // Point C: Audio division refs to avoid re-running effects every second
+    const isRecordingRef = useRef(isRecording);
+    const recordingSecondsRef = useRef(recordingSeconds);
+    const topicAudioStartSecondRef = useRef(0);
+
+    useEffect(() => {
+        isRecordingRef.current = isRecording;
+    }, [isRecording]);
+
+    useEffect(() => {
+        recordingSecondsRef.current = recordingSeconds;
+    }, [recordingSeconds]);
 
     const channelRef = useRef<BroadcastChannel | null>(null);
 
@@ -98,7 +111,7 @@ const PresentationControlPage: React.FC = () => {
         setDocumentPage(1);
     }, [activeAttachment?.id]);
 
-    // Time Tracking Logic
+    // Time Tracking & Audio Segmenting Logic
     useEffect(() => {
         // When currentIndex changes:
         // 1. Calculate time spent on PREVIOUS item
@@ -108,24 +121,29 @@ const PresentationControlPage: React.FC = () => {
         const now = Date.now();
         const elapsedSeconds = Math.round((now - lastTimeRef.current) / 1000);
 
-        if (elapsedSeconds > 1 && meeting) { // Only save if meaningful time passed
+        if (meeting) {
             const prevIndex = currentIndexRef.current;
-            // Prevent saving on initial mount if 0 time passed, but here we check elapsed > 1
             const prevItem = meeting.agenda[prevIndex];
-            if (prevItem) {
+            
+            if (elapsedSeconds > 1 && prevItem) { // Only save if meaningful time passed
                 saveItemDuration(prevItem.id, elapsedSeconds);
+            }
+
+            // Point C: Save audio segment if we are currently recording
+            if (isRecordingRef.current && prevItem) {
+                const currentSec = recordingSecondsRef.current;
+                saveItemAudioSegment(prevItem.id, {
+                    start: topicAudioStartSecondRef.current,
+                    end: currentSec
+                });
+                console.log(`[Audio Split] Saved segment for ${prevItem.title}: ${topicAudioStartSecondRef.current}s to ${currentSec}s`);
+                topicAudioStartSecondRef.current = currentSec;
             }
         }
 
         lastTimeRef.current = now;
         currentIndexRef.current = currentIndex;
-
-        // Cleanup on unmount (save final item)
-        return () => {
-            // We can't easily save on unmount due to closure staleness, 
-            // but 'currentIndex' change handles most cases.
-        };
-    }, [currentIndex, meeting, saveItemDuration]);
+    }, [currentIndex, meeting, saveItemDuration, saveItemAudioSegment]);
 
     // Secure Audio Logic
     useEffect(() => {
@@ -141,6 +159,9 @@ const PresentationControlPage: React.FC = () => {
 
     const startRecording = async () => {
         try {
+            // Reset topic segment start
+            topicAudioStartSecondRef.current = 0;
+            
             const { secureRecordingManager } = await import('../../services/audio/SecureRecordingManager');
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
 

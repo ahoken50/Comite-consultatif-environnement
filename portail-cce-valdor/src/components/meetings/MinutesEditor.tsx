@@ -12,7 +12,7 @@ import {
     Snackbar,
     Drawer
 } from '@mui/material';
-import { Save, PictureAsPdf, UploadFile, DeleteSweep, Shield, Send, AutoAwesome, SmartToy } from '@mui/icons-material';
+import { Save, PictureAsPdf, UploadFile, DeleteSweep, Shield, Send, AutoAwesome, SmartToy, Description, Download } from '@mui/icons-material';
 import type { Meeting, AgendaItem, AudioRecording, MinutesDraft } from '../../types/meeting.types';
 // import { sanitizeMinutes } from '../../services/geminiService'; // Removed in favor of Claude
 import MinutesImportDialog from './MinutesImportDialog';
@@ -160,6 +160,154 @@ const BATCH_SIZE = 5; // Ou une constante importée d'un fichier de configuratio
         };
         const { generateMinutesPDF } = await import('../../services/pdfServiceMinutes');
         generateMinutesPDF(meetingForPdf, globalNotes, null, members);
+    };
+
+    const handleExportDOCX = () => {
+        // Construct clean HTML for Word export with rich styling
+        let html = `<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+<head><title>Procès-verbal - ${meeting.title}</title>
+<style>
+body { font-family: Arial, sans-serif; line-height: 1.6; color: #333333; }
+h1 { text-align: center; color: #1e4e3d; font-size: 24px; margin-bottom: 5px; }
+h2 { color: #2d3748; font-size: 18px; border-bottom: 2px solid #e2e8f0; padding-bottom: 5px; margin-top: 20px; }
+h3 { color: #1e4e3d; font-size: 15px; margin-top: 15px; margin-bottom: 5px; }
+.meta { margin-bottom: 20px; font-size: 14px; color: #4a5568; background: #f7fafc; padding: 10px; border-left: 4px solid #1e4e3d; }
+.attendees { margin-bottom: 20px; }
+.agenda-item { margin-bottom: 25px; padding: 15px; border: 1px solid #e2e8f0; border-radius: 4px; }
+.resolution { background-color: #f0fdf4; border-left: 3px solid #16a34a; padding: 10px; margin-top: 10px; }
+.comment { background-color: #f8fafc; border-left: 3px solid #64748b; padding: 10px; margin-top: 10px; }
+table { border-collapse: collapse; width: 100%; margin-top: 10px; }
+th, td { border: 1px solid #cbd5e1; padding: 8px; text-align: left; }
+th { background-color: #edf2f7; font-weight: bold; }
+</style>
+</head>
+<body>
+<h1>PROCÈS-VERBAL</h1>
+<h3 style="text-align: center; margin-top: 0; color: #64748b;">${meeting.title}</h3>
+
+<div class="meta">
+  <strong>Date :</strong> ${new Date(meeting.date).toLocaleDateString('fr-CA', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}<br/>
+  <strong>Lieu :</strong> ${meeting.location || 'Non spécifié'}<br/>
+  <strong>Type :</strong> ${meeting.type === 'regular' ? 'Ordinaire' : 'Extraordinaire'}<br/>
+  <strong>Statut :</strong> ${meeting.status}
+</div>
+
+<h2>Présences & Quorum</h2>
+<div class="attendees">
+  <table>
+    <thead>
+      <tr>
+        <th>Nom</th>
+        <th>Rôle</th>
+        <th>Présence</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${(meeting.attendees || []).map(att => `
+        <tr>
+          <td>${att.name}</td>
+          <td>${att.role}</td>
+          <td>${att.isPresent ? 'Présent' : 'Absent'}</td>
+        </tr>
+      `).join('')}
+    </tbody>
+  </table>
+</div>
+
+${globalNotes ? `
+<h2>Notes Générales / Résumé Exécutif</h2>
+<div style="white-space: pre-wrap; padding: 10px; background: #f8fafc; border: 1px solid #e2e8f0;">
+  ${globalNotes}
+</div>
+` : ''}
+
+<h2>Délibérations & Résolutions</h2>
+${(localAgendaItems || []).map((item, idx) => {
+    let entriesHtml = '';
+    if (item.minuteEntries && item.minuteEntries.length > 0) {
+        entriesHtml = item.minuteEntries.map(entry => `
+            <div class="${entry.type === 'resolution' ? 'resolution' : 'comment'}">
+                <strong>[${entry.type.toUpperCase()}${entry.number ? ` ${entry.number}` : ''}]</strong>
+                ${entry.proposer ? `Proposé par : ${entry.proposer}` : ''} 
+                ${entry.seconder ? ` - Appuyé par : ${entry.seconder}` : ''}
+                <div style="margin-top: 5px; white-space: pre-wrap;">${entry.content}</div>
+            </div>
+        `).join('');
+    } else if (item.decision || itemDecisions[item.id]) {
+        entriesHtml = `
+            <div class="resolution">
+                <strong>[DÉCISION]</strong>
+                <div style="margin-top: 5px; white-space: pre-wrap;">${itemDecisions[item.id] || item.decision}</div>
+            </div>
+        `;
+    }
+
+    return `
+        <div class="agenda-item">
+            <h3>${idx + 1}. ${item.title}</h3>
+            <p><em>Présenté par : ${item.presenter || 'Non spécifié'} | Objectif : ${item.objective || 'Information'}</em></p>
+            ${item.description ? `<p>${item.description}</p>` : ''}
+            ${entriesHtml}
+        </div>
+    `;
+}).join('')}
+
+</body>
+</html>`;
+
+        const blob = new Blob(['\ufeff' + html], { type: 'application/msword' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `PV_${meeting.title.replace(/\s+/g, '_')}_${format(new Date(), 'yyyy-MM-dd')}.docx`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        showSuccess('Fichier DOCX (Word) généré avec succès !');
+    };
+
+    const handleExportJSON = () => {
+        const payload = {
+            exportVersion: "1.0",
+            exportedAt: new Date().toISOString(),
+            meeting: {
+                id: meeting.id,
+                title: meeting.title,
+                date: meeting.date,
+                location: meeting.location,
+                type: meeting.type,
+                status: meeting.status,
+                meetingNumber: meeting.meetingNumber,
+                isConfidential: meeting.isConfidential || false,
+                attendees: meeting.attendees || [],
+                globalNotes: globalNotes || "",
+                agendaItems: localAgendaItems.map(item => ({
+                    id: item.id,
+                    order: item.order,
+                    title: item.title,
+                    description: item.description || "",
+                    duration: item.duration,
+                    actualDuration: item.actualDuration || 0,
+                    presenter: item.presenter || "",
+                    objective: item.objective || "Information",
+                    agendaNote: item.agendaNote || "",
+                    decision: itemDecisions[item.id] || item.decision || "",
+                    minuteEntries: item.minuteEntries || []
+                }))
+            }
+        };
+
+        const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `PV_${meeting.title.replace(/\s+/g, '_')}_${format(new Date(), 'yyyy-MM-dd')}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        showSuccess('Fichier JSON structuré exporté avec succès !');
     };
 
     const handleDraftGenerated = React.useCallback((draft: MinutesDraft) => {
@@ -725,8 +873,28 @@ const BATCH_SIZE = 5; // Ou une constante importée d'un fichier de configuratio
                         variant="outlined"
                         startIcon={<PictureAsPdf />}
                         onClick={handleGeneratePDF}
+                        title="Générer et télécharger la version officielle en PDF"
                     >
-                        Générer PDF
+                        Exporter PDF
+                    </Button>
+                    <Button
+                        variant="outlined"
+                        color="primary"
+                        startIcon={<Description />}
+                        onClick={handleExportDOCX}
+                        title="Exporter le brouillon de PV au format Word (DOCX)"
+                        sx={{ color: '#1e3a8a', borderColor: '#1e3a8a', '&:hover': { borderColor: '#172554', bgcolor: 'rgba(30, 58, 138, 0.04)' } }}
+                    >
+                        Exporter Word (DOCX)
+                    </Button>
+                    <Button
+                        variant="outlined"
+                        color="info"
+                        startIcon={<Download />}
+                        onClick={handleExportJSON}
+                        title="Exporter les données structurées brutes au format JSON"
+                    >
+                        Exporter JSON
                     </Button>
                     {!readOnly && (
                         <>
