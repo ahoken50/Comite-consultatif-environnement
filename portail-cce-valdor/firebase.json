@@ -44,6 +44,10 @@
                 "function": "enroll_speaker"
             },
             {
+                "source": "/api/backup_firestore",
+                "function": "backup_firestore_to_storage"
+            },
+            {
                 "source": "**",
                 "destination": "/index.html"
             }

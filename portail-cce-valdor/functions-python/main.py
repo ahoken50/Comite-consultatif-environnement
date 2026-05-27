@@ -21,36 +21,55 @@ from firebase_admin import initialize_app, firestore, storage
 # import openai
 # from pydub import AudioSegment
 # Local Imports
-from pv_pipeline import (
-    run_pv_pipeline,
-    run_reflection_loop,
-    compare_with_historical,
-    record_learning
-)
-from active_learning import (
+# [NEW] Lazy Module loading pattern to drastically optimize Cold Start times
+class LazyModule:
+    def __init__(self, module_name):
+        self._module_name = module_name
+        self._module = None
 
-    analyze_embedding_quality,
-    analyze_quality_trends,
-    build_style_memory
-)
-from rlhf_engine import (
-    compute_embedding_reward,
-    get_members_needing_improvement,
-    optimize_policy,
-    get_current_policy,
-    get_learned_preferences,
-    compute_reward,
-    record_preference
-)
-from recommendation_engine import learn_resolution_template
+    def __getattr__(self, name):
+        if self._module is None:
+            import importlib
+            self._module = importlib.import_module(self._module_name)
+        return getattr(self._module, name)
 
+_pv_pipeline = LazyModule("pv_pipeline")
+def run_pv_pipeline(*args, **kwargs): return _pv_pipeline.run_pv_pipeline(*args, **kwargs)
+def run_reflection_loop(*args, **kwargs): return _pv_pipeline.run_reflection_loop(*args, **kwargs)
+def compare_with_historical(*args, **kwargs): return _pv_pipeline.compare_with_historical(*args, **kwargs)
+def record_learning(*args, **kwargs): return _pv_pipeline.record_learning(*args, **kwargs)
 
-from diagnose_migration import api_diagnose_migration
-from batch_enroll_from_storage import batch_enroll_from_storage
-from sync_firestore_to_supabase import force_sync_firestore_to_supabase
-from clear_supabase_speakers import clear_supabase_speakers
-# sync_service no longer needed — Supabase is primary store
-from audio_utils import extract_audio_segment_embedding
+_active_learning = LazyModule("active_learning")
+def analyze_embedding_quality(*args, **kwargs): return _active_learning.analyze_embedding_quality(*args, **kwargs)
+def analyze_quality_trends(*args, **kwargs): return _active_learning.analyze_quality_trends(*args, **kwargs)
+def build_style_memory(*args, **kwargs): return _active_learning.build_style_memory(*args, **kwargs)
+
+_rlhf_engine = LazyModule("rlhf_engine")
+def compute_embedding_reward(*args, **kwargs): return _rlhf_engine.compute_embedding_reward(*args, **kwargs)
+def get_members_needing_improvement(*args, **kwargs): return _rlhf_engine.get_members_needing_improvement(*args, **kwargs)
+def optimize_policy(*args, **kwargs): return _rlhf_engine.optimize_policy(*args, **kwargs)
+def get_current_policy(*args, **kwargs): return _rlhf_engine.get_current_policy(*args, **kwargs)
+def get_learned_preferences(*args, **kwargs): return _rlhf_engine.get_learned_preferences(*args, **kwargs)
+def compute_reward(*args, **kwargs): return _rlhf_engine.compute_reward(*args, **kwargs)
+def record_preference(*args, **kwargs): return _rlhf_engine.record_preference(*args, **kwargs)
+
+_recommendation_engine = LazyModule("recommendation_engine")
+def learn_resolution_template(*args, **kwargs): return _recommendation_engine.learn_resolution_template(*args, **kwargs)
+
+_diagnose_migration = LazyModule("diagnose_migration")
+def api_diagnose_migration(*args, **kwargs): return _diagnose_migration.api_diagnose_migration(*args, **kwargs)
+
+_batch_enroll_from_storage = LazyModule("batch_enroll_from_storage")
+def batch_enroll_from_storage(*args, **kwargs): return _batch_enroll_from_storage.batch_enroll_from_storage(*args, **kwargs)
+
+_sync_firestore_to_supabase = LazyModule("sync_firestore_to_supabase")
+def force_sync_firestore_to_supabase(*args, **kwargs): return _sync_firestore_to_supabase.force_sync_firestore_to_supabase(*args, **kwargs)
+
+_clear_supabase_speakers = LazyModule("clear_supabase_speakers")
+def clear_supabase_speakers(*args, **kwargs): return _clear_supabase_speakers.clear_supabase_speakers(*args, **kwargs)
+
+_audio_utils = LazyModule("audio_utils")
+def extract_audio_segment_embedding(*args, **kwargs): return _audio_utils.extract_audio_segment_embedding(*args, **kwargs)
 
 from dotenv import load_dotenv
 
@@ -3603,4 +3622,64 @@ def clean_and_optimize_speaker_embeddings(req: https_fn.CallableRequest) -> dict
             code=https_fn.FunctionsErrorCode.INTERNAL,
             message=str(e)
         )
+
+
+# -----------------------------------------------------------------------------
+# Hot backup of critical Firestore collections to Cloud Storage
+# -----------------------------------------------------------------------------
+@https_fn.on_request(
+    timeout_sec=300,
+    memory=options.MemoryOption.MB_256,
+    cors=options.CorsOptions(cors_origins="*", cors_methods=["POST", "OPTIONS"])
+)
+def backup_firestore_to_storage(req: https_fn.Request) -> https_fn.Response:
+    """
+    Sauvegarde à chaud des collections critiques du Portail CCE au format JSON
+    dans le bucket Cloud Storage sous la forme d'un dossier timestampé.
+    """
+    import json
+    from datetime import datetime
+    
+    # Simple CORS preflight handling
+    if req.method == 'OPTIONS':
+        headers = {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'POST, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+            'Access-Control-Max-Age': '3600'
+        }
+        return https_fn.Response('', status=204, headers=headers)
+
+    headers = {'Access-Control-Allow-Origin': '*'}
+
+    try:
+        from core.firebase_init import db, bucket
+            
+        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        backup_folder = f"backups/{timestamp}"
+        
+        collections_to_backup = ["meetings", "members", "projects", "regulations", "activity_log"]
+        results = {}
+        
+        for col_name in collections_to_backup:
+            docs = db.collection(col_name).stream()
+            data_dict = {doc.id: doc.to_dict() for doc in docs}
+            
+            # Upload to GCS
+            blob = bucket.blob(f"{backup_folder}/{col_name}.json")
+            blob.upload_from_string(
+                json.dumps(data_dict, ensure_ascii=False, default=str, indent=2),
+                content_type="application/json"
+            )
+            results[col_name] = len(data_dict)
+            
+        return https_fn.Response(json.dumps({
+            "success": True,
+            "timestamp": timestamp,
+            "folder": backup_folder,
+            "exported": results
+        }), status=200, headers=headers, content_type="application/json")
+    except Exception as e:
+        print(f"[Backup] Error during backup export: {e}")
+        return https_fn.Response(json.dumps({"success": False, "error": str(e)}), status=500, headers=headers, content_type="application/json")
 

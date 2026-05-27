@@ -11,6 +11,30 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
+  build: {
+    chunkSizeWarningLimit: 800,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('node_modules')) {
+            if (id.includes('@mui') || id.includes('@emotion')) {
+              return 'vendor-mui';
+            }
+            if (id.includes('firebase')) {
+              return 'vendor-firebase';
+            }
+            if (id.includes('jspdf') || id.includes('pdfmake') || id.includes('html2canvas') || id.includes('xlsx') || id.includes('mammoth')) {
+              return 'vendor-pdf-excel';
+            }
+            if (id.includes('react-big-calendar') || id.includes('recharts') || id.includes('dnd-kit')) {
+              return 'vendor-widgets';
+            }
+            return 'vendor-others';
+          }
+        }
+      }
+    }
+  },
   test: {
     globals: true,
     environment: 'jsdom',
