@@ -17,11 +17,12 @@ import {
     Card,
     CardContent
 } from '@mui/material';
-import { CheckCircle, Edit, InfoOutlined } from '@mui/icons-material';
-import { doc, getDoc, updateDoc } from 'firebase/firestore';
+import { CheckCircle, Edit, InfoOutlined, Attachment, InsertDriveFile, PictureAsPdf, Description, OpenInNew } from '@mui/icons-material';
+import { doc, getDoc, updateDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { db, functions } from '../../services/firebase';
 import { httpsCallable } from 'firebase/functions';
 import type { Meeting } from '../../types/meeting.types';
+import type { Document as DocumentItem } from '../../types/document.types';
 import DOMPurify from 'dompurify';
 
 const ApprovalPage: React.FC = () => {
@@ -30,6 +31,7 @@ const ApprovalPage: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [meeting, setMeeting] = useState<Meeting | null>(null);
+    const [documents, setDocuments] = useState<DocumentItem[]>([]);
     const [approvalData, setApprovalData] = useState<any>(null);
 
     // Comments state
@@ -50,8 +52,6 @@ const ApprovalPage: React.FC = () => {
             }
 
             try {
-                const { collection, query, where, getDocs } = await import('firebase/firestore');
-
                 // 1. Validate Token - must match collection name used in Cloud Function
                 const approvalsRef = collection(db, 'meetings', meetingId, 'approval_tokens');
                 const q = query(approvalsRef, where('token', '==', token));
@@ -93,6 +93,20 @@ const ApprovalPage: React.FC = () => {
                         dateUpdated: meetingData.dateUpdated?.toDate ? meetingData.dateUpdated.toDate().toISOString() : meetingData.dateUpdated,
                     } as Meeting;
                     setMeeting(normalizedMeeting);
+
+                    // 3. Fetch Linked Documents
+                    const documentsRef = collection(db, 'documents');
+                    const docQuery = query(
+                        documentsRef,
+                        where('linkedEntityId', '==', meetingId),
+                        where('linkedEntityType', '==', 'meeting')
+                    );
+                    const docsSnap = await getDocs(docQuery);
+                    const loadedDocs: DocumentItem[] = [];
+                    docsSnap.forEach(docSnap => {
+                        loadedDocs.push({ id: docSnap.id, ...docSnap.data() } as DocumentItem);
+                    });
+                    setDocuments(loadedDocs);
                 } else {
                     setError("Réunion introuvable.");
                 }
@@ -276,6 +290,75 @@ const ApprovalPage: React.FC = () => {
                     })</strong>
                 </Typography>
             </Box>
+
+            {/* Documents and Attachments Section */}
+            {documents && documents.length > 0 && (
+                <Card sx={{ mb: 4, borderLeft: '4px solid #1976d2', boxShadow: 2 }}>
+                    <CardContent>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+                            <Attachment color="primary" />
+                            <Typography variant="h6" fontWeight="bold">
+                                Documents et pièces jointes ({documents.length})
+                            </Typography>
+                        </Box>
+                        <Divider sx={{ mb: 2 }} />
+                        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
+                            {documents.map((doc) => {
+                                const isPdf = doc.type?.toLowerCase().includes('pdf') || doc.name.toLowerCase().endsWith('.pdf');
+                                const isWord = doc.type?.toLowerCase().includes('word') || doc.type?.toLowerCase().includes('officedocument') || doc.name.toLowerCase().endsWith('.docx') || doc.name.toLowerCase().endsWith('.doc');
+                                const agendaItem = meeting?.agendaItems?.find(item => item.id === doc.agendaItemId);
+                                const docLabel = agendaItem ? `Point : ${agendaItem.title}` : 'Document général';
+                                
+                                return (
+                                    <Card 
+                                        key={doc.id} 
+                                        variant="outlined" 
+                                        sx={{ 
+                                            minWidth: 250, 
+                                            flex: '1 1 30%', 
+                                            display: 'flex', 
+                                            alignItems: 'center', 
+                                            justifyContent: 'space-between',
+                                            p: 1.5,
+                                            borderRadius: 2,
+                                            '&:hover': { bgcolor: '#f4f6f9' }
+                                        }}
+                                    >
+                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, overflow: 'hidden' }}>
+                                            {isPdf ? (
+                                                <PictureAsPdf sx={{ color: '#d32f2f' }} />
+                                            ) : isWord ? (
+                                                <Description sx={{ color: '#1976d2' }} />
+                                            ) : (
+                                                <InsertDriveFile sx={{ color: '#757575' }} />
+                                            )}
+                                            <Box sx={{ overflow: 'hidden', mr: 1 }}>
+                                                <Typography variant="body2" fontWeight="medium" noWrap title={doc.name}>
+                                                    {doc.name}
+                                                </Typography>
+                                                <Typography variant="caption" color="text.secondary" display="block" noWrap title={docLabel}>
+                                                    {doc.size ? `${(doc.size / 1024 / 1024).toFixed(2)} Mo` : 'Taille inconnue'} • {docLabel}
+                                                </Typography>
+                                            </Box>
+                                        </Box>
+                                        <Button 
+                                            variant="text" 
+                                            size="small" 
+                                            startIcon={<OpenInNew />} 
+                                            href={doc.url} 
+                                            target="_blank" 
+                                            rel="noopener noreferrer"
+                                            sx={{ ml: 'auto', minWidth: 'auto' }}
+                                        >
+                                            Ouvrir
+                                        </Button>
+                                    </Card>
+                                );
+                            })}
+                        </Box>
+                    </CardContent>
+                </Card>
+            )}
 
             {!hasStructuredMinutes && (
                 <Paper elevation={3} sx={{ p: 4, mb: 4, minHeight: '50vh', bgcolor: '#fdfdfd' }}>
