@@ -84,7 +84,15 @@ const ApprovalPage: React.FC = () => {
                 const meetingSnap = await getDoc(meetingRef);
 
                 if (meetingSnap.exists()) {
-                    setMeeting({ id: meetingSnap.id, ...meetingSnap.data() } as Meeting);
+                    const meetingData = meetingSnap.data();
+                    const normalizedMeeting = {
+                        id: meetingSnap.id,
+                        ...meetingData,
+                        date: meetingData.date?.toDate ? meetingData.date.toDate().toISOString() : meetingData.date,
+                        dateCreated: meetingData.dateCreated?.toDate ? meetingData.dateCreated.toDate().toISOString() : meetingData.dateCreated,
+                        dateUpdated: meetingData.dateUpdated?.toDate ? meetingData.dateUpdated.toDate().toISOString() : meetingData.dateUpdated,
+                    } as Meeting;
+                    setMeeting(normalizedMeeting);
                 } else {
                     setError("Réunion introuvable.");
                 }
