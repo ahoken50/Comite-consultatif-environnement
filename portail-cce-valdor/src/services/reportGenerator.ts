@@ -194,3 +194,175 @@ export const generateCustomReport = async (sections: ReportSection[]) => {
 
     doc.save(`Rapport_CCE_${new Date().toISOString().split('T')[0]}.pdf`);
 };
+
+export const generateAnnualSummaryReport = async (year: number) => {
+    // 1. Fetch meetings for the year
+    const meetingsSnap = await getDocs(collection(db, 'meetings'));
+    const yearStr = year.toString();
+    const meetings = meetingsSnap.docs
+        .map(doc => ({ id: doc.id, ...doc.data() } as any))
+        .filter(m => {
+            if (!m.date) return false;
+            return m.date.startsWith(yearStr) || new Date(m.date).getFullYear().toString() === yearStr;
+        })
+        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+    if (meetings.length === 0) {
+        throw new Error(`Aucune assemblée trouvée pour l'année ${year}`);
+    }
+
+    // 2. Compile context for Gemini
+    let context = `RÉSUMÉ DES ASSEMBLÉES DU CCE DE L'ANNÉE ${year}\n\n`;
+    meetings.forEach((m, idx) => {
+        context += `ASSEMBLÉE #${idx + 1} : ${m.title}\n`;
+        context += `Date : ${m.date}\n`;
+        context += `Présents : ${m.attendees?.map((a: any) => `${a.name} (${a.role})`).join(', ') || 'N/A'}\n`;
+        context += `Points à l'ordre du jour et résolutions :\n`;
+        if (m.agendaItems && Array.isArray(m.agendaItems)) {
+            m.agendaItems.forEach((item: any, i: number) => {
+                context += `  Point ${i + 1} : ${item.title}\n`;
+                if (item.decision) context += `    Décision : ${item.decision}\n`;
+                if (item.minuteEntries && Array.isArray(item.minuteEntries)) {
+                    item.minuteEntries.forEach((entry: any) => {
+                        context += `    [${entry.type === 'resolution' ? 'Résolution' : 'Commentaire'}] ${entry.content}\n`;
+                    });
+                }
+            });
+        }
+        context += `-------------------------------------------\n\n`;
+    });
+
+    // 3. Call AI Service to generate annual summary
+    const { aiService } = await import('./ai/UnifiedAIService');
+    const summaryText = await aiService.generateAnnualSummary(year, context);
+
+    // 4. Generate high-fidelity PDF
+    const doc = new jsPDF();
+    const pageWidth = doc.internal.pageSize.width;
+    const pageHeight = doc.internal.pageSize.height;
+    let cursorY = 20;
+
+    const addPage = () => {
+        doc.addPage();
+        cursorY = 25;
+    };
+
+    const checkSpace = (height: number) => {
+        if (cursorY + height > pageHeight - 20) {
+            addPage();
+        }
+    };
+
+    // Draw header/footer on pages (excluding cover page)
+    const drawPageDecorations = (pageNumber: number) => {
+        doc.setFontSize(8);
+        doc.setTextColor(150, 150, 150);
+        // Header
+        doc.text("Comité Consultatif de l'Environnement (CCE) - Ville de Val-d'Or", 20, 10);
+        doc.setDrawColor(220, 220, 220);
+        doc.line(20, 12, pageWidth - 20, 12);
+        // Footer
+        doc.text(`Rapport Annuel ${year} | Page ${pageNumber}`, pageWidth / 2, pageHeight - 10, { align: 'center' });
+    };
+
+    // PAGE 1: Cover Page
+    doc.setFillColor(34, 112, 63); // Institutional Green for Val-d'Or
+    doc.rect(0, 0, pageWidth, pageHeight, 'F');
+
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(28);
+    doc.setFont("helvetica", "bold");
+    doc.text("RAPPORT ANNUEL D'ACTIVITÉS", pageWidth / 2, pageHeight / 3, { align: 'center' });
+    
+    doc.setFontSize(20);
+    doc.setFont("helvetica", "normal");
+    doc.text("Comité Consultatif de l'Environnement", pageWidth / 2, (pageHeight / 3) + 15, { align: 'center' });
+
+    doc.setFontSize(36);
+    doc.setFont("helvetica", "bold");
+    doc.text(yearStr, pageWidth / 2, (pageHeight / 3) + 35, { align: 'center' });
+
+    doc.setFontSize(12);
+    doc.setFont("helvetica", "normal");
+    doc.text("Ville de Val-d'Or, Québec", pageWidth / 2, pageHeight - 30, { align: 'center' });
+    doc.text(`Généré le ${new Date().toLocaleDateString('fr-CA')}`, pageWidth / 2, pageHeight - 20, { align: 'center' });
+
+    // PAGE 2+: Synthesized Report Content
+    doc.addPage();
+    doc.setTextColor(33, 33, 33);
+    doc.setFont("helvetica", "normal");
+    cursorY = 25;
+    let pageCount = 2;
+    drawPageDecorations(pageCount);
+
+    // Split text by lines and parse markdown-like structures
+    const lines = summaryText.split('\n');
+    lines.forEach(line => {
+        const trimmed = line.trim();
+        if (!trimmed) {
+            cursorY += 5;
+            return;
+        }
+
+        if (trimmed.startsWith('# ')) {
+            // Main title
+            checkSpace(25);
+            cursorY += 5;
+            doc.setFontSize(18);
+            doc.setFont("helvetica", "bold");
+            doc.setTextColor(34, 112, 63); // Green Accent
+            doc.text(trimmed.substring(2), 20, cursorY);
+            cursorY += 12;
+            doc.setFont("helvetica", "normal");
+            doc.setTextColor(33, 33, 33);
+        } else if (trimmed.startsWith('## ')) {
+            // Subtitle
+            checkSpace(20);
+            cursorY += 5;
+            doc.setFontSize(14);
+            doc.setFont("helvetica", "bold");
+            doc.setTextColor(41, 128, 185); // Blue Accent
+            doc.text(trimmed.substring(3), 20, cursorY);
+            cursorY += 10;
+            doc.setFont("helvetica", "normal");
+            doc.setTextColor(33, 33, 33);
+        } else if (trimmed.startsWith('### ')) {
+            // H3 Title
+            checkSpace(15);
+            doc.setFontSize(12);
+            doc.setFont("helvetica", "bold");
+            doc.text(trimmed.substring(4), 20, cursorY);
+            cursorY += 7;
+            doc.setFont("helvetica", "normal");
+        } else if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
+            // Bullet points
+            doc.setFontSize(10.5);
+            const bulletText = doc.splitTextToSize(`• ${trimmed.substring(2)}`, pageWidth - 45);
+            checkSpace(bulletText.length * 6);
+            bulletText.forEach((bLine: string, index: number) => {
+                doc.text(bLine, index === 0 ? 22 : 26, cursorY);
+                cursorY += 6;
+            });
+            cursorY += 2;
+        } else {
+            // Standard Paragraph text
+            doc.setFontSize(10.5);
+            const paragraphText = doc.splitTextToSize(trimmed, pageWidth - 40);
+            checkSpace(paragraphText.length * 6);
+            paragraphText.forEach((pLine: string) => {
+                doc.text(pLine, 20, cursorY);
+                cursorY += 6;
+            });
+            cursorY += 2;
+        }
+
+        // Add decorations if page added inside loops
+        const activePage = (doc as any).internal.getCurrentPageInfo().pageNumber;
+        if (activePage > pageCount) {
+            pageCount = activePage;
+            drawPageDecorations(pageCount);
+        }
+    });
+
+    doc.save(`Rapport_Annuel_CCE_${yearStr}.pdf`);
+};

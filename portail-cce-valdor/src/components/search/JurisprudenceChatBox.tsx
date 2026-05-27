@@ -27,15 +27,27 @@ const JurisprudenceChatBox: React.FC<JurisprudenceChatBoxProps> = ({
         setChatLoading(true);
 
         try {
-            // 1. Search for context (limited to top 5 for context)
+            // 1. Search for context in parallel (Resolutions & Regulations)
             const { aiService } = await import('../../services/ai/UnifiedAIService');
-            const searchResponse = await searchMeetings(userMessage, { matchCount: 5 });
+            const { searchRegulations } = await import('../../services/supabaseSearchService');
 
-            const fetchedContext = searchResponse.hits.map(h =>
-                `SOURCE: ${h.document.title} (${h.document.date})\nEXTRAIT: ${h.document.resolutions?.join('\n') || h.document.minutes || ''}`
+            const [meetingResponse, regulationResponse] = await Promise.all([
+                searchMeetings(userMessage, { matchCount: 4 }),
+                searchRegulations(userMessage, { matchCount: 4 })
+            ]);
+
+            const meetingContext = meetingResponse.hits.map(h =>
+                `[RÉSOLUTION/DÉCISION PASSÉE] Source : ${h.document.title} (${h.document.date})\nExtraits :\n${h.document.resolutions?.join('\n') || h.document.minutes || ''}`
             ).join('\n\n');
 
-            const fullContext = (initialContext ? `CONTEXTE DE LA RÉUNION ACTUELLE :\n${initialContext}\n\n` : '') + fetchedContext;
+            const regulationContext = regulationResponse.hits.map(h =>
+                `[RÈGLEMENT MUNICIPAL] Titre : ${h.document.title}\nCatégorie : ${h.document.category} (Année : ${h.document.year}, Statut : ${h.document.status})\nContenu :\n${h.document.content}`
+            ).join('\n\n');
+
+            const fullContext = 
+                (initialContext ? `CONTEXTE DE LA RÉUNION ACTUELLE :\n${initialContext}\n\n` : '') +
+                `=== RÈGLEMENTS MUNICIPAUX PERTINENTS ===\n${regulationContext || 'Aucun règlement spécifique trouvé.'}\n\n` +
+                `=== JURISPRUDENCE ET RÉSOLUTIONS AN TÉRIEURES ===\n${meetingContext || 'Aucune résolution passée correspondante.'}`;
 
             // 2. Ask AI
             const answer = await aiService.chatWithJurisprudence(userMessage, fullContext);

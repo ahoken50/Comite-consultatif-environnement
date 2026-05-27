@@ -402,7 +402,7 @@ def enhance_prompt_with_rlhf(
         terms = preferences["terminology"]
         if terms:
             term_rules = "\n".join(
-                f"  - Utilise &quot;{v}&quot; au lieu de &quot;{k}&quot;"
+                f'  - Utilise "{v}" au lieu de "{k}"'
                 for k, v in list(terms.items())[:15]
             )
             enhancements.append(
@@ -757,7 +757,7 @@ def _compute_optimized_policy(rewards: List[Dict], correction_patterns: Dict) ->
         for tc in term_corrections[:5]:
             if tc["count"] >= 2:
                 policy["promptModifiers"].append(
-                    f"Utilise &quot;{tc['to']}&quot; au lieu de &quot;{tc['from']}&quot;"
+                    f'Utilise "{tc["to"]}" au lieu de "{tc["from"]}"'
                 )
     
     # 7. Adjust formality based on style corrections

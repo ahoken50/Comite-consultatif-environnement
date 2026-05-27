@@ -146,4 +146,8 @@ export class ClaudeProvider implements AIService {
     async chatWithJurisprudence(_question: string, _context: string): Promise<string> {
         throw new Error('Chat not supported by Claude provider yet.');
     }
+
+    async generateAnnualSummary(_year: number, _context: string): Promise<string> {
+        throw new Error('Annual summary generation not supported by Claude provider yet. Use Gemini instead.');
+    }
 }

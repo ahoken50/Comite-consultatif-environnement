@@ -130,6 +130,11 @@ export interface AIService {
      * Chat with the jurisprudence knowledge base
      */
     chatWithJurisprudence(question: string, context: string): Promise<string>;
+
+    /**
+     * Generate an annual summary report of activities
+     */
+    generateAnnualSummary(year: number, context: string): Promise<string>;
 }
 
 export interface ResolutionContext {

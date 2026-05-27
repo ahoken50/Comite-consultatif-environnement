@@ -59,7 +59,7 @@ export const usePresentationData = (meetingId?: string) => {
                         objective: item.objective,
                         agendaNote: item.agendaNote,
                         decision: item.decision,
-                        audioSegment: item.audioSegment || null
+                        audioSegment: item.audioSegment || undefined
                     };
                 });
 

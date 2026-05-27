@@ -10,6 +10,8 @@ import {
     ListItemButton,
     ListItemText,
     ListItemIcon,
+    TextField,
+    CircularProgress,
 } from '@mui/material';
 import {
     Add,
@@ -52,6 +54,8 @@ const ReportBuilder: React.FC = () => {
     const [activeId, setActiveId] = useState<string | null>(null);
     const [configModalOpen, setConfigModalOpen] = useState(false);
     const [editingSection, setEditingSection] = useState<ReportSection | null>(null);
+    const [generatingAnnual, setGeneratingAnnual] = useState(false);
+    const [annualYear, setAnnualYear] = useState(new Date().getFullYear());
 
     const sensors = useSensors(
         useSensor(PointerSensor),
@@ -108,6 +112,19 @@ const ReportBuilder: React.FC = () => {
         await generateCustomReport(sections);
     };
 
+    const handleGenerateAnnualReport = async () => {
+        setGeneratingAnnual(true);
+        try {
+            const { generateAnnualSummaryReport } = await import('../../services/reportGenerator');
+            await generateAnnualSummaryReport(annualYear);
+        } catch (e: any) {
+            console.error(e);
+            alert("Erreur lors de la génération du rapport annuel : " + e.message);
+        } finally {
+            setGeneratingAnnual(false);
+        }
+    };
+
     return (
         <Box sx={{ p: 3, height: '100%' }}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
@@ -161,6 +178,35 @@ const ReportBuilder: React.FC = () => {
                                 </ListItem>
                             ))}
                         </List>
+                    </Paper>
+
+                    <Paper sx={{ p: 2, mt: 3, border: '1px solid', borderColor: 'success.light', bgcolor: 'rgba(76, 175, 80, 0.02)' }}>
+                        <Typography variant="h6" gutterBottom color="success.main" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            ⚡ Rapport Annuel (IA)
+                        </Typography>
+                        <Typography variant="body2" color="textSecondary" sx={{ mb: 2 }}>
+                            Générez une synthèse annuelle transversale et intelligente de toutes les assemblées de l'année via l'IA.
+                        </Typography>
+                        <TextField
+                            label="Année"
+                            type="number"
+                            size="small"
+                            fullWidth
+                            value={annualYear}
+                            onChange={(e) => setAnnualYear(Number(e.target.value))}
+                            sx={{ mb: 2 }}
+                            disabled={generatingAnnual}
+                        />
+                        <Button
+                            variant="contained"
+                            color="success"
+                            fullWidth
+                            startIcon={generatingAnnual ? <CircularProgress size={20} color="inherit" /> : <PictureAsPdf />}
+                            onClick={handleGenerateAnnualReport}
+                            disabled={generatingAnnual}
+                        >
+                            {generatingAnnual ? 'Synthèse en cours...' : 'Rapport Annuel CCE'}
+                        </Button>
                     </Paper>
                 </Grid>
 

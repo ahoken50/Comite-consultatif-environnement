@@ -4,7 +4,7 @@ import { ExpandMore, Folder } from '@mui/icons-material';
 import { useDispatch, useSelector } from 'react-redux';
 import type { AppDispatch } from '../../store/store';
 import type { RootState } from '../../store/rootReducer';
-import { fetchDocuments, deleteDocument } from '../../features/documents/documentsSlice';
+import { deleteDocument } from '../../features/documents/documentsSlice';
 import { fetchMeetings, updateMeeting } from '../../features/meetings/meetingsSlice';
 import { fetchProjects } from '../../features/projects/projectsSlice';
 import DocumentList from '../../components/documents/DocumentList';
@@ -13,13 +13,22 @@ import type { Document } from '../../types/document.types';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { AccessControl } from '../../components/auth/AccessControl';
+import useServerPagination from '../../hooks/usePagination';
+import PaginationControls from '../../components/common/PaginationControls';
 
 const DocumentsPage: React.FC = () => {
     const dispatch = useDispatch<AppDispatch>();
     const { user } = useSelector((state: RootState) => state.auth);
-    const { items: documents } = useSelector((state: RootState) => state.documents);
     const { items: meetings } = useSelector((state: RootState) => state.meetings);
     const { items: projects } = useSelector((state: RootState) => state.projects);
+
+    // Server-side cursor-based pagination for documents
+    const [docPagination, docActions] = useServerPagination<Document>({
+        collectionName: 'documents',
+        pageSize: 10,
+        orderByField: 'dateUploaded',
+        orderDirection: 'desc'
+    });
 
     // Refs to access latest state in callbacks without triggering re-renders or recreating callbacks
     const meetingsRef = useRef(meetings);
@@ -29,7 +38,6 @@ const DocumentsPage: React.FC = () => {
     }, [meetings]);
 
     useEffect(() => {
-        dispatch(fetchDocuments());
         dispatch(fetchMeetings());
         dispatch(fetchProjects());
     }, [dispatch]);
@@ -74,7 +82,7 @@ const DocumentsPage: React.FC = () => {
     const groupedDocuments = useMemo(() => {
         const groups: Record<string, { title: string; type: 'meeting' | 'project' | 'other'; date: string; documents: Document[]; entityId?: string }> = {};
 
-        documents.forEach(doc => {
+        docPagination.items.forEach(doc => {
             let key = 'other';
             let title = 'Documents Généraux';
             let type: 'meeting' | 'project' | 'other' = 'other';
@@ -121,7 +129,7 @@ const DocumentsPage: React.FC = () => {
             if (b.type === 'other') return -1;
             return new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime();
         });
-    }, [documents, meetingsMap, projectsMap]); // Dependencies updated to use Maps
+    }, [docPagination.items, meetingsMap, projectsMap]); // Dependencies updated to use Maps
 
     return (
         <Box>
@@ -171,6 +179,19 @@ const DocumentsPage: React.FC = () => {
                                 </AccordionDetails>
                             </Accordion>
                         ))}
+
+                        {docPagination.totalItems > 10 && (
+                            <Box sx={{ mt: 3 }}>
+                                <PaginationControls
+                                    totalItems={docPagination.totalItems}
+                                    page={docPagination.currentPage}
+                                    rowsPerPage={10}
+                                    onPageChange={(p) => docActions.goToPage(p)}
+                                    onRowsPerPageChange={() => {}}
+                                    rowsPerPageOptions={[10]}
+                                />
+                            </Box>
+                        )}
                     </Paper>
                 </Grid>
                 <Grid size={{ xs: 12, md: 4 }}>
@@ -179,7 +200,7 @@ const DocumentsPage: React.FC = () => {
                             <Typography variant="h6" gutterBottom>
                                 Ajouter un document
                             </Typography>
-                            <DocumentUpload onUploadComplete={() => dispatch(fetchDocuments())} />
+                            <DocumentUpload onUploadComplete={() => docActions.refresh()} />
                         </Paper>
                     </AccessControl>
                 </Grid>

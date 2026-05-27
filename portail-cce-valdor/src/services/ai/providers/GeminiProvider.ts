@@ -638,20 +638,20 @@ INSTRUCTIONS :
     async chatWithJurisprudence(question: string, context: string): Promise<string> {
         if (!this.isConfigured()) throw new Error('Gemini API key not configured');
 
-        const prompt = `Tu es un assistant juridique municipal pour la ville de Val-d'Or.
-TÂCHE : Répondre à la question de l'utilisateur en te basant UNIQUEMENT sur la jurisprudence (résolutions passées) fournie.
+        const prompt = `Tu es un assistant juridique municipal hautement qualifié pour la ville de Val-d'Or.
+TÂCHE : Répondre à la question de l'utilisateur de façon extrêmement précise et rigoureuse en te basant sur la jurisprudence (résolutions antérieures) et les règlements municipaux fournis dans le contexte ci-dessous.
 
-CONTEXTE (JURISPRUDENCE) :
+CONTEXTE (RÈGLEMENTS & JURISPRUDENCE) :
 ${context}
 
 QUESTION :
 "${question}"
 
 INSTRUCTIONS :
-1. Réponds de manière précise et factuelle.
-2. Cite les résolutions pertinentes (Titre et Date) pour appuyer ta réponse.
-3. Si la jurisprudence ne contient pas la réponse, dis-le clairement.
-4. Synthétise les tendances si plusieurs résolutions sont similaires.
+1. Réponds de manière professionnelle, claire et structurée.
+2. Cite les Règlements Municipaux pertinents (Titre complet, Catégorie, Année) ainsi que les Résolutions/Décisions antérieures (Titre de séance, Date) de manière explicite pour justifier ta réponse.
+3. Si les informations fournies dans le contexte ne permettent pas de répondre de manière complète ou s'il y a un doute, mentionne-le en précisant ce qui manque.
+4. Si des règlements et d'anciennes décisions se contredisent ou suggèrent des approches différentes, mets en lumière cette divergence de manière constructive.
 
 RÉPONSE :`;
 
@@ -667,5 +667,47 @@ RÉPONSE :`;
         if (result.error) throw new Error(result.error.message);
 
         return result.candidates?.[0]?.content?.parts?.[0]?.text || "Désolé, je n'ai pas pu générer de réponse.";
+    }
+
+    async generateAnnualSummary(year: number, context: string): Promise<string> {
+        if (!this.isConfigured()) throw new Error('Gemini API key not configured');
+
+        const prompt = `Tu es l'analyste principal du Comité Consultatif de l'Environnement (CCE) de la ville de Val-d'Or.
+TÂCHE : Rédiger le rapport annuel officiel d'activités du CCE pour l'année ${year} en effectuant une synthèse croisée et transversale des données de séance fournies ci-dessous.
+
+DONNÉES DU COMPIL DES ASSEMBLÉES ET PROJETS (ANNÉE ${year}) :
+${context}
+
+INSTRUCTIONS DE RÉDACTION :
+1. Adopte un ton très formel, objectif et hautement professionnel.
+2. Structure ton rapport selon les sections suivantes (utilise le Markdown) :
+   - # RAPPORT ANNUEL D'ACTIVITÉS DU CCE - VAL-D'OR (${year})
+   - ## 1. Résumé Exécutif
+     (Un aperçu complet de la contribution du comité cette année, des priorités clés et de l'impact global sur la municipalité)
+   - ## 2. Faits Saillants et Chiffres Clés
+     (Nombre total de séances tenues, de projets étudiés et de résolutions adoptées)
+   - ## 3. Analyse Thématique des Dossiers
+     (Synthétise les grands thèmes traités cette année : p. ex. urbanisme et zonage, conservation des milieux humides, gestion des eaux, gestion des matières résiduelles. Donne des exemples concrets pour chaque thème.)
+   - ## 4. Résolutions Clés et Avis Recommandés
+     (Mets en lumière 3 à 5 résolutions majeures adoptées cette année et résume leur portée ou la recommandation formulée au conseil municipal)
+   - ## 5. Orientations et Recommandations Administratives pour l'Année Suivante
+     (Formule des perspectives d'amélioration ou des enjeux prioritaires pour le CCE dans le futur)
+
+Sois exhaustif et précis, en te basant uniquement sur la réalité des résolutions et des faits transmis dans le contexte. Évite les généralités vagues.
+
+RÉPONSE :`;
+
+        const response = await fetch(`${GEMINI_API_URL}?key=${GEMINI_API_KEY}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                contents: [{ parts: [{ text: prompt }] }]
+            })
+        });
+
+        const result: GeminiResponse = await response.json();
+        if (result.error) throw new Error(result.error.message);
+
+        return result.candidates?.[0]?.content?.parts?.[0]?.text || "Désolé, je n'ai pas pu générer de rapport de synthèse.";
     }
 }

@@ -5,7 +5,8 @@ import {
     query,
     orderBy,
     limit,
-    Timestamp
+    Timestamp,
+    startAfter,
 } from 'firebase/firestore';
 import { db } from './firebase';
 import type { ActivityLog, ActivityType } from '../types/activityLog.types';
@@ -59,6 +60,41 @@ export const getRecentActivities = async (maxCount: number = 10): Promise<Activi
             ? doc.data().timestamp.toDate().toISOString()
             : doc.data().timestamp
     } as ActivityLog));
+};
+
+/**
+ * Get recent activities using cursors (highly performant and cost-effective)
+ */
+export const getRecentActivitiesPaged = async (
+    pageSize: number = 10,
+    lastVisibleDoc: any = null
+): Promise<{ items: ActivityLog[]; lastVisible: any }> => {
+    let q = query(
+        collection(db, COLLECTION_NAME),
+        orderBy('timestamp', 'desc'),
+        limit(pageSize)
+    );
+
+    if (lastVisibleDoc) {
+        q = query(
+            collection(db, COLLECTION_NAME),
+            orderBy('timestamp', 'desc'),
+            startAfter(lastVisibleDoc),
+            limit(pageSize)
+        );
+    }
+
+    const snapshot = await getDocs(q);
+    const lastVisible = snapshot.docs[snapshot.docs.length - 1] || null;
+    const items = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        timestamp: doc.data().timestamp?.toDate
+            ? doc.data().timestamp.toDate().toISOString()
+            : doc.data().timestamp
+    } as ActivityLog));
+
+    return { items, lastVisible };
 };
 
 /**

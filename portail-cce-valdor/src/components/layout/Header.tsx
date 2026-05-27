@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { AppBar, Toolbar, Typography, IconButton, Avatar, Menu, MenuItem, Box, Badge, Popover } from '@mui/material';
-import { Menu as MenuIcon, Notifications, AccountCircle } from '@mui/icons-material';
+import { AppBar, Toolbar, Typography, IconButton, Avatar, Menu, MenuItem, Box, Badge, Popover, Chip } from '@mui/material';
+import { Menu as MenuIcon, Notifications, AccountCircle, WifiOff } from '@mui/icons-material';
 import { useDispatch, useSelector } from 'react-redux';
 import { signOut } from 'firebase/auth';
 import { auth } from '../../services/firebase';
@@ -24,6 +24,21 @@ const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
     const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
     const [notificationAnchorEl, setNotificationAnchorEl] = useState<null | HTMLElement>(null);
     const [unreadCount, setUnreadCount] = useState(0);
+    const [isOnline, setIsOnline] = useState(navigator.onLine);
+
+    // Track online/offline status
+    useEffect(() => {
+        const handleOnline = () => setIsOnline(true);
+        const handleOffline = () => setIsOnline(false);
+
+        window.addEventListener('online', handleOnline);
+        window.addEventListener('offline', handleOffline);
+
+        return () => {
+            window.removeEventListener('online', handleOnline);
+            window.removeEventListener('offline', handleOffline);
+        };
+    }, []);
 
     // Subscribe to real-time notifications
     useEffect(() => {
@@ -89,7 +104,23 @@ const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
                     <GlobalSearch />
                 </Box>
 
-                <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    {!isOnline && (
+                        <Chip
+                            icon={<WifiOff sx={{ color: 'amber.main !important' }} />}
+                            label="Hors-ligne"
+                            variant="outlined"
+                            color="warning"
+                            size="small"
+                            sx={{
+                                fontWeight: 500,
+                                borderColor: 'warning.main',
+                                color: 'warning.main',
+                                bgcolor: 'rgba(237, 108, 2, 0.08)',
+                            }}
+                        />
+                    )}
+
                     <IconButton
                         aria-label="Afficher les notifications"
                         color="inherit"
@@ -157,3 +188,4 @@ const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
 };
 
 export default Header;
+

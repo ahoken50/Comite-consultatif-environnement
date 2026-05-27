@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getRecentActivities } from '../../services/activityLogService';
+import { getRecentActivitiesPaged } from '../../services/activityLogService';
 import { Card, CardHeader, List, ListItem, ListItemAvatar, ListItemText, Avatar, Typography, Box, ListItemButton, Button, CircularProgress } from '@mui/material';
 import {
     Add,
@@ -56,19 +56,31 @@ const ActivityFeed: React.FC<ActivityFeedProps> = ({ activities }) => {
     const [localActivities, setLocalActivities] = useState<ActivityLog[]>(activities);
     const [loadingMore, setLoadingMore] = useState(false);
     const [hasMore, setHasMore] = useState(activities.length === 10);
+    const [lastDoc, setLastDoc] = useState<any>(null);
 
+    // Perform highly performant client-side dynamic paging
     useEffect(() => {
-        setLocalActivities(activities);
-        setHasMore(activities.length === 10);
-    }, [activities]);
+        const initPagedFeed = async () => {
+            try {
+                const { items, lastVisible } = await getRecentActivitiesPaged(10);
+                setLocalActivities(items);
+                setLastDoc(lastVisible);
+                setHasMore(items.length === 10);
+            } catch (err) {
+                console.error("Failed to init paged activities:", err);
+            }
+        };
+        initPagedFeed();
+    }, []);
 
     const handleLoadMore = async () => {
+        if (!hasMore || loadingMore) return;
         setLoadingMore(true);
         try {
-            const nextLimit = localActivities.length + 10;
-            const newActivities = await getRecentActivities(nextLimit);
-            setLocalActivities(newActivities);
-            if (newActivities.length < nextLimit) {
+            const { items, lastVisible } = await getRecentActivitiesPaged(10, lastDoc);
+            setLocalActivities(prev => [...prev, ...items]);
+            setLastDoc(lastVisible);
+            if (items.length < 10) {
                 setHasMore(false);
             }
         } catch (error) {

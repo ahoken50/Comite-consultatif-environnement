@@ -111,6 +111,10 @@ export class UnifiedAIService implements AIService {
         return this.getProvider().chatWithJurisprudence(question, context);
     }
 
+    async generateAnnualSummary(year: number, context: string): Promise<string> {
+        return this.getProvider().generateAnnualSummary(year, context);
+    }
+
     /**
      * Switch the active AI provider at runtime
      */
