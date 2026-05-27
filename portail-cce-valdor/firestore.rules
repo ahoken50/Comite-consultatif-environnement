@@ -165,7 +165,7 @@ service cloud.firestore {
     // - Create: All authenticated (Upload).
     // - Delete: Coordinator OR Owner.
     match /documents/{docId} {
-      allow read: if isAuthenticated();
+      allow read: if isAuthenticated() || resource.data.linkedEntityType == 'meeting';
       allow create: if isAuthenticated();
       allow update, delete: if isCoordinator() || (isAuthenticated() && resource.data.createdBy == request.auth.uid);
     }

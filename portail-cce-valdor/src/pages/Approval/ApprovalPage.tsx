@@ -95,18 +95,22 @@ const ApprovalPage: React.FC = () => {
                     setMeeting(normalizedMeeting);
 
                     // 3. Fetch Linked Documents
-                    const documentsRef = collection(db, 'documents');
-                    const docQuery = query(
-                        documentsRef,
-                        where('linkedEntityId', '==', meetingId),
-                        where('linkedEntityType', '==', 'meeting')
-                    );
-                    const docsSnap = await getDocs(docQuery);
-                    const loadedDocs: DocumentItem[] = [];
-                    docsSnap.forEach(docSnap => {
-                        loadedDocs.push({ id: docSnap.id, ...docSnap.data() } as DocumentItem);
-                    });
-                    setDocuments(loadedDocs);
+                    try {
+                        const documentsRef = collection(db, 'documents');
+                        const docQuery = query(
+                            documentsRef,
+                            where('linkedEntityId', '==', meetingId),
+                            where('linkedEntityType', '==', 'meeting')
+                        );
+                        const docsSnap = await getDocs(docQuery);
+                        const loadedDocs: DocumentItem[] = [];
+                        docsSnap.forEach(docSnap => {
+                            loadedDocs.push({ id: docSnap.id, ...docSnap.data() } as DocumentItem);
+                        });
+                        setDocuments(loadedDocs);
+                    } catch (docErr) {
+                        console.warn("Failed to fetch documents (likely permission restriction):", docErr);
+                    }
                 } else {
                     setError("Réunion introuvable.");
                 }
