@@ -272,31 +272,51 @@ def fuse_scores(
     linguistic_scores: Dict[str, float],
     mention_scores: Dict[str, float],
     auto_id_scores: Dict[str, float],
+    previous_speaker: Optional[str] = None,
+    speaker_profile_counts: Optional[Dict[str, int]] = None,
     confidence_threshold: float = 0.35  # Increased from 0.2 for fewer false positives
 ) -> Tuple[Optional[str], float]:
     """
-    Fuse all strategy scores with weighted combination.
+    Fusible adaptatif de scores multi-stratégies (Option B + Améliorations de précision).
     
-    Called by main.py identify_speakers_in_transcript() as the primary
-    fusion function. Additional margin/gender checks are applied after.
-    
-    Weights:
-    - Voice Embedding: 70% (primary biometric signal)
-    - Contextual AI: 15% (GROQ role-based analysis)
-    - Linguistic Patterns: 5% (keyword detection)
-    - Name Mentions: 5% (direct name references)
-    - Auto-ID: 5% ("Je suis X" detection)
+    1. Analyse l'ambiguïté de la biométrie (Entropie / marge vocale).
+    2. Ajuste dynamiquement les poids entre Voix et IA Contextuelle.
+    3. Applique des bonus de transition (Markov) et des filtres de sécurité.
     """
-    # Weights (Updated: Voice priority 70%)
+    # 1. ÉVALUATION DE L'AMBIGUÏTÉ VOCALE (Pondération Dynamique)
+    base_voice_weight = 0.70
+    base_context_weight = 0.15
+    
+    sorted_voice = sorted(voice_scores.items(), key=lambda x: x[1], reverse=True)
+    
+    if len(sorted_voice) >= 2:
+        top_name, top_score = sorted_voice[0]
+        runner_up_name, runner_up_score = sorted_voice[1]
+        margin = top_score - runner_up_score
+        
+        # Si la marge est faible (< 0.15), la voix est ambiguë
+        if margin < 0.15:
+            # Réduire le poids de la voix au profit de l'IA sémantique
+            ambiguity_factor = (0.15 - margin) / 0.15  # Va de 0 (marge 0.15) à 1.0 (marge 0.0)
+            voice_weight = base_voice_weight - (ambiguity_factor * 0.35)  # Descend jusqu'à 0.35
+            context_weight = base_context_weight + (ambiguity_factor * 0.35)  # Monte jusqu'à 0.50
+            print(f"[Fusion] Ambiguïté biométrique détectée (marge={margin:.3f}). Voix calibrée à {voice_weight:.2f}, IA à {context_weight:.2f}")
+        else:
+            voice_weight = base_voice_weight
+            context_weight = base_context_weight
+    else:
+        voice_weight = base_voice_weight
+        context_weight = base_context_weight
+
     weights = {
-        "voice": 0.70,        # Increased from 0.50
-        "context": 0.15,      # Decreased from 0.25
-        "linguistic": 0.05,   # Decreased from 0.10
-        "mention": 0.05,      # Decreased from 0.10
+        "voice": voice_weight,
+        "context": context_weight,
+        "linguistic": 0.05,
+        "mention": 0.05,
         "auto_id": 0.05
     }
     
-    # Collect all candidate names
+    # 2. COLLECTE DES CANDIDATS
     all_candidates = set()
     all_candidates.update(voice_scores.keys())
     all_candidates.update(context_scores.keys())
@@ -307,23 +327,37 @@ def fuse_scores(
     if not all_candidates:
         return None, 0.0
     
-    # Calculate weighted score for each candidate
+    # 3. CALCUL DU SCORE COMBINÉ ET TRANSITIONS (Markov Chain)
     combined_scores = {}
     for name in all_candidates:
         score = 0.0
-        score += weights["voice"] * voice_scores.get(name, 0)
-        score += weights["context"] * context_scores.get(name, 0)
-        score += weights["linguistic"] * linguistic_scores.get(name, 0)
-        score += weights["mention"] * mention_scores.get(name, 0)
-        score += weights["auto_id"] * auto_id_scores.get(name, 0)
+        score += weights["voice"] * voice_scores.get(name, 0.0)
+        score += weights["context"] * context_scores.get(name, 0.0)
+        score += weights["linguistic"] * linguistic_scores.get(name, 0.0)
+        score += weights["mention"] * mention_scores.get(name, 0.0)
+        score += weights["auto_id"] * auto_id_scores.get(name, 0.0)
+        
+        # Appliquer un bonus modéré (+0.08) si c'est le locuteur précédent qui continue
+        if previous_speaker and name == previous_speaker:
+            score += 0.08
+            
         combined_scores[name] = score
     
-    # Find best match
+    # Trouver le meilleur candidat
     best_match = max(combined_scores, key=combined_scores.get)
     best_score = combined_scores[best_match]
     
-    # Return only if above threshold
-    if best_score >= confidence_threshold:
+    # 4. SEUIL DE CONFIANCE ADAPTATIF
+    # Si le candidat retenu a un profil vocal faible (peu de samples), on augmente le seuil d'acceptation requis
+    adapted_threshold = confidence_threshold
+    if speaker_profile_counts and best_match in speaker_profile_counts:
+        sample_count = speaker_profile_counts.get(best_match, 0)
+        if sample_count < 3:
+            adapted_threshold += 0.15  # Exiger une preuve plus forte si le profil vocal est embryonnaire
+            print(f"[Fusion] Profil faible pour '{best_match}' ({sample_count} samples). Seuil rehaussé à {adapted_threshold:.2f}")
+    
+    # Retourner seulement s'il dépasse le seuil adapté
+    if best_score >= adapted_threshold:
         return best_match, best_score
     
     return None, best_score

@@ -429,6 +429,9 @@ async def identify_speakers_in_transcript(
     speaker_mapping = {}
     unidentified = []
     
+    # Dictionnaire du nombre d'échantillons par speaker pour le seuil adaptatif
+    speaker_profile_counts = {spk["name"]: spk.get("sampleCount", 0) for spk in enrolled_speakers}
+    
     for speaker_label, data in unique_speakers.items():
         combined_text = " ".join(data["texts"][:3])  # First 3 segments
         
@@ -451,7 +454,17 @@ async def identify_speakers_in_transcript(
         
         # Fast pattern strategies
         linguistic_scores = linguistic_pattern_strategy(combined_text, enrolled_speakers)
-        mention_scores = name_mention_strategy(combined_text, None, known_member_names)
+        
+        # Recherche du locuteur précédent chronologique dans les segments
+        chronological_prev_label = None
+        for seg in segments:
+            if seg.get("end", 0) <= data["start"]:
+                chronological_prev_label = seg.get("speaker")
+        
+        chronological_prev_name = speaker_mapping.get(chronological_prev_label) if chronological_prev_label else None
+        
+        # Utiliser le locuteur précédent pour la détection de mentions nominatives ("Merci Michaël")
+        mention_scores = name_mention_strategy(combined_text, chronological_prev_name, known_member_names)
         auto_id_scores = auto_identification_strategy(combined_text, known_member_names)
         
         # Contextual AI strategy (GROQ) - 15% weight
@@ -463,13 +476,15 @@ async def identify_speakers_in_transcript(
             if context_scores:
                 print(f"[Identify] Context AI scores for {speaker_label}: {context_scores}")
         
-        # Use centralized fuse_scores function instead of duplicated logic
+        # Use centralized fuse_scores function with dynamic weights and chronological memory
         best_name, best_score = fuse_scores(
             voice_scores=voice_scores,
             context_scores=context_scores,
             linguistic_scores=linguistic_scores,
             mention_scores=mention_scores,
             auto_id_scores=auto_id_scores,
+            previous_speaker=chronological_prev_name,
+            speaker_profile_counts=speaker_profile_counts,
             confidence_threshold=0.35 if voice_scores else 0.45
         )
         
