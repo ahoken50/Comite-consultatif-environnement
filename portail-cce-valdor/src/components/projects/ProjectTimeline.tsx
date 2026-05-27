@@ -77,7 +77,7 @@ const ProjectTimeline: React.FC<ProjectTimelineProps> = ({ project, tasks, recom
                 id: `resolution-${r.id}`,
                 date: new Date(r.meetingDate || r.linkedAt),
                 type: 'resolution',
-                title: `Résolution ${r.entryNumber} - ${r.meetingTitle}`,
+                title: `${r.entryType === 'comment' ? 'Commentaire' : r.entryType === 'note' ? 'Note' : 'Résolution'} ${r.entryNumber} - ${r.meetingTitle}`,
                 description: r.entryContent
             });
         });

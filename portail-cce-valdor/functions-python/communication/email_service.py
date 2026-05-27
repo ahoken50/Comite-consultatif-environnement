@@ -548,7 +548,7 @@ def send_approval_link(req: https_fn.CallableRequest) -> Any:
                     <strong style="color: #1e4e3d;">📅 Date d'émission :</strong> {meeting_date_formatted or 'Date récente'}
                 </p>
                 <p style="margin: 0; font-size: 16px; color: #d32f2f;">
-                    <strong style="color: #d32f2f;">⚠️ Règle :</strong> Approbation unanime requise (100% des voix)
+                    <strong style="color: #d32f2f;">⚠️ Règle :</strong> Approbation unanime requise
                 </p>
             </div>
 

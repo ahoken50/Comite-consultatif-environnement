@@ -250,11 +250,11 @@ const ApprovalPage: React.FC = () => {
                     {isCircular ? "Signature de la Résolution Écrite (PV Spécial)" : "Approbation du Procès-verbal"}
                 </Typography>
                 <Typography variant="subtitle1" color="text.secondary">
-                    {meeting?.title} - {meeting?.date && new Date(meeting.date).toLocaleDateString('fr-CA')}
+                    {meeting?.title} - {meeting?.date && !isNaN(new Date(meeting.date).getTime()) ? new Date(meeting.date).toLocaleDateString('fr-CA') : 'Date inconnue'}
                 </Typography>
                 {isCircular && (
                     <Typography variant="body2" color="error" sx={{ fontWeight: 'bold', mt: 1 }}>
-                        ⚠️ Règle municipale : Accord unanime requis (100% des voix des membres votants)
+                        ⚠️ Règle municipale : Accord unanime requis
                     </Typography>
                 )}
                 <Typography variant="body2" sx={{ mt: 1.5 }}>
@@ -308,7 +308,7 @@ const ApprovalPage: React.FC = () => {
                                             <Box key={idx} sx={{ mb: 2 }}>
                                                 {entry.number && (
                                                     <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                                                        Résolution {entry.number}
+                                                        {entry.type === 'comment' ? 'Commentaire' : entry.type === 'note' ? 'Note' : 'Résolution'} {entry.number}
                                                     </Typography>
                                                 )}
                                                 <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap' }}>
