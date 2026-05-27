@@ -41,6 +41,7 @@ const CircularApprovalFlow: React.FC<CircularApprovalFlowProps> = ({ meeting, cu
     const [activeEmailText, setActiveEmailText] = useState('');
     const [activeEmailMemberName, setActiveEmailMemberName] = useState('');
     const [isGeneratingExtraits, setIsGeneratingExtraits] = useState(false);
+    const [approvedTokens, setApprovedTokens] = useState<any[]>([]);
 
     useEffect(() => {
         if (members.length === 0) {
@@ -48,11 +49,39 @@ const CircularApprovalFlow: React.FC<CircularApprovalFlowProps> = ({ meeting, cu
         }
     }, [dispatch, members.length]);
 
+    useEffect(() => {
+        if (!meeting.id) return;
+        const approvalsRef = collection(db, 'meetings', meeting.id, 'approval_tokens');
+        const unsubscribe = onSnapshot(approvalsRef, (snapshot) => {
+            const tokens = snapshot.docs.map(doc => doc.data());
+            const approved = tokens.filter(t => t.status === 'approved');
+            console.log("Circular Approved Tokens:", approved);
+            setApprovedTokens(approved);
+        }, (error) => {
+            console.error("Error fetching circular approval tokens:", error);
+        });
+        return () => unsubscribe();
+    }, [meeting.id]);
+
     const votingMembers = members.filter((m: Member) => m.isActive && ['president', 'vice_president', 'member', 'elected_official'].includes(m.role));
     const signatures = meeting.approvalSignatures || [];
 
     const getMemberSignature = (memberId: string) => {
-        return signatures.find(s => s.signedBy === memberId);
+        const directSig = signatures.find(s => s.signedBy === memberId);
+        if (directSig) return directSig;
+
+        const member = votingMembers.find((m: Member) => m.id === memberId);
+        const tokenSig = approvedTokens.find(t => t.memberId === memberId || (member?.email && t.email === member.email));
+        if (tokenSig) {
+            return {
+                role: tokenSig.role,
+                signedBy: tokenSig.memberId || memberId,
+                signedByName: tokenSig.name,
+                signedAt: tokenSig.approvedAt || tokenSig.createdAt || new Date().toISOString(),
+                consentType: 'digital' as const
+            } as ApprovalSignature;
+        }
+        return undefined;
     };
 
     const totalVoting = votingMembers.length;
@@ -61,6 +90,17 @@ const CircularApprovalFlow: React.FC<CircularApprovalFlowProps> = ({ meeting, cu
     const isFullyApproved = signedCount === totalVoting && totalVoting > 0;
 
     const isCoordinator = currentUser?.role === 'coordinator';
+
+    useEffect(() => {
+        if (isFullyApproved && meeting.approvalStatus !== 'approved' && isCoordinator) {
+            dispatch(updateMeeting({
+                id: meeting.id,
+                updates: {
+                    approvalStatus: 'approved'
+                }
+            }));
+        }
+    }, [isFullyApproved, meeting.approvalStatus, isCoordinator, meeting.id, dispatch]);
     const isCurrentUserVoting = currentUser && currentUser.isActive && ['president', 'vice_president', 'member', 'elected_official'].includes(currentUser.role);
     const hasCurrentUserSigned = currentUser && !!getMemberSignature(currentUser.id);
 
