@@ -101,7 +101,7 @@ const CoordinatorDashboard: React.FC = () => {
             }
             
             const functions = getFunctions();
-            const reindexFn = httpsCallable(functions, 'admin_reindex_all');
+            const reindexFn = httpsCallable(functions, 'admin_reindex_all', { timeout: 540000 });
             
             const response = await reindexFn();
             const data = response.data as { success: boolean; totalIndexed: number };
