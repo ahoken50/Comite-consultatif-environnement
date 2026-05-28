@@ -83,7 +83,9 @@ export async function getVoiceProfileAlerts(): Promise<VoiceAlert[]> {
             throw membersSnapshot.reason;
         }
 
-        const alerts: VoiceAlert[] = membersSnapshot.value.docs.map(doc => {
+        const activeDocs = membersSnapshot.value.docs.filter(doc => doc.data().isActive !== false);
+
+        const alerts: VoiceAlert[] = activeDocs.map(doc => {
             const data = doc.data();
             const displayName = data.displayName || data.name || '';
             const normalizedName = displayName.trim().toLowerCase();

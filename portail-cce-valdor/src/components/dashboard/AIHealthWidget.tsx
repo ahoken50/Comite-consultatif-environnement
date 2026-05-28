@@ -5,7 +5,7 @@ import {
 } from '@mui/material';
 import {
     SmartToy, TrendingUp, TrendingDown, TrendingFlat,
-    PlayArrow, CheckCircle, Warning, HourglassEmpty
+    PlayArrow, CheckCircle, Warning, HourglassEmpty, Info
 } from '@mui/icons-material';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { getApp } from 'firebase/app';
@@ -175,7 +175,12 @@ const AIHealthWidget: React.FC = () => {
                 {/* RLHF Score */}
                 <Box sx={{ mb: 2 }}>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 0.5 }}>
-                        <Typography variant="caption" color="text.secondary">Score RLHF</Typography>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                            <Typography variant="caption" color="text.secondary">Score RLHF</Typography>
+                            <Tooltip title="Indicateur d'apprentissage par renforcement (Reinforcement Learning from Human Feedback) mesurant l'adéquation des suggestions de l'IA par rapport aux corrections humaines (-1.00 à +1.00). Plus le score est proche de 1.00, plus l'IA est alignée sur vos préférences.">
+                                <Info sx={{ fontSize: 14, color: 'text.disabled', cursor: 'help' }} />
+                            </Tooltip>
+                        </Box>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                             <Typography variant="body2" sx={{ fontWeight: 600, color: getRewardColor(avgReward) }}>
                                 {avgReward.toFixed(2)}
@@ -200,7 +205,12 @@ const AIHealthWidget: React.FC = () => {
 
                 {/* Embedding Quality */}
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
-                    <Typography variant="caption" color="text.secondary">Précision vocale</Typography>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                        <Typography variant="caption" color="text.secondary">Précision vocale</Typography>
+                        <Tooltip title="Précision moyenne du modèle à identifier les membres à partir de leurs empreintes vocales. Si affiché à 0%, cela signifie qu'aucune boucle de calibration ML n'a encore été complétée avec des données vocales enregistrées.">
+                            <Info sx={{ fontSize: 14, color: 'text.disabled', cursor: 'help' }} />
+                        </Tooltip>
+                    </Box>
                     <Chip
                         label={`${((data.embeddingQuality?.avgAccuracy || 0) * 100).toFixed(0)}%`}
                         size="small"
@@ -211,7 +221,12 @@ const AIHealthWidget: React.FC = () => {
 
                 {/* Quality Trend */}
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
-                    <Typography variant="caption" color="text.secondary">Tendance qualité PV</Typography>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                        <Typography variant="caption" color="text.secondary">Tendance qualité PV</Typography>
+                        <Tooltip title="Score d'évaluation moyen (sur 100) de la qualité des procès-verbaux générés, basé sur la pertinence du ton, le respect du format officiel et les corrections apportées.">
+                            <Info sx={{ fontSize: 14, color: 'text.disabled', cursor: 'help' }} />
+                        </Tooltip>
+                    </Box>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                         {getTrendIcon(data.qualityTrends?.qualityTrend || 'stable')}
                         <Typography variant="caption">
