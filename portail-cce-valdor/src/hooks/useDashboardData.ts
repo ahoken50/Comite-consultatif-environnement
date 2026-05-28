@@ -7,6 +7,7 @@ import { useToast } from './useToast';
 import type { Project, Category } from '../types/project.types';
 import type { Meeting } from '../types/meeting.types';
 import type { ActivityLog } from '../types/activityLog.types';
+import { getVoiceProfileAlerts, getVerificationQueueCount, getPendingPVCount, type VoiceAlert } from '../services/voiceAlertService';
 
 export interface DashboardStats {
     projectsCompleted: number;
@@ -44,6 +45,9 @@ export interface DashboardData {
     progressData: ProgressData[];
     activities: ActivityLog[];
     recentProjects: Project[];  // #1.2 Recently modified projects
+    voiceAlerts: VoiceAlert[];
+    pendingPVs: number;
+    verificationCount: number;
     loading: boolean;
     error: string | null;
 }
@@ -82,6 +86,9 @@ export const useDashboardData = (): DashboardData => {
         progressData: [],
         activities: [],
         recentProjects: [],
+        voiceAlerts: [],
+        pendingPVs: 0,
+        verificationCount: 0,
         loading: true,
         error: null
     });
@@ -224,6 +231,13 @@ export const useDashboardData = (): DashboardData => {
                     })
                     .slice(0, 5);
 
+                // 9. Fetch voice profile alerts & pending actions (parallel, non-blocking)
+                const [voiceAlerts, pendingPVs, verificationCount] = await Promise.all([
+                    getVoiceProfileAlerts().catch(() => [] as VoiceAlert[]),
+                    getPendingPVCount().catch(() => 0),
+                    getVerificationQueueCount().catch(() => 0),
+                ]);
+
                 setData({
                     stats,
                     alerts,
@@ -232,6 +246,9 @@ export const useDashboardData = (): DashboardData => {
                     progressData,
                     activities,
                     recentProjects,
+                    voiceAlerts,
+                    pendingPVs,
+                    verificationCount,
                     loading: false,
                     error: null
                 });
