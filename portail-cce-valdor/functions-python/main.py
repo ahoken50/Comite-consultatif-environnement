@@ -2138,7 +2138,7 @@ def suggest_profile_improvements(req: https_fn.Request) -> https_fn.Response:
                 # Try singular audioRecording first (primary model)
                 rec = meeting.get("audioRecording")
                 if rec and isinstance(rec, dict):
-                    audio_url = rec.get("fileUrl") or rec.get("downloadUrl")
+                    audio_url = rec.get("fileUrl") or rec.get("downloadUrl") or rec.get("downloadURL")
                     transcription_text = rec.get("transcription", "")
                     audio_duration = rec.get("duration", 0) or 0
                 
@@ -2147,7 +2147,7 @@ def suggest_profile_improvements(req: https_fn.Request) -> https_fn.Response:
                     recs = meeting.get("audioRecordings", [])
                     if recs and isinstance(recs, list) and len(recs) > 0:
                         first_rec = recs[0] if isinstance(recs[0], dict) else {}
-                        audio_url = first_rec.get("fileUrl") or first_rec.get("downloadUrl")
+                        audio_url = first_rec.get("fileUrl") or first_rec.get("downloadUrl") or first_rec.get("downloadURL")
                         transcription_text = first_rec.get("transcription", "")
                         audio_duration = first_rec.get("duration", 0) or 0
                 
