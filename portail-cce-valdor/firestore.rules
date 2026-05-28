@@ -195,5 +195,31 @@ service cloud.firestore {
       allow read: if isAuthenticated();
       allow write: if isCoordinator();
     }
+
+    // ML Collections (Lot 4)
+    match /verification_queue/{id} {
+      allow read: if isAuthenticated();
+      allow write: if isCoordinator();
+    }
+    match /ml_metrics/{id} {
+      allow read: if isAuthenticated();
+      allow write: if isCoordinator();
+    }
+    match /ml_triggers/{id} {
+      allow read: if isAuthenticated();
+      allow write: if isCoordinator();
+    }
+    match /ml_suggestions/{id} {
+      allow read: if isAuthenticated();
+      allow write: if isCoordinator();
+    }
+    match /ml_calibration/{id} {
+      allow read: if isAuthenticated();
+      allow write: if isCoordinator();
+    }
+    match /ml_corrections/{id} {
+      allow read: if isAuthenticated();
+      allow write: if isCoordinator();
+    }
   }
 }
