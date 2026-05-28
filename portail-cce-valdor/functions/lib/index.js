@@ -402,7 +402,6 @@ exports.syncRegulationToSupabase = (0, firestore_1.onDocumentWritten)({
     document: "regulations/{regulationId}",
     secrets: [supabaseC.supabaseKeyParam, googleApiKey],
 }, async (event) => {
-    var _a;
     const regulationId = event.params.regulationId;
     const change = event.data;
     if (!change)
@@ -414,42 +413,87 @@ exports.syncRegulationToSupabase = (0, firestore_1.onDocumentWritten)({
     const data = change.after.data();
     if (!data)
         return;
-    // Generate Embedding using Gemini
-    let embedding;
-    if (googleApiKey.value()) {
-        try {
-            const apiKey = googleApiKey.value();
-            const { GoogleGenerativeAI } = require("@google/generative-ai");
-            const genAI = new GoogleGenerativeAI(apiKey);
-            const model = genAI.getGenerativeModel({ model: "text-embedding-004" });
-            const resolutionsText = ((_a = data.agendaItems) === null || _a === void 0 ? void 0 : _a.flatMap((item) => {
-                var _a;
-                return ((_a = item.minuteEntries) === null || _a === void 0 ? void 0 : _a.map((entry) => {
-                    const text = entry.content || "";
-                    return entry.number ? `${entry.number} ${text}` : text;
-                })) ||
-                    (item.minuteContent ? [item.minuteContent] : []);
-            }).join('\n')) || '';
-            const textToEmbed = `${data.title || ''}\n${data.minutes || ''}\n${resolutionsText}`.trim().substring(0, 9000);
-            if (textToEmbed) {
+    const content = data.content || "";
+    const articleRegex = /(?:^|\n)(?=ARTICLE|Article|Art\.\s*\d+)/g;
+    const articlesRaw = content.split(articleRegex);
+    // Filter out empty ones
+    const articles = articlesRaw.map((a) => a.trim()).filter(Boolean);
+    // Extract header context (metadata preceding first article)
+    let headerContext = "";
+    let startIndex = 0;
+    if (articles[0] && !articles[0].match(/^(?:ARTICLE|Article|Art\.)/i)) {
+        headerContext = articles[0];
+        startIndex = 1;
+    }
+    console.log(`[Supabase] Split regulation ${regulationId} into ${articles.length - startIndex} articles`);
+    // Delete existing chunks first to avoid dangling chunks if content was modified
+    await supabaseC.deleteFromIndex("regulations", regulationId);
+    // If no articles found, index the whole content as a single document
+    if (articles.length - startIndex <= 0) {
+        let embedding;
+        if (googleApiKey.value()) {
+            try {
+                const apiKey = googleApiKey.value();
+                const { GoogleGenerativeAI } = require("@google/generative-ai");
+                const genAI = new GoogleGenerativeAI(apiKey);
+                const model = genAI.getGenerativeModel({ model: "text-embedding-004" });
+                const textToEmbed = `Règlement: ${data.title || "Sans titre"}\nContenu:\n${content}`.trim().substring(0, 9000);
                 const result = await model.embedContent(textToEmbed);
                 embedding = result.embedding.values;
-                console.log(`[Supabase] Generated embedding for regulation ${regulationId}`);
+            }
+            catch (error) {
+                console.error(`[Supabase] Failed to generate embedding for single regulation`, error);
             }
         }
-        catch (error) {
-            console.error(`[Supabase] Failed to generate embedding for ${regulationId}`, error);
-        }
+        const searchableRegulation = {
+            id: regulationId,
+            title: data.title || "Sans titre",
+            content: content,
+            category: data.category || "Général",
+            year: data.year || new Date().getFullYear(),
+            status: data.status || "Actif",
+            embedding: embedding
+        };
+        await supabaseC.indexRegulation(searchableRegulation);
+        return;
     }
-    const searchableRegulation = {
-        id: regulationId,
-        title: data.title || "Sans titre",
-        content: data.content || "",
-        category: data.category || "Général",
-        year: data.year || new Date().getFullYear(),
-        status: data.status || "Actif",
-        embedding: embedding
-    };
-    await supabaseC.indexRegulation(searchableRegulation);
+    // Process article chunks sequentially to respect Gemini API limits
+    const { GoogleGenerativeAI } = require("@google/generative-ai");
+    const apiKey = googleApiKey.value();
+    const genAI = apiKey ? new GoogleGenerativeAI(apiKey) : null;
+    const model = genAI ? genAI.getGenerativeModel({ model: "text-embedding-004" }) : null;
+    for (let i = startIndex; i < articles.length; i++) {
+        const articleText = articles[i];
+        const chunkId = `${regulationId}-art-${i}`;
+        // Extract article title if possible (e.g. first line is "Article 1 - Titre")
+        const firstLine = articleText.split('\n')[0] || "";
+        const articleTitle = firstLine.length < 100 ? firstLine.trim() : `Article ${i}`;
+        // Construct parent-child context
+        const parentContext = `Règlement: ${data.title || "Sans titre"}\nAnnée: ${data.year || new Date().getFullYear()}\nCatégorie: ${data.category || "Général"}${headerContext ? `\nContexte général:\n${headerContext}` : ""}`;
+        const combinedText = `[CONTEXTE PARENT]\n${parentContext}\n\n[ARTICLE/CONTENU]\n${articleText}`.trim().substring(0, 9000);
+        let embedding;
+        if (model) {
+            try {
+                // Generate embedding on the full context (parent + child)
+                const result = await model.embedContent(combinedText);
+                embedding = result.embedding.values;
+            }
+            catch (error) {
+                console.error(`[Supabase] Failed to generate embedding for chunk ${chunkId}`, error);
+            }
+        }
+        const searchableRegulation = {
+            id: chunkId,
+            title: `${data.title || "Sans titre"} - ${articleTitle}`,
+            content: articleText,
+            category: data.category || "Général",
+            year: data.year || new Date().getFullYear(),
+            status: data.status || "Actif",
+            embedding: embedding
+        };
+        await supabaseC.indexRegulation(searchableRegulation);
+        // Brief sleep to respect API limits (150ms)
+        await new Promise(resolve => setTimeout(resolve, 150));
+    }
 });
 //# sourceMappingURL=index.js.map

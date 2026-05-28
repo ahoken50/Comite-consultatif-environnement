@@ -139,7 +139,13 @@ export const indexRegulation = async (regulation: SearchableRegulation) => {
 export const deleteFromIndex = async (table: 'meetings' | 'projects' | 'regulations', id: string) => {
     try {
         const supabase = getSupabase();
-        const { error } = await supabase.from(table).delete().eq('id', id);
+        let query = supabase.from(table).delete();
+        if (table === 'regulations') {
+            query = query.like('id', `${id}%`);
+        } else {
+            query = query.eq('id', id);
+        }
+        const { error } = await query;
         if (error) throw error;
         console.log(`[Supabase] Deleted ${id} from ${table}`);
     } catch (error) {

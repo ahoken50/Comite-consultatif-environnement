@@ -24,6 +24,46 @@ export const getSupabase = (): SupabaseClient => {
 };
 
 // ============================================
+// RRF FUSION HELPER FOR HYBRID SEARCH
+// ============================================
+
+function combineHitsRRF<T extends { id: string }>(
+    vectorHits: Array<T>,
+    ftsHits: Array<T>,
+    matchCount: number
+): Array<{ document: T; textMatch: number; vectorDistance?: number }> {
+    const rrfScore: Record<string, number> = {};
+    const docMap: Record<string, T> = {};
+    const K = 60; // Reciprocal Rank Fusion constant
+
+    vectorHits.forEach((doc, index) => {
+        const id = doc.id;
+        docMap[id] = doc;
+        rrfScore[id] = (rrfScore[id] || 0) + 1 / (K + index);
+    });
+
+    ftsHits.forEach((doc, index) => {
+        const id = doc.id;
+        docMap[id] = doc;
+        rrfScore[id] = (rrfScore[id] || 0) + 1 / (K + index);
+    });
+
+    const sortedIds = Object.keys(rrfScore).sort((a, b) => rrfScore[b] - rrfScore[a]);
+
+    return sortedIds.slice(0, matchCount).map(id => {
+        const doc = docMap[id];
+        const vectorIndex = vectorHits.findIndex(h => h.id === id);
+        const ftsIndex = ftsHits.findIndex(h => h.id === id);
+
+        return {
+            document: doc,
+            textMatch: ftsIndex !== -1 ? 1 - ftsIndex / ftsHits.length : 0.5,
+            vectorDistance: vectorIndex !== -1 ? 0.1 * vectorIndex : undefined
+        };
+    });
+}
+
+// ============================================
 // TYPES
 // ============================================
 
@@ -102,61 +142,91 @@ export const searchMeetings = async (
             queryEmbedding = await aiService.generateEmbedding(query);
         } catch (e) {
             console.warn("Failed to generate embedding for query, falling back to text search", e);
-            // If embedding fails, we can fallback to simple text search via RPC or direct Select
-            // For now, let's assume we need embedding for hybrid search
         }
 
-        // 2. Call RPC
-        // If queryEmbedding is empty, the RPC might need handling or we use a different query.
-        // Our SQL function expects an embedding.
-
-        let data: any[] | null = null;
-        let error: any = null;
+        // 2. Perform parallel hybrid search and fuse with RRF
+        let data: any[] = [];
 
         if (queryEmbedding.length > 0) {
-            const result = await supabase.rpc('hybrid_search_meetings', {
-                query_text: query,
-                query_embedding: queryEmbedding,
-                match_threshold: matchThreshold,
-                match_count: matchCount
-            });
-            data = result.data;
-            error = result.error;
-        } else {
-            // Fallback: Text search using the optimized 'fts' column (Title + Minutes + Resolutions)
-            const result = await supabase
-                .from('meetings')
-                .select('*')
-                .textSearch('fts', query, { type: 'websearch', config: 'french' })
-                .limit(matchCount);
-            data = result.data;
-            error = result.error;
+            const [vectorRes, ftsRes] = await Promise.allSettled([
+                supabase.rpc('hybrid_search_meetings', {
+                    query_text: query,
+                    query_embedding: queryEmbedding,
+                    match_threshold: matchThreshold,
+                    match_count: matchCount * 2
+                }),
+                supabase
+                    .from('meetings')
+                    .select('*')
+                    .textSearch('fts', query, { type: 'websearch', config: 'french' })
+                    .limit(matchCount * 2)
+            ]);
+
+            let vectorDocs: any[] = [];
+            let ftsDocs: any[] = [];
+
+            if (vectorRes.status === 'fulfilled' && vectorRes.value.data) {
+                vectorDocs = vectorRes.value.data;
+            }
+            if (ftsRes.status === 'fulfilled' && ftsRes.value.data) {
+                ftsDocs = ftsRes.value.data;
+            }
+
+            if (vectorDocs.length > 0 || ftsDocs.length > 0) {
+                const combined = combineHitsRRF(vectorDocs, ftsDocs, matchCount);
+                timer.end({ found: combined.length });
+                return {
+                    hits: combined.map(c => ({
+                        document: {
+                            id: c.document.id,
+                            title: c.document.title,
+                            date: c.document.date,
+                            dateTimestamp: c.document.date_timestamp || c.document.dateTimestamp,
+                            type: c.document.type,
+                            status: c.document.status,
+                            minutes: c.document.minutes,
+                            agendaItemTitles: c.document.agenda_item_titles || c.document.agendaItemTitles || [],
+                            resolutions: c.document.resolutions || [],
+                            attendeeNames: c.document.attendee_names || c.document.attendeeNames || [],
+                        },
+                        textMatch: c.textMatch,
+                        vectorDistance: c.vectorDistance
+                    })),
+                    found: combined.length,
+                    searchTimeMs: 0
+                };
+            }
         }
 
-        if (error) throw error;
+        // Fallback FTS search if no embeddings
+        const result = await supabase
+            .from('meetings')
+            .select('*')
+            .textSearch('fts', query, { type: 'websearch', config: 'french' })
+            .limit(matchCount);
+        data = result.data || [];
 
-        timer.end({ found: data?.length || 0 });
+        timer.end({ found: data.length });
 
         return {
-            hits: (data || []).map((row: any) => ({
+            hits: data.map((row: any) => ({
                 document: {
                     id: row.id,
                     title: row.title,
                     date: row.date,
-                    dateTimestamp: row.date_timestamp,
+                    dateTimestamp: row.date_timestamp || row.dateTimestamp,
                     type: row.type,
                     status: row.status,
                     minutes: row.minutes,
-                    agendaItemTitles: row.agenda_item_titles || [],
+                    agendaItemTitles: row.agenda_item_titles || row.agendaItemTitles || [],
                     resolutions: row.resolutions || [],
-                    attendeeNames: row.attendee_names || [],
-                    // embedding is not typically needed in frontend result
+                    attendeeNames: row.attendee_names || row.attendeeNames || [],
                 },
-                textMatch: 1, // Placeholder
-                vectorDistance: row.similarity ? 1 - row.similarity : undefined
+                textMatch: 1,
+                vectorDistance: undefined
             })),
-            found: data?.length || 0,
-            searchTimeMs: 0 // Not returned by Supabase directly
+            found: data.length,
+            searchTimeMs: 0
         };
 
     } catch (error) {
@@ -305,8 +375,7 @@ export const searchRegulations = async (
     try {
         const { matchThreshold = 0.5, matchCount = 10 } = options;
 
-        let data: any[] | null = null;
-        let error: any = null;
+        let data: any[] = [];
 
         // If query is empty, just fetch all regulations without search
         if (!query || query.trim() === '') {
@@ -315,54 +384,94 @@ export const searchRegulations = async (
                 .select('*')
                 .order('year', { ascending: false })
                 .limit(matchCount);
-            data = result.data;
-            error = result.error;
-        } else {
-            // Generate embedding for semantic search
-            let queryEmbedding: number[] = [];
-            try {
-                queryEmbedding = await aiService.generateEmbedding(query);
-            } catch (e) {
-                console.warn("Failed to generate embedding for query", e);
-            }
+            data = result.data || [];
+            timer.end({ found: data.length });
+            return {
+                hits: data.map((row: any) => ({
+                    document: {
+                        id: row.id,
+                        title: row.title,
+                        content: row.content,
+                        category: row.category,
+                        year: row.year,
+                        status: row.status,
+                    },
+                    textMatch: 1,
+                    vectorDistance: undefined
+                })),
+                found: data.length,
+                searchTimeMs: 0
+            };
+        }
 
-            if (queryEmbedding.length > 0) {
-                // Try RPC first
-                const result = await supabase.rpc('hybrid_search_regulations', {
+        // Generate embedding for semantic search
+        let queryEmbedding: number[] = [];
+        try {
+            queryEmbedding = await aiService.generateEmbedding(query);
+        } catch (e) {
+            console.warn("Failed to generate embedding for query", e);
+        }
+
+        // Perform parallel hybrid search and fuse with RRF
+        if (queryEmbedding.length > 0) {
+            const [vectorRes, ftsRes] = await Promise.allSettled([
+                supabase.rpc('hybrid_search_regulations', {
                     query_text: query,
                     query_embedding: queryEmbedding,
                     match_threshold: matchThreshold,
-                    match_count: matchCount
-                });
-
-                // If function doesn't exist, it will error. Fallback to text search?
-                if (result.error && result.error.message.includes('function not found')) {
-                    console.warn("RPC hybrid_search_regulations not found, falling back to text search");
-                    // Fallback below
-                } else {
-                    data = result.data;
-                    error = result.error;
-                }
-            }
-
-            if (!data) {
-                // Fallback: Text search
-                const result = await supabase
+                    match_count: matchCount * 2
+                }),
+                supabase
                     .from('regulations')
                     .select('*')
                     .textSearch('content', query, { type: 'websearch', config: 'french' })
-                    .limit(matchCount);
-                data = result.data;
-                error = result.error;
+                    .limit(matchCount * 2)
+            ]);
+
+            let vectorDocs: any[] = [];
+            let ftsDocs: any[] = [];
+
+            if (vectorRes.status === 'fulfilled' && vectorRes.value.data) {
+                vectorDocs = vectorRes.value.data;
+            }
+            if (ftsRes.status === 'fulfilled' && ftsRes.value.data) {
+                ftsDocs = ftsRes.value.data;
+            }
+
+            if (vectorDocs.length > 0 || ftsDocs.length > 0) {
+                const combined = combineHitsRRF(vectorDocs, ftsDocs, matchCount);
+                timer.end({ found: combined.length });
+                return {
+                    hits: combined.map(c => ({
+                        document: {
+                            id: c.document.id,
+                            title: c.document.title,
+                            content: c.document.content,
+                            category: c.document.category,
+                            year: c.document.year,
+                            status: c.document.status,
+                        },
+                        textMatch: c.textMatch,
+                        vectorDistance: c.vectorDistance
+                    })),
+                    found: combined.length,
+                    searchTimeMs: 0
+                };
             }
         }
 
-        if (error) throw error;
-
-        timer.end({ found: data?.length || 0 });
+        // Fallback: Text search
+        const result = await supabase
+            .from('regulations')
+            .select('*')
+            .textSearch('content', query, { type: 'websearch', config: 'french' })
+            .limit(matchCount);
+        data = result.data || [];
+        
+        timer.end({ found: data.length });
 
         return {
-            hits: (data || []).map((row: any) => ({
+            hits: data.map((row: any) => ({
                 document: {
                     id: row.id,
                     title: row.title,
@@ -372,9 +481,9 @@ export const searchRegulations = async (
                     status: row.status,
                 },
                 textMatch: 1,
-                vectorDistance: row.similarity ? 1 - row.similarity : undefined
+                vectorDistance: undefined
             })),
-            found: data?.length || 0,
+            found: data.length,
             searchTimeMs: 0
         };
     } catch (error) {
