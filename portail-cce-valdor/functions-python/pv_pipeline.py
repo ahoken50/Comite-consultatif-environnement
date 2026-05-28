@@ -17,7 +17,7 @@ from datetime import datetime
 from typing import Any, Optional
 
 # Active learning imports (lazy — only used when db_client is available)
-def _get_enhanced_prompt(base_prompt: str, db_client: Any = None, step: str = "drafting") -> str:
+def _get_enhanced_prompt(base_prompt: str, db_client: Any = None, step: str = "drafting", meeting_id: str = None) -> str:
     """Enhance prompt with RLHF + active learning data if available."""
     if not db_client:
         return base_prompt
@@ -26,7 +26,7 @@ def _get_enhanced_prompt(base_prompt: str, db_client: Any = None, step: str = "d
         from active_learning import build_style_memory, inject_style_memory_into_prompt
         
         # Layer 1: RLHF preferences and policy
-        enhanced = enhance_prompt_with_rlhf(base_prompt, db_client, step=step)
+        enhanced = enhance_prompt_with_rlhf(base_prompt, db_client, step=step, meeting_id=meeting_id)
         
         # Layer 2: Active style memory
         style_memory = build_style_memory(db_client, max_entries=30)

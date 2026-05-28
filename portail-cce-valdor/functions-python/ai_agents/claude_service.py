@@ -40,6 +40,15 @@ def generate_minutes_claude(req: https_fn.CallableRequest) -> dict:
 
     print(f"[Claude] Generating minutes for meeting {meeting_id}...")
 
+    # Enhance system prompt with RLHF + DSPy Compiler if available
+    try:
+        from pv_pipeline import _get_enhanced_prompt
+        db = firestore.client()
+        system_prompt = _get_enhanced_prompt(system_prompt, db, step="drafting", meeting_id=meeting_id)
+        print("[Claude] System prompt successfully enhanced with DSPy compiler + RLHF.")
+    except Exception as e:
+        print(f"[Claude] Warning: Failed to enhance system prompt: {e}")
+
     # Inject Active Members List for Attendance Verification
     try:
         db = firestore.client()
