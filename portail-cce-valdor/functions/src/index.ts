@@ -377,7 +377,7 @@ export async function performSingleMeetingIndex(meetingId: string, data: any): P
         const apiKey = googleApiKey.value();
         const { GoogleGenerativeAI } = require("@google/generative-ai");
         const genAI = apiKey ? new GoogleGenerativeAI(apiKey) : null;
-        const embedModel = genAI ? genAI.getGenerativeModel({ model: "text-embedding-004" }) : null;
+        const embedModel = genAI ? genAI.getGenerativeModel({ model: "gemini-embedding-001" }) : null;
         const flashModel = genAI ? genAI.getGenerativeModel({ model: "gemini-2.0-flash" }) : null;
 
         const agendaList = data.agendaItems?.map((i: any) => i.title).join(', ') || '';
@@ -406,7 +406,10 @@ export async function performSingleMeetingIndex(meetingId: string, data: any): P
 
         if (embedModel && textToEmbed) {
             try {
-                const result = await embedModel.embedContent(textToEmbed);
+                const result = await embedModel.embedContent({
+                    content: { parts: [{ text: textToEmbed }] },
+                    outputDimensionality: 768
+                });
                 embedding = result.embedding.values;
                 console.log(`[Supabase] Generated embedding for completed meeting ${meetingId}`);
             } catch (error) {
@@ -510,7 +513,7 @@ export async function performSingleRegulationIndex(regulationId: string, data: a
     const apiKey = googleApiKey.value();
     const { GoogleGenerativeAI } = require("@google/generative-ai");
     const genAI = apiKey ? new GoogleGenerativeAI(apiKey) : null;
-    const embedModel = genAI ? genAI.getGenerativeModel({ model: "text-embedding-004" }) : null;
+    const embedModel = genAI ? genAI.getGenerativeModel({ model: "gemini-embedding-001" }) : null;
     const flashModel = genAI ? genAI.getGenerativeModel({ model: "gemini-2.0-flash" }) : null;
 
     // Generate Dynamic Parent Entity Summary via Gemini 2.0 Flash
@@ -534,7 +537,10 @@ export async function performSingleRegulationIndex(regulationId: string, data: a
         
         if (embedModel) {
             try {
-                const result = await embedModel.embedContent(textToEmbed);
+                const result = await embedModel.embedContent({
+                    content: { parts: [{ text: textToEmbed }] },
+                    outputDimensionality: 768
+                });
                 embedding = result.embedding.values;
             } catch (error) {
                 console.error(`[Supabase] Failed to generate embedding for single regulation`, error);
@@ -569,7 +575,10 @@ export async function performSingleRegulationIndex(regulationId: string, data: a
         let embedding: number[] | undefined;
         if (embedModel) {
             try {
-                const result = await embedModel.embedContent(combinedText);
+                const result = await embedModel.embedContent({
+                    content: { parts: [{ text: combinedText }] },
+                    outputDimensionality: 768
+                });
                 embedding = result.embedding.values;
             } catch (error) {
                 console.error(`[Supabase] Failed to generate embedding for chunk ${chunkId}`, error);
