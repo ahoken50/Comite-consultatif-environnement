@@ -2404,14 +2404,36 @@ def _run_ml_loop_internal(db_client, meeting_id=None, mode="full"):
         if meeting_id:
             meetings_docs = [db_client.collection("meetings").document(meeting_id).get()]
         else:
-            meetings_docs = list(db_client.collection("meetings").order_by(
+            # Fetch last 30 meetings ordered by date DESC to find those that actually have audio data
+            print("[AutonomousML] Scanning recent meetings for audio recordings...")
+            raw_meetings = list(db_client.collection("meetings").order_by(
                 "date", direction=firestore.Query.DESCENDING
-            ).limit(5).stream())
+            ).limit(30).stream())
+            
+            meetings_docs = []
+            for doc in raw_meetings:
+                if doc.exists:
+                    m_data = doc.to_dict()
+                    recordings = m_data.get("audioRecordings", [])
+                    if not recordings and m_data.get("audioRecording"):
+                        recordings = [m_data.get("audioRecording")]
+                    
+                    if recordings:
+                        meetings_docs.append(doc)
+                        if len(meetings_docs) >= 5:
+                            break
+            
+            print(f"[AutonomousML] Found {len(meetings_docs)} meetings with audio data to process.")
+            # Fallback: if no meetings with recordings found in last 30, use top 5 raw
+            if not meetings_docs:
+                print("[AutonomousML] No meetings with audio data found. Falling back to top 5 meetings.")
+                meetings_docs = raw_meetings[:5]
         
         for meeting_doc in meetings_docs:
             if not meeting_doc.exists:
                 continue
             meeting = meeting_doc.to_dict()
+            print(f"[AutonomousML] Processing meeting {meeting_doc.id} ({meeting.get('title', 'Untitled')})")
             
             # Get recordings list (handling both singular and plural formats)
             recordings = meeting.get("audioRecordings", [])
@@ -2419,25 +2441,34 @@ def _run_ml_loop_internal(db_client, meeting_id=None, mode="full"):
                 singular_rec = meeting.get("audioRecording")
                 if singular_rec:
                     recordings = [singular_rec]
+            
+            print(f"[AutonomousML] Meeting {meeting_doc.id} has {len(recordings)} recordings.")
             for rec in recordings:
                 mapping = rec.get("speakerMapping", {})
                 confidence_data = rec.get("confidenceScores", {})
                 segments = rec.get("segments", [])
                 audio_url = rec.get("fileUrl") or rec.get("downloadUrl") or rec.get("downloadURL")
                 
+                print(f"[AutonomousML] Recording: audio_url={audio_url[:50] if audio_url else None}... mapping={mapping}")
+                
                 for label, name in mapping.items():
                     conf_info = confidence_data.get(label, {})
                     score = conf_info.get("score", 0) if isinstance(conf_info, dict) else conf_info
+                    print(f"[AutonomousML] Speaker label {label} mapped to {name} with confidence score {score}")
                     
                     # AUTO-LEARN: High confidence (>80%)
                     if score >= 0.80:
                         member_query = db_client.collection("members").where("displayName", "==", name).limit(1).stream()
+                        member_found = False
                         for member_doc in member_query:
+                            member_found = True
                             member = member_doc.to_dict()
                             sample_count = member.get("voiceSampleCount", 0)
+                            print(f"[AutonomousML] Found member {name} with voiceSampleCount={sample_count}")
                             
                             if sample_count < 15:
                                 speaker_segs = [s for s in segments if s.get("speaker") == label]
+                                print(f"[AutonomousML] Speaker {label} has {len(speaker_segs)} segments.")
                                 if speaker_segs and audio_url:
                                     ideal_segs = [s for s in speaker_segs 
                                                   if 15 <= (s.get("end", 0) - s.get("start", 0)) <= 45]
@@ -2445,8 +2476,10 @@ def _run_ml_loop_internal(db_client, meeting_id=None, mode="full"):
                                         ideal_segs = [s for s in speaker_segs 
                                                       if 5 < (s.get("end", 0) - s.get("start", 0)) < 60]
                                     
+                                    print(f"[AutonomousML] Found {len(ideal_segs)} ideal segments for embedding extraction.")
                                     if ideal_segs:
                                         best_seg = max(ideal_segs, key=lambda x: x.get("end", 0) - x.get("start", 0))
+                                        print(f"[AutonomousML] Best segment: start={best_seg.get('start')}, end={best_seg.get('end')}, length={best_seg.get('end', 0) - best_seg.get('start', 0):.2f}s")
                                     
                                         try:
                                             new_emb = extract_audio_segment_embedding(
@@ -2465,10 +2498,22 @@ def _run_ml_loop_internal(db_client, meeting_id=None, mode="full"):
                                                     })
                                                     results["autoLearned"] += 1
                                                     results["actions"].append(f"Auto-learned: {name} ({new_count} samples)")
+                                                    print(f"[AutonomousML] Successfully auto-learned {name} (now has {new_count} samples).")
                                                 else:
                                                     print(f"[AutonomousML] Skipping duplicate embedding for {name}")
+                                            else:
+                                                print(f"[AutonomousML] Failed to extract embedding for {name}")
                                         except Exception as e:
                                             print(f"[AutonomousML] Auto-learn failed for {name}: {e}")
+                                    else:
+                                        print(f"[AutonomousML] No ideal segments found for speaker {label}.")
+                                else:
+                                    print(f"[AutonomousML] Skipping speaker {label} - either no segments or no audio_url (url={audio_url}).")
+                            else:
+                                print(f"[AutonomousML] Skipping speaker {label} ({name}) - voiceSampleCount={sample_count} is already at or above 15.")
+                        
+                        if not member_found:
+                            print(f"[AutonomousML] Member '{name}' not found in the database.")
                     
                     # QUEUE: Low confidence (<70%) → needs human review
                     elif score < 0.70 and score > 0.40:
@@ -2493,6 +2538,9 @@ def _run_ml_loop_internal(db_client, meeting_id=None, mode="full"):
                             })
                             results["queuedForReview"] += 1
                             results["actions"].append(f"Queued for review: {label} → {name}?")
+                            print(f"[AutonomousML] Queued speaker {label} ({name}) for manual verification with score {score}.")
+                        else:
+                            print(f"[AutonomousML] Speaker {label} ({name}) already exists in the verification queue.")
     
     # =================================================================
     # STEP 2: UPDATE CALIBRATION
