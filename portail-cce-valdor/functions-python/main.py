@@ -13,7 +13,7 @@ import requests
 import google.auth
 from datetime import datetime, timedelta
 from typing import Any
-from firebase_functions import https_fn, options
+from firebase_functions import https_fn, options, scheduler_fn
 from firebase_admin import initialize_app, firestore, storage
 # NOTE: openai and pydub are no longer needed for Salad Cloud integration.
 # They are still used by the legacy_local transcription function if needed.
@@ -2374,6 +2374,203 @@ def purge_speaker_profile(req: https_fn.CallableRequest) -> dict:
 # =============================================================================
 # AUTONOMOUS ML LOOP - Global orchestration of all ML components
 # =============================================================================
+
+def _run_ml_loop_internal(db_client, meeting_id=None, mode="full"):
+    """
+    Internal helper that runs the ML loop logic.
+    Used by autonomous_ml_loop, trigger_ml_after_transcription, and scheduled_ml_maintenance.
+    
+    Returns results dict with autoLearned, queuedForReview, suggestionsGenerated, etc.
+    """
+    results = {
+        "autoLearned": 0,
+        "queuedForReview": 0,
+        "suggestionsGenerated": 0,
+        "calibrationUpdated": False,
+        "metricsLogged": False,
+        "actions": []
+    }
+    
+    # =================================================================
+    # STEP 1: AUTO-LEARN from high-confidence identifications
+    # =================================================================
+    if mode in ["full", "quick"]:
+        print("[AutonomousML] Step 1: Auto-learning from high-confidence matches...")
+        
+        if meeting_id:
+            meetings_docs = [db_client.collection("meetings").document(meeting_id).get()]
+        else:
+            meetings_docs = list(db_client.collection("meetings").order_by(
+                "date", direction=firestore.Query.DESCENDING
+            ).limit(5).stream())
+        
+        for meeting_doc in meetings_docs:
+            if not meeting_doc.exists:
+                continue
+            meeting = meeting_doc.to_dict()
+            
+            for rec in meeting.get("audioRecordings", []):
+                mapping = rec.get("speakerMapping", {})
+                confidence_data = rec.get("confidenceScores", {})
+                segments = rec.get("segments", [])
+                audio_url = rec.get("downloadUrl")
+                
+                for label, name in mapping.items():
+                    conf_info = confidence_data.get(label, {})
+                    score = conf_info.get("score", 0) if isinstance(conf_info, dict) else conf_info
+                    
+                    # AUTO-LEARN: High confidence (>80%)
+                    if score >= 0.80:
+                        member_query = db_client.collection("members").where("displayName", "==", name).limit(1).stream()
+                        for member_doc in member_query:
+                            member = member_doc.to_dict()
+                            sample_count = member.get("voiceSampleCount", 0)
+                            
+                            if sample_count < 15:
+                                speaker_segs = [s for s in segments if s.get("speaker") == label]
+                                if speaker_segs and audio_url:
+                                    ideal_segs = [s for s in speaker_segs 
+                                                  if 15 <= (s.get("end", 0) - s.get("start", 0)) <= 45]
+                                    if not ideal_segs:
+                                        ideal_segs = [s for s in speaker_segs 
+                                                      if 5 < (s.get("end", 0) - s.get("start", 0)) < 60]
+                                    
+                                    if ideal_segs:
+                                        best_seg = max(ideal_segs, key=lambda x: x.get("end", 0) - x.get("start", 0))
+                                    
+                                        try:
+                                            new_emb = extract_audio_segment_embedding(
+                                                audio_url, best_seg["start"], best_seg["end"]
+                                            )
+                                            if new_emb:
+                                                from supabase_embeddings import add_embedding, is_duplicate as emb_is_duplicate
+                                                if not emb_is_duplicate(name, new_emb, threshold=0.95):
+                                                    add_embedding(name, new_emb, member_doc.id, sample_source="ml_auto")
+                                                    from supabase_embeddings import get_embedding_count
+                                                    new_count = get_embedding_count(name)
+                                                    db_client.collection("members").document(member_doc.id).update({
+                                                        "voiceSampleCount": new_count,
+                                                        "lastVoiceUpdate": datetime.now().isoformat(),
+                                                        "lastUpdateSource": "autonomous_ml"
+                                                    })
+                                                    results["autoLearned"] += 1
+                                                    results["actions"].append(f"Auto-learned: {name} ({new_count} samples)")
+                                                else:
+                                                    print(f"[AutonomousML] Skipping duplicate embedding for {name}")
+                                        except Exception as e:
+                                            print(f"[AutonomousML] Auto-learn failed for {name}: {e}")
+                    
+                    # QUEUE: Low confidence (<70%) → needs human review
+                    elif score < 0.70 and score > 0.40:
+                        existing = list(db_client.collection("verification_queue").where(
+                            "speakerLabel", "==", label
+                        ).where("meetingId", "==", meeting_doc.id).limit(1).stream())
+                        
+                        if not existing:
+                            best_seg = max([s for s in segments if s.get("speaker") == label] or [{}], 
+                                          key=lambda x: x.get("end", 0) - x.get("start", 0), default={})
+                            
+                            db_client.collection("verification_queue").add({
+                                "meetingId": meeting_doc.id,
+                                "speakerLabel": label,
+                                "suggestedName": name,
+                                "confidence": score,
+                                "start": best_seg.get("start"),
+                                "end": best_seg.get("end"),
+                                "textSample": best_seg.get("text", "")[:100],
+                                "status": "pending",
+                                "createdAt": datetime.now().isoformat()
+                            })
+                            results["queuedForReview"] += 1
+                            results["actions"].append(f"Queued for review: {label} → {name}?")
+    
+    # =================================================================
+    # STEP 2: UPDATE CALIBRATION
+    # =================================================================
+    if mode in ["full", "calibrate_only"]:
+        print("[AutonomousML] Step 2: Updating calibration...")
+        
+        corrections = list(db_client.collection("ml_corrections").order_by(
+            "timestamp", direction=firestore.Query.DESCENDING
+        ).limit(100).stream())
+        
+        if len(corrections) >= 10:
+            bins = {i/10: {"correct": 0, "wrong": 0} for i in range(11)}
+            
+            for doc in corrections:
+                c = doc.to_dict()
+                conf = c.get("originalConfidence", 0.5)
+                was_correct = c.get("wasCorrect", False)
+                bin_key = round(conf, 1)
+                if bin_key in bins:
+                    if was_correct:
+                        bins[bin_key]["correct"] += 1
+                    else:
+                        bins[bin_key]["wrong"] += 1
+            
+            calibration_curve = {}
+            for conf, data in bins.items():
+                total = data["correct"] + data["wrong"]
+                if total > 0:
+                    calibration_curve[str(conf)] = round(data["correct"] / total, 3)
+            
+            db_client.collection("ml_calibration").document("speaker_id").set({
+                "calibrationCurve": calibration_curve,
+                "dataPoints": len(corrections),
+                "updatedAt": datetime.now().isoformat()
+            }, merge=True)
+            
+            results["calibrationUpdated"] = True
+            results["actions"].append("Calibration updated")
+    
+    # =================================================================
+    # STEP 3: GENERATE PROACTIVE SUGGESTIONS
+    # =================================================================
+    if mode == "full":
+        print("[AutonomousML] Step 3: Generating suggestions for weak profiles...")
+        
+        members = list(db_client.collection("members").stream())
+        for doc in members:
+            member = doc.to_dict()
+            sample_count = member.get("voiceSampleCount", 0)
+            name = member.get("displayName") or member.get("name")
+            
+            if sample_count < 5:
+                existing = list(db_client.collection("ml_suggestions").where(
+                    "memberId", "==", doc.id
+                ).where("status", "==", "pending").limit(1).stream())
+                
+                if not existing:
+                    db_client.collection("ml_suggestions").add({
+                        "memberId": doc.id,
+                        "memberName": name,
+                        "currentSamples": sample_count,
+                        "improvementPotential": f"+{(10 - sample_count) * 10}%",
+                        "status": "pending",
+                        "createdAt": datetime.now().isoformat()
+                    })
+                    results["suggestionsGenerated"] += 1
+    
+    # =================================================================
+    # STEP 4: LOG PERFORMANCE METRICS
+    # =================================================================
+    print("[AutonomousML] Step 4: Logging metrics...")
+    
+    db_client.collection("ml_metrics").add({
+        "timestamp": datetime.now().isoformat(),
+        "autoLearned": results["autoLearned"],
+        "queuedForReview": results["queuedForReview"],
+        "suggestionsGenerated": results["suggestionsGenerated"],
+        "calibrationUpdated": results["calibrationUpdated"],
+        "mode": mode,
+        "meetingId": meeting_id
+    })
+    results["metricsLogged"] = True
+    
+    print(f"[AutonomousML] Loop complete: {results}")
+    return results
+
+
 @https_fn.on_request(
     timeout_sec=540,
     memory=options.MemoryOption.GB_2,
@@ -2382,18 +2579,7 @@ def purge_speaker_profile(req: https_fn.CallableRequest) -> dict:
 def autonomous_ml_loop(req: https_fn.Request) -> https_fn.Response:
     """
     Global autonomous ML loop that runs after each transcription.
-    Orchestrates all ML components:
-    
-    1. AUTO-LEARN: High-confidence matches (>90%) -> auto-reinforce profile
-    2. CALIBRATE: Update confidence calibration from history
-    3. QUEUE: Uncertain matches (<70%) -> human verification queue
-    4. SUGGEST: Weak profiles -> proactive improvement suggestions
-    5. TRACK: Log performance metrics
-    
-    Can be triggered:
-    - Manually via API call
-    - Automatically after transcription (post-processing hook)
-    - Scheduled via Cloud Scheduler
+    Orchestrates all ML components via _run_ml_loop_internal.
     """
 
     try:
@@ -2407,206 +2593,7 @@ def autonomous_ml_loop(req: https_fn.Request) -> https_fn.Response:
         
         print(f"[AutonomousML] Starting loop - mode={mode}, meeting={meeting_id}")
         
-        results = {
-            "autoLearned": 0,
-            "queuedForReview": 0,
-            "suggestionsGenerated": 0,
-            "calibrationUpdated": False,
-            "metricsLogged": False,
-            "actions": []
-        }
-        
-        # =================================================================
-        # STEP 1: AUTO-LEARN from high-confidence identifications
-        # =================================================================
-        if mode in ["full", "quick"]:
-            print("[AutonomousML] Step 1: Auto-learning from high-confidence matches...")
-            
-            # Get recent identifications with high confidence
-            if meeting_id:
-                meetings = [db.collection("meetings").document(meeting_id).get()]
-            else:
-                meetings = list(db.collection("meetings").order_by(
-                    "date", direction=firestore.Query.DESCENDING
-                ).limit(5).stream())
-            
-            for meeting_doc in meetings:
-                if not meeting_doc.exists:
-                    continue
-                meeting = meeting_doc.to_dict()
-                
-                for rec in meeting.get("audioRecordings", []):
-                    mapping = rec.get("speakerMapping", {})
-                    confidence_data = rec.get("confidenceScores", {})
-                    segments = rec.get("segments", [])
-                    audio_url = rec.get("downloadUrl")
-                    
-                    for label, name in mapping.items():
-                        conf_info = confidence_data.get(label, {})
-                        score = conf_info.get("score", 0) if isinstance(conf_info, dict) else conf_info
-                        method = conf_info.get("method", "") if isinstance(conf_info, dict) else ""
-                        
-                        # AUTO-LEARN: High confidence (>80%) — relaxed from 90%
-                        # No longer requires "voice" method — any high-confidence match qualifies
-                        if score >= 0.80:
-                            # Find member and add embedding
-                            member_query = db.collection("members").where("displayName", "==", name).limit(1).stream()
-                            for member_doc in member_query:
-                                member = member_doc.to_dict()
-                                sample_count = member.get("voiceSampleCount", 0)
-                                
-                                # Only learn if profile needs more samples
-                                if sample_count < 15:
-                                    # Find best segment for this speaker (prefer 15-45s range)
-                                    speaker_segs = [s for s in segments if s.get("speaker") == label]
-                                    if speaker_segs and audio_url:
-                                        # Prefer segments in the 15-45s sweet spot
-                                        ideal_segs = [s for s in speaker_segs 
-                                                      if 15 <= (s.get("end", 0) - s.get("start", 0)) <= 45]
-                                        if not ideal_segs:
-                                            ideal_segs = [s for s in speaker_segs 
-                                                          if 5 < (s.get("end", 0) - s.get("start", 0)) < 60]
-                                        
-                                        if ideal_segs:
-                                            best_seg = max(ideal_segs, key=lambda x: x.get("end", 0) - x.get("start", 0))
-                                            duration = best_seg.get("end", 0) - best_seg.get("start", 0)
-                                        
-                                            try:
-                                                new_emb = extract_audio_segment_embedding(
-                                                    audio_url, best_seg["start"], best_seg["end"]
-                                                )
-                                                if new_emb:
-                                                    # Write directly to Supabase (primary store)
-                                                    from supabase_embeddings import add_embedding, is_duplicate as emb_is_duplicate
-                                                    if not emb_is_duplicate(name, new_emb, threshold=0.95):
-                                                        add_embedding(name, new_emb, member_doc.id, sample_source="ml_auto")
-                                                        from supabase_embeddings import get_embedding_count
-                                                        new_count = get_embedding_count(name)
-                                                        # Update Firestore metadata only
-                                                        db.collection("members").document(member_doc.id).update({
-                                                            "voiceSampleCount": new_count,
-                                                            "lastVoiceUpdate": datetime.now().isoformat(),
-                                                            "lastUpdateSource": "autonomous_ml"
-                                                        })
-                                                        results["autoLearned"] += 1
-                                                        results["actions"].append(f"Auto-learned: {name} ({new_count} samples)")
-                                                    else:
-                                                        print(f"[AutonomousML] Skipping duplicate embedding for {name}")
-                                            except Exception as e:
-                                                print(f"[AutonomousML] Auto-learn failed for {name}: {e}")
-                        
-                        # QUEUE: Low confidence (<70%) → needs human review
-                        elif score < 0.70 and score > 0.40:
-                            # Add to verification queue
-                            existing = list(db.collection("verification_queue").where(
-                                "speakerLabel", "==", label
-                            ).where("meetingId", "==", meeting_doc.id).limit(1).stream())
-                            
-                            if not existing:
-                                best_seg = max([s for s in segments if s.get("speaker") == label] or [{}], 
-                                              key=lambda x: x.get("end", 0) - x.get("start", 0), default={})
-                                
-                                db.collection("verification_queue").add({
-                                    "meetingId": meeting_doc.id,
-                                    "speakerLabel": label,
-                                    "suggestedName": name,
-                                    "confidence": score,
-                                    "start": best_seg.get("start"),
-                                    "end": best_seg.get("end"),
-                                    "textSample": best_seg.get("text", "")[:100],
-                                    "status": "pending",
-                                    "createdAt": datetime.now().isoformat()
-                                })
-                                results["queuedForReview"] += 1
-                                results["actions"].append(f"Queued for review: {label} → {name}?")
-        
-        # =================================================================
-        # STEP 2: UPDATE CALIBRATION
-        # =================================================================
-        if mode in ["full", "calibrate_only"]:
-            print("[AutonomousML] Step 2: Updating calibration...")
-            
-            # Get recent corrections
-            corrections = list(db.collection("ml_corrections").order_by(
-                "timestamp", direction=firestore.Query.DESCENDING
-            ).limit(100).stream())
-            
-            if len(corrections) >= 10:
-                # Calculate accuracy by confidence bin
-                bins = {i/10: {"correct": 0, "wrong": 0} for i in range(11)}
-                
-                for doc in corrections:
-                    c = doc.to_dict()
-                    conf = c.get("originalConfidence", 0.5)
-                    was_correct = c.get("wasCorrect", False)
-                    bin_key = round(conf, 1)
-                    if bin_key in bins:
-                        if was_correct:
-                            bins[bin_key]["correct"] += 1
-                        else:
-                            bins[bin_key]["wrong"] += 1
-                
-                calibration_curve = {}
-                for conf, data in bins.items():
-                    total = data["correct"] + data["wrong"]
-                    if total > 0:
-                        calibration_curve[str(conf)] = round(data["correct"] / total, 3)
-                
-                db.collection("ml_calibration").document("speaker_id").set({
-                    "calibrationCurve": calibration_curve,
-                    "dataPoints": len(corrections),
-                    "updatedAt": datetime.now().isoformat()
-                }, merge=True)
-                
-                results["calibrationUpdated"] = True
-                results["actions"].append("Calibration updated")
-        
-        # =================================================================
-        # STEP 3: GENERATE PROACTIVE SUGGESTIONS
-        # =================================================================
-        if mode == "full":
-            print("[AutonomousML] Step 3: Generating suggestions for weak profiles...")
-            
-            members = list(db.collection("members").stream())
-            for doc in members:
-                member = doc.to_dict()
-                sample_count = member.get("voiceSampleCount", 0)
-                name = member.get("displayName") or member.get("name")
-                
-                if sample_count < 5:  # Very weak profile
-                    # Check if suggestion already exists
-                    existing = list(db.collection("ml_suggestions").where(
-                        "memberId", "==", doc.id
-                    ).where("status", "==", "pending").limit(1).stream())
-                    
-                    if not existing:
-                        db.collection("ml_suggestions").add({
-                            "memberId": doc.id,
-                            "memberName": name,
-                            "currentSamples": sample_count,
-                            "improvementPotential": f"+{(10 - sample_count) * 10}%",
-                            "status": "pending",
-                            "createdAt": datetime.now().isoformat()
-                        })
-                        results["suggestionsGenerated"] += 1
-        
-        # =================================================================
-        # STEP 4: LOG PERFORMANCE METRICS
-        # =================================================================
-        print("[AutonomousML] Step 4: Logging metrics...")
-        
-        db.collection("ml_metrics").add({
-            "timestamp": datetime.now().isoformat(),
-            "autoLearned": results["autoLearned"],
-            "queuedForReview": results["queuedForReview"],
-            "suggestionsGenerated": results["suggestionsGenerated"],
-            "calibrationUpdated": results["calibrationUpdated"],
-            "mode": mode,
-            "meetingId": meeting_id
-        })
-        results["metricsLogged"] = True
-        
-        print(f"[AutonomousML] Loop complete: {results}")
+        results = _run_ml_loop_internal(db, meeting_id, mode)
         
         return https_fn.Response(json.dumps({
             "success": True,
@@ -2625,23 +2612,27 @@ def autonomous_ml_loop(req: https_fn.Request) -> https_fn.Response:
 # POST-TRANSCRIPTION HOOK - Automatically trigger ML loop after transcription
 # =============================================================================
 @https_fn.on_request(
-    timeout_sec=60,
-    memory=options.MemoryOption.MB_256,
+    timeout_sec=300,
+    memory=options.MemoryOption.GB_1,
     cors=options.CorsOptions(cors_origins="*", cors_methods=["POST"])
 )
 def trigger_ml_after_transcription(req: https_fn.Request) -> https_fn.Response:
     """
     Webhook called after a transcription completes.
-    Triggers the autonomous ML loop in background.
+    Triggers the autonomous ML loop inline in 'quick' mode.
     """
     try:
+        global db
+        if db is None:
+            db = firestore.client()
+
         data = req.get_json()
         meeting_id = data.get("meetingId")
         
         if not meeting_id:
             return https_fn.Response(json.dumps({"error": "meetingId required"}), status=400)
         
-        print(f"[PostTranscription] Triggering ML loop for meeting {meeting_id}")
+        print(f"[PostTranscription] Triggering ML loop inline for meeting {meeting_id}")
         
         # Log the trigger
         db.collection("ml_triggers").add({
@@ -2650,18 +2641,66 @@ def trigger_ml_after_transcription(req: https_fn.Request) -> https_fn.Response:
             "source": "post_transcription"
         })
         
-        # Note: In production, this would call autonomous_ml_loop asynchronously
-        # For now, return immediately and let user call ML loop manually or via scheduler
+        # Execute the ML loop inline in quick mode (auto-learn + calibrate only, no suggestions)
+        results = _run_ml_loop_internal(db, meeting_id, mode="quick")
         
         return https_fn.Response(json.dumps({
             "success": True,
-            "message": f"ML loop triggered for meeting {meeting_id}",
-            "nextStep": "Call /autonomous_ml_loop with meetingId to run full analysis"
+            "message": f"ML loop completed inline for meeting {meeting_id}",
+            "results": results
         }), status=200, content_type="application/json")
         
     except Exception as e:
         print(f"[PostTranscription] Error: {e}")
         return https_fn.Response(json.dumps({"error": str(e)}), status=500)
+
+
+# =============================================================================
+# SCHEDULED ML MAINTENANCE - Monthly ML loop & maintenance
+# =============================================================================
+@scheduler_fn.on_schedule(
+    schedule="0 3 1 * *",
+    timezone="America/Montreal",
+    timeout_sec=540,
+    memory=options.MemoryOption.GB_1,
+)
+def scheduled_ml_maintenance(event: scheduler_fn.ScheduledEvent) -> None:
+    """Monthly ML maintenance: full ML loop + embedding cleanup + RLHF reoptimization."""
+    global db
+    if db is None:
+        db = firestore.client()
+    
+    print("[ScheduledML] Starting monthly maintenance...")
+    
+    # Step 1: Run full ML loop
+    results = _run_ml_loop_internal(db, mode="full")
+    print(f"[ScheduledML] ML loop results: {results}")
+    
+    # Step 2: Clean and optimize embeddings
+    try:
+        from active_learning import clean_and_optimize_all_speaker_embeddings
+        cleanup = clean_and_optimize_all_speaker_embeddings(db)
+        print(f"[ScheduledML] Embedding cleanup: {cleanup}")
+    except Exception as e:
+        print(f"[ScheduledML] Embedding cleanup failed: {e}")
+    
+    # Step 3: Re-optimize RLHF policy
+    try:
+        from active_learning import optimize_policy
+        policy = optimize_policy(db, force_reoptimize=True)
+        print(f"[ScheduledML] RLHF policy reoptimized: {policy}")
+    except Exception as e:
+        print(f"[ScheduledML] RLHF reoptimization failed: {e}")
+    
+    # Step 4: Log maintenance run
+    db.collection("ml_metrics").add({
+        "timestamp": datetime.now().isoformat(),
+        "type": "scheduled_maintenance",
+        "mlResults": results,
+        "source": "cloud_scheduler"
+    })
+    
+    print("[ScheduledML] Monthly maintenance complete.")
 
 
 # =============================================================================

@@ -5,17 +5,23 @@ import { CheckCircle, Autorenew, NewReleases, Warning } from '@mui/icons-materia
 import StatsCard from '../../components/dashboard/StatsCard';
 import AlertsPanel from '../../components/dashboard/AlertsPanel';
 import NextMeetingCard from '../../components/dashboard/NextMeetingCard';
-import CategoryChart from '../../components/dashboard/CategoryChart';
-import ProgressChart from '../../components/dashboard/ProgressChart';
 import ActivityFeed from '../../components/dashboard/ActivityFeed';
 import RecentProjectsWidget from '../../components/dashboard/RecentProjectsWidget';
 import ExpiringDocumentsWidget from '../../components/documents/ExpiringDocumentsWidget';
 import DashboardSkeleton from '../../components/dashboard/DashboardSkeleton';
+import AIHealthWidget from '../../components/dashboard/AIHealthWidget';
+import VoiceAlertsWidget from '../../components/dashboard/VoiceAlertsWidget';
+import PendingActionsWidget from '../../components/dashboard/PendingActionsWidget';
+import AssistantChatWidget from '../../components/dashboard/AssistantChatWidget';
 import { useDashboardData } from '../../hooks/useDashboardData';
 
 const Dashboard: React.FC = () => {
     const navigate = useNavigate();
-    const { stats, alerts, nextMeeting, categoryData, progressData, activities, recentProjects, loading, error } = useDashboardData();
+    const {
+        stats, alerts, nextMeeting, activities, recentProjects,
+        voiceAlerts, pendingPVs, verificationCount,
+        loading, error
+    } = useDashboardData();
 
     if (loading) {
         return <DashboardSkeleton />;
@@ -36,7 +42,7 @@ const Dashboard: React.FC = () => {
             </Typography>
 
             <Grid container spacing={3}>
-                {/* Stats Cards */}
+                {/* Row 1: Stats Cards */}
                 <Grid size={{ xs: 12, sm: 6, md: 3 }}>
                     <Box onClick={() => navigate('/projects?status=completed')} sx={{ cursor: 'pointer', height: '100%' }}>
                         <StatsCard title="Projets réalisés" value={stats.projectsCompleted} icon={CheckCircle} color="primary" />
@@ -58,37 +64,44 @@ const Dashboard: React.FC = () => {
                     </Box>
                 </Grid>
 
-                {/* Alerts & Next Meeting */}
+                {/* Row 2: Pending Actions & Next Meeting */}
                 <Grid size={{ xs: 12, md: 8 }}>
-                    <AlertsPanel alerts={alerts} />
+                    <PendingActionsWidget
+                        pendingPVs={pendingPVs}
+                        verificationCount={verificationCount}
+                        urgentProjects={stats.projectsUrgent}
+                        loading={false}
+                    />
                 </Grid>
                 <Grid size={{ xs: 12, md: 4 }}>
                     <NextMeetingCard meeting={nextMeeting} />
                 </Grid>
 
-                {/* Recent Projects (#1.2) & Charts */}
+                {/* Row 3: AI Health, Voice Alerts & Alerts Panel */}
                 <Grid size={{ xs: 12, md: 4 }}>
-                    <RecentProjectsWidget projects={recentProjects} loading={loading} />
+                    <AIHealthWidget />
                 </Grid>
                 <Grid size={{ xs: 12, md: 4 }}>
-                    <Box sx={{ height: 400 }}>
-                        <CategoryChart data={categoryData} />
-                    </Box>
+                    <VoiceAlertsWidget alerts={voiceAlerts} loading={false} />
                 </Grid>
                 <Grid size={{ xs: 12, md: 4 }}>
-                    <Box sx={{ height: 400 }}>
-                        <ProgressChart data={progressData} />
-                    </Box>
+                    <AlertsPanel alerts={alerts} />
                 </Grid>
 
-                {/* Expiring Documents (#4.7) */}
+                {/* Row 4: Assistant Chat & Activity Feed */}
                 <Grid size={{ xs: 12, md: 6 }}>
-                    <ExpiringDocumentsWidget daysThreshold={30} />
+                    <AssistantChatWidget />
                 </Grid>
-
-                {/* Activity Feed */}
                 <Grid size={{ xs: 12, md: 6 }}>
                     <ActivityFeed activities={activities} />
+                </Grid>
+
+                {/* Row 5: Recent Projects & Expiring Documents */}
+                <Grid size={{ xs: 12, md: 6 }}>
+                    <RecentProjectsWidget projects={recentProjects} loading={loading} />
+                </Grid>
+                <Grid size={{ xs: 12, md: 6 }}>
+                    <ExpiringDocumentsWidget daysThreshold={30} />
                 </Grid>
             </Grid>
         </Box>

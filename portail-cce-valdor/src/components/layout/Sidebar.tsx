@@ -1,6 +1,6 @@
 import React from 'react';
 import { Drawer, List, ListItem, ListItemButton, ListItemIcon, ListItemText, Toolbar, Box } from '@mui/material';
-import { Dashboard, Assignment, Event, Description, People, Settings, BarChart, Gavel } from '@mui/icons-material';
+import { Dashboard, Assignment, Event, Description, People, Settings, BarChart, Gavel, QueryStats } from '@mui/icons-material';
 import { useNavigate, useLocation } from 'react-router-dom';
 
 const drawerWidth = 240;
@@ -21,6 +21,7 @@ const menuItems = [
     { text: 'Extraits de PV', icon: <Description />, path: '/extracts' },
     { text: 'Recommandations', icon: <Gavel />, path: '/recommendations' },
     { text: 'Rapports', icon: <Description />, path: '/reports' },
+    { text: 'Statistiques', icon: <QueryStats />, path: '/statistics' },
     { text: 'Membres', icon: <People />, path: '/members' },
     { text: 'Paramètres', icon: <Settings />, path: '/settings' },
 ];
