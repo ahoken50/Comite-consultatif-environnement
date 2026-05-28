@@ -627,14 +627,14 @@ export const admin_reindex_all = onCall({
     const userId = request.auth.uid;
     
     // Check if the user is coordinator
-    const memberDoc = await db.collection("members").document(userId).get();
+    const memberDoc = await db.collection("members").doc(userId).get();
     if (!memberDoc.exists || memberDoc.data().role !== "coordinator") {
         throw new HttpsError("permission-denied", "Only coordinators can trigger full re-indexing.");
     }
 
     console.log(`[AdminReindex] Reindex triggered by coordinator ${userId}`);
 
-    const progressRef = db.collection("system_status").document("reindex_progress");
+    const progressRef = db.collection("system_status").doc("reindex_progress");
     await progressRef.set({
         status: "in_progress",
         current: 0,

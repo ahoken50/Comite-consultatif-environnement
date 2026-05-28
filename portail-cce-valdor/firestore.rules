@@ -221,5 +221,11 @@ service cloud.firestore {
       allow read: if isAuthenticated();
       allow write: if isCoordinator();
     }
+
+    // System Status (RAG Mass Reindexing Progress)
+    match /system_status/{id} {
+      allow read: if isAuthenticated();
+      allow write: if isCoordinator();
+    }
   }
 }
