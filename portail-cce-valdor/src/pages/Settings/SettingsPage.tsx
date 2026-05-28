@@ -24,7 +24,6 @@ import type { AppDispatch } from '../../store/store';
 import type { RootState } from '../../store/rootReducer';
 import { updateMember, ensureMemberProfile } from '../../features/members/membersSlice';
 import CategoryManager from '../../components/settings/CategoryManager';
-import SearchIndexManager from '../../components/settings/SearchIndexManager';
 import SessionsManager from '../../components/settings/SessionsManager';
 
 interface TabPanelProps {
@@ -247,13 +246,6 @@ const SettingsPage: React.FC = () => {
 
                         <CategoryManager />
 
-                        <Box sx={{ mt: 4 }}>
-                            <Typography variant="subtitle1" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                <Storage fontSize="small" /> Recherche et Indexation
-                            </Typography>
-                            <Divider sx={{ mb: 2 }} />
-                            <SearchIndexManager />
-                        </Box>
 
                         <Box sx={{ mt: 4 }}>
                             <Typography variant="subtitle2" gutterBottom>Autres paramètres (À venir)</Typography>
