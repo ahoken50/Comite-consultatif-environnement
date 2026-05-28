@@ -366,7 +366,7 @@ import * as supabaseC from "./supabaseClient";
 
 export const syncMeetingToSupabase = onDocumentWritten({
     document: "meetings/{meetingId}",
-    secrets: [supabaseC.supabaseKeyParam],
+    secrets: [supabaseC.supabaseKeyParam, googleApiKey],
 }, async (event) => {
     const meetingId = event.params.meetingId;
     const change = event.data;
@@ -385,6 +385,36 @@ export const syncMeetingToSupabase = onDocumentWritten({
     const parsedDate = data.date ? new Date(data.date) : new Date();
     const safeDate = isNaN(parsedDate.getTime()) ? new Date() : parsedDate;
 
+    // Generate Embedding using Gemini for completed meetings (RAG on approved/final PVs)
+    let embedding: number[] | undefined;
+    if (googleApiKey.value() && data.status === "completed") {
+        try {
+            const apiKey = googleApiKey.value();
+            const { GoogleGenerativeAI } = require("@google/generative-ai");
+            const genAI = new GoogleGenerativeAI(apiKey);
+            const model = genAI.getGenerativeModel({ model: "text-embedding-004" });
+
+            const agendaList = data.agendaItems?.map((i: any) => i.title).join(', ') || '';
+            const resolutionsText = data.agendaItems?.flatMap((item: any) =>
+                item.minuteEntries?.map((entry: any) => {
+                    const text = entry.content || "";
+                    return entry.number ? `${entry.number} ${text}` : text;
+                }) ||
+                (item.minuteContent ? [item.minuteContent] : [])
+            ).join('\n') || '';
+
+            const textToEmbed = `Réunion: ${data.title || "Sans titre"}\nDate: ${safeDate.toISOString()}\nOrdre du jour: ${agendaList}\nRésolutions:\n${resolutionsText}\nProcès-verbal:\n${data.minutes || ""}`.trim().substring(0, 9000);
+
+            if (textToEmbed) {
+                const result = await model.embedContent(textToEmbed);
+                embedding = result.embedding.values;
+                console.log(`[Supabase] Generated embedding for completed meeting ${meetingId}`);
+            }
+        } catch (error) {
+            console.error(`[Supabase] Failed to generate embedding for meeting ${meetingId}`, error);
+        }
+    }
+
     const searchableMeeting: supabaseC.SearchableMeeting = {
         id: meetingId,
         title: data.title || "Sans titre",
@@ -399,9 +429,7 @@ export const syncMeetingToSupabase = onDocumentWritten({
             (item.minuteContent ? [item.minuteContent] : [])
         ) || [],
         attendeeNames: data.attendees?.map((a: any) => a.name) || [],
-        // Embedding is not stored in Firestore meeting doc usually, typically generated and stored in Vector DB
-        // If we want to generate it here, we'd need to call Gemini.
-        // For now, let's assume simple syncing.
+        embedding: embedding
     };
 
     await supabaseC.indexMeeting(searchableMeeting);

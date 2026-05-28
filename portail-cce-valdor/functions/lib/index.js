@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.syncRegulationToTypesense = exports.syncProjectToTypesense = exports.syncMeetingToTypesense = exports.transcribeAudioV2 = void 0;
+exports.syncRegulationToSupabase = exports.syncProjectToSupabase = exports.syncMeetingToSupabase = exports.transcribeAudioV2 = void 0;
 const admin = require("firebase-admin");
 const fs = require("fs");
 const path = require("path");
@@ -30,7 +30,7 @@ const googleApiKey = (0, params_1.defineSecret)("GEMINI_BRIEFING_KEY");
 exports.transcribeAudioV2 = (0, https_1.onCall)({
     timeoutSeconds: 3600,
     memory: "4GiB",
-    secrets: [googleApiKey], // Make secret available
+    secrets: [googleApiKey],
 }, async (request) => {
     var _a, _b, _c, _d;
     const data = request.data;
@@ -304,55 +304,83 @@ FORMAT EXACT:
     }
 });
 const firestore_1 = require("firebase-functions/v2/firestore");
-const typesense = require("./typesenseClient");
-exports.syncMeetingToTypesense = (0, firestore_1.onDocumentWritten)({
+const supabaseC = require("./supabaseClient");
+exports.syncMeetingToSupabase = (0, firestore_1.onDocumentWritten)({
     document: "meetings/{meetingId}",
-    secrets: [typesense.typesenseApiKey, typesense.typesenseHost],
+    secrets: [supabaseC.supabaseKeyParam, googleApiKey],
 }, async (event) => {
-    var _a, _b, _c;
+    var _a, _b, _c, _d, _e;
     const meetingId = event.params.meetingId;
     const change = event.data;
     if (!change)
-        return; // Should not happen for onDocumentWritten
-    // DELETE or Non-existent
+        return;
     if (!change.after.exists) {
-        await typesense.deleteFromIndex("meetings", meetingId);
+        await supabaseC.deleteFromIndex("meetings", meetingId);
         return;
     }
-    // CREATE or UPDATE
     const data = change.after.data();
     if (!data)
         return;
-    // Transform to SearchableMeeting (simplified for backend)
-    // Note: We avoid importing frontend types to prevent build issues
+    // Fix: Handle invalid dates safely to prevent crash
+    const parsedDate = data.date ? new Date(data.date) : new Date();
+    const safeDate = isNaN(parsedDate.getTime()) ? new Date() : parsedDate;
+    // Generate Embedding using Gemini for completed meetings (RAG on approved/final PVs)
+    let embedding;
+    if (googleApiKey.value() && data.status === "completed") {
+        try {
+            const apiKey = googleApiKey.value();
+            const { GoogleGenerativeAI } = require("@google/generative-ai");
+            const genAI = new GoogleGenerativeAI(apiKey);
+            const model = genAI.getGenerativeModel({ model: "text-embedding-004" });
+            const agendaList = ((_a = data.agendaItems) === null || _a === void 0 ? void 0 : _a.map((i) => i.title).join(', ')) || '';
+            const resolutionsText = ((_b = data.agendaItems) === null || _b === void 0 ? void 0 : _b.flatMap((item) => {
+                var _a;
+                return ((_a = item.minuteEntries) === null || _a === void 0 ? void 0 : _a.map((entry) => {
+                    const text = entry.content || "";
+                    return entry.number ? `${entry.number} ${text}` : text;
+                })) ||
+                    (item.minuteContent ? [item.minuteContent] : []);
+            }).join('\n')) || '';
+            const textToEmbed = `Réunion: ${data.title || "Sans titre"}\nDate: ${safeDate.toISOString()}\nOrdre du jour: ${agendaList}\nRésolutions:\n${resolutionsText}\nProcès-verbal:\n${data.minutes || ""}`.trim().substring(0, 9000);
+            if (textToEmbed) {
+                const result = await model.embedContent(textToEmbed);
+                embedding = result.embedding.values;
+                console.log(`[Supabase] Generated embedding for completed meeting ${meetingId}`);
+            }
+        }
+        catch (error) {
+            console.error(`[Supabase] Failed to generate embedding for meeting ${meetingId}`, error);
+        }
+    }
     const searchableMeeting = {
         id: meetingId,
         title: data.title || "Sans titre",
-        date: data.date ? new Date(data.date).toISOString() : new Date().toISOString(),
-        dateTimestamp: data.date ? Math.floor(new Date(data.date).getTime() / 1000) : 0,
+        date: safeDate.toISOString(),
+        dateTimestamp: Math.floor(safeDate.getTime() / 1000),
         type: data.type || "regular",
         status: data.status || "scheduled",
         minutes: data.minutes || "",
-        agendaItemTitles: ((_a = data.agendaItems) === null || _a === void 0 ? void 0 : _a.map((i) => i.title)) || [],
-        resolutions: ((_b = data.agendaItems) === null || _b === void 0 ? void 0 : _b.flatMap((item) => {
+        agendaItemTitles: ((_c = data.agendaItems) === null || _c === void 0 ? void 0 : _c.map((i) => i.title)) || [],
+        resolutions: ((_d = data.agendaItems) === null || _d === void 0 ? void 0 : _d.flatMap((item) => {
             var _a;
             return ((_a = item.minuteEntries) === null || _a === void 0 ? void 0 : _a.map((entry) => entry.content)) ||
                 (item.minuteContent ? [item.minuteContent] : []);
         })) || [],
-        attendeeNames: ((_c = data.attendees) === null || _c === void 0 ? void 0 : _c.map((a) => a.name)) || [],
+        attendeeNames: ((_e = data.attendees) === null || _e === void 0 ? void 0 : _e.map((a) => a.name)) || [],
+        embedding: embedding
     };
-    await typesense.indexMeeting(searchableMeeting);
+    await supabaseC.indexMeeting(searchableMeeting);
 });
-exports.syncProjectToTypesense = (0, firestore_1.onDocumentWritten)({
+exports.syncProjectToSupabase = (0, firestore_1.onDocumentWritten)({
     document: "projects/{projectId}",
-    secrets: [typesense.typesenseApiKey, typesense.typesenseHost],
+    secrets: [supabaseC.supabaseKeyParam],
 }, async (event) => {
     const projectId = event.params.projectId;
     const change = event.data;
     if (!change)
         return;
     if (!change.after.exists) {
-        await typesense.deleteFromIndex("projects", projectId);
+        await supabaseC.deleteFromIndex("projects", projectId);
         return;
     }
     const data = change.after.data();
@@ -368,18 +396,19 @@ exports.syncProjectToTypesense = (0, firestore_1.onDocumentWritten)({
         priority: data.priority || "Moyenne",
         notes: data.notes || ""
     };
-    await typesense.indexProject(searchableProject);
+    await supabaseC.indexProject(searchableProject);
 });
-exports.syncRegulationToTypesense = (0, firestore_1.onDocumentWritten)({
+exports.syncRegulationToSupabase = (0, firestore_1.onDocumentWritten)({
     document: "regulations/{regulationId}",
-    secrets: [typesense.typesenseApiKey, typesense.typesenseHost, googleApiKey],
+    secrets: [supabaseC.supabaseKeyParam, googleApiKey],
 }, async (event) => {
+    var _a;
     const regulationId = event.params.regulationId;
     const change = event.data;
     if (!change)
         return;
     if (!change.after.exists) {
-        await typesense.deleteFromIndex("regulations", regulationId);
+        await supabaseC.deleteFromIndex("regulations", regulationId);
         return;
     }
     const data = change.after.data();
@@ -387,22 +416,30 @@ exports.syncRegulationToTypesense = (0, firestore_1.onDocumentWritten)({
         return;
     // Generate Embedding using Gemini
     let embedding;
-    try {
-        const apiKey = googleApiKey.value();
-        if (apiKey && (data.title || data.content)) {
-            const genAI = new generative_ai_1.GoogleGenerativeAI(apiKey);
+    if (googleApiKey.value()) {
+        try {
+            const apiKey = googleApiKey.value();
+            const { GoogleGenerativeAI } = require("@google/generative-ai");
+            const genAI = new GoogleGenerativeAI(apiKey);
             const model = genAI.getGenerativeModel({ model: "text-embedding-004" });
-            const textToEmbed = `${data.title || ''}\n${data.content || ''}`.trim().substring(0, 9000); // Limit context
+            const resolutionsText = ((_a = data.agendaItems) === null || _a === void 0 ? void 0 : _a.flatMap((item) => {
+                var _a;
+                return ((_a = item.minuteEntries) === null || _a === void 0 ? void 0 : _a.map((entry) => {
+                    const text = entry.content || "";
+                    return entry.number ? `${entry.number} ${text}` : text;
+                })) ||
+                    (item.minuteContent ? [item.minuteContent] : []);
+            }).join('\n')) || '';
+            const textToEmbed = `${data.title || ''}\n${data.minutes || ''}\n${resolutionsText}`.trim().substring(0, 9000);
             if (textToEmbed) {
                 const result = await model.embedContent(textToEmbed);
                 embedding = result.embedding.values;
-                console.log(`[Typesense] Generated embedding for regulation ${regulationId}`);
+                console.log(`[Supabase] Generated embedding for regulation ${regulationId}`);
             }
         }
-    }
-    catch (error) {
-        console.error(`[Typesense] Failed to generate embedding for ${regulationId}`, error);
-        // Continue indexing without embedding (fallback to keyword search)
+        catch (error) {
+            console.error(`[Supabase] Failed to generate embedding for ${regulationId}`, error);
+        }
     }
     const searchableRegulation = {
         id: regulationId,
@@ -410,9 +447,9 @@ exports.syncRegulationToTypesense = (0, firestore_1.onDocumentWritten)({
         content: data.content || "",
         category: data.category || "Général",
         year: data.year || new Date().getFullYear(),
-        status: data.status || "active",
+        status: data.status || "Actif",
         embedding: embedding
     };
-    await typesense.indexRegulation(searchableRegulation);
+    await supabaseC.indexRegulation(searchableRegulation);
 });
 //# sourceMappingURL=index.js.map
