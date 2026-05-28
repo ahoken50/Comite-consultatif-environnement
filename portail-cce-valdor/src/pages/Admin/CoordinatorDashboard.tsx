@@ -15,8 +15,11 @@ import {
     FormControl,
     InputLabel,
     Alert,
-    CircularProgress
+    CircularProgress,
+    Button
 } from '@mui/material';
+import { SmartToy, AutoAwesome, CheckCircleOutline } from '@mui/icons-material';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import { fetchAllUsers, updateUserRole } from '../../features/users/usersAPI';
 import type { UserProfile, UserRole } from '../../types/auth.types';
 import { ROLES, ROLE_LABELS } from '../../types/auth.types';
@@ -28,6 +31,36 @@ const CoordinatorDashboard: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [updating, setUpdating] = useState<string | null>(null);
+
+    // AI Prompt Optimization States
+    const [aiLoading, setAiLoading] = useState(false);
+    const [aiSuccess, setAiSuccess] = useState<string | null>(null);
+    const [aiError, setAiError] = useState<string | null>(null);
+
+    const handleOptimizePrompts = async () => {
+        try {
+            setAiLoading(true);
+            setAiSuccess(null);
+            setAiError(null);
+            
+            const functions = getFunctions();
+            const rlhfOptimize = httpsCallable(functions, 'rlhf_get_optimized_params');
+            
+            const response = await rlhfOptimize({ forceReoptimize: true });
+            const data = response.data as { success: boolean };
+            
+            if (data.success) {
+                setAiSuccess("Félicitations ! Le compilateur DSPy a analysé avec succès vos corrections d'apprentissage actif (ml_corrections), extrait les résolutions de référence appropriées, et re-compilé le prompt système de rédaction de PV. Les hyperparamètres ont été calibrés à jour.");
+            } else {
+                setAiError("Une erreur est survenue lors de l'optimisation des invites de l'IA.");
+            }
+        } catch (err: any) {
+            console.error("[RLHF] Optimization failed:", err);
+            setAiError(`Échec de la compilation du prompt : ${err.message || err}`);
+        } finally {
+            setAiLoading(false);
+        }
+    };
 
     const loadUsers = async () => {
         try {
@@ -127,6 +160,54 @@ const CoordinatorDashboard: React.FC = () => {
                         </TableBody>
                     </Table>
                 </TableContainer>
+            </Paper>
+
+            {/* AI Prompt Optimization Section (DSPy / RLHF) */}
+            <Paper sx={{ mt: 4, p: 3 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 2 }}>
+                    <SmartToy color="primary" sx={{ fontSize: 28 }} />
+                    <Typography variant="h6" fontWeight={600}>
+                        Optimisation de l'IA & Compilateur de Prompts DSPy
+                    </Typography>
+                </Box>
+                
+                <Typography variant="body2" color="textSecondary" sx={{ mb: 3, maxWidth: 800 }}>
+                    Ce module déclenche manuellement le compilateur de prompts **DSPy** et la boucle d'apprentissage actif **RLHF**. 
+                    L'IA va analyser l'ensemble des corrections réelles apportées sur les procès-verbaux (termes récurrents, structures légales modifiées), 
+                    extraire les meilleurs exemples (few-shot) et re-compiler un système de consignes et de paramètres de température optimaux 
+                    pour les futures rédactions de PV.
+                </Typography>
+                
+                {aiSuccess && (
+                    <Alert severity="success" sx={{ mb: 3, display: 'flex', alignItems: 'center' }} icon={<CheckCircleOutline fontSize="inherit" />}>
+                        {aiSuccess}
+                    </Alert>
+                )}
+                
+                {aiError && (
+                    <Alert severity="error" sx={{ mb: 3 }}>
+                        {aiError}
+                    </Alert>
+                )}
+                
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                    <Button
+                        variant="contained"
+                        color="primary"
+                        onClick={handleOptimizePrompts}
+                        disabled={aiLoading}
+                        startIcon={aiLoading ? <CircularProgress size={20} color="inherit" /> : <AutoAwesome />}
+                        sx={{ px: 3, py: 1, borderRadius: 2, textTransform: 'none', fontWeight: 600 }}
+                    >
+                        {aiLoading ? 'Optimisation en cours...' : 'Optimiser les invites par IA'}
+                    </Button>
+                    
+                    {aiLoading && (
+                        <Typography variant="caption" color="textSecondary">
+                            Analyse des corrections en cours (ml_corrections)...
+                        </Typography>
+                    )}
+                </Box>
             </Paper>
         </Box>
     );
