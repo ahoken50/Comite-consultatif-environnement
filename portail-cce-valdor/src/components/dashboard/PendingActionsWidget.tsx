@@ -58,7 +58,7 @@ const PendingActionsWidget: React.FC<PendingActionsWidgetProps> = ({
             label: 'Vérifications vocales',
             count: verificationCount,
             color: '#f97316',
-            path: '/settings',
+            path: '/members',
         },
         {
             icon: <Warning fontSize="small" />,

@@ -88,17 +88,17 @@ const Dashboard: React.FC = () => {
                     <AlertsPanel alerts={alerts} />
                 </Grid>
 
-                {/* Row 4: Assistant Chat & Activity Feed */}
-                <Grid size={{ xs: 12, md: 6 }}>
+                {/* Row 4: Assistant Chat & Recent Projects */}
+                <Grid size={{ xs: 12, md: 4 }}>
                     <AssistantChatWidget />
                 </Grid>
-                <Grid size={{ xs: 12, md: 6 }}>
-                    <ActivityFeed activities={activities} />
+                <Grid size={{ xs: 12, md: 8 }}>
+                    <RecentProjectsWidget projects={recentProjects} loading={loading} />
                 </Grid>
 
-                {/* Row 5: Recent Projects & Expiring Documents */}
+                {/* Row 5: Activity Feed & Expiring Documents */}
                 <Grid size={{ xs: 12, md: 6 }}>
-                    <RecentProjectsWidget projects={recentProjects} loading={loading} />
+                    <ActivityFeed activities={activities} />
                 </Grid>
                 <Grid size={{ xs: 12, md: 6 }}>
                     <ExpiringDocumentsWidget daysThreshold={30} />

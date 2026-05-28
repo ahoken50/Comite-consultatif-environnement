@@ -70,7 +70,7 @@ const VoiceAlertsWidget: React.FC<VoiceAlertsWidgetProps> = ({ alerts, loading }
                                     borderRadius: 1,
                                     '&:hover': { bgcolor: 'action.hover' },
                                 }}
-                                onClick={() => navigate('/settings')}
+                                onClick={() => navigate('/members')}
                             >
                                 <ListItemIcon sx={{ minWidth: 32 }}>
                                     {alert.quality === 'inexistant' ? (
@@ -127,7 +127,7 @@ const VoiceAlertsWidget: React.FC<VoiceAlertsWidgetProps> = ({ alerts, loading }
                                 variant="caption"
                                 color="primary"
                                 sx={{ cursor: 'pointer', mt: 1, display: 'block', textAlign: 'center' }}
-                                onClick={() => navigate('/settings')}
+                                onClick={() => navigate('/members')}
                             >
                                 +{needsImprovement.length - 6} autres membres →
                             </Typography>

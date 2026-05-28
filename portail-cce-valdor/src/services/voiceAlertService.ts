@@ -60,16 +60,43 @@ export function getQualityLabel(quality: VoiceAlert['quality']): string {
 /**
  * Get voice profile quality alerts for all members
  */
+import { getSupabase } from './supabaseSearchService';
+
 export async function getVoiceProfileAlerts(): Promise<VoiceAlert[]> {
     try {
-        const membersSnapshot = await getDocs(collection(db, 'members'));
-        const alerts: VoiceAlert[] = membersSnapshot.docs.map(doc => {
+        const [membersSnapshot, supabaseRes] = await Promise.allSettled([
+            getDocs(collection(db, 'members')),
+            getSupabase().from('speaker_embeddings').select('speaker_name')
+        ]);
+
+        const counts: Record<string, number> = {};
+        if (supabaseRes.status === 'fulfilled' && supabaseRes.value.data) {
+            supabaseRes.value.data.forEach((row: any) => {
+                const name = row.speaker_name?.trim().toLowerCase();
+                if (name) {
+                    counts[name] = (counts[name] || 0) + 1;
+                }
+            });
+        }
+
+        if (membersSnapshot.status === 'rejected') {
+            throw membersSnapshot.reason;
+        }
+
+        const alerts: VoiceAlert[] = membersSnapshot.value.docs.map(doc => {
             const data = doc.data();
-            const sampleCount = data.voiceSampleCount || 0;
+            const displayName = data.displayName || data.name || '';
+            const normalizedName = displayName.trim().toLowerCase();
+            
+            // Primary count from Supabase speaker_embeddings table, fallback to Firestore cached value
+            const sampleCount = counts[normalizedName] !== undefined 
+                ? counts[normalizedName] 
+                : (data.voiceSampleCount || 0);
+
             const quality = getQualityBadge(sampleCount);
             return {
                 memberId: doc.id,
-                memberName: data.displayName || data.name || 'Membre inconnu',
+                memberName: displayName || 'Membre inconnu',
                 sampleCount,
                 quality,
                 percentComplete: Math.min(100, Math.round((sampleCount / SAMPLE_TARGET) * 100)),
