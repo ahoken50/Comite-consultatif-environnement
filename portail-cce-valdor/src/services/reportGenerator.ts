@@ -2,6 +2,23 @@ import type { ReportSection } from '../types/report.types';
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from './firebase';
 
+// Safe date parser to handle Firestore Timestamps, strings, and standard Date objects
+const parseDate = (val: any): Date | null => {
+    if (!val) return null;
+    if (typeof val.toDate === 'function') {
+        return val.toDate();
+    }
+    if (val.seconds !== undefined) {
+        return new Date(val.seconds * 1000);
+    }
+    if (val._seconds !== undefined) {
+        return new Date(val._seconds * 1000);
+    }
+    const d = new Date(val);
+    if (isNaN(d.getTime())) return null;
+    return d;
+};
+
 // Fetch actual project data from Firestore for the specified year
 const fetchProjectData = async (year: number | string) => {
     try {
@@ -14,8 +31,8 @@ const fetchProjectData = async (year: number | string) => {
         // Filter projects by year
         const filtered = allProjects.filter(p => {
             if (!year || year === 'all') return true;
-            if (!p.dateCreated) return false;
-            const date = new Date(p.dateCreated);
+            const date = parseDate(p.dateCreated);
+            if (!date) return false;
             return date.getFullYear().toString() === year.toString();
         });
 
@@ -24,7 +41,7 @@ const fetchProjectData = async (year: number | string) => {
             title: p.name || 'Sans titre',
             status: p.status || 'N/A',
             budget: p.budget || 'N/A',
-            date: p.dateCreated ? p.dateCreated.split('T')[0] : 'N/A'
+            date: p.dateCreated ? (parseDate(p.dateCreated)?.toISOString().split('T')[0] || 'N/A') : 'N/A'
         }));
     } catch (e) {
         console.error("Failed to fetch projects for report:", e);
@@ -117,16 +134,16 @@ export const generateCustomReport = async (sections: ReportSection[]) => {
                     const filteredProjects = projectsSnap.docs.filter(docSnap => {
                         const data = docSnap.data();
                         if (!yearFilter) return true;
-                        if (!data.dateCreated) return false;
-                        const date = new Date(data.dateCreated);
+                        const date = parseDate(data.dateCreated);
+                        if (!date) return false;
                         return date.getFullYear().toString() === yearFilter;
                     });
                     
                     const filteredMeetings = meetingsSnap.docs.filter(docSnap => {
                         const data = docSnap.data();
                         if (!yearFilter) return true;
-                        if (!data.date) return false;
-                        const date = new Date(data.date);
+                        const date = parseDate(data.date);
+                        if (!date) return false;
                         return date.getFullYear().toString() === yearFilter;
                     });
                     
@@ -197,8 +214,8 @@ export const generateCustomReport = async (sections: ReportSection[]) => {
                         ...docSnap.data()
                     } as any)).filter(r => {
                         if (!yearFilter) return true;
-                        if (!r.createdAt) return false;
-                        const date = new Date(r.createdAt);
+                        const date = parseDate(r.createdAt);
+                        if (!date) return false;
                         return date.getFullYear().toString() === yearFilter;
                     });
 
@@ -215,7 +232,7 @@ export const generateCustomReport = async (sections: ReportSection[]) => {
                                 r.projectName || 'Générale',
                                 r.description ? (r.description.length > 80 ? r.description.substring(0, 80) + '...' : r.description) : 'N/A',
                                 r.status || 'N/A',
-                                r.createdAt ? r.createdAt.split('T')[0] : 'N/A'
+                                r.createdAt ? (parseDate(r.createdAt)?.toISOString().split('T')[0] || 'N/A') : 'N/A'
                             ]),
                             theme: 'grid',
                             headStyles: { fillColor: [41, 128, 185] }
@@ -248,8 +265,8 @@ export const generateCustomReport = async (sections: ReportSection[]) => {
                         ...docSnap.data()
                     } as any)).filter(m => {
                         if (!yearFilter) return true;
-                        if (!m.date) return false;
-                        const date = new Date(m.date);
+                        const date = parseDate(m.date);
+                        if (!date) return false;
                         return date.getFullYear().toString() === yearFilter;
                     });
 
@@ -313,10 +330,15 @@ export const generateAnnualSummaryReport = async (year: number) => {
     const meetings = meetingsSnap.docs
         .map(doc => ({ id: doc.id, ...doc.data() } as any))
         .filter(m => {
-            if (!m.date) return false;
-            return m.date.startsWith(yearStr) || new Date(m.date).getFullYear().toString() === yearStr;
+            const date = parseDate(m.date);
+            if (!date) return false;
+            return date.getFullYear().toString() === yearStr;
         })
-        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+        .sort((a, b) => {
+            const dateA = parseDate(a.date) || new Date(0);
+            const dateB = parseDate(b.date) || new Date(0);
+            return dateA.getTime() - dateB.getTime();
+        });
 
     if (meetings.length === 0) {
         throw new Error(`Aucune assemblée trouvée pour l'année ${year}`);
