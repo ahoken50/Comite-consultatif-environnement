@@ -65,6 +65,7 @@ export const MLSuggestionsPanel: React.FC<MLSuggestionsPanelProps> = ({
     const [playingAudio, setPlayingAudio] = useState<string | null>(null);
     const [applying, setApplying] = useState<string | null>(null);
     const [successMessage, setSuccessMessage] = useState<string | null>(null);
+    const [warningMessage, setWarningMessage] = useState<string | null>(null);
     const [runningLoop, setRunningLoop] = useState(false);
     const audioRef = useRef<HTMLAudioElement | null>(null);
 
@@ -76,6 +77,8 @@ export const MLSuggestionsPanel: React.FC<MLSuggestionsPanelProps> = ({
     const loadSuggestions = async () => {
         setLoading(true);
         setError(null);
+        setSuccessMessage(null);
+        setWarningMessage(null);
         try {
             const result = await getSuggestions(5);
             setSuggestions(result.suggestions);
@@ -126,6 +129,8 @@ export const MLSuggestionsPanel: React.FC<MLSuggestionsPanelProps> = ({
         const segmentId = `${segment.meetingId}-${segment.start}`;
         setApplying(segmentId);
         setError(null);
+        setSuccessMessage(null);
+        setWarningMessage(null);
 
         try {
             const result = await applySuggestion(
@@ -136,7 +141,16 @@ export const MLSuggestionsPanel: React.FC<MLSuggestionsPanelProps> = ({
                 segment.end
             );
 
-            setSuccessMessage(result.message);
+            // If it's a warning or duplicate (contains ⚠️ or "inchangé")
+            if (result.message.includes('⚠️') || result.message.toLowerCase().includes('inchangé')) {
+                setWarningMessage(result.message);
+                setSuccessMessage(null);
+                setTimeout(() => setWarningMessage(null), 8000);
+            } else {
+                setSuccessMessage(result.message);
+                setWarningMessage(null);
+                setTimeout(() => setSuccessMessage(null), 5000);
+            }
 
             // Update the suggestion in local state
             setSuggestions(prev => prev.map(s => {
@@ -157,9 +171,6 @@ export const MLSuggestionsPanel: React.FC<MLSuggestionsPanelProps> = ({
                 onProfileUpdated(suggestion.memberName, result.newSampleCount);
             }
 
-            // Clear success message after delay
-            setTimeout(() => setSuccessMessage(null), 5000);
-
         } catch (e: any) {
             setError(e.message || 'Erreur lors de l\'application');
         } finally {
@@ -170,6 +181,8 @@ export const MLSuggestionsPanel: React.FC<MLSuggestionsPanelProps> = ({
     const handleRunMLLoop = async () => {
         setRunningLoop(true);
         setError(null);
+        setSuccessMessage(null);
+        setWarningMessage(null);
 
         try {
             const result = await runAutonomousMLLoop(undefined, 'quick');
@@ -239,6 +252,13 @@ export const MLSuggestionsPanel: React.FC<MLSuggestionsPanelProps> = ({
                 <Collapse in={!!successMessage}>
                     <Alert severity="success" sx={{ mb: 2 }} onClose={() => setSuccessMessage(null)}>
                         {successMessage}
+                    </Alert>
+                </Collapse>
+
+                {/* Warning Message */}
+                <Collapse in={!!warningMessage}>
+                    <Alert severity="warning" sx={{ mb: 2 }} onClose={() => setWarningMessage(null)}>
+                        {warningMessage}
                     </Alert>
                 </Collapse>
 
