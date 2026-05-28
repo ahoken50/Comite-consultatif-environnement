@@ -13,6 +13,7 @@ const fetchProjectData = async (year: number | string) => {
 
         // Filter projects by year
         const filtered = allProjects.filter(p => {
+            if (!year || year === 'all') return true;
             if (!p.dateCreated) return false;
             const date = new Date(p.dateCreated);
             return date.getFullYear().toString() === year.toString();
@@ -111,7 +112,7 @@ export const generateCustomReport = async (sections: ReportSection[]) => {
                     const projectsSnap = await getDocs(collection(db, 'projects'));
                     const meetingsSnap = await getDocs(collection(db, 'meetings'));
                     
-                    const yearFilter = section.config.year ? section.config.year.toString() : '';
+                    const yearFilter = section.config.year && section.config.year !== 'all' ? section.config.year.toString() : '';
                     
                     const filteredProjects = projectsSnap.docs.filter(docSnap => {
                         const data = docSnap.data();
@@ -171,7 +172,7 @@ export const generateCustomReport = async (sections: ReportSection[]) => {
 
             case 'projects':
                 addSectionTitle(section.title);
-                const projectData = await fetchProjectData(section.config.year);
+                const projectData = await fetchProjectData(section.config.year || 'all');
 
                 autoTable(doc, {
                     startY: cursorY,
@@ -185,10 +186,120 @@ export const generateCustomReport = async (sections: ReportSection[]) => {
                 cursorY = (doc as any).lastAutoTable.finalY + 20;
                 break;
 
-            default:
+            case 'recommendations':
                 addSectionTitle(section.title);
-                doc.text("Section non implémentée: " + section.type, 20, cursorY);
-                cursorY += 20;
+                try {
+                    const snap = await getDocs(collection(db, 'council_recommendations'));
+                    const yearFilter = section.config.year && section.config.year !== 'all' ? section.config.year.toString() : '';
+                    
+                    const recs = snap.docs.map(docSnap => ({
+                        id: docSnap.id,
+                        ...docSnap.data()
+                    } as any)).filter(r => {
+                        if (!yearFilter) return true;
+                        if (!r.createdAt) return false;
+                        const date = new Date(r.createdAt);
+                        return date.getFullYear().toString() === yearFilter;
+                    });
+
+                    if (recs.length === 0) {
+                        doc.setFontSize(11);
+                        doc.text("Aucune recommandation trouvée pour cette période.", 20, cursorY);
+                        cursorY += 15;
+                    } else {
+                        autoTable(doc, {
+                            startY: cursorY,
+                            head: [['Numéro', 'Projet / Sujet', 'Description', 'Statut', 'Date']],
+                            body: recs.map(r => [
+                                r.sourceResolutionNumber || 'N/A',
+                                r.projectName || 'Générale',
+                                r.description ? (r.description.length > 80 ? r.description.substring(0, 80) + '...' : r.description) : 'N/A',
+                                r.status || 'N/A',
+                                r.createdAt ? r.createdAt.split('T')[0] : 'N/A'
+                            ]),
+                            theme: 'grid',
+                            headStyles: { fillColor: [41, 128, 185] }
+                        });
+                        cursorY = (doc as any).lastAutoTable.finalY + 20;
+                    }
+                } catch (err) {
+                    console.error("Error generating recommendations section:", err);
+                    doc.setFontSize(11);
+                    doc.text("Erreur lors de la récupération des recommandations.", 20, cursorY);
+                    cursorY += 15;
+                }
+                break;
+
+            case 'members':
+                addSectionTitle(section.title);
+                try {
+                    const membersSnap = await getDocs(collection(db, 'members'));
+                    const meetingsSnap = await getDocs(collection(db, 'meetings'));
+                    
+                    const yearFilter = section.config.year && section.config.year !== 'all' ? section.config.year.toString() : '';
+                    
+                    const activeMembers = membersSnap.docs.map(docSnap => ({
+                        id: docSnap.id,
+                        ...docSnap.data()
+                    } as any)).filter(m => m.isActive !== false);
+
+                    const yearMeetings = meetingsSnap.docs.map(docSnap => ({
+                        id: docSnap.id,
+                        ...docSnap.data()
+                    } as any)).filter(m => {
+                        if (!yearFilter) return true;
+                        if (!m.date) return false;
+                        const date = new Date(m.date);
+                        return date.getFullYear().toString() === yearFilter;
+                    });
+
+                    const memberStats = activeMembers.map(member => {
+                        const name = member.displayName || member.name || 'Sans nom';
+                        let presentCount = 0;
+                        let totalCount = 0;
+                        
+                        yearMeetings.forEach(meeting => {
+                            const attendees = meeting.attendees || [];
+                            const attendee = attendees.find((a: any) => a.memberId === member.id || a.name === name);
+                            if (attendee) {
+                                totalCount++;
+                                if (attendee.status && ['present', 'présent'].includes(attendee.status.toLowerCase())) {
+                                    presentCount++;
+                                }
+                            }
+                        });
+                        
+                        const attendanceRate = totalCount > 0 ? Math.round((presentCount / totalCount) * 100) : 100;
+                        
+                        return {
+                            name,
+                            role: member.role || 'Membre',
+                            present: presentCount,
+                            total: totalCount,
+                            rate: attendanceRate
+                        };
+                    });
+
+                    autoTable(doc, {
+                        startY: cursorY,
+                        head: [['Nom du membre', 'Rôle', 'Présences / Total', 'Taux de présence']],
+                        body: memberStats.map(m => [
+                            m.name,
+                            m.role,
+                            `${m.present} / ${m.total}`,
+                            `${m.rate}%`
+                        ]),
+                        theme: 'grid',
+                        headStyles: { fillColor: [41, 128, 185] }
+                    });
+                    cursorY = (doc as any).lastAutoTable.finalY + 20;
+                } catch (err) {
+                    console.error("Error generating members section:", err);
+                    doc.setFontSize(11);
+                    doc.text("Erreur lors de la récupération des membres et de leurs statistiques.", 20, cursorY);
+                    cursorY += 15;
+                }
+                break;
         }
     }
 
