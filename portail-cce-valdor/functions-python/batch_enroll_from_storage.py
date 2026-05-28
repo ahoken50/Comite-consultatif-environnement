@@ -41,6 +41,20 @@ def batch_enroll_from_storage(req: https_fn.Request) -> https_fn.Response:
     try:
         from main import extract_audio_segment_embedding, sync_embedding_to_supabase
         
+        # Parse overwrite parameter
+        overwrite = False
+        if req.method == "POST":
+            try:
+                body = req.get_json(silent=True) or {}
+                if body.get("overwrite") is True or body.get("overwrite") == "true":
+                    overwrite = True
+            except Exception:
+                pass
+        if not overwrite and (req.args.get("overwrite") == "true" or req.args.get("overwrite") is True):
+            overwrite = True
+            
+        print(f"[BatchEnroll] Starting with overwrite={overwrite}")
+        
         db = firestore.client()
         bucket = storage.bucket()
         
@@ -98,7 +112,7 @@ def batch_enroll_from_storage(req: https_fn.Request) -> https_fn.Response:
             member = member_doc.to_dict()
             existing_embedding = member.get("embedding")
             
-            if existing_embedding:
+            if existing_embedding and not overwrite:
                 # Parse to check if valid
                 try:
                     if isinstance(existing_embedding, str):
@@ -161,8 +175,8 @@ def batch_enroll_from_storage(req: https_fn.Request) -> https_fn.Response:
                     "lastUpdateSource": "batch_enrollment",
                 })
                 
-                # Sync to Supabase
-                sync_embedding_to_supabase(member_name, [embedding], member_doc.id)
+                # Sync to Supabase with sample_source="reference_enrollment"
+                sync_embedding_to_supabase(member_name, [embedding], member_doc.id, sample_source="reference_enrollment")
                 
                 results["details"].append({
                     "name": member_name,
