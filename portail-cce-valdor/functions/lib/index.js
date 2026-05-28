@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.syncRegulationToSupabase = exports.syncProjectToSupabase = exports.syncMeetingToSupabase = exports.transcribeAudioV2 = void 0;
+exports.admin_reindex_all = exports.syncRegulationToSupabase = exports.performSingleRegulationIndex = exports.syncProjectToSupabase = exports.syncMeetingToSupabase = exports.performSingleMeetingIndex = exports.transcribeAudioV2 = void 0;
 const admin = require("firebase-admin");
 const fs = require("fs");
 const path = require("path");
@@ -305,11 +305,81 @@ FORMAT EXACT:
 });
 const firestore_1 = require("firebase-functions/v2/firestore");
 const supabaseC = require("./supabaseClient");
+async function performSingleMeetingIndex(meetingId, data) {
+    var _a, _b, _c, _d, _e;
+    // Handle invalid dates safely
+    const parsedDate = data.date ? new Date(data.date) : new Date();
+    const safeDate = isNaN(parsedDate.getTime()) ? new Date() : parsedDate;
+    // Generate Embedding using Gemini for completed meetings (RAG on approved/final PVs)
+    let embedding;
+    let meetingSummary = "";
+    if (data.status === "completed") {
+        const apiKey = googleApiKey.value();
+        const { GoogleGenerativeAI } = require("@google/generative-ai");
+        const genAI = apiKey ? new GoogleGenerativeAI(apiKey) : null;
+        const embedModel = genAI ? genAI.getGenerativeModel({ model: "gemini-embedding-001" }) : null;
+        const flashModel = genAI ? genAI.getGenerativeModel({ model: "gemini-2.0-flash" }) : null;
+        const agendaList = ((_a = data.agendaItems) === null || _a === void 0 ? void 0 : _a.map((i) => i.title).join(', ')) || '';
+        const resolutionsText = ((_b = data.agendaItems) === null || _b === void 0 ? void 0 : _b.flatMap((item) => {
+            var _a;
+            return ((_a = item.minuteEntries) === null || _a === void 0 ? void 0 : _a.map((entry) => {
+                const text = entry.content || "";
+                return entry.number ? `${entry.number} ${text}` : text;
+            })) ||
+                (item.minuteContent ? [item.minuteContent] : []);
+        }).join('\n')) || '';
+        // Generate dynamic executive meeting summary via Gemini 2.0 Flash
+        if (flashModel && resolutionsText && resolutionsText.length > 100) {
+            try {
+                console.log(`[Supabase] Generating dynamic executive summary for meeting ${meetingId}...`);
+                const prompt = `Analyse les résolutions suivantes votées lors d'une séance du Comité consultatif d'environnement (CCE) de Val-d'Or et rédige une synthèse décisionnelle condensée (max 200 mots) décrivant les décisions phares, les dossiers approuvés sous conditions et les quorum associés.\n\nRÉSOLUTIONS :\n${resolutionsText}`;
+                const response = await flashModel.generateContent(prompt);
+                meetingSummary = response.response.text().trim();
+                console.log(`[Supabase] Executive summary successfully generated for meeting ${meetingId}`);
+            }
+            catch (error) {
+                console.error(`[Supabase] Failed to generate meeting executive summary`, error);
+            }
+        }
+        const textToEmbed = `Réunion: ${data.title || "Sans titre"}\nDate: ${safeDate.toISOString()}\nRésumé décisionnel: ${meetingSummary || "N/A"}\nOrdre du jour: ${agendaList}\nRésolutions:\n${resolutionsText}\nProcès-verbal:\n${data.minutes || ""}`.trim().substring(0, 9000);
+        if (embedModel && textToEmbed) {
+            try {
+                const result = await embedModel.embedContent({
+                    content: { parts: [{ text: textToEmbed }] },
+                    outputDimensionality: 768
+                });
+                embedding = result.embedding.values;
+                console.log(`[Supabase] Generated embedding for completed meeting ${meetingId}`);
+            }
+            catch (error) {
+                console.error(`[Supabase] Failed to generate embedding for meeting ${meetingId}`, error);
+            }
+        }
+    }
+    const searchableMeeting = {
+        id: meetingId,
+        title: data.title || "Sans titre",
+        date: safeDate.toISOString(),
+        dateTimestamp: Math.floor(safeDate.getTime() / 1000),
+        type: data.type || "regular",
+        status: data.status || "scheduled",
+        minutes: meetingSummary ? `=== SYNTHESE DECISIONNELLE CCE ===\n${meetingSummary}\n\n=== PROCES-VERBAL DETAILLE ===\n${data.minutes || ""}` : (data.minutes || ""),
+        agendaItemTitles: ((_c = data.agendaItems) === null || _c === void 0 ? void 0 : _c.map((i) => i.title)) || [],
+        resolutions: ((_d = data.agendaItems) === null || _d === void 0 ? void 0 : _d.flatMap((item) => {
+            var _a;
+            return ((_a = item.minuteEntries) === null || _a === void 0 ? void 0 : _a.map((entry) => entry.content)) ||
+                (item.minuteContent ? [item.minuteContent] : []);
+        })) || [],
+        attendeeNames: ((_e = data.attendees) === null || _e === void 0 ? void 0 : _e.map((a) => a.name)) || [],
+        embedding: embedding
+    };
+    await supabaseC.indexMeeting(searchableMeeting);
+}
+exports.performSingleMeetingIndex = performSingleMeetingIndex;
 exports.syncMeetingToSupabase = (0, firestore_1.onDocumentWritten)({
     document: "meetings/{meetingId}",
     secrets: [supabaseC.supabaseKeyParam, googleApiKey],
 }, async (event) => {
-    var _a, _b, _c, _d, _e;
     const meetingId = event.params.meetingId;
     const change = event.data;
     if (!change)
@@ -321,55 +391,7 @@ exports.syncMeetingToSupabase = (0, firestore_1.onDocumentWritten)({
     const data = change.after.data();
     if (!data)
         return;
-    // Fix: Handle invalid dates safely to prevent crash
-    const parsedDate = data.date ? new Date(data.date) : new Date();
-    const safeDate = isNaN(parsedDate.getTime()) ? new Date() : parsedDate;
-    // Generate Embedding using Gemini for completed meetings (RAG on approved/final PVs)
-    let embedding;
-    if (googleApiKey.value() && data.status === "completed") {
-        try {
-            const apiKey = googleApiKey.value();
-            const { GoogleGenerativeAI } = require("@google/generative-ai");
-            const genAI = new GoogleGenerativeAI(apiKey);
-            const model = genAI.getGenerativeModel({ model: "text-embedding-004" });
-            const agendaList = ((_a = data.agendaItems) === null || _a === void 0 ? void 0 : _a.map((i) => i.title).join(', ')) || '';
-            const resolutionsText = ((_b = data.agendaItems) === null || _b === void 0 ? void 0 : _b.flatMap((item) => {
-                var _a;
-                return ((_a = item.minuteEntries) === null || _a === void 0 ? void 0 : _a.map((entry) => {
-                    const text = entry.content || "";
-                    return entry.number ? `${entry.number} ${text}` : text;
-                })) ||
-                    (item.minuteContent ? [item.minuteContent] : []);
-            }).join('\n')) || '';
-            const textToEmbed = `Réunion: ${data.title || "Sans titre"}\nDate: ${safeDate.toISOString()}\nOrdre du jour: ${agendaList}\nRésolutions:\n${resolutionsText}\nProcès-verbal:\n${data.minutes || ""}`.trim().substring(0, 9000);
-            if (textToEmbed) {
-                const result = await model.embedContent(textToEmbed);
-                embedding = result.embedding.values;
-                console.log(`[Supabase] Generated embedding for completed meeting ${meetingId}`);
-            }
-        }
-        catch (error) {
-            console.error(`[Supabase] Failed to generate embedding for meeting ${meetingId}`, error);
-        }
-    }
-    const searchableMeeting = {
-        id: meetingId,
-        title: data.title || "Sans titre",
-        date: safeDate.toISOString(),
-        dateTimestamp: Math.floor(safeDate.getTime() / 1000),
-        type: data.type || "regular",
-        status: data.status || "scheduled",
-        minutes: data.minutes || "",
-        agendaItemTitles: ((_c = data.agendaItems) === null || _c === void 0 ? void 0 : _c.map((i) => i.title)) || [],
-        resolutions: ((_d = data.agendaItems) === null || _d === void 0 ? void 0 : _d.flatMap((item) => {
-            var _a;
-            return ((_a = item.minuteEntries) === null || _a === void 0 ? void 0 : _a.map((entry) => entry.content)) ||
-                (item.minuteContent ? [item.minuteContent] : []);
-        })) || [],
-        attendeeNames: ((_e = data.attendees) === null || _e === void 0 ? void 0 : _e.map((a) => a.name)) || [],
-        embedding: embedding
-    };
-    await supabaseC.indexMeeting(searchableMeeting);
+    await performSingleMeetingIndex(meetingId, data);
 });
 exports.syncProjectToSupabase = (0, firestore_1.onDocumentWritten)({
     document: "projects/{projectId}",
@@ -398,21 +420,7 @@ exports.syncProjectToSupabase = (0, firestore_1.onDocumentWritten)({
     };
     await supabaseC.indexProject(searchableProject);
 });
-exports.syncRegulationToSupabase = (0, firestore_1.onDocumentWritten)({
-    document: "regulations/{regulationId}",
-    secrets: [supabaseC.supabaseKeyParam, googleApiKey],
-}, async (event) => {
-    const regulationId = event.params.regulationId;
-    const change = event.data;
-    if (!change)
-        return;
-    if (!change.after.exists) {
-        await supabaseC.deleteFromIndex("regulations", regulationId);
-        return;
-    }
-    const data = change.after.data();
-    if (!data)
-        return;
+async function performSingleRegulationIndex(regulationId, data) {
     const content = data.content || "";
     const articleRegex = /(?:^|\n)(?=ARTICLE|Article|Art\.\s*\d+)/g;
     const articlesRaw = content.split(articleRegex);
@@ -428,17 +436,35 @@ exports.syncRegulationToSupabase = (0, firestore_1.onDocumentWritten)({
     console.log(`[Supabase] Split regulation ${regulationId} into ${articles.length - startIndex} articles`);
     // Delete existing chunks first to avoid dangling chunks if content was modified
     await supabaseC.deleteFromIndex("regulations", regulationId);
+    const apiKey = googleApiKey.value();
+    const { GoogleGenerativeAI } = require("@google/generative-ai");
+    const genAI = apiKey ? new GoogleGenerativeAI(apiKey) : null;
+    const embedModel = genAI ? genAI.getGenerativeModel({ model: "gemini-embedding-001" }) : null;
+    const flashModel = genAI ? genAI.getGenerativeModel({ model: "gemini-2.0-flash" }) : null;
+    // Generate Dynamic Parent Entity Summary via Gemini 2.0 Flash
+    let parentSummary = "";
+    if (flashModel && headerContext && headerContext.length > 50) {
+        try {
+            console.log(`[Supabase] Generating dynamic parent entity summary for regulation ${regulationId}...`);
+            const prompt = `Analyse cet en-tête / introduction de règlement municipal d'urbanisme québécois et rédige un résumé sémantique condensé et hautement technique (max 250 mots) décrivant sa portée géographique, les lots/zones cibles et son intention environnementale principale.\n\nEN-TÊTE :\n${headerContext}`;
+            const response = await flashModel.generateContent(prompt);
+            parentSummary = response.response.text().trim();
+            console.log(`[Supabase] Parent summary successfully generated for ${regulationId}`);
+        }
+        catch (error) {
+            console.error(`[Supabase] Failed to generate parent summary via Gemini`, error);
+        }
+    }
     // If no articles found, index the whole content as a single document
     if (articles.length - startIndex <= 0) {
         let embedding;
-        if (googleApiKey.value()) {
+        const textToEmbed = `Règlement: ${data.title || "Sans titre"}\nAnnée: ${data.year || new Date().getFullYear()}\nCatégorie: ${data.category || "Général"}\nRésumé sémantique: ${parentSummary || "N/A"}\nContenu:\n${content}`.trim().substring(0, 9000);
+        if (embedModel) {
             try {
-                const apiKey = googleApiKey.value();
-                const { GoogleGenerativeAI } = require("@google/generative-ai");
-                const genAI = new GoogleGenerativeAI(apiKey);
-                const model = genAI.getGenerativeModel({ model: "text-embedding-004" });
-                const textToEmbed = `Règlement: ${data.title || "Sans titre"}\nContenu:\n${content}`.trim().substring(0, 9000);
-                const result = await model.embedContent(textToEmbed);
+                const result = await embedModel.embedContent({
+                    content: { parts: [{ text: textToEmbed }] },
+                    outputDimensionality: 768
+                });
                 embedding = result.embedding.values;
             }
             catch (error) {
@@ -448,7 +474,7 @@ exports.syncRegulationToSupabase = (0, firestore_1.onDocumentWritten)({
         const searchableRegulation = {
             id: regulationId,
             title: data.title || "Sans titre",
-            content: content,
+            content: parentSummary ? `[RÉSUMÉ PARENT]\n${parentSummary}\n\n[CONTENU COMPLET]\n${content}` : content,
             category: data.category || "Général",
             year: data.year || new Date().getFullYear(),
             status: data.status || "Actif",
@@ -457,25 +483,22 @@ exports.syncRegulationToSupabase = (0, firestore_1.onDocumentWritten)({
         await supabaseC.indexRegulation(searchableRegulation);
         return;
     }
-    // Process article chunks sequentially to respect Gemini API limits
-    const { GoogleGenerativeAI } = require("@google/generative-ai");
-    const apiKey = googleApiKey.value();
-    const genAI = apiKey ? new GoogleGenerativeAI(apiKey) : null;
-    const model = genAI ? genAI.getGenerativeModel({ model: "text-embedding-004" }) : null;
+    // Process article chunks sequentially
     for (let i = startIndex; i < articles.length; i++) {
         const articleText = articles[i];
         const chunkId = `${regulationId}-art-${i}`;
-        // Extract article title if possible (e.g. first line is "Article 1 - Titre")
         const firstLine = articleText.split('\n')[0] || "";
         const articleTitle = firstLine.length < 100 ? firstLine.trim() : `Article ${i}`;
-        // Construct parent-child context
-        const parentContext = `Règlement: ${data.title || "Sans titre"}\nAnnée: ${data.year || new Date().getFullYear()}\nCatégorie: ${data.category || "Général"}${headerContext ? `\nContexte général:\n${headerContext}` : ""}`;
-        const combinedText = `[CONTEXTE PARENT]\n${parentContext}\n\n[ARTICLE/CONTENU]\n${articleText}`.trim().substring(0, 9000);
+        // Construct parent-child context with generated parentSummary
+        const parentContext = `Règlement: ${data.title || "Sans titre"}\nAnnée: ${data.year || new Date().getFullYear()}\nCatégorie: ${data.category || "Général"}${parentSummary ? `\nRésumé analytique du règlement:\n${parentSummary}` : ""}${headerContext && !parentSummary ? `\nContexte général:\n${headerContext}` : ""}`;
+        const combinedText = `=== CONTEXTE PARENT HIERARCHIQUE ===\n${parentContext}\n\n=== ARTICLE / CONTENU ===\n${articleText}`.trim().substring(0, 9000);
         let embedding;
-        if (model) {
+        if (embedModel) {
             try {
-                // Generate embedding on the full context (parent + child)
-                const result = await model.embedContent(combinedText);
+                const result = await embedModel.embedContent({
+                    content: { parts: [{ text: combinedText }] },
+                    outputDimensionality: 768
+                });
                 embedding = result.embedding.values;
             }
             catch (error) {
@@ -485,15 +508,127 @@ exports.syncRegulationToSupabase = (0, firestore_1.onDocumentWritten)({
         const searchableRegulation = {
             id: chunkId,
             title: `${data.title || "Sans titre"} - ${articleTitle}`,
-            content: articleText,
+            content: `=== CONTEXTE PARENT HIERARCHIQUE ===\n${parentContext}\n\n=== CONTENU DE L'ARTICLE ===\n${articleText}`,
             category: data.category || "Général",
             year: data.year || new Date().getFullYear(),
             status: data.status || "Actif",
             embedding: embedding
         };
         await supabaseC.indexRegulation(searchableRegulation);
-        // Brief sleep to respect API limits (150ms)
         await new Promise(resolve => setTimeout(resolve, 150));
+    }
+}
+exports.performSingleRegulationIndex = performSingleRegulationIndex;
+exports.syncRegulationToSupabase = (0, firestore_1.onDocumentWritten)({
+    document: "regulations/{regulationId}",
+    secrets: [supabaseC.supabaseKeyParam, googleApiKey],
+}, async (event) => {
+    const regulationId = event.params.regulationId;
+    const change = event.data;
+    if (!change)
+        return;
+    if (!change.after.exists) {
+        await supabaseC.deleteFromIndex("regulations", regulationId);
+        return;
+    }
+    const data = change.after.data();
+    if (!data)
+        return;
+    await performSingleRegulationIndex(regulationId, data);
+});
+// Admin reindexing system triggerable from the frontend (Phase 5)
+exports.admin_reindex_all = (0, https_1.onCall)({
+    timeoutSeconds: 540,
+    memory: "2GiB",
+    secrets: [supabaseC.supabaseKeyParam, googleApiKey],
+}, async (request) => {
+    if (!request.auth) {
+        throw new https_1.HttpsError("unauthenticated", "Authentication required");
+    }
+    const { getFirestore } = require("firebase-admin/firestore");
+    const db = getFirestore();
+    const userId = request.auth.uid;
+    // Check if the user is coordinator
+    const memberDoc = await db.collection("members").doc(userId).get();
+    if (!memberDoc.exists || memberDoc.data().role !== "coordinator") {
+        throw new https_1.HttpsError("permission-denied", "Only coordinators can trigger full re-indexing.");
+    }
+    console.log(`[AdminReindex] Reindex triggered by coordinator ${userId}`);
+    const progressRef = db.collection("system_status").doc("reindex_progress");
+    await progressRef.set({
+        status: "in_progress",
+        current: 0,
+        total: 0,
+        completedRegulations: 0,
+        completedMeetings: 0,
+        startedAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+    });
+    try {
+        const regulationsSnapshot = await db.collection("regulations").get();
+        const regulations = regulationsSnapshot.docs;
+        const meetingsSnapshot = await db.collection("meetings").where("status", "==", "completed").get();
+        const meetings = meetingsSnapshot.docs;
+        const totalItems = regulations.length + meetings.length;
+        await progressRef.update({
+            total: totalItems,
+            updatedAt: new Date().toISOString()
+        });
+        let current = 0;
+        let completedRegulations = 0;
+        let completedMeetings = 0;
+        // Process regulations
+        for (const doc of regulations) {
+            try {
+                await performSingleRegulationIndex(doc.id, doc.data());
+                completedRegulations++;
+            }
+            catch (err) {
+                console.error(`[AdminReindex] Failed to index regulation ${doc.id}:`, err);
+            }
+            current++;
+            await progressRef.update({
+                current,
+                completedRegulations,
+                updatedAt: new Date().toISOString()
+            });
+        }
+        // Process meetings
+        for (const doc of meetings) {
+            try {
+                await performSingleMeetingIndex(doc.id, doc.data());
+                completedMeetings++;
+            }
+            catch (err) {
+                console.error(`[AdminReindex] Failed to index meeting ${doc.id}:`, err);
+            }
+            current++;
+            await progressRef.update({
+                current,
+                completedMeetings,
+                updatedAt: new Date().toISOString()
+            });
+        }
+        await progressRef.update({
+            status: "success",
+            completedAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+        });
+        return {
+            success: true,
+            totalIndexed: current,
+            completedRegulations,
+            completedMeetings
+        };
+    }
+    catch (err) {
+        console.error("[AdminReindex] Fatal error during full reindexing:", err);
+        await progressRef.update({
+            status: "error",
+            error: err.message || String(err),
+            updatedAt: new Date().toISOString()
+        });
+        throw new https_1.HttpsError("internal", err.message || String(err));
     }
 });
 //# sourceMappingURL=index.js.map
