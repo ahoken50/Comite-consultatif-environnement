@@ -1007,7 +1007,44 @@ Réponds UNIQUEMENT par JSON: {{"valid": true}} ou {{"valid": false}}"""
     except Exception as e:
         print(f"[AI Supervisor] Error: {e}")
         
-    return True # Fail open on error
+def reconstruct_segments_from_transcription(transcription, speaker_mapping):
+    """
+    Reconstruct segments array on the fly from a text transcription if empty in DB.
+    Handles matching of speaker names back to their original S# speaker labels.
+    """
+    if not transcription:
+        return []
+    
+    import re
+    # Create reverse mapping: speaker_name -> label
+    reverse_map = {}
+    if speaker_mapping and isinstance(speaker_mapping, dict):
+        reverse_map = {str(name).strip(): str(label) for label, name in speaker_mapping.items()}
+    
+    # Matches [MM:SS] [SpeakerName/Label] Segment Text
+    pattern = r"\[(\d+):(\d+)\]\s+\[([^\]]+)\]\s*(.*?)(?=\s*\[\d+:\d+\]\s+\[|$)"
+    matches = re.findall(pattern, transcription, re.DOTALL)
+    
+    reconstructed = []
+    for match in matches:
+        min_str, sec_str, spk, txt = match
+        start = int(min_str) * 60 + int(sec_str)
+        spk_clean = spk.strip()
+        speaker_label = reverse_map.get(spk_clean, spk_clean)
+        
+        reconstructed.append({
+            "start": start,
+            "speaker": speaker_label,
+            "text": txt.strip()
+        })
+        
+    for i in range(len(reconstructed)):
+        if i < len(reconstructed) - 1:
+            reconstructed[i]["end"] = reconstructed[i+1]["start"]
+        else:
+            reconstructed[i]["end"] = reconstructed[i]["start"] + 30
+            
+    return reconstructed
 
 
 @https_fn.on_request(
@@ -1048,6 +1085,8 @@ def reinforce_speaker_voice(req: https_fn.Request) -> https_fn.Response:
                 if rec.get("transcriptionStatus") == "completed":
                     audio_url = rec.get("downloadURL") or rec.get("url") or rec.get("fileUrl")
                     segments = rec.get("segments", [])
+                    if not segments:
+                        segments = reconstruct_segments_from_transcription(rec.get("transcription"), rec.get("speakerMapping", {}))
                     original_transcript = rec.get("originalTranscription", "")
                     if audio_url: break
 
@@ -1270,7 +1309,7 @@ def cross_meeting_learning(req: https_fn.Request) -> https_fn.Response:
                     audio_recordings = [singular_rec]
             for rec in audio_recordings:
                 mapping = rec.get("speakerMapping", {})
-                segments = rec.get("segments", [])
+                segments = rec.get("segments", []) or reconstruct_segments_from_transcription(rec.get("transcription"), mapping)
                 audio_url = rec.get("fileUrl") or rec.get("downloadUrl") or rec.get("downloadURL")
                 
                 for label, name in mapping.items():
@@ -1339,7 +1378,7 @@ def compare_meetings(req: https_fn.Request) -> https_fn.Response:
             
             for rec in audio_recordings:
                 mapping = rec.get("speakerMapping", {})
-                segments = rec.get("segments", [])
+                segments = rec.get("segments", []) or reconstruct_segments_from_transcription(rec.get("transcription"), mapping)
                 
                 # Count unique speaker labels in segments
                 unique_labels = set(s.get("speaker") for s in segments if s.get("speaker"))
@@ -1987,8 +2026,8 @@ def active_learning_priority(req: https_fn.Request) -> https_fn.Response:
             if meeting_doc.exists:
                 meeting = meeting_doc.to_dict()
                 for rec in meeting.get("audioRecordings", []):
-                    segments = rec.get("segments", [])
                     mapping = rec.get("speakerMapping", {})
+                    segments = rec.get("segments", []) or reconstruct_segments_from_transcription(rec.get("transcription"), mapping)
                     
                     for seg in segments:
                         speaker = seg.get("speaker", "")
@@ -2446,7 +2485,7 @@ def _run_ml_loop_internal(db_client, meeting_id=None, mode="full"):
             for rec in recordings:
                 mapping = rec.get("speakerMapping", {})
                 confidence_data = rec.get("confidenceScores", {})
-                segments = rec.get("segments", [])
+                segments = rec.get("segments", []) or reconstruct_segments_from_transcription(rec.get("transcription"), mapping)
                 audio_url = rec.get("fileUrl") or rec.get("downloadUrl") or rec.get("downloadURL")
                 
                 print(f"[AutonomousML] Recording: audio_url={audio_url[:50] if audio_url else None}... mapping={mapping}")
