@@ -53,7 +53,7 @@ const MeetingCard: React.FC<MeetingCardProps> = React.memo(({ meeting, onClick, 
                     <Box>
                         <Typography variant="h6" fontWeight={700} gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                             {meeting.title}
-                            {(meeting.status === 'completed' && (meeting.approvalStatus === 'approved' || meeting.approvalStatus === 'final')) && (
+                            {(meeting.approvalStatus === 'approved' || meeting.approvalStatus === 'final') && (
                                 <Tooltip title="Procès-Verbal Officiel & Approuvé">
                                     <VerifiedIcon color="success" sx={{ fontSize: '1.2rem', display: 'inline-block', verticalAlign: 'middle' }} />
                                 </Tooltip>
@@ -71,7 +71,7 @@ const MeetingCard: React.FC<MeetingCardProps> = React.memo(({ meeting, onClick, 
                                 size="small"
                                 color={getStatusColor(meeting.status) as any}
                             />
-                            {(meeting.status === 'completed' && (meeting.approvalStatus === 'approved' || meeting.approvalStatus === 'final')) && (
+                            {(meeting.approvalStatus === 'approved' || meeting.approvalStatus === 'final') && (
                                 <Chip
                                     label="PV Approuvé"
                                     size="small"
