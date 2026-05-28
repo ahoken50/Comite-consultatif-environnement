@@ -1054,7 +1054,7 @@ def reinforce_speaker_voice(req: https_fn.Request) -> https_fn.Response:
         # Fallback to legacy field
         if not audio_url:
             rec = meeting.get("audioRecording", {})
-            audio_url = rec.get("downloadURL") or rec.get("url")
+            audio_url = rec.get("downloadURL") or rec.get("url") or rec.get("fileUrl")
             original_transcript = rec.get("transcription", "")
                     
         if not audio_url:
@@ -1264,10 +1264,14 @@ def cross_meeting_learning(req: https_fn.Request) -> https_fn.Response:
             
             # Check speaker mapping for confirmed identifications
             audio_recordings = meeting.get("audioRecordings", [])
+            if not audio_recordings:
+                singular_rec = meeting.get("audioRecording")
+                if singular_rec:
+                    audio_recordings = [singular_rec]
             for rec in audio_recordings:
                 mapping = rec.get("speakerMapping", {})
                 segments = rec.get("segments", [])
-                audio_url = rec.get("downloadUrl")
+                audio_url = rec.get("fileUrl") or rec.get("downloadUrl") or rec.get("downloadURL")
                 
                 for label, name in mapping.items():
                     if name == member_name:
@@ -2409,11 +2413,17 @@ def _run_ml_loop_internal(db_client, meeting_id=None, mode="full"):
                 continue
             meeting = meeting_doc.to_dict()
             
-            for rec in meeting.get("audioRecordings", []):
+            # Get recordings list (handling both singular and plural formats)
+            recordings = meeting.get("audioRecordings", [])
+            if not recordings:
+                singular_rec = meeting.get("audioRecording")
+                if singular_rec:
+                    recordings = [singular_rec]
+            for rec in recordings:
                 mapping = rec.get("speakerMapping", {})
                 confidence_data = rec.get("confidenceScores", {})
                 segments = rec.get("segments", [])
-                audio_url = rec.get("downloadUrl")
+                audio_url = rec.get("fileUrl") or rec.get("downloadUrl") or rec.get("downloadURL")
                 
                 for label, name in mapping.items():
                     conf_info = confidence_data.get(label, {})
