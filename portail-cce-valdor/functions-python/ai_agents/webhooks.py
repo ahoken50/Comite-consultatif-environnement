@@ -152,6 +152,7 @@ def speechmatics_webhook(req: https_fn.Request) -> https_fn.Response:
         # SPEAKER IDENTIFICATION - Multi-Strategy (runs after transcription)
         # =====================================================================
         speaker_mapping = {}
+        speaker_mapping_confidences = {}
         warnings = {}
         unidentified = []
         try:
@@ -243,6 +244,10 @@ def speechmatics_webhook(req: https_fn.Request) -> https_fn.Response:
                     
                     if identified_name:
                         speaker_mapping[speaker_label] = identified_name
+                        speaker_mapping_confidences[speaker_label] = {
+                            "score": round(confidence, 3),
+                            "method": "voice+context" if voice_scores else "context_only"
+                        }
                         print(f"[Speaker ID] Identified {speaker_label} -> {identified_name} ({confidence:.2f})")
                 
                 # If we identified any speakers, update the transcript with names
@@ -267,6 +272,7 @@ def speechmatics_webhook(req: https_fn.Request) -> https_fn.Response:
                             if rec.get("speechmaticsJobId") == job_id:
                                 audio_recordings[i]["transcription"] = identified_transcription
                                 audio_recordings[i]["speakerMapping"] = speaker_mapping
+                                audio_recordings[i]["confidenceScores"] = speaker_mapping_confidences
                                 break
                         meeting_ref.update({
                             "audioRecordings": audio_recordings,
@@ -276,6 +282,7 @@ def speechmatics_webhook(req: https_fn.Request) -> https_fn.Response:
                     meeting_ref.update({
                         "audioRecording.transcription": identified_transcription,
                         "audioRecording.speakerMapping": speaker_mapping,
+                        "audioRecording.confidenceScores": speaker_mapping_confidences,
                         "dateUpdated": datetime.now().isoformat()
                     })
                     
@@ -903,6 +910,7 @@ UNIQUEMENT le JSON, sans explication."""
         if target_index >= 0 and audio_recordings:
             audio_recordings[target_index]["transcription"] = identified_transcription
             audio_recordings[target_index]["speakerMapping"] = speaker_mapping
+            audio_recordings[target_index]["confidenceScores"] = confidence_scores
             meeting_ref.update({
                 "audioRecordings": audio_recordings,
                 "dateUpdated": datetime.now().isoformat()
@@ -911,6 +919,7 @@ UNIQUEMENT le JSON, sans explication."""
         meeting_ref.update({
             "audioRecording.transcription": identified_transcription,
             "audioRecording.speakerMapping": speaker_mapping,
+            "audioRecording.confidenceScores": confidence_scores,
             "dateUpdated": datetime.now().isoformat()
         })
         

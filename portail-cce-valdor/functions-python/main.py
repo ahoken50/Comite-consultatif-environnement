@@ -2454,6 +2454,13 @@ def _run_ml_loop_internal(db_client, meeting_id=None, mode="full"):
                 for label, name in mapping.items():
                     conf_info = confidence_data.get(label, {})
                     score = conf_info.get("score", 0) if isinstance(conf_info, dict) else conf_info
+                    
+                    # Fallback: if no confidence scores exist (legacy meetings or missing database writes)
+                    # but we have a valid mapping, default score to 0.85 so that the ML loop can process them.
+                    if not score or score == 0:
+                        print(f"[AutonomousML] Mapped speaker '{name}' has no confidence score. Falling back to 0.85 to allow auto-learning.")
+                        score = 0.85
+                    
                     print(f"[AutonomousML] Speaker label {label} mapped to {name} with confidence score {score}")
                     
                     # AUTO-LEARN: High confidence (>80%)
