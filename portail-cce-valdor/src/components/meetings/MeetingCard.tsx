@@ -1,6 +1,6 @@
 import React from 'react';
 import { Card, CardContent, Typography, Box, Chip, IconButton, Tooltip } from '@mui/material';
-import { CalendarToday, LocationOn, Edit, Delete } from '@mui/icons-material';
+import { CalendarToday, LocationOn, Edit, Delete, Verified as VerifiedIcon } from '@mui/icons-material';
 import type { Meeting } from '../../types/meeting.types';
 import { MeetingStatus, MeetingType } from '../../types/meeting.types';
 import { format } from 'date-fns';
@@ -51,10 +51,15 @@ const MeetingCard: React.FC<MeetingCardProps> = React.memo(({ meeting, onClick, 
             <CardContent>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
                     <Box>
-                        <Typography variant="h6" fontWeight={700} gutterBottom>
+                        <Typography variant="h6" fontWeight={700} gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                             {meeting.title}
+                            {(meeting.status === 'completed' && (meeting.approvalStatus === 'approved' || meeting.approvalStatus === 'final')) && (
+                                <Tooltip title="Procès-Verbal Officiel & Approuvé">
+                                    <VerifiedIcon color="success" sx={{ fontSize: '1.2rem', display: 'inline-block', verticalAlign: 'middle' }} />
+                                </Tooltip>
+                            )}
                         </Typography>
-                        <Box sx={{ display: 'flex', gap: 1 }}>
+                        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
                             <Chip
                                 label={getTypeLabel(meeting.type)}
                                 size="small"
@@ -66,6 +71,21 @@ const MeetingCard: React.FC<MeetingCardProps> = React.memo(({ meeting, onClick, 
                                 size="small"
                                 color={getStatusColor(meeting.status) as any}
                             />
+                            {(meeting.status === 'completed' && (meeting.approvalStatus === 'approved' || meeting.approvalStatus === 'final')) && (
+                                <Chip
+                                    label="PV Approuvé"
+                                    size="small"
+                                    color="success"
+                                    variant="outlined"
+                                    sx={{
+                                        fontWeight: 'bold',
+                                        borderColor: 'success.main',
+                                        bgcolor: 'success.50',
+                                        color: 'success.dark',
+                                        fontSize: '0.7rem',
+                                    }}
+                                />
+                            )}
                         </Box>
                     </Box>
                     <Box>
