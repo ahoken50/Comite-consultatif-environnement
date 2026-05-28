@@ -218,7 +218,7 @@ export const useDashboardData = (): DashboardData => {
         const unsubscribeMeetings = onSnapshot(meetingsQuery, (snapshot) => {
             const count = snapshot.docs.filter(doc => {
                 const data = doc.data();
-                return data.pvStatus !== 'finalized' && data.pvStatus !== 'approved';
+                return data.approvalStatus !== 'final' && data.approvalStatus !== 'approved';
             }).length;
             if (isMounted) {
                 setData(prev => ({
