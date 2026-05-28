@@ -34,7 +34,8 @@ import {
     ExpandLess as CollapseIcon,
     AutoMode as AutoModeIcon,
     Refresh as RefreshIcon,
-    RecordVoiceOver as VoiceIcon
+    RecordVoiceOver as VoiceIcon,
+    Delete as DeleteIcon
 } from '@mui/icons-material';
 import {
     getSuggestions,
@@ -81,7 +82,17 @@ export const MLSuggestionsPanel: React.FC<MLSuggestionsPanelProps> = ({
         setWarningMessage(null);
         try {
             const result = await getSuggestions(5);
-            setSuggestions(result.suggestions);
+            const ignored = JSON.parse(localStorage.getItem('ml_ignored_segments') || '[]');
+            
+            // Filter out ignored segments
+            const filteredSuggestions = result.suggestions.map(s => ({
+                ...s,
+                segments: s.segments.filter(seg => 
+                    !ignored.includes(`${seg.meetingId}-${seg.start}-${seg.end}`)
+                )
+            })).filter(s => s.segments.length > 0);
+
+            setSuggestions(filteredSuggestions);
         } catch (e: any) {
             setError(e.message || 'Erreur lors du chargement des suggestions');
         } finally {
@@ -176,6 +187,33 @@ export const MLSuggestionsPanel: React.FC<MLSuggestionsPanelProps> = ({
         } finally {
             setApplying(null);
         }
+    };
+
+    const handleDismissSegment = (suggestion: MLSuggestion, segment: SuggestedSegment) => {
+        const segmentId = `${segment.meetingId}-${segment.start}-${segment.end}`;
+        
+        // Save to localStorage
+        const ignored = JSON.parse(localStorage.getItem('ml_ignored_segments') || '[]');
+        if (!ignored.includes(segmentId)) {
+            ignored.push(segmentId);
+            localStorage.setItem('ml_ignored_segments', JSON.stringify(ignored));
+        }
+
+        // Update local state to filter out this segment
+        setSuggestions(prev => prev.map(s => {
+            if (s.memberId === suggestion.memberId) {
+                return {
+                    ...s,
+                    segments: s.segments.filter(seg => 
+                        !(seg.meetingId === segment.meetingId && seg.start === segment.start)
+                    )
+                };
+            }
+            return s;
+        }).filter(s => s.segments.length > 0));
+
+        setSuccessMessage(`Segment rejeté avec succès (il ne sera plus suggéré).`);
+        setTimeout(() => setSuccessMessage(null), 4000);
     };
 
     const handleRunMLLoop = async () => {
@@ -416,6 +454,18 @@ export const MLSuggestionsPanel: React.FC<MLSuggestionsPanelProps> = ({
                                                                 )}
                                                             </IconButton>
                                                         </span>
+                                                    </Tooltip>
+                                                    <Tooltip title="Ignorer cet extrait (pas bon)">
+                                                        <IconButton
+                                                            edge="end"
+                                                            onClick={() => handleDismissSegment(suggestion, segment)}
+                                                            disabled={isApplying}
+                                                            color="error"
+                                                            size="small"
+                                                            sx={{ ml: 1 }}
+                                                        >
+                                                            <DeleteIcon />
+                                                        </IconButton>
                                                     </Tooltip>
                                                 </ListItemSecondaryAction>
                                             </ListItem>
