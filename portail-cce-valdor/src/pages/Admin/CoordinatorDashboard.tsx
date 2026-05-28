@@ -16,10 +16,13 @@ import {
     InputLabel,
     Alert,
     CircularProgress,
-    Button
+    Button,
+    LinearProgress
 } from '@mui/material';
-import { SmartToy, AutoAwesome, CheckCircleOutline } from '@mui/icons-material';
+import { SmartToy, AutoAwesome, CheckCircleOutline, Storage, Autorenew } from '@mui/icons-material';
 import { getFunctions, httpsCallable } from 'firebase/functions';
+import { doc, onSnapshot } from 'firebase/firestore';
+import { db } from '../../services/firebase';
 import { fetchAllUsers, updateUserRole } from '../../features/users/usersAPI';
 import type { UserProfile, UserRole } from '../../types/auth.types';
 import { ROLES, ROLE_LABELS } from '../../types/auth.types';
@@ -59,6 +62,58 @@ const CoordinatorDashboard: React.FC = () => {
             setAiError(`Échec de la compilation du prompt : ${err.message || err}`);
         } finally {
             setAiLoading(false);
+        }
+    };
+
+    // Re-indexing States
+    const [reindexProgress, setReindexProgress] = useState<any>(null);
+    const [reindexLoading, setReindexLoading] = useState(false);
+    const [reindexError, setReindexError] = useState<string | null>(null);
+    const [reindexSuccess, setReindexSuccess] = useState<string | null>(null);
+
+    useEffect(() => {
+        // Listen to active reindexing progress in real-time
+        const progressDoc = doc(db, 'system_status', 'reindex_progress');
+        const unsubscribe = onSnapshot(progressDoc, (snapshot) => {
+            if (snapshot.exists()) {
+                const data = snapshot.data();
+                setReindexProgress(data);
+                if (data.status === 'in_progress') {
+                    setReindexLoading(true);
+                } else {
+                    setReindexLoading(false);
+                }
+            }
+        });
+        return () => unsubscribe();
+    }, []);
+
+    const handleReindexAll = async () => {
+        try {
+            setReindexLoading(true);
+            setReindexSuccess(null);
+            setReindexError(null);
+            
+            const confirmReindex = window.confirm("⚠️ ATTENTION : Cette action va relancer la vectorisation complète de toute la jurisprudence (Règlements) et de tous les PV finalisés dans Supabase pgvector en régénérant des résumés d'entités avec Gemini. Cela peut prendre quelques minutes. Voulez-vous continuer ?");
+            if (!confirmReindex) {
+                setReindexLoading(false);
+                return;
+            }
+            
+            const functions = getFunctions();
+            const reindexFn = httpsCallable(functions, 'admin_reindex_all');
+            
+            const response = await reindexFn();
+            const data = response.data as { success: boolean; totalIndexed: number };
+            
+            if (data.success) {
+                setReindexSuccess(`Ré-indexation complète effectuée avec succès ! ${data.totalIndexed} documents ont été retraités et indexés dans Supabase.`);
+            }
+        } catch (err: any) {
+            console.error("[Reindex] Reindex failed:", err);
+            setReindexError(`Échec de la ré-indexation : ${err.message || err}`);
+        } finally {
+            setReindexLoading(false);
         }
     };
 
@@ -205,6 +260,69 @@ const CoordinatorDashboard: React.FC = () => {
                     {aiLoading && (
                         <Typography variant="caption" color="textSecondary">
                             Analyse des corrections en cours (ml_corrections)...
+                        </Typography>
+                    )}
+                </Box>
+            </Paper>
+
+            {/* AI Jurisprudence Re-indexing Section (Phase 5 - Parent-Child RAG) */}
+            <Paper sx={{ mt: 4, p: 3 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 2 }}>
+                    <Storage color="primary" sx={{ fontSize: 28 }} />
+                    <Typography variant="h6" fontWeight={600}>
+                        Ré-indexation de la Jurisprudence (Règlements & PV)
+                    </Typography>
+                </Box>
+                
+                <Typography variant="body2" color="textSecondary" sx={{ mb: 3, maxWidth: 800 }}>
+                    Cette option force la reconstruction complète des index Supabase pour **tous les règlements d'urbanisme** et **tous les PV validés**. 
+                    Le système va régénérer les découpages hiérarchiques parent-enfant et faire appel à Gemini pour compiler des résumés d'entités parentes, 
+                    éliminant ainsi les contresens de l'IA.
+                </Typography>
+                
+                {reindexSuccess && (
+                    <Alert severity="success" sx={{ mb: 3 }}>
+                        {reindexSuccess}
+                    </Alert>
+                )}
+                
+                {reindexError && (
+                    <Alert severity="error" sx={{ mb: 3 }}>
+                        {reindexError}
+                    </Alert>
+                )}
+                
+                {reindexProgress && reindexProgress.status === 'in_progress' && (
+                    <Box sx={{ mb: 3 }}>
+                        <Typography variant="body2" sx={{ mb: 1, fontWeight: 500 }}>
+                            Ré-indexation en cours : {reindexProgress.current} / {reindexProgress.total} documents ({Math.round((reindexProgress.current / (reindexProgress.total || 1)) * 100)}%)
+                        </Typography>
+                        <LinearProgress 
+                            variant="determinate" 
+                            value={Math.round((reindexProgress.current / (reindexProgress.total || 1)) * 100)} 
+                            sx={{ height: 8, borderRadius: 4 }}
+                        />
+                        <Typography variant="caption" color="textSecondary" sx={{ mt: 0.5, display: 'block' }}>
+                            Règlements traités : {reindexProgress.completedRegulations || 0} | PV de réunions traités : {reindexProgress.completedMeetings || 0}
+                        </Typography>
+                    </Box>
+                )}
+                
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                    <Button
+                        variant="contained"
+                        color="secondary"
+                        onClick={handleReindexAll}
+                        disabled={reindexLoading}
+                        startIcon={reindexLoading ? <CircularProgress size={20} color="inherit" /> : <Autorenew />}
+                        sx={{ px: 3, py: 1, borderRadius: 2, textTransform: 'none', fontWeight: 600 }}
+                    >
+                        {reindexLoading ? 'Indexation...' : 'Ré-indexer toute la base'}
+                    </Button>
+                    
+                    {!reindexLoading && reindexProgress?.updatedAt && (
+                        <Typography variant="caption" color="textSecondary">
+                            Dernier statut de re-indexation : {reindexProgress.status === 'success' ? 'Terminé avec succès' : reindexProgress.status === 'error' ? 'Erreur de traitement' : 'Inactif'} ({new Date(reindexProgress.updatedAt).toLocaleString()})
                         </Typography>
                     )}
                 </Box>
