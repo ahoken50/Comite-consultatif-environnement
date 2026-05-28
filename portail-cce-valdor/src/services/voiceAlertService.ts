@@ -180,7 +180,7 @@ export async function getPendingPVCount(): Promise<number> {
         // Filter meetings where PV is not finalized
         return snapshot.docs.filter(doc => {
             const data = doc.data();
-            return data.pvStatus !== 'finalized' && data.pvStatus !== 'approved';
+            return data.approvalStatus !== 'final' && data.approvalStatus !== 'approved';
         }).length;
     } catch (error) {
         console.error('[VoiceAlertService] Error fetching pending PVs:', error);
