@@ -834,7 +834,7 @@ ${(localAgendaItems || []).map((item, idx) => {
                                 color="secondary"
                                 startIcon={<SmartToy />}
                                 onClick={() => setIsModeSelectorOpen(true)}
-                                disabled={!meeting.audioRecording?.transcription && !(meeting.audioRecordings?.some(r => r.transcription))}
+                                disabled={!meeting.audioRecording?.transcription && !(Array.isArray(meeting.audioRecordings) && meeting.audioRecordings.some(r => r.transcription))}
                                 title="Générer le PV automatiquement avec l'agent IA"
                             >
                                 SmartPV (Agent IA)
@@ -1185,7 +1185,7 @@ ${(localAgendaItems || []).map((item, idx) => {
                             startIcon={<AutoAwesome />}
                             size="small"
                             onClick={handleGenerateSummary}
-                            disabled={!meeting.audioRecording?.transcription && !(meeting.audioRecordings?.some(r => r.transcription))}
+                            disabled={!meeting.audioRecording?.transcription && !(Array.isArray(meeting.audioRecordings) && meeting.audioRecordings.some(r => r.transcription))}
                             title="Rédiger un résumé d'introduction basé sur l'audio (attention : écrase le champ)"
                         >
                             Rédiger l'introduction (IA)

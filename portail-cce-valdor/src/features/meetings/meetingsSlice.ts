@@ -107,7 +107,31 @@ const meetingsSlice = createSlice({
             .addCase(updateMeeting.fulfilled, (state, action) => {
                 const index = state.items.findIndex(m => m.id === action.payload.id);
                 if (index !== -1) {
-                    state.items[index] = { ...state.items[index], ...action.payload.updates };
+                    const sanitizedUpdates = { ...action.payload.updates };
+                    
+                    // Filter out any Firestore FieldValue objects to avoid contaminating Redux state
+                    for (const key of Object.keys(sanitizedUpdates)) {
+                        const val = (sanitizedUpdates as any)[key];
+                        if (val && typeof val === 'object') {
+                            const constructorName = val.constructor?.name;
+                            const isFieldValue = 
+                                constructorName === 'FieldValue' || 
+                                constructorName === 'FieldValueImpl' ||
+                                (typeof val._methodName === 'string') ||
+                                (val.constructor && val.constructor.toString().includes('FieldValue'));
+                                
+                            if (isFieldValue) {
+                                const isDelete = val._methodName === 'FieldValue.delete' || 
+                                                 (typeof val._methodName === 'string' && val._methodName.toLowerCase().includes('delete'));
+                                if (isDelete) {
+                                    delete (state.items[index] as any)[key];
+                                }
+                                delete (sanitizedUpdates as any)[key];
+                            }
+                        }
+                    }
+
+                    state.items[index] = { ...state.items[index], ...sanitizedUpdates };
                 }
             })
             .addCase(updateMeeting.rejected, (state, action) => {
