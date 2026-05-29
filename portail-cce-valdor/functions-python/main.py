@@ -1256,6 +1256,129 @@ def reinforce_speaker_voice(req: https_fn.Request) -> https_fn.Response:
         return https_fn.Response(json.dumps({"error": str(e)}), status=500)
 
 
+@https_fn.on_request(
+    timeout_sec=300,
+    memory=512,
+    cors=options.CorsOptions(cors_origins="*", cors_methods=["GET", "POST", "OPTIONS"])
+)
+def reevaluate_speaker_segments(req: https_fn.Request) -> https_fn.Response:
+    """
+    AI-assisted speaker segment re-evaluation.
+    Given a corrected speaker segment, it compares all other segments with the old name
+    using voice similarity to recommend which ones to change.
+    """
+    try:
+        data = req.get_json()
+        meeting_id = data.get("meetingId")
+        old_name = data.get("oldName") # e.g. "S3" or "Abdelkabir Maqsoud"
+        new_name = data.get("newName") # e.g. "Michael Ross"
+        start_time = data.get("startTime") # Time of corrected segment (reference)
+        end_time = data.get("endTime")
+        
+        if not all([meeting_id, old_name, new_name]) or start_time is None or end_time is None:
+            return https_fn.Response(json.dumps({"error": "Missing parameters"}), status=400)
+            
+        print(f"[Reevaluate] Re-evaluating segments matching '{old_name}' in meeting {meeting_id} based on ground truth '{new_name}' ({start_time}-{end_time}s)")
+        
+        db = firestore.client()
+        meeting_ref = db.collection("meetings").document(meeting_id)
+        meeting_doc = meeting_ref.get()
+        if not meeting_doc.exists:
+            return https_fn.Response(json.dumps({"error": "Meeting not found"}), status=404)
+            
+        meeting = meeting_doc.to_dict()
+        audio_url = None
+        segments = []
+        
+        if "audioRecordings" in meeting:
+            for rec in meeting["audioRecordings"]:
+                if rec.get("transcriptionStatus") == "completed":
+                    audio_url = rec.get("downloadURL") or rec.get("url") or rec.get("fileUrl")
+                    segments = rec.get("segments", [])
+                    if not segments and rec.get("transcription"):
+                        segments = reconstruct_segments_from_transcription(rec.get("transcription"), rec.get("speakerMapping", {}))
+                    if audio_url: break
+                    
+        # Fallback to legacy field
+        if not audio_url:
+            rec = meeting.get("audioRecording", {})
+            audio_url = rec.get("downloadURL") or rec.get("url") or rec.get("fileUrl")
+            if rec.get("transcription") and not segments:
+                segments = reconstruct_segments_from_transcription(rec.get("transcription"), {})
+            
+        if not audio_url:
+            return https_fn.Response(json.dumps({"error": "Audio URL not found"}), status=404)
+            
+        # 1. Extract ground truth voice embedding for the corrected segment
+        print(f"[Reevaluate] Extracting reference embedding...")
+        ref_embedding = extract_audio_segment_embedding(audio_url, float(start_time), float(end_time))
+        if not ref_embedding:
+            return https_fn.Response(json.dumps({"error": "Failed to extract reference embedding"}), status=500)
+            
+        from speaker_identification import cosine_similarity
+        
+        # 2. Iterate through all segments in the meeting that currently have speaker == old_name
+        candidates = []
+        for i, seg in enumerate(segments):
+            seg_speaker = seg.get("speaker")
+            
+            # Match old_name (either label S3 or full display name)
+            if seg_speaker == old_name:
+                seg_start = seg.get("start", 0)
+                seg_end = seg.get("end", 0)
+                seg_duration = seg_end - seg_start
+                
+                # Skip the segment that was actually corrected (the reference itself)
+                if abs(seg_start - float(start_time)) < 1.0 and abs(seg_end - float(end_time)) < 1.0:
+                    continue
+                    
+                if seg_duration > 1.5: # Min 1.5 seconds for decent voice matching
+                    try:
+                        seg_embedding = extract_audio_segment_embedding(audio_url, seg_start, seg_end)
+                        if seg_embedding:
+                            sim = cosine_similarity(ref_embedding, seg_embedding)
+                            score = (sim + 1) / 2 # Normalize from [-1, 1] to [0, 1]
+                            
+                            # Determine confidence category
+                            if score >= 0.82:
+                                confidence = "high"
+                                recommendation = f"Correspondance vocale forte ({score*100:.0f}%)"
+                            elif score >= 0.65:
+                                confidence = "medium"
+                                recommendation = f"Correspondance vocale modérée ({score*100:.0f}%)"
+                            else:
+                                confidence = "low"
+                                recommendation = f"Différent ({score*100:.0f}%)"
+                                
+                            candidates.append({
+                                "index": i,
+                                "startTime": seg_start,
+                                "endTime": seg_end,
+                                "duration": seg_duration,
+                                "text": seg.get("text", "Segment audio..."),
+                                "score": score,
+                                "confidence": confidence,
+                                "recommendation": recommendation
+                            })
+                    except Exception as e:
+                        print(f"[Reevaluate] Error comparing segment {i}: {e}")
+                        
+        # Sort candidates: highest confidence first
+        candidates.sort(key=lambda x: x["score"], reverse=True)
+        print(f"[Reevaluate] Found {len(candidates)} candidates for re-evaluation")
+        
+        return https_fn.Response(json.dumps({
+            "success": True,
+            "candidates": candidates
+        }), status=200, content_type="application/json")
+        
+    except Exception as e:
+        print(f"[Reevaluate] Error: {e}")
+        import traceback
+        traceback.print_exc()
+        return https_fn.Response(json.dumps({"error": str(e)}), status=500)
+
+
 # =============================================================================
 # #2 CROSS-MEETING LEARNING: Aggregate voice samples from past meetings
 # =============================================================================

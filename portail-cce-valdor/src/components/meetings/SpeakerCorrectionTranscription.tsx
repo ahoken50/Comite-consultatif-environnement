@@ -23,12 +23,27 @@ import {
     Snackbar,
     IconButton,
     Popover,
+    Dialog,
+    DialogTitle,
+    DialogContent,
+    DialogActions,
+    Button,
+    Checkbox,
+    FormControlLabel,
+    List,
+    ListItem,
+    ListItemButton,
+    ListItemIcon,
+    ListItemText,
+    Divider,
 } from '@mui/material';
 import {
     RecordVoiceOver as VoiceIcon,
     CheckCircle as CheckIcon,
     Psychology as MLIcon,
     PersonAdd as PersonAddIcon,
+    AutoAwesome as SparklesIcon,
+    HelpOutline as HelpIcon,
 } from '@mui/icons-material';
 import type { SelectChangeEvent } from '@mui/material';
 import type { Member } from '../../types/member.types';
@@ -79,6 +94,29 @@ export const SpeakerCorrectionTranscription: React.FC<SpeakerCorrectionTranscrip
     // Split Popover State
     const [splitAnchorEl, setSplitAnchorEl] = useState<HTMLElement | null>(null);
     const [activeSplitSegment, setActiveSplitSegment] = useState<TranscriptionSegment | null>(null);
+
+    // AI Speaker Reevaluation States
+    const [reevalConfirmOpen, setReevalConfirmOpen] = useState(false);
+    const [reevalDialogOpen, setReevalDialogOpen] = useState(false);
+    const [reevalLoading, setReevalLoading] = useState(false);
+    const [reevalOldName, setReevalOldName] = useState('');
+    const [reevalNewName, setReevalNewName] = useState('');
+    const [reevalCandidates, setReevalCandidates] = useState<Array<{
+        index: number;
+        startTime: number;
+        endTime: number;
+        duration: number;
+        text: string;
+        score: number;
+        confidence: 'high' | 'medium' | 'low';
+        recommendation: string;
+    }>>([]);
+    const [selectedCandidateIndexes, setSelectedCandidateIndexes] = useState<Set<number>>(new Set());
+    const [reevalRefSegment, setReevalRefSegment] = useState<{
+        startTime: number;
+        endTime: number;
+        text: string;
+    } | null>(null);
 
     // Parse transcription into segments
     const segments = useMemo(() => parseTranscription(transcription), [transcription]);
@@ -164,7 +202,27 @@ export const SpeakerCorrectionTranscription: React.FC<SpeakerCorrectionTranscrip
         // 3. Trigger ML learning if audio is available
         triggerLearning(correction, newName, oldName, segment.position);
 
-    }, [transcription, members, meetingId, audioUrl, audioDuration, onTranscriptionUpdate, onCorrectionMade]);
+        // 4. Trigger AI Speaker Reevaluation if conditions are met
+        const { start, end } = estimateSegmentTime(newTranscription, segment.position, audioDuration);
+        const hasOtherSegments = segments.some(
+            s => s.type === 'speaker' && s.speakerName === oldName && s.position !== segment.position
+        );
+
+        if (audioUrl && audioDuration > 0 && hasOtherSegments) {
+            const segmentIdx = segments.findIndex(s => s.position === segment.position);
+            const nextTextSeg = segmentIdx !== -1 ? segments.slice(segmentIdx + 1).find(s => s.type === 'text') : null;
+
+            setReevalOldName(oldName);
+            setReevalNewName(newName);
+            setReevalRefSegment({
+                startTime: start,
+                endTime: end,
+                text: nextTextSeg?.content || '',
+            });
+            setReevalConfirmOpen(true);
+        }
+
+    }, [transcription, members, meetingId, audioUrl, audioDuration, onTranscriptionUpdate, onCorrectionMade, segments]);
 
     // Handle splitting a text line to assign a new speaker
     const handleSplitSpeaker = (newName: string) => {
@@ -271,6 +329,164 @@ export const SpeakerCorrectionTranscription: React.FC<SpeakerCorrectionTranscrip
         } else {
             console.warn('[SpeakerCorrection] Skipped: audioUrl=', audioUrl, 'audioDuration=', audioDuration);
         }
+    };
+
+    // Run AI speaker similarity reevaluation across all segments with the old name
+    const runReevaluation = async () => {
+        if (!reevalOldName || !reevalNewName || !reevalRefSegment) return;
+
+        setReevalConfirmOpen(false);
+        setReevalDialogOpen(true);
+        setReevalLoading(true);
+        setReevalCandidates([]);
+        setSelectedCandidateIndexes(new Set());
+
+        try {
+            const projectId = 'comite-cce';
+            const region = 'us-central1';
+            const functionName = 'reevaluate_speaker_segments';
+            const isLocal = window.location.hostname === 'localhost';
+
+            const url = isLocal
+                ? `http://127.0.0.1:5001/${projectId}/${region}/${functionName}`
+                : `/api/${functionName}`;
+
+            console.log('[SpeakerCorrection] Requesting reevaluation:', {
+                meetingId,
+                oldName: reevalOldName,
+                newName: reevalNewName,
+                startTime: reevalRefSegment.startTime,
+                endTime: reevalRefSegment.endTime,
+            });
+
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    meetingId,
+                    oldName: reevalOldName,
+                    newName: reevalNewName,
+                    startTime: reevalRefSegment.startTime,
+                    endTime: reevalRefSegment.endTime,
+                }),
+            });
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`Erreur serveur (${response.status}): ${errorText}`);
+            }
+
+            const result = await response.json();
+            console.log('[SpeakerCorrection] Reevaluation results:', result);
+
+            if (result.success && Array.isArray(result.candidates)) {
+                setReevalCandidates(result.candidates);
+                // Pre-select high and medium confidence matches by default (User prompt preference)
+                const initialSelected = new Set<number>();
+                result.candidates.forEach((cand: any) => {
+                    if (cand.confidence === 'high' || cand.confidence === 'medium') {
+                        initialSelected.add(cand.index);
+                    }
+                });
+                setSelectedCandidateIndexes(initialSelected);
+            } else {
+                setSnackMessage("⚠️ Aucun candidat similaire trouvé par l'IA.");
+            }
+        } catch (err) {
+            console.error('[SpeakerCorrection] Reevaluation error:', err);
+            setSnackMessage("❌ Échec de la réévaluation vocale. Veuillez réessayer.");
+            setReevalDialogOpen(false);
+        } finally {
+            setReevalLoading(false);
+        }
+    };
+
+    // Apply the selected speaker corrections globally to the transcription
+    const handleApplyReevaluation = () => {
+        if (selectedCandidateIndexes.size === 0) return;
+
+        // 1. Gather all speaker segments matching the old name in the frontend
+        const frontendSpeakerSegs = segments.filter(
+            s => s.type === 'speaker' && s.speakerName === reevalOldName
+        );
+
+        if (frontendSpeakerSegs.length === 0) {
+            setSnackMessage("⚠️ Aucun segment correspondant trouvé dans la transcription.");
+            setReevalDialogOpen(false);
+            return;
+        }
+
+        const replacements: Array<{ position: number; oldName: string }> = [];
+
+        // 2. Map selected candidate indexes to their closest frontend speaker segments
+        selectedCandidateIndexes.forEach(index => {
+            const candidate = reevalCandidates.find(c => c.index === index);
+            if (!candidate) return;
+
+            let closestSeg: TranscriptionSegment | null = null;
+            let minDiff = Infinity;
+
+            frontendSpeakerSegs.forEach(seg => {
+                const segTime = estimateSegmentTime(transcription, seg.position, audioDuration);
+                const diff = Math.abs(segTime.start - candidate.startTime);
+                if (diff < minDiff) {
+                    minDiff = diff;
+                    closestSeg = seg;
+                }
+            });
+
+            // If the closest segment starts within 15 seconds, consider it a match
+            if (closestSeg && minDiff < 15) {
+                const pos = (closestSeg as TranscriptionSegment).position;
+                if (!replacements.some(r => r.position === pos)) {
+                    replacements.push({
+                        position: pos,
+                        oldName: (closestSeg as TranscriptionSegment).speakerName || reevalOldName,
+                    });
+                }
+            }
+        });
+
+        if (replacements.length === 0) {
+            setSnackMessage("⚠️ Impossible d'associer précisément ces segments dans le texte.");
+            setReevalDialogOpen(false);
+            return;
+        }
+
+        // 3. Robust Replacement Algorithm: Sort replacements by position DESCENDING
+        // Edits from end-to-start prevent character index shifting and text corruption
+        replacements.sort((a, b) => b.position - a.position);
+
+        let updatedTranscription = transcription;
+        const newCorrections: SpeakerCorrection[] = [];
+
+        replacements.forEach(rep => {
+            updatedTranscription = replaceSpeakerAtPosition(
+                updatedTranscription,
+                rep.position,
+                rep.oldName,
+                reevalNewName
+            );
+
+            newCorrections.push({
+                originalName: rep.oldName,
+                correctedName: reevalNewName,
+                position: rep.position,
+                isLearning: false,
+                learned: false,
+            });
+        });
+
+        // 4. Update the transcription text globally
+        onTranscriptionUpdate?.(updatedTranscription);
+
+        // Keep the corrections in history (User preference)
+        setCorrections(prev => [...prev, ...newCorrections]);
+
+        setSnackMessage(`✅ Propagation réussie : ${replacements.length} segments mis à jour (${reevalOldName} → ${reevalNewName}).`);
+        setReevalDialogOpen(false);
     };
 
     return (
@@ -521,6 +737,335 @@ export const SpeakerCorrectionTranscription: React.FC<SpeakerCorrectionTranscrip
                 )}
             </Box>
 
+            {/* 1. Prompt de Confirmation de Réévaluation */}
+            <Dialog
+                open={reevalConfirmOpen}
+                onClose={() => setReevalConfirmOpen(false)}
+                PaperProps={{
+                    sx: {
+                        borderRadius: 3,
+                        boxShadow: '0 8px 32px rgba(0,0,0,0.08)',
+                        p: 1,
+                        maxWidth: 480
+                    }
+                }}
+            >
+                <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1.5, pb: 1 }}>
+                    <SparklesIcon sx={{ color: 'primary.main', fontSize: 28 }} />
+                    <Typography variant="h6" fontWeight={700}>
+                        Réévaluation par l'IA
+                    </Typography>
+                </DialogTitle>
+                <DialogContent>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                        Vous avez corrigé le locuteur <strong>{reevalOldName}</strong> en <strong>{reevalNewName}</strong>. 
+                        L'IA peut analyser le reste de la transcription et comparer les empreintes vocales pour identifier automatiquement d'autres segments qui pourraient appartenir à <strong>{reevalNewName}</strong>.
+                    </Typography>
+                    {reevalRefSegment && reevalRefSegment.text && (
+                        <Paper variant="outlined" sx={{ p: 1.5, bgcolor: 'grey.50', borderRadius: 2, borderStyle: 'dashed' }}>
+                            <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 0.5, fontWeight: 600 }}>
+                                Extrait de référence ({Math.round(reevalRefSegment.startTime)}s) :
+                            </Typography>
+                            <Typography variant="body2" sx={{ fontStyle: 'italic', color: 'text.primary' }}>
+                                "{reevalRefSegment.text.length > 100 ? `${reevalRefSegment.text.substring(0, 100)}...` : reevalRefSegment.text}"
+                            </Typography>
+                        </Paper>
+                    )}
+                </DialogContent>
+                <DialogActions sx={{ px: 3, pb: 2, gap: 1 }}>
+                    <Button 
+                        onClick={() => setReevalConfirmOpen(false)} 
+                        color="inherit" 
+                        variant="text"
+                        sx={{ borderRadius: 2, textTransform: 'none' }}
+                    >
+                        Plus tard
+                    </Button>
+                    <Button 
+                        onClick={runReevaluation} 
+                        variant="contained" 
+                        color="primary"
+                        startIcon={<SparklesIcon />}
+                        sx={{ 
+                            borderRadius: 2, 
+                            textTransform: 'none',
+                            boxShadow: '0 4px 12px rgba(25, 118, 210, 0.2)',
+                            fontWeight: 600
+                        }}
+                    >
+                        Analyser la séance
+                    </Button>
+                </DialogActions>
+            </Dialog>
+
+            {/* 2. Dialogue de Résultats de la Réévaluation */}
+            <Dialog
+                open={reevalDialogOpen}
+                onClose={reevalLoading ? undefined : () => setReevalDialogOpen(false)}
+                maxWidth="md"
+                fullWidth
+                PaperProps={{
+                    sx: {
+                        borderRadius: 3,
+                        boxShadow: '0 8px 32px rgba(0,0,0,0.1)',
+                        maxHeight: '85vh'
+                    }
+                }}
+            >
+                <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid', borderColor: 'divider', py: 2 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                        <MLIcon sx={{ color: 'primary.main', fontSize: 26 }} />
+                        <Box>
+                            <Typography variant="h6" fontWeight={700}>
+                                Réévaluation Vocale IA
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary">
+                                Comparaison d'empreinte : {reevalOldName} → {reevalNewName}
+                            </Typography>
+                        </Box>
+                    </Box>
+                    {!reevalLoading && (
+                        <Chip 
+                            label={`${reevalCandidates.length} segment(s) trouvé(s)`} 
+                            size="small" 
+                            color="primary" 
+                            variant="outlined" 
+                            sx={{ fontWeight: 600 }}
+                        />
+                    )}
+                </DialogTitle>
+
+                <DialogContent sx={{ p: 0, bgcolor: 'grey.50' }}>
+                    {reevalLoading ? (
+                        <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', py: 8, px: 3, gap: 3 }}>
+                            <Box sx={{ position: 'relative', display: 'inline-flex' }}>
+                                <CircularProgress size={64} thickness={4} />
+                                <Box
+                                    sx={{
+                                        top: 0,
+                                        left: 0,
+                                        bottom: 0,
+                                        right: 0,
+                                        position: 'absolute',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                    }}
+                                >
+                                    <MLIcon color="primary" sx={{ fontSize: 28, animation: 'pulse 1.5s infinite ease-in-out' }} />
+                                </Box>
+                            </Box>
+                            <Box sx={{ textAlign: 'center' }}>
+                                <Typography variant="subtitle1" fontWeight={600} gutterBottom>
+                                    L'IA analyse les segments vocaux...
+                                </Typography>
+                                <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 400 }}>
+                                    Extraction de l'empreinte vocale de référence et comparaison par similarité cosinus avec les autres segments de la séance.
+                                </Typography>
+                            </Box>
+                            <style>{`
+                                @keyframes pulse {
+                                    0% { transform: scale(0.9); opacity: 0.6; }
+                                    50% { transform: scale(1.1); opacity: 1; }
+                                    100% { transform: scale(0.9); opacity: 0.6; }
+                                }
+                            `}</style>
+                        </Box>
+                    ) : reevalCandidates.length === 0 ? (
+                        <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', py: 8, px: 3, textAlign: 'center' }}>
+                            <HelpIcon sx={{ fontSize: 48, color: 'text.disabled', mb: 2 }} />
+                            <Typography variant="subtitle1" fontWeight={600} gutterBottom>
+                                Aucun autre segment similaire détecté
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 450 }}>
+                                L'IA n'a pas détecté d'autres interventions de {reevalOldName} partageant une empreinte vocale suffisamment proche de votre extrait de référence.
+                            </Typography>
+                        </Box>
+                    ) : (
+                        <Box>
+                            <Box sx={{ px: 3, py: 1.5, bgcolor: 'background.paper', borderBottom: '1px solid', borderColor: 'divider', display: 'flex', alignItems: 'center' }}>
+                                <FormControlLabel
+                                    control={
+                                        <Checkbox
+                                            checked={selectedCandidateIndexes.size === reevalCandidates.length}
+                                            indeterminate={selectedCandidateIndexes.size > 0 && selectedCandidateIndexes.size < reevalCandidates.length}
+                                            onChange={(e) => {
+                                                if (e.target.checked) {
+                                                    setSelectedCandidateIndexes(new Set(reevalCandidates.map(c => c.index)));
+                                                } else {
+                                                    setSelectedCandidateIndexes(new Set());
+                                                }
+                                            }}
+                                            size="small"
+                                        />
+                                    }
+                                    label={
+                                        <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+                                            Tout sélectionner
+                                        </Typography>
+                                    }
+                                />
+                                <Typography variant="caption" color="text.secondary" sx={{ ml: 'auto' }}>
+                                    💡 Cliquez sur le badge de temps pour écouter l'extrait
+                                </Typography>
+                            </Box>
+
+                            <List disablePadding sx={{ maxHeight: '50vh', overflow: 'auto' }}>
+                                {reevalCandidates.map((candidate, idx) => {
+                                    const isSelected = selectedCandidateIndexes.has(candidate.index);
+                                    
+                                    // Colors based on confidence
+                                    let badgeColor: 'success' | 'warning' | 'default' = 'default';
+                                    let badgeBg = 'grey.100';
+                                    let badgeText = 'text.secondary';
+                                    if (candidate.confidence === 'high') {
+                                        badgeColor = 'success';
+                                        badgeBg = 'success.50';
+                                        badgeText = 'success.dark';
+                                    } else if (candidate.confidence === 'medium') {
+                                        badgeColor = 'warning';
+                                        badgeBg = 'warning.50';
+                                        badgeText = 'warning.dark';
+                                    }
+
+                                    // Format time
+                                    const formatTime = (seconds: number) => {
+                                        const mins = Math.floor(seconds / 60);
+                                        const secs = Math.floor(seconds % 60);
+                                        return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+                                    };
+
+                                    return (
+                                        <React.Fragment key={candidate.index}>
+                                            <ListItem
+                                                disablePadding
+                                                secondaryAction={
+                                                    <Chip
+                                                        label={candidate.recommendation}
+                                                        size="small"
+                                                        color={badgeColor}
+                                                        variant="outlined"
+                                                        sx={{
+                                                            fontSize: '0.75rem',
+                                                            fontWeight: 600,
+                                                            bgcolor: badgeBg,
+                                                            borderColor: 'transparent',
+                                                            color: badgeText,
+                                                            mr: 1
+                                                        }}
+                                                    />
+                                                }
+                                                sx={{
+                                                    bgcolor: isSelected ? 'primary.50' : 'background.paper',
+                                                    transition: 'background-color 0.2s',
+                                                    '&:hover': {
+                                                        bgcolor: isSelected ? 'primary.100' : 'action.hover'
+                                                    }
+                                                }}
+                                            >
+                                                <ListItemButton
+                                                    onClick={() => {
+                                                        const newSelected = new Set(selectedCandidateIndexes);
+                                                        if (newSelected.has(candidate.index)) {
+                                                            newSelected.delete(candidate.index);
+                                                        } else {
+                                                            newSelected.add(candidate.index);
+                                                        }
+                                                        setSelectedCandidateIndexes(newSelected);
+                                                    }}
+                                                    sx={{ py: 1.5, pr: 24 }}
+                                                >
+                                                    <ListItemIcon sx={{ minWidth: 40 }}>
+                                                        <Checkbox
+                                                            edge="start"
+                                                            checked={isSelected}
+                                                            tabIndex={-1}
+                                                            disableRipple
+                                                            size="small"
+                                                        />
+                                                    </ListItemIcon>
+                                                    
+                                                    {/* Clickable timestamp badge */}
+                                                    <Tooltip title="Écouter cet extrait" arrow>
+                                                        <Chip
+                                                            label={formatTime(candidate.startTime)}
+                                                            size="small"
+                                                            color="primary"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation(); // Avoid toggling selection
+                                                                if (onSeek) {
+                                                                    onSeek(candidate.startTime);
+                                                                    setSnackMessage(`🎵 Lecture à ${formatTime(candidate.startTime)}`);
+                                                                }
+                                                            }}
+                                                            sx={{
+                                                                mr: 2,
+                                                                fontWeight: 700,
+                                                                fontSize: '0.75rem',
+                                                                borderRadius: 1.5,
+                                                                cursor: 'pointer',
+                                                                boxShadow: '0 2px 4px rgba(0,0,0,0.05)',
+                                                                '&:hover': {
+                                                                    bgcolor: 'primary.dark',
+                                                                }
+                                                            }}
+                                                        />
+                                                    </Tooltip>
+
+                                                    <ListItemText
+                                                        primary={
+                                                            <Typography variant="body2" sx={{ fontStyle: 'italic', color: 'text.primary', pr: 2 }}>
+                                                                "{candidate.text}"
+                                                            </Typography>
+                                                        }
+                                                        secondary={
+                                                            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                                                                Durée : {Math.round(candidate.duration)} secondes
+                                                            </Typography>
+                                                        }
+                                                    />
+                                                </ListItemButton>
+                                            </ListItem>
+                                            {idx < reevalCandidates.length - 1 && <Divider />}
+                                        </React.Fragment>
+                                    );
+                                })}
+                            </List>
+                        </Box>
+                    )}
+                </DialogContent>
+
+                <DialogActions sx={{ p: 2, borderTop: '1px solid', borderColor: 'divider', bgcolor: 'background.paper', gap: 1 }}>
+                    <Button
+                        onClick={() => setReevalDialogOpen(false)}
+                        color="inherit"
+                        variant="text"
+                        disabled={reevalLoading}
+                        sx={{ borderRadius: 2, textTransform: 'none' }}
+                    >
+                        Conserver tels quels
+                    </Button>
+                    <Button
+                        onClick={handleApplyReevaluation}
+                        variant="contained"
+                        color="success"
+                        disabled={reevalLoading || selectedCandidateIndexes.size === 0}
+                        startIcon={<CheckIcon />}
+                        sx={{
+                            borderRadius: 2,
+                            textTransform: 'none',
+                            fontWeight: 600,
+                            boxShadow: '0 4px 12px rgba(46, 125, 50, 0.2)',
+                            '&:hover': {
+                                bgcolor: 'success.dark',
+                            }
+                        }}
+                    >
+                        Appliquer la sélection ({selectedCandidateIndexes.size})
+                    </Button>
+                </DialogActions>
+            </Dialog>
+
             {/* Snackbar for feedback */}
             <Snackbar
                 open={!!snackMessage}
@@ -707,6 +1252,23 @@ function estimateSegmentTime(
         start,
         end: Math.min(start + 30, totalDuration),
     };
+}
+
+/**
+ * Replace a speaker label at a specific character position with a new name,
+ * matching either [Name] or **Name** formats.
+ */
+function replaceSpeakerAtPosition(text: string, position: number, oldName: string, newName: string): string {
+    const before = text.substring(0, position);
+    let tagLength = 0;
+    if (text.substring(position).startsWith('[')) {
+        tagLength = oldName.length + 2; // [Name]
+    } else {
+        const suffix = text.substring(position + oldName.length + 4).startsWith(':') ? 1 : 0;
+        tagLength = oldName.length + 4 + suffix;
+    }
+    const after = text.substring(position + tagLength);
+    return before + `[${newName}]` + after;
 }
 
 export default SpeakerCorrectionTranscription;
