@@ -31,7 +31,7 @@ const generateAvisHTML = (data: AvisData): string => {
     const meetingDate = new Date(meeting.date);
     const dateStr = format(meetingDate, 'EEEE d MMMM yyyy', { locale: fr });
     const formattedMeetingDate = dateStr.charAt(0).toUpperCase() + dateStr.slice(1);
-    const timeStr = format(meetingDate, 'HH', { locale: fr }) + ' h ' + format(meetingDate, 'mm', { locale: fr });
+    const timeStr = "17 h 00"; // CCE meetings are always at 17h00
 
     const deadlineStr = format(deadlineDate, 'd MMMM yyyy', { locale: fr });
     const todayStr = format(new Date(), 'd MMMM yyyy', { locale: fr });

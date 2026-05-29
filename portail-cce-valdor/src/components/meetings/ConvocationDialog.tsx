@@ -24,7 +24,7 @@ import {
 import { Send, SelectAll, CheckCircle, Notifications, EventNote } from '@mui/icons-material';
 import type { Member } from '../../types/member.types';
 import type { Meeting } from '../../types/meeting.types';
-import { getActiveMembers, sendConvocations, sendAvisConvocation } from '../../services/convocationService';
+import { getActiveMembers, sendConvocations, sendAvisConvocation, calculateDeadlineDate } from '../../services/convocationService';
 
 interface ConvocationDialogProps {
     open: boolean;
@@ -63,8 +63,7 @@ const ConvocationDialog: React.FC<ConvocationDialogProps> = ({
 
     // Calculate dates
     const meetingDate = new Date(meeting.date);
-    const deadlineDate = new Date(meetingDate);
-    deadlineDate.setDate(deadlineDate.getDate() - 15);
+    const deadlineDate = calculateDeadlineDate(meeting.date);
 
     const dateOptions: Intl.DateTimeFormatOptions = {
         weekday: 'long',

@@ -23,6 +23,41 @@ import type { Member } from '../types/member.types';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
+/**
+ * Calculates the deadline for submitting agenda suggestions.
+ * Rules:
+ * 1. Default: 15 days before the meeting date.
+ * 2. Minimum: 5 business days (jours ouvrables) from today.
+ * If 15 days before the meeting is earlier than 5 business days from today,
+ * we extend the deadline to exactly 5 business days from today.
+ */
+export const calculateDeadlineDate = (meetingDateStr: string): Date => {
+    const meetingDate = new Date(meetingDateStr);
+    
+    // 1. Default deadline: 15 days before the meeting
+    const defaultDeadline = new Date(meetingDate);
+    defaultDeadline.setDate(defaultDeadline.getDate() - 15);
+    
+    // 2. Minimum deadline: 5 business days (jours ouvrables) from today
+    const today = new Date();
+    let minDeadline = new Date(today);
+    let businessDaysAdded = 0;
+    while (businessDaysAdded < 5) {
+        minDeadline.setDate(minDeadline.getDate() + 1);
+        const dayOfWeek = minDeadline.getDay();
+        // 0 = Sunday, 6 = Saturday
+        if (dayOfWeek !== 0 && dayOfWeek !== 6) {
+            businessDaysAdded++;
+        }
+    }
+    
+    // Set to end of day to give members as much time
+    minDeadline.setHours(23, 59, 59, 999);
+    
+    // Return the further date
+    return defaultDeadline > minDeadline ? defaultDeadline : minDeadline;
+};
+
 // Types
 export interface ConvocationRecipient {
     memberId: string;
@@ -131,7 +166,7 @@ export const sendConvocations = async (
         // 3. Format meeting date
         const meetingDate = new Date(meeting.date);
         const formattedDate = format(meetingDate, 'EEEE d MMMM yyyy', { locale: fr });
-        const formattedTime = format(meetingDate, "HH 'h' mm", { locale: fr });
+        const formattedTime = "17 h 00"; // CCE meetings are always at 17h00
         console.log('📅 [Convocation] Date debug:', {
             rawDate: meeting.date,
             parsedDate: meetingDate.toISOString(),
@@ -250,10 +285,9 @@ export const sendAvisConvocation = async (
             return { success: false, error: 'Aucun membre sélectionné' };
         }
 
-        // 2. Calculate deadline date (15 days before meeting)
+        // 2. Calculate deadline date (15 days before meeting, with min 5 business days from today)
         const meetingDate = new Date(meeting.date);
-        const deadlineDate = new Date(meetingDate);
-        deadlineDate.setDate(deadlineDate.getDate() - 15);
+        const deadlineDate = calculateDeadlineDate(meeting.date);
 
         // 3. Format dates
         const formattedMeetingDate = format(meetingDate, 'EEEE d MMMM yyyy', { locale: fr });
@@ -561,7 +595,7 @@ export const resendConvocationEmails = async (
 
         const meetingDate = new Date(meeting.date);
         const formattedDate = format(meetingDate, 'EEEE d MMMM yyyy', { locale: fr });
-        const formattedTime = format(meetingDate, "HH 'h' mm", { locale: fr });
+        const formattedTime = "17 h 00"; // CCE meetings are always at 17h00
         console.log('📅 [Resend Convocation] Date debug:', {
             rawDate: meeting.date,
             formattedDate,
