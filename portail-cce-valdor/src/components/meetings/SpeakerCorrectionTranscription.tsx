@@ -345,7 +345,7 @@ export const SpeakerCorrectionTranscription: React.FC<SpeakerCorrectionTranscrip
             const projectId = 'comite-cce';
             const region = 'us-central1';
             const functionName = 'reevaluate_speaker_segments';
-            const isLocal = window.location.hostname === 'localhost';
+            const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 
             const url = isLocal
                 ? `http://127.0.0.1:5001/${projectId}/${region}/${functionName}`
