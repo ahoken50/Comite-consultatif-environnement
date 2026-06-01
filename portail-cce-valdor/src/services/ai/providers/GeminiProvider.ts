@@ -3,7 +3,7 @@ import type { Meeting, MinutesDraft } from '../../../types/meeting.types';
 import { PromptRegistry } from '../PromptRegistry';
 
 const GEMINI_API_KEY = import.meta.env.VITE_GOOGLE_AI_API;
-const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
+const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
 
 // Interface for Gemini response structure
 interface GeminiResponse {

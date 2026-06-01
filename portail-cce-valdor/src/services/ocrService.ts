@@ -16,7 +16,7 @@ if (typeof window !== 'undefined' && (pdfjsLib as any).GlobalWorkerOptions) {
 const GEMINI_API_KEY = import.meta.env.VITE_GOOGLE_AI_API;
 
 // Gemini Flash endpoint (cheapest with vision)
-const GEMINI_VISION_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
+const GEMINI_VISION_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
 
 interface OCRResult {
     success: boolean;

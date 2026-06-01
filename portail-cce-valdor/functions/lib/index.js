@@ -79,7 +79,7 @@ exports.transcribeAudioV2 = (0, https_1.onCall)({
             throw new Error("File processing failed.");
         // 3. Setup model
         const genAI = new generative_ai_1.GoogleGenerativeAI(GEMINI_API_KEY);
-        const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
         // 4. PHASE 1: Raw transcription in chunks
         console.log('[V6] Phase 1: Raw transcription with timestamps...');
         let rawTranscription = "";
@@ -318,7 +318,7 @@ async function performSingleMeetingIndex(meetingId, data) {
         const { GoogleGenerativeAI } = require("@google/generative-ai");
         const genAI = apiKey ? new GoogleGenerativeAI(apiKey) : null;
         const embedModel = genAI ? genAI.getGenerativeModel({ model: "gemini-embedding-001" }) : null;
-        const flashModel = genAI ? genAI.getGenerativeModel({ model: "gemini-2.0-flash" }) : null;
+        const flashModel = genAI ? genAI.getGenerativeModel({ model: "gemini-2.5-flash" }) : null;
         const agendaList = ((_a = data.agendaItems) === null || _a === void 0 ? void 0 : _a.map((i) => i.title).join(', ')) || '';
         const resolutionsText = ((_b = data.agendaItems) === null || _b === void 0 ? void 0 : _b.flatMap((item) => {
             var _a;
@@ -440,7 +440,7 @@ async function performSingleRegulationIndex(regulationId, data) {
     const { GoogleGenerativeAI } = require("@google/generative-ai");
     const genAI = apiKey ? new GoogleGenerativeAI(apiKey) : null;
     const embedModel = genAI ? genAI.getGenerativeModel({ model: "gemini-embedding-001" }) : null;
-    const flashModel = genAI ? genAI.getGenerativeModel({ model: "gemini-2.0-flash" }) : null;
+    const flashModel = genAI ? genAI.getGenerativeModel({ model: "gemini-2.5-flash" }) : null;
     // Generate Dynamic Parent Entity Summary via Gemini 2.0 Flash
     let parentSummary = "";
     if (flashModel && headerContext && headerContext.length > 50) {
