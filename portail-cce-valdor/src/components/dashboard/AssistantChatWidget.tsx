@@ -65,7 +65,7 @@ const AssistantChatWidget: React.FC = () => {
                 }
             } catch { /* RAG optional */ }
 
-            const model = getGenerativeModel(vertexAI, { model: 'gemini-2.0-flash' });
+            const model = getGenerativeModel(vertexAI, { model: 'gemini-2.5-flash' });
 
             const contextData = {
                 currentDate: new Date().toISOString(),

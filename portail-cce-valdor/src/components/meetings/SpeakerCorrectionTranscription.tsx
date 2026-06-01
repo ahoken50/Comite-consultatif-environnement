@@ -9,7 +9,7 @@
  * 4. The correct member's voice profile is reinforced (2x weight)
  */
 
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import {
     Box,
     Typography,
@@ -90,6 +90,25 @@ export const SpeakerCorrectionTranscription: React.FC<SpeakerCorrectionTranscrip
     const [corrections, setCorrections] = useState<SpeakerCorrection[]>([]);
     const [learningStatus, setLearningStatus] = useState<string | null>(null);
     const [snackMessage, setSnackMessage] = useState<string | null>(null);
+
+    // Save transcription backup to localStorage on update
+    useEffect(() => {
+        if (transcription && transcription.trim()) {
+            localStorage.setItem(`cce_transcription_draft_${meetingId}`, transcription);
+        }
+    }, [transcription, meetingId]);
+
+    // Restore draft backup on mount if live transcription is missing
+    useEffect(() => {
+        if (!transcription || !transcription.trim()) {
+            const savedDraft = localStorage.getItem(`cce_transcription_draft_${meetingId}`);
+            if (savedDraft && savedDraft.trim()) {
+                console.log(`[Backup] Recovered transcription draft from localStorage for meeting ${meetingId}`);
+                onTranscriptionUpdate?.(savedDraft);
+                setSnackMessage("✏️ Brouillon de transcription restauré localement.");
+            }
+        }
+    }, [meetingId, onTranscriptionUpdate]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Split Popover State
     const [splitAnchorEl, setSplitAnchorEl] = useState<HTMLElement | null>(null);

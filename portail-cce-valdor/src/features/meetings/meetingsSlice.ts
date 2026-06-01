@@ -63,6 +63,15 @@ const meetingsSlice = createSlice({
                 // Build lightweight content fingerprints to detect real changes
                 const agendaFingerprint = (items: any[]) =>
                     items?.map(i => `${i.id}:${i.title}:${i.decision || ''}:${i.minuteEntries?.length || 0}`).join('|') || '';
+                
+                // Fingerprint transcription to detect if it has been loaded/updated
+                const transcriptionFingerprint = (rec: any) => rec?.transcription ? rec.transcription.substring(0, 100) : '';
+                const existingTranscription = transcriptionFingerprint(existing.audioRecording);
+                const payloadTranscription = transcriptionFingerprint(action.payload.audioRecording);
+                
+                const existingArrayTranscriptions = existing.audioRecordings?.map((r: any) => transcriptionFingerprint(r)).join('|') || '';
+                const payloadArrayTranscriptions = action.payload.audioRecordings?.map((r: any) => transcriptionFingerprint(r)).join('|') || '';
+
                 // Skip if same version — prevents unnecessary re-renders
                 // when Firestore echoes back data we just wrote
                 if (
@@ -71,7 +80,9 @@ const meetingsSlice = createSlice({
                     agendaFingerprint(existing.agendaItems) === agendaFingerprint(action.payload.agendaItems) &&
                     existing.minutes === action.payload.minutes &&
                     existing.status === action.payload.status &&
-                    existing.approvalStatus === action.payload.approvalStatus
+                    existing.approvalStatus === action.payload.approvalStatus &&
+                    existingTranscription === payloadTranscription &&
+                    existingArrayTranscriptions === payloadArrayTranscriptions
                 ) {
                     return; // Data unchanged, keep existing reference stable
                 }
