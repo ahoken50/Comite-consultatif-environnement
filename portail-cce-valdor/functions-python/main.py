@@ -2972,6 +2972,7 @@ from clear_supabase_speakers import clear_supabase_speakers
 from batch_enroll_from_storage import batch_enroll_from_storage
 from migrate_to_supabase_primary import run_migration_to_supabase_primary
 from auto_migration import ensure_migration_completed, get_migration_status
+from sync_service import sync_embedding_to_supabase
 
 from diagnose_migration import api_diagnose_migration
 from diagnose_enrollment import diagnose_enrollment_issues
