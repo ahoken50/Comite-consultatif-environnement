@@ -64,19 +64,37 @@ import { getSupabase } from './supabaseSearchService';
 
 export async function getVoiceProfileAlerts(): Promise<VoiceAlert[]> {
     try {
+        let membersPromise = getDocs(collection(db, 'members'));
+        let supabasePromise: any;
+
+        try {
+            const supabase = getSupabase();
+            supabasePromise = supabase.from('speaker_embeddings').select('speaker_name');
+        } catch (err) {
+            console.warn('[VoiceAlertService] Supabase client could not be initialized:', err);
+            supabasePromise = Promise.resolve({ data: null, error: err });
+        }
+
         const [membersSnapshot, supabaseRes] = await Promise.allSettled([
-            getDocs(collection(db, 'members')),
-            getSupabase().from('speaker_embeddings').select('speaker_name')
+            membersPromise,
+            supabasePromise
         ]);
 
         const counts: Record<string, number> = {};
-        if (supabaseRes.status === 'fulfilled' && supabaseRes.value.data) {
-            supabaseRes.value.data.forEach((row: any) => {
-                const name = row.speaker_name?.trim().toLowerCase();
-                if (name) {
-                    counts[name] = (counts[name] || 0) + 1;
-                }
-            });
+        if (supabaseRes.status === 'fulfilled') {
+            const { data, error } = supabaseRes.value;
+            if (error) {
+                console.error('[VoiceAlertService] Supabase query error fetching speaker embeddings:', error);
+            } else if (data) {
+                data.forEach((row: any) => {
+                    const name = row.speaker_name?.trim().toLowerCase();
+                    if (name) {
+                        counts[name] = (counts[name] || 0) + 1;
+                    }
+                });
+            }
+        } else {
+            console.error('[VoiceAlertService] Supabase request was rejected:', supabaseRes.reason);
         }
 
         if (membersSnapshot.status === 'rejected') {
