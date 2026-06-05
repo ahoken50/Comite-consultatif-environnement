@@ -52,10 +52,10 @@ ${agendaItemsFormatted || "Aucun point à l'ordre du jour"}
 ---
 
 ## Instructions:
-1. Identifie chaque action, engagement ou projet mentionné dans les résolutions
-2. Ignore les points purement informatifs sans action requise (ex: approbation de l'ordre du jour, adoption du PV précédent)
-3. Regroupe les actions similaires en un seul projet
-4. Utilise les catégories: water, biodiversity, regulation, waste, emergency, innovation, operations, climate
+1. Identifie chaque action, engagement ou projet mentionné dans les résolutions, les commentaires ou les délibérations/décisions de la réunion (qu'ils soient notés sous forme de Résolution ou de Commentaire).
+2. N'ignore un point de l'ordre du jour que s'il est purement protocolaire ou administratif sans aucune action requise (ex: mot de bienvenue, approbation de l'ordre du jour, adoption du PV précédent, levée de la séance). Extrais les projets de tous les autres points (y compris les points d'information, les discussions ou les varia s'ils décrivent des actions concrètes ou des suivis).
+3. Regroupe les actions similaires ou portant sur le même sujet en un seul projet.
+4. Utilise obligatoirement l'une de ces catégories pour chaque projet : water, biodiversity, regulation, waste, emergency, innovation, operations, climate.
 
 ## Format de réponse (JSON uniquement, sans markdown):
 {
