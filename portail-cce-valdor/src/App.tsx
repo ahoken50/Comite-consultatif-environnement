@@ -38,6 +38,7 @@ const ProfilePage = lazy(() => import('./pages/Auth/ProfilePage'));
 const CoordinatorDashboard = lazy(() => import('./pages/Admin/CoordinatorDashboard'));
 const AccessDeniedPage = lazy(() => import('./pages/Auth/AccessDeniedPage'));
 const JurisprudenceSearch = lazy(() => import('./components/search/JurisprudenceSearch'));
+const StatisticsPage = lazy(() => import('./pages/Statistics/StatisticsPage'));
 
 import { RoleGuard } from './components/auth/RoleGuard';
 
@@ -259,6 +260,7 @@ function App() {
                 <Route path="extracts" element={<ExtractsPage />} />
                 {/* Reports and Settings moved to Protected Route above */}
                 <Route path="minutes" element={<MinutesPage />} />
+                <Route path="statistics" element={<StatisticsPage />} />
               </Route>
 
               {/* Presentation Mode - Full Screen, Protected but no MainLayout */}

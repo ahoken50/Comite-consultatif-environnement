@@ -1,7 +1,8 @@
 import React from 'react';
 import { Drawer, List, ListItem, ListItemButton, ListItemIcon, ListItemText, Toolbar, Box } from '@mui/material';
-import { Dashboard, Assignment, Event, Description, People, Settings, BarChart, Gavel } from '@mui/icons-material';
+import { Dashboard, Assignment, Event, Description, People, Settings, BarChart, Gavel, QueryStats, AdminPanelSettings } from '@mui/icons-material';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { useAuth } from '../../hooks/useAuth';
 
 const drawerWidth = 240;
 
@@ -10,24 +11,28 @@ interface SidebarProps {
     onClose: () => void;
 }
 
-const menuItems = [
-    { text: 'Tableau de bord', icon: <Dashboard />, path: '/dashboard' },
-    { text: 'Projets', icon: <Assignment />, path: '/projects' },
-    { text: 'Assemblées', icon: <Event />, path: '/meetings' },
-    { text: 'Résolutions', icon: <Gavel />, path: '/resolutions' },
-    { text: 'Règlements', icon: <Gavel />, path: '/regulations' },
-    { text: 'Documents', icon: <Description />, path: '/documents' },
-    { text: 'Procès-verbaux', icon: <BarChart />, path: '/minutes' },
-    { text: 'Extraits de PV', icon: <Description />, path: '/extracts' },
-    { text: 'Recommandations', icon: <Gavel />, path: '/recommendations' },
-    { text: 'Rapports', icon: <Description />, path: '/reports' },
-    { text: 'Membres', icon: <People />, path: '/members' },
-    { text: 'Paramètres', icon: <Settings />, path: '/settings' },
-];
 
 const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, onClose }) => {
     const navigate = useNavigate();
     const location = useLocation();
+    const { user } = useAuth();
+
+    const menuItems = [
+        { text: 'Tableau de bord', icon: <Dashboard />, path: '/dashboard' },
+        ...(user?.role === 'coordinator' ? [{ text: 'Administration', icon: <AdminPanelSettings />, path: '/admin' }] : []),
+        { text: 'Projets', icon: <Assignment />, path: '/projects' },
+        { text: 'Assemblées', icon: <Event />, path: '/meetings' },
+        { text: 'Résolutions', icon: <Gavel />, path: '/resolutions' },
+        { text: 'Règlements', icon: <Gavel />, path: '/regulations' },
+        { text: 'Documents', icon: <Description />, path: '/documents' },
+        { text: 'Procès-verbaux', icon: <BarChart />, path: '/minutes' },
+        { text: 'Extraits de PV', icon: <Description />, path: '/extracts' },
+        { text: 'Recommandations', icon: <Gavel />, path: '/recommendations' },
+        { text: 'Rapports', icon: <Description />, path: '/reports' },
+        { text: 'Statistiques', icon: <QueryStats />, path: '/statistics' },
+        { text: 'Membres', icon: <People />, path: '/members' },
+        { text: 'Paramètres', icon: <Settings />, path: '/settings' },
+    ];
 
     const drawerContent = (
         <div>

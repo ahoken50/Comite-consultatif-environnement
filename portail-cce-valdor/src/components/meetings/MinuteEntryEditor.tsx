@@ -138,6 +138,20 @@ const MinuteEntryEditor: React.FC<MinuteEntryEditorProps> = ({
         }
     };
 
+    // Détection proactive et debouncée (3s) des conflits réglementaires
+    React.useEffect(() => {
+        if (!entry.content || entry.type !== 'resolution') {
+            setComplianceResult(null);
+            return;
+        }
+
+        const timer = setTimeout(() => {
+            handleGuardianCheck();
+        }, 3000); // Déclenchement automatique après 3 secondes d'inactivité
+
+        return () => clearTimeout(timer);
+    }, [entry.content, entry.type]);
+
     const handleMagicDraft = async () => {
         if (!itemTitle) return;
         setIsDrafting(true);

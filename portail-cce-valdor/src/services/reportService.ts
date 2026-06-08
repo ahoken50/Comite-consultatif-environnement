@@ -1,5 +1,3 @@
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import type { Project } from '../types/project.types';
@@ -8,7 +6,9 @@ import type { Project } from '../types/project.types';
  * Generates a one-page status brief PDF for the given projects.
  * Focuses on active and urgent projects.
  */
-export const generateStatusBrief = (projects: Project[]) => {
+export const generateStatusBrief = async (projects: Project[]) => {
+    const { default: jsPDF } = await import('jspdf');
+    const { default: autoTable } = await import('jspdf-autotable');
     const doc = new jsPDF();
     const now = new Date();
 

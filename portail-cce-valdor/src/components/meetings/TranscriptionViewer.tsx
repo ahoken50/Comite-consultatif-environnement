@@ -635,6 +635,15 @@ const TranscriptionViewer: React.FC<TranscriptionViewerProps> = ({
                 >
                     {isIdentifying ? 'Analyse en cours...' : 'Lancer l\'identification AI'}
                 </Button>
+                <Button
+                    variant="outlined"
+                    color="secondary"
+                    startIcon={<People />}
+                    onClick={() => setShowSpeakerMap(prev => !prev)}
+                    sx={{ mb: 2, ml: 1 }}
+                >
+                    {showSpeakerMap ? 'Masquer la correction en lot' : 'Renommer les locuteurs en lot'}
+                </Button>
 
                 {/* Secret Admin Button to purge polluted profiles (Visible to developers/admins only) */}
                 <Button

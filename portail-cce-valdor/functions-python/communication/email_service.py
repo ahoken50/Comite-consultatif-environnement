@@ -69,11 +69,8 @@ def send_convocation(req: https_fn.CallableRequest):
         
         if frontend_date and frontend_time:
             formatted_date = frontend_date
-            # Frontend sends "17h00" format, convert to "17 h 00" for email consistency
-            formatted_time = frontend_time.replace("h", " h ")
-            if "  " in formatted_time:
-                formatted_time = formatted_time.replace("  ", " ")
-            print(f"[Convocation] Using frontend time: {formatted_date} at {formatted_time}")
+            formatted_time = "17 h 00" # Force 17h00 for CCE meetings
+            print(f"[Convocation] Using frontend time (forced to 17h00): {formatted_date} at {formatted_time}")
             
             # Still need local_date for filename
             from zoneinfo import ZoneInfo
@@ -102,8 +99,8 @@ def send_convocation(req: https_fn.CallableRequest):
             month_str = months[local_date.month]
             
             formatted_date = f"{day_str} {local_date.day} {month_str} {local_date.year}"
-            formatted_time = local_date.strftime("%H h %M")
-            print(f"[Convocation] Fallback server time: {formatted_date} at {formatted_time}")
+            formatted_time = "17 h 00" # Force 17h00 for CCE meetings
+            print(f"[Convocation] Fallback server time (forced to 17h00): {formatted_date} at {formatted_time}")
         
         # Prepare Attachments
         attachments = []
@@ -331,11 +328,11 @@ def send_avis_convocation(req: https_fn.CallableRequest):
             # Convert to Eastern timezone (Quebec)
             eastern_tz = ZoneInfo("America/Montreal")
             meeting_datetime_local = meeting_datetime.astimezone(eastern_tz)
-            meeting_time = meeting_datetime_local.strftime("%H h %M")
-            print(f"[Avis] Meeting time: UTC={meeting_datetime}, Local={meeting_datetime_local}, Formatted={meeting_time}")
+            meeting_time = "17 h 00"  # CCE meetings are always at 17h00
+            print(f"[Avis] Meeting time: UTC={meeting_datetime}, Local={meeting_datetime_local}, Formatted={meeting_time} (forced to 17h00)")
         except Exception as tz_error:
             print(f"[Avis] Timezone error: {tz_error}")
-            meeting_time = "À confirmer"
+            meeting_time = "17 h 00"  # Force 17h00 for CCE meetings
         
         # Format location for proper grammar
         location_text = f"dans {meeting_location}" if meeting_location else "au bureau"

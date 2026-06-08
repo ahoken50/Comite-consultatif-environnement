@@ -3,7 +3,7 @@ import type { Meeting, MinutesDraft } from '../../../types/meeting.types';
 import { PromptRegistry } from '../PromptRegistry';
 
 const GEMINI_API_KEY = import.meta.env.VITE_GOOGLE_AI_API;
-const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
+const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
 
 // Interface for Gemini response structure
 interface GeminiResponse {
@@ -380,8 +380,8 @@ Retourne uniquement le JSON.`;
     async generateEmbedding(text: string): Promise<number[]> {
         if (!this.isConfigured()) throw new Error('Gemini API key not configured');
 
-        // Use 'embedding-001' (text-embedding-004 is deprecated in v1beta)
-        const MODEL = 'models/embedding-001';
+        // Use 'gemini-embedding-001' with 768 dimensions (since text-embedding-004 is deprecated/unsupported for Developer keys)
+        const MODEL = 'models/gemini-embedding-001';
         const EMBED_URL = `https://generativelanguage.googleapis.com/v1beta/${MODEL}:embedContent`;
 
         const response = await fetch(`${EMBED_URL}?key=${GEMINI_API_KEY}`, {
@@ -391,7 +391,8 @@ Retourne uniquement le JSON.`;
                 model: MODEL,
                 content: {
                     parts: [{ text }]
-                }
+                },
+                outputDimensionality: 768
             })
         });
 

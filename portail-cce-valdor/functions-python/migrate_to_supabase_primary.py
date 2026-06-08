@@ -167,13 +167,7 @@ def migrate_firestore_to_supabase():
                 # List of vectors: insert each separately
                 vectors = embedding
                 for i, vec in enumerate(vectors):
-                    # HANDLE DIMENSION MISMATCH (512 vs 768)
-                    # Legacy embeddings = 512, Supabase table = 768
-                    if len(vec) == 512:
-                        print(f"  ⚠ Padding 512d vector to 768d for {name}")
-                        vec = vec + [0.0] * (768 - 512)
-                    
-                    if len(vec) == 768:
+                    if len(vec) in [512, 768]:
                         result = supabase.table("speaker_embeddings").insert({
                             "speaker_name": name,
                             "speaker_id": speaker_id,  # Linked ID
@@ -184,7 +178,7 @@ def migrate_firestore_to_supabase():
                                 "firestore_member_id": member_id,
                                 "vector_index": i,
                                 "original_dim": len(vectors[i]),
-                                "padded": len(vectors[i]) == 512,
+                                "padded": False,
                                 "migration_timestamp": datetime.now().isoformat()
                             })
                         }).execute()
@@ -194,11 +188,7 @@ def migrate_firestore_to_supabase():
             elif isinstance(embedding[0], (int, float)):
                 # Single vector
                 vec = embedding
-                if len(vec) == 512:
-                     print(f"  ⚠ Padding 512d vector to 768d for {name}")
-                     vec = vec + [0.0] * (768 - 512)
-
-                if len(vec) == 768:
+                if len(vec) in [512, 768]:
                     result = supabase.table("speaker_embeddings").insert({
                         "speaker_name": name,
                         "speaker_id": speaker_id,  # Linked ID
@@ -208,7 +198,7 @@ def migrate_firestore_to_supabase():
                         "metadata": json.dumps({
                             "firestore_member_id": member_id,
                             "original_dim": len(embedding),
-                            "padded": len(embedding) == 512,
+                            "padded": False,
                             "migration_timestamp": datetime.now().isoformat()
                         })
                     }).execute()

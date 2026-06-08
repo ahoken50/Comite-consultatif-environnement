@@ -63,6 +63,15 @@ const meetingsSlice = createSlice({
                 // Build lightweight content fingerprints to detect real changes
                 const agendaFingerprint = (items: any[]) =>
                     items?.map(i => `${i.id}:${i.title}:${i.decision || ''}:${i.minuteEntries?.length || 0}`).join('|') || '';
+                
+                // Fingerprint transcription to detect if it has been loaded/updated
+                const transcriptionFingerprint = (rec: any) => rec?.transcription ? rec.transcription.substring(0, 100) : '';
+                const existingTranscription = transcriptionFingerprint(existing.audioRecording);
+                const payloadTranscription = transcriptionFingerprint(action.payload.audioRecording);
+                
+                const existingArrayTranscriptions = existing.audioRecordings?.map((r: any) => transcriptionFingerprint(r)).join('|') || '';
+                const payloadArrayTranscriptions = action.payload.audioRecordings?.map((r: any) => transcriptionFingerprint(r)).join('|') || '';
+
                 // Skip if same version — prevents unnecessary re-renders
                 // when Firestore echoes back data we just wrote
                 if (
@@ -71,7 +80,9 @@ const meetingsSlice = createSlice({
                     agendaFingerprint(existing.agendaItems) === agendaFingerprint(action.payload.agendaItems) &&
                     existing.minutes === action.payload.minutes &&
                     existing.status === action.payload.status &&
-                    existing.approvalStatus === action.payload.approvalStatus
+                    existing.approvalStatus === action.payload.approvalStatus &&
+                    existingTranscription === payloadTranscription &&
+                    existingArrayTranscriptions === payloadArrayTranscriptions
                 ) {
                     return; // Data unchanged, keep existing reference stable
                 }
@@ -107,7 +118,31 @@ const meetingsSlice = createSlice({
             .addCase(updateMeeting.fulfilled, (state, action) => {
                 const index = state.items.findIndex(m => m.id === action.payload.id);
                 if (index !== -1) {
-                    state.items[index] = { ...state.items[index], ...action.payload.updates };
+                    const sanitizedUpdates = { ...action.payload.updates };
+                    
+                    // Filter out any Firestore FieldValue objects to avoid contaminating Redux state
+                    for (const key of Object.keys(sanitizedUpdates)) {
+                        const val = (sanitizedUpdates as any)[key];
+                        if (val && typeof val === 'object') {
+                            const constructorName = val.constructor?.name;
+                            const isFieldValue = 
+                                constructorName === 'FieldValue' || 
+                                constructorName === 'FieldValueImpl' ||
+                                (typeof val._methodName === 'string') ||
+                                (val.constructor && val.constructor.toString().includes('FieldValue'));
+                                
+                            if (isFieldValue) {
+                                const isDelete = val._methodName === 'FieldValue.delete' || 
+                                                 (typeof val._methodName === 'string' && val._methodName.toLowerCase().includes('delete'));
+                                if (isDelete) {
+                                    delete (state.items[index] as any)[key];
+                                }
+                                delete (sanitizedUpdates as any)[key];
+                            }
+                        }
+                    }
+
+                    state.items[index] = { ...state.items[index], ...sanitizedUpdates };
                 }
             })
             .addCase(updateMeeting.rejected, (state, action) => {
