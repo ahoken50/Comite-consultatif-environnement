@@ -18,7 +18,7 @@ import { addComment } from '../../features/projects/projectsSlice';
 import type { AppDispatch } from '../../store/store';
 import type { RootState } from '../../store/rootReducer';
 import type { Project, Comment } from '../../types/project.types';
-import { format } from 'date-fns';
+import { format, isValid } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
 interface ProjectCommentsProps {
@@ -86,7 +86,7 @@ const ProjectComments: React.FC<ProjectCommentsProps> = ({ project }) => {
                                                 {comment.userName}
                                             </Typography>
                                             <Typography variant="caption" color="text.secondary">
-                                                {format(new Date(comment.createdAt), "d MMMM yyyy 'à' HH:mm", { locale: fr })}
+                                                {comment.createdAt && isValid(new Date(comment.createdAt)) ? format(new Date(comment.createdAt), "d MMMM yyyy 'à' HH:mm", { locale: fr }) : 'Date inconnue'}
                                             </Typography>
                                         </Box>
                                     }

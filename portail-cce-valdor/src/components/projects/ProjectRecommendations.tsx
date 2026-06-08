@@ -11,7 +11,7 @@ import {
 import { Gavel, Event, AttachFile } from '@mui/icons-material';
 import { useSelector } from 'react-redux';
 import type { RootState } from '../../store/rootReducer';
-import { format } from 'date-fns';
+import { format, isValid } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
 interface ProjectRecommendationsProps {
@@ -63,7 +63,7 @@ const ProjectRecommendations: React.FC<ProjectRecommendationsProps> = ({ project
                                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                                             <Event fontSize="small" color="action" />
                                             <Typography variant="subtitle2">
-                                                Réunion du {rec.meetingDate ? format(new Date(rec.meetingDate), 'd MMMM yyyy', { locale: fr }) : 'Non planifiée'}
+                                                Réunion du {rec.meetingDate && isValid(new Date(rec.meetingDate)) ? format(new Date(rec.meetingDate), 'd MMMM yyyy', { locale: fr }) : 'Non planifiée'}
                                             </Typography>
                                         </Box>
                                         <Chip 

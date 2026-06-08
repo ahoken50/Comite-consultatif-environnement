@@ -20,7 +20,7 @@ import type { AppDispatch } from '../../store/store';
 import type { RootState } from '../../store/rootReducer';
 import type { Project, CaucusDecision } from '../../types/project.types';
 import { addCaucusDecision, updateCaucusDecision, deleteCaucusDecision } from '../../features/projects/projectsSlice';
-import { format } from 'date-fns';
+import { format, isValid } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
 interface ProjectDecisionsProps {
@@ -261,7 +261,7 @@ const ProjectDecisions: React.FC<ProjectDecisionsProps> = ({ project }) => {
                                 <ListItemText
                                     primary={
                                         <Typography variant="subtitle1" component="div" sx={{ fontWeight: 600 }}>
-                                            {format(new Date(decision.date), 'd MMMM yyyy', { locale: fr })}
+                                            {decision.date && isValid(new Date(decision.date)) ? format(new Date(decision.date), 'd MMMM yyyy', { locale: fr }) : 'Date inconnue'}
                                         </Typography>
                                     }
                                     secondary={
