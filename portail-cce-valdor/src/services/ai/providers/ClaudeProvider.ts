@@ -3,6 +3,7 @@ import type { Meeting, MinutesDraft } from '../../../types/meeting.types';
 import { functions } from '../../firebase';
 import { httpsCallable } from 'firebase/functions';
 import { PromptRegistry } from '../PromptRegistry';
+import { extractProjectsRobust } from '../utils';
 
 export class ClaudeProvider implements AIService {
     id: AIProviderId = 'claude';
@@ -151,20 +152,34 @@ export class ClaudeProvider implements AIService {
             }
 
             // Parse JSON from response
-            const jsonMatch = data.content.match(/\{[\s\S]*\}/);
-            if (!jsonMatch) {
-                throw new Error(`Format de réponse invalide (JSON non trouvé). Réponse brute : ${data.content.substring(0, 200)}...`);
-            }
+            let projects: any[] = [];
+            let parseError: Error | null = null;
 
             try {
-                let cleanedJson = jsonMatch[0].trim();
-                // Repair missing commas between objects in JSON arrays (e.g., }{ -> }, {)
-                cleanedJson = cleanedJson.replace(/\}\s*\{/g, '},{');
-                const parsed = JSON.parse(cleanedJson);
-                return parsed.projects || [];
-            } catch (jsonErr) {
-                throw new Error(`Échec de l'analyse JSON de la réponse de l'IA : ${jsonErr instanceof Error ? jsonErr.message : String(jsonErr)}. Texte brut : ${jsonMatch[0].substring(0, 200)}...`);
+                projects = extractProjectsRobust(data.content);
+            } catch (err) {
+                parseError = err instanceof Error ? err : new Error(String(err));
             }
+
+            if (projects.length === 0) {
+                // Check if there was a syntax error in parsing
+                try {
+                    let cleaned = data.content.trim();
+                    cleaned = cleaned.replace(/^```json\s*/i, '').replace(/\s*```$/i, '');
+                    const parsed = JSON.parse(cleaned);
+                    if (parsed && (Array.isArray(parsed.projects) && parsed.projects.length === 0)) {
+                        return [];
+                    }
+                } catch (syntaxErr) {
+                    parseError = syntaxErr instanceof Error ? syntaxErr : new Error(String(syntaxErr));
+                }
+
+                if (parseError) {
+                    throw new Error(`Échec de l'analyse JSON de la réponse de l'IA : ${parseError.message}. Texte brut : ${data.content.substring(0, 500)}...`);
+                }
+            }
+
+            return projects;
         } catch (e) {
             console.error('Failed to extract projects using Claude:', e);
             throw e;

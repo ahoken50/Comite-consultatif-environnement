@@ -1,6 +1,7 @@
 import type { AIService, AIProviderId, TranscriptionResult, TranscriptionOptions, SanitizeOptions, ResolutionContext } from '../ai.types';
 import type { Meeting, MinutesDraft } from '../../../types/meeting.types';
 import { PromptRegistry } from '../PromptRegistry';
+import { extractProjectsRobust } from '../utils';
 
 const GEMINI_API_KEY = import.meta.env.VITE_GOOGLE_AI_API;
 const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
@@ -320,29 +321,38 @@ export class GeminiProvider implements AIService {
             throw new Error("Aucun texte généré par Gemini.");
         }
 
-        let parsedJson: any;
+        let projects: any[] = [];
+        let parseError: Error | null = null;
+
         try {
-            let cleanedText = text.trim();
-            // Repair missing commas between objects in JSON arrays (e.g., }{ -> }, {)
-            cleanedText = cleanedText.replace(/\}\s*\{/g, '},{');
-            parsedJson = JSON.parse(cleanedText);
-        } catch (e) {
-            const jsonMatch = text.match(/\{[\s\S]*\}/);
-            if (!jsonMatch) {
-                throw new Error(`Format de réponse invalide (JSON non trouvé). Réponse brute : ${text.substring(0, 200)}...`);
-            }
+            projects = extractProjectsRobust(text);
+        } catch (err) {
+            parseError = err instanceof Error ? err : new Error(String(err));
+        }
+
+        if (projects.length === 0) {
+            // Check if there was a syntax error in parsing
             try {
-                let cleanedMatch = jsonMatch[0].trim();
-                // Repair missing commas between objects in JSON arrays (e.g., }{ -> }, {)
-                cleanedMatch = cleanedMatch.replace(/\}\s*\{/g, '},{');
-                parsedJson = JSON.parse(cleanedMatch);
-            } catch (innerErr) {
-                console.error('Failed to parse projects JSON', innerErr);
-                throw new Error(`Échec de l'analyse JSON de la réponse de Gemini : ${innerErr instanceof Error ? innerErr.message : String(innerErr)}. Texte brut : ${jsonMatch[0].substring(0, 200)}...`);
+                // Try standard JSON.parse on the trimmed text to check if it has invalid syntax
+                let cleaned = text.trim();
+                cleaned = cleaned.replace(/^```json\s*/i, '').replace(/\s*```$/i, '');
+                const parsed = JSON.parse(cleaned);
+                // If it parsed successfully to an empty list or doesn't have projects, it's valid 0 projects.
+                if (parsed && (Array.isArray(parsed.projects) && parsed.projects.length === 0)) {
+                    return [];
+                }
+            } catch (syntaxErr) {
+                // If standard JSON parsing failed, raise the parse error
+                parseError = syntaxErr instanceof Error ? syntaxErr : new Error(String(syntaxErr));
+            }
+
+            if (parseError) {
+                console.error('Failed to parse projects JSON', parseError);
+                throw new Error(`Échec de l'analyse JSON de la réponse de Gemini : ${parseError.message}. Texte brut : ${text.substring(0, 500)}...`);
             }
         }
 
-        return parsedJson.projects || [];
+        return projects;
     }
 
     async suggestFileMatches(fileNames: string[], agendaItems: string[]): Promise<Array<{ fileName: string; agendaItemTitle: string; confidence: number }>> {
