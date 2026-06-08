@@ -596,6 +596,10 @@ const generateExtractHTML = (
             <div class="signature-block">
                 <div class="signature-line">
                 ${(() => {
+                    const isAccepted = meeting.approvalStatus === 'approved' || meeting.approvalStatus === 'final';
+                    if (!isAccepted) {
+                        return `<div class="digital-signature">Signature administrative</div>`;
+                    }
                     const sig = enrichedSignatures.find(s => s.role === 'president' || s.role === 'vice_president');
                     if (sig) {
                         if (sig.signatureUrl) {
