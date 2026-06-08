@@ -277,7 +277,37 @@ export class GeminiProvider implements AIService {
                 contents: [{ parts: [{ text: prompt }] }],
                 generationConfig: {
                     temperature: 0.3,
-                    maxOutputTokens: 4096
+                    maxOutputTokens: 4096,
+                    responseMimeType: 'application/json',
+                    responseSchema: {
+                        type: 'OBJECT',
+                        properties: {
+                            projects: {
+                                type: 'ARRAY',
+                                items: {
+                                    type: 'OBJECT',
+                                    properties: {
+                                        name: { type: 'STRING' },
+                                        category: {
+                                            type: 'STRING',
+                                            enum: ['water', 'biodiversity', 'regulation', 'waste', 'emergency', 'innovation', 'operations', 'climate']
+                                        },
+                                        priority: {
+                                            type: 'STRING',
+                                            enum: ['low', 'medium', 'high', 'critical']
+                                        },
+                                        description: { type: 'STRING' },
+                                        nextSteps: { type: 'STRING' },
+                                        isUrgent: { type: 'BOOLEAN' },
+                                        sourceResolution: { type: 'STRING' },
+                                        estimatedEffort: { type: 'STRING' }
+                                    },
+                                    required: ['name', 'category', 'priority', 'description']
+                                }
+                            }
+                        },
+                        required: ['projects']
+                    }
                 }
             })
         });
@@ -290,19 +320,23 @@ export class GeminiProvider implements AIService {
             throw new Error("Aucun texte généré par Gemini.");
         }
 
-        // Parse JSON from response
-        const jsonMatch = text.match(/\{[\s\S]*\}/);
-        if (!jsonMatch) {
-            throw new Error(`Format de réponse invalide (JSON non trouvé). Réponse brute : ${text.substring(0, 200)}...`);
+        let parsedJson: any;
+        try {
+            parsedJson = JSON.parse(text);
+        } catch (e) {
+            const jsonMatch = text.match(/\{[\s\S]*\}/);
+            if (!jsonMatch) {
+                throw new Error(`Format de réponse invalide (JSON non trouvé). Réponse brute : ${text.substring(0, 200)}...`);
+            }
+            try {
+                parsedJson = JSON.parse(jsonMatch[0]);
+            } catch (innerErr) {
+                console.error('Failed to parse projects JSON', innerErr);
+                throw new Error(`Échec de l'analyse JSON de la réponse de Gemini : ${innerErr instanceof Error ? innerErr.message : String(innerErr)}. Texte brut : ${jsonMatch[0].substring(0, 200)}...`);
+            }
         }
 
-        try {
-            const parsed = JSON.parse(jsonMatch[0]);
-            return parsed.projects || [];
-        } catch (e) {
-            console.error('Failed to parse projects JSON', e);
-            throw new Error(`Échec de l'analyse JSON de la réponse de Gemini : ${e instanceof Error ? e.message : String(e)}. Texte brut : ${jsonMatch[0].substring(0, 200)}...`);
-        }
+        return parsedJson.projects || [];
     }
 
     async suggestFileMatches(fileNames: string[], agendaItems: string[]): Promise<Array<{ fileName: string; agendaItemTitle: string; confidence: number }>> {
