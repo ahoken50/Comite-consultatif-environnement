@@ -109,18 +109,31 @@ const formatContentHTML = (text: string): string => {
 
 /* ─── Role labels ─── */
 
+// Normalize role for matching (handles both English keys and French labels)
+const normalizeRole = (role: string): string => {
+    const r = role.toLowerCase().trim();
+    if (r.includes('président') && r.includes('vice')) return 'vice_president';
+    if (r.includes('président') || r === 'president') return 'president';
+    if (r.includes('coordon') || r === 'coordinator') return 'coordinator';
+    if (r.includes('élu') || r.includes('conseill') || r === 'elected_official' || r === 'advisor') return 'elected_official';
+    if (r.includes('observat') || r === 'observer') return 'observer';
+    if (r.includes('invité') || r === 'guest') return 'guest';
+    if (r.includes('membre') || r === 'member') return 'member';
+    return r;
+};
+
 const getRoleLabelPDF = (role: string, name: string = ''): string => {
+    const normalized = normalizeRole(role);
     const labels: Record<string, string> = {
         president: 'présidente',
         vice_president: 'vice-président',
         coordinator: 'coordonnateur',
         elected_official: name.includes('Sylvie') || name.includes('Hébert') ? 'conseillère responsable' : 'conseiller responsable',
-        advisor: name.includes('Sylvie') || name.includes('Hébert') ? 'conseillère responsable' : 'conseiller responsable',
         guest: 'invité',
         member: 'membre',
         observer: 'observateur'
     };
-    return labels[role.toLowerCase()] || labels[role] || role;
+    return labels[normalized] || role;
 };
 
 /* ─── HTML generation (PV-minutes layout, scoped to one agenda item) ─── */
@@ -149,11 +162,13 @@ const generateExtractHTML = (
         : (meeting.title.match(/(\d+)/)?.[1] || '01');
 
     // Attendees
-    const memberRoles = ['member', 'Membre', 'president', 'Président(e)', 'vice_president', 'Vice-président(e)'];
-    const isMemberRole = (role: string) => memberRoles.some(r => r.toLowerCase() === role.toLowerCase());
-    const absents = meeting.attendees?.filter(a => !a.isPresent) || [];
+    const memberRoles = ['member', 'president', 'vice_president'];
+    const isMemberRole = (role: string) => memberRoles.includes(normalizeRole(role));
+    const excludeFromAbsents = new Set(['observer', 'coordinator', 'guest', 'elected_official']);
+
     const presents = meeting.attendees?.filter(a => a.isPresent && isMemberRole(a.role)) || [];
     const othersPresent = meeting.attendees?.filter(a => a.isPresent && !isMemberRole(a.role)) || [];
+    const absents = meeting.attendees?.filter(a => !a.isPresent && isMemberRole(a.role) && !excludeFromAbsents.has(normalizeRole(a.role))) || [];
 
     const formatName = (a: typeof presents[0]) => {
         const roleLabel = getRoleLabelPDF(a.role, a.name);
