@@ -596,7 +596,7 @@ const generateExtractHTML = (
             <div class="signature-block">
                 <div class="signature-line">
                 ${(() => {
-                    const isAccepted = meeting.approvalStatus === 'approved' || meeting.approvalStatus === 'final';
+                    const isAccepted = meeting.approvalStatus === 'final';
                     if (!isAccepted) {
                         return `<div class="digital-signature">Signature administrative</div>`;
                     }
