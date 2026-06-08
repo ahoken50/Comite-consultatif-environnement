@@ -322,14 +322,20 @@ export class GeminiProvider implements AIService {
 
         let parsedJson: any;
         try {
-            parsedJson = JSON.parse(text);
+            let cleanedText = text.trim();
+            // Repair missing commas between objects in JSON arrays (e.g., }{ -> }, {)
+            cleanedText = cleanedText.replace(/\}\s*\{/g, '},{');
+            parsedJson = JSON.parse(cleanedText);
         } catch (e) {
             const jsonMatch = text.match(/\{[\s\S]*\}/);
             if (!jsonMatch) {
                 throw new Error(`Format de réponse invalide (JSON non trouvé). Réponse brute : ${text.substring(0, 200)}...`);
             }
             try {
-                parsedJson = JSON.parse(jsonMatch[0]);
+                let cleanedMatch = jsonMatch[0].trim();
+                // Repair missing commas between objects in JSON arrays (e.g., }{ -> }, {)
+                cleanedMatch = cleanedMatch.replace(/\}\s*\{/g, '},{');
+                parsedJson = JSON.parse(cleanedMatch);
             } catch (innerErr) {
                 console.error('Failed to parse projects JSON', innerErr);
                 throw new Error(`Échec de l'analyse JSON de la réponse de Gemini : ${innerErr instanceof Error ? innerErr.message : String(innerErr)}. Texte brut : ${jsonMatch[0].substring(0, 200)}...`);

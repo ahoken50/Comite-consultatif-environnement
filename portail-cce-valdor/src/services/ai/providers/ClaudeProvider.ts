@@ -157,7 +157,10 @@ export class ClaudeProvider implements AIService {
             }
 
             try {
-                const parsed = JSON.parse(jsonMatch[0]);
+                let cleanedJson = jsonMatch[0].trim();
+                // Repair missing commas between objects in JSON arrays (e.g., }{ -> }, {)
+                cleanedJson = cleanedJson.replace(/\}\s*\{/g, '},{');
+                const parsed = JSON.parse(cleanedJson);
                 return parsed.projects || [];
             } catch (jsonErr) {
                 throw new Error(`Échec de l'analyse JSON de la réponse de l'IA : ${jsonErr instanceof Error ? jsonErr.message : String(jsonErr)}. Texte brut : ${jsonMatch[0].substring(0, 200)}...`);
