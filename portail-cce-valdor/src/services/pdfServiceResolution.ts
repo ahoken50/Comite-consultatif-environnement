@@ -593,13 +593,20 @@ export const generateResolutionHTML = (
                         ? '<img src="' + sig.signatureUrl + '" crossorigin="anonymous" onerror="this.remove()" style="max-width: 200px; max-height: 70px; object-fit: contain; margin-bottom: 2px;" />'
                         : '';
                     const dt = sig.signedAt ? new Date(sig.signedAt) : new Date();
-                    const dateStr = !isNaN(dt.getTime()) ? dt.toLocaleDateString('fr-CA') : '';
+                    const dateStr = !isNaN(dt.getTime()) ? dt.toLocaleDateString('fr-CA') : new Date().toLocaleDateString('fr-CA');
                     return `
                         <div style="font-size: 0.8em; color: #2f855a; font-weight: bold; margin-bottom: 4px;">Approuvé numériquement</div>
                         ${imgHtml || '<div class="digital-signature">Signé numériquement<br>' + dateStr + '</div>'}
+                        <div style="font-size: 0.75em; color: #718096; margin-top: 2px;">le ${dateStr}</div>
                     `;
                 } else {
-                    return '<div style="font-size: 0.8em; color: #718096; font-weight: bold; margin-bottom: 4px;">Approbation administrative</div>';
+                    const coordSig = enrichedSignatures.find(s => s.role === 'coordinator' || s.role === 'admin_bypass');
+                    const dt = coordSig && coordSig.signedAt ? new Date(coordSig.signedAt) : (meeting.date ? new Date(meeting.date) : new Date());
+                    const dateStr = !isNaN(dt.getTime()) ? dt.toLocaleDateString('fr-CA') : new Date().toLocaleDateString('fr-CA');
+                    return `
+                        <div style="font-size: 0.8em; color: #718096; font-weight: bold; margin-bottom: 4px;">Approbation administrative</div>
+                        <div style="font-size: 0.75em; color: #718096; margin-top: 2px;">le ${dateStr}</div>
+                    `;
                 }
             })()}
             </div>
