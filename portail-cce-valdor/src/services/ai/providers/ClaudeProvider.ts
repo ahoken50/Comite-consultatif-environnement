@@ -106,10 +106,66 @@ export class ClaudeProvider implements AIService {
         return data.content;
     }
 
-    async extractProjects(_meeting: Meeting): Promise<any[]> {
-        // Not implemented in legacy service yet, can add new function or use chat
-        // Returning empty for now as Gemini is primary for this
-        return [];
+    async extractProjects(meeting: Meeting): Promise<any[]> {
+        // Format agenda items with their resolutions
+        const agendaItemsFormatted = (meeting.agendaItems || []).map((item, index) => {
+            let itemText = `### Point ${index + 1}: ${item.title}\n`;
+            itemText += `- Objectif: ${item.objective || 'Non spécifié'}\n`;
+            if (item.decision) itemText += `- Décision: ${item.decision}\n`;
+            if (item.minuteEntries && item.minuteEntries.length > 0) {
+                itemText += `- Résolutions/Commentaires:\n`;
+                item.minuteEntries.forEach(entry => {
+                    const prefix = entry.type === 'resolution' ? '📋 Résolution' : '💬 Commentaire';
+                    itemText += `  - ${prefix} ${entry.number || ''}: ${entry.content}\n`;
+                });
+            }
+            return itemText;
+        }).join('\n');
+
+        const prompt = PromptRegistry.actionItems.get({
+            meetingTitle: meeting.title,
+            meetingDate: meeting.date,
+            meetingType: meeting.type,
+            generalNotes: meeting.minutes || 'Aucune note générale',
+            agendaItems: agendaItemsFormatted || 'Aucun point à l\'ordre du jour'
+        });
+
+        try {
+            console.log('[Claude] Extracting projects using chat_claude...');
+            const chatFunction = httpsCallable(functions, 'chat_claude', { timeout: 120000 });
+            const result = await chatFunction({
+                systemPrompt: "Tu es un assistant expert en gestion de comités consultatifs environnementaux municipaux. Tu retournes uniquement du JSON valide.",
+                userMessage: prompt,
+                temperature: 0.1
+            });
+
+            const data = result.data as { success: boolean; content: string };
+            if (!data) {
+                throw new Error("Aucune donnée retournée par le serveur.");
+            }
+            if (!data.success) {
+                throw new Error("L'extraction par l'IA a échoué côté serveur.");
+            }
+            if (!data.content) {
+                throw new Error("L'IA a retourné une réponse vide.");
+            }
+
+            // Parse JSON from response
+            const jsonMatch = data.content.match(/\{[\s\S]*\}/);
+            if (!jsonMatch) {
+                throw new Error(`Format de réponse invalide (JSON non trouvé). Réponse brute : ${data.content.substring(0, 200)}...`);
+            }
+
+            try {
+                const parsed = JSON.parse(jsonMatch[0]);
+                return parsed.projects || [];
+            } catch (jsonErr) {
+                throw new Error(`Échec de l'analyse JSON de la réponse de l'IA : ${jsonErr instanceof Error ? jsonErr.message : String(jsonErr)}. Texte brut : ${jsonMatch[0].substring(0, 200)}...`);
+            }
+        } catch (e) {
+            console.error('Failed to extract projects using Claude:', e);
+            throw e;
+        }
     }
 
     async suggestFileMatches(_fileNames: string[], _agendaItems: string[]): Promise<any[]> {
