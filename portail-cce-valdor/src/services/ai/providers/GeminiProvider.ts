@@ -286,18 +286,22 @@ export class GeminiProvider implements AIService {
         if (result.error) throw new Error(result.error.message);
 
         const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (!text) return [];
+        if (!text) {
+            throw new Error("Aucun texte généré par Gemini.");
+        }
 
         // Parse JSON from response
         const jsonMatch = text.match(/\{[\s\S]*\}/);
-        if (!jsonMatch) return [];
+        if (!jsonMatch) {
+            throw new Error(`Format de réponse invalide (JSON non trouvé). Réponse brute : ${text.substring(0, 200)}...`);
+        }
 
         try {
             const parsed = JSON.parse(jsonMatch[0]);
             return parsed.projects || [];
         } catch (e) {
             console.error('Failed to parse projects JSON', e);
-            return [];
+            throw new Error(`Échec de l'analyse JSON de la réponse de Gemini : ${e instanceof Error ? e.message : String(e)}. Texte brut : ${jsonMatch[0].substring(0, 200)}...`);
         }
     }
 
