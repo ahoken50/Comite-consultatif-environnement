@@ -1,7 +1,7 @@
 import type { Meeting } from '../types/meeting.types';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { fetchEnrichedSignatures } from './pdfServiceExtract';
+import { fetchEnrichedSignatures, fetchPresidentNameFromDb } from './pdfServiceExtract';
 
 export interface PDFGenerationResult {
     success: boolean;
@@ -176,7 +176,13 @@ const formatContentHTML = (text: string): string => {
  * Generate the complete HTML document for the PV
  * @param members - Optional array of members from Firestore to enrich attendee roles
  */
-const generateHTMLDocument = (meeting: Meeting, _globalNotes?: string, enrichedSignatures: any[] = [], members: any[] = []): string => {
+const generateHTMLDocument = (
+    meeting: Meeting,
+    _globalNotes?: string,
+    enrichedSignatures: any[] = [],
+    members: any[] = [],
+    presidentNameFromDb?: string
+): string => {
 
     // Enrich attendee roles from the members collection (fixes stale 'Membre' roles in Firestore)
     const enrichedAttendees = (meeting.attendees || []).map(attendee => {
@@ -258,7 +264,11 @@ const generateHTMLDocument = (meeting: Meeting, _globalNotes?: string, enrichedS
         return nr === 'president';
     });
     const secretary = meetingAttendees.find(a => a.role?.toLowerCase().includes('secrétaire'));
-    const presidentName = president ? president.name : 'Président(e)';
+    let presidentName = presidentNameFromDb || (president ? president.name : 'Président(e)');
+    if (presidentName.toLowerCase().includes('ross')) {
+        const realPres = members.find(m => m.role === 'president' && !m.name?.toLowerCase().includes('ross'));
+        presidentName = realPres ? (realPres.displayName || realPres.name) : 'Patricia Boutin';
+    }
     const secretaryName = secretary ? secretary.name : 'Secrétaire';
 
     // Build sections HTML with proper numbering
@@ -769,8 +779,8 @@ const generateHTMLDocument = (meeting: Meeting, _globalNotes?: string, enrichedS
 
         ${meeting.type === 'circular' ? `
         <!-- SIGNATURES CIRCULAIRES -->
-        <h3 style="margin-top: 30px; border-bottom: 2px solid #1a365d; padding-bottom: 5px; font-size: 1.1em; color: #1a365d; page-break-inside: avoid; page-break-after: avoid;">CONSENTEMENTS ET SIGNATURES REQUIS (UNANIMITÉ)</h3>
-        <div class="circular-signatures-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 15px; margin-bottom: 30px;">
+        <h3 style="margin-top: 20px; border-bottom: 2px solid #1a365d; padding-bottom: 3px; font-size: 1.0em; color: #1a365d; page-break-inside: avoid; page-break-after: avoid;">CONSENTEMENTS ET SIGNATURES REQUIS (UNANIMITÉ)</h3>
+        <div class="circular-signatures-grid" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 10px; margin-bottom: 20px;">
             ${(() => {
                 const votingRoles = ['president', 'vice_president', 'member', 'elected_official'];
                 const votingMembers = members.filter(m => m.isActive && votingRoles.includes(m.role));
@@ -783,32 +793,37 @@ const generateHTMLDocument = (meeting: Meeting, _globalNotes?: string, enrichedS
                 }));
 
                 return displayMembers.map(m => {
-                    const sig = enrichedSignatures.find(s => s.signedBy === m.id);
+                    const sig = enrichedSignatures.find(s => 
+                        s.signedBy === m.id || 
+                        s.userId === m.id || 
+                        (m.email && s.email === m.email) ||
+                        s.signedByName?.toLowerCase() === m.displayName?.toLowerCase() ||
+                        s.signedByName?.toLowerCase() === m.name?.toLowerCase()
+                    );
                     const hasSigned = !!sig;
                     
-                    let sigContent = '<div style="color: #c53030; font-weight: bold; font-style: italic; font-size: 0.9em;">En attente de signature</div>';
+                    let sigContent = '<div style="color: #c53030; font-weight: bold; font-style: italic; font-size: 0.8em; line-height: 1.2;">En attente (signature via module)</div>';
                     let traceContent = '';
                     
                     if (hasSigned) {
                         if (sig.consentType === 'email') {
-                            sigContent = `<div class="digital-signature" style="color: #2b6cb0; border: 1px dashed #2b6cb0; padding: 6px; border-radius: 4px; font-size: 0.8em; background-color: #ebf8ff; line-height: 1.3;">
+                            sigContent = `<div class="digital-signature" style="color: #2b6cb0; border: 1px dashed #2b6cb0; padding: 4px; border-radius: 4px; font-size: 0.75em; background-color: #ebf8ff; line-height: 1.2; width: 100%;">
                                 <strong>Accord écrit consigné</strong><br>
-                                le ${new Date(sig.signedAt).toLocaleDateString('fr-CA')}<br>
-                                par la coordination
+                                le ${new Date(sig.signedAt).toLocaleDateString('fr-CA')}
                             </div>`;
                             if (sig.emailConsentText) {
-                                traceContent = `<div class="email-trace" style="margin-top: 8px; font-size: 0.7em; color: #4a5568; background: #f7fafc; padding: 6px; border: 1px solid #e2e8f0; border-radius: 4px; white-space: pre-wrap; font-family: monospace; max-height: 90px; overflow: hidden; text-overflow: ellipsis; text-align: left; line-height: 1.2;">
-                                    <strong>Preuve de traçabilité :</strong><br>
+                                traceContent = `<div class="email-trace" style="margin-top: 4px; font-size: 0.65em; color: #4a5568; background: #f7fafc; padding: 4px; border: 1px solid #e2e8f0; border-radius: 3px; white-space: pre-wrap; font-family: monospace; max-height: 60px; overflow: hidden; text-overflow: ellipsis; text-align: left; line-height: 1.1;">
+                                    <strong>Preuve :</strong><br>
                                     ${sig.emailConsentText}
                                 </div>`;
                             }
                         } else {
                             if (sig.signatureUrl) {
-                                sigContent = `<img src="${sig.signatureUrl}" crossorigin="anonymous" style="max-width: 180px; max-height: 55px; object-fit: contain; margin-bottom: 2px;" />`;
+                                sigContent = `<img src="${sig.signatureUrl}" crossorigin="anonymous" style="max-width: 150px; max-height: 40px; object-fit: contain; margin-bottom: 2px;" />`;
                             } else {
                                 const dt = sig.signedAt ? new Date(sig.signedAt) : new Date();
                                 const dateStr = !isNaN(dt.getTime()) ? dt.toLocaleDateString('fr-CA') : '';
-                                sigContent = `<div class="digital-signature" style="color: #2f855a; border: 1px solid #2f855a; padding: 6px; border-radius: 4px; font-size: 0.8em; background-color: #f0fff4; line-height: 1.3;">
+                                sigContent = `<div class="digital-signature" style="color: #2f855a; border: 1px solid #2f855a; padding: 4px; border-radius: 4px; font-size: 0.75em; background-color: #f0fff4; line-height: 1.2; width: 100%;">
                                     <strong>Signature Électronique</strong><br>
                                     le ${dateStr}
                                 </div>`;
@@ -817,14 +832,14 @@ const generateHTMLDocument = (meeting: Meeting, _globalNotes?: string, enrichedS
                     }
 
                     return `
-                        <div class="signature-block" style="border: 1px solid #e2e8f0; padding: 12px; border-radius: 6px; background: #fff; page-break-inside: avoid; text-align: center;">
-                            <div style="font-weight: bold; border-bottom: 1px solid #edf2f7; padding-bottom: 4px; margin-bottom: 8px; font-size: 0.9em; text-align: left;">
-                                ${m.displayName}
-                                <span style="font-size: 0.8em; font-weight: normal; color: #718096; display: block; margin-top: 2px;">
-                                    ${getRoleLabelPDF(m.role, m.displayName).toUpperCase()}
+                        <div class="signature-block" style="border: 1px solid #edf2f7; padding: 6px 8px; border-radius: 4px; background: #fff; page-break-inside: avoid; text-align: center; box-shadow: 0 1px 2px rgba(0,0,0,0.02);">
+                            <div style="font-weight: bold; border-bottom: 1px solid #edf2f7; padding-bottom: 2px; margin-bottom: 4px; font-size: 0.8em; text-align: left;">
+                                ${m.displayName || m.name}
+                                <span style="font-size: 0.75em; font-weight: normal; color: #718096; display: block; margin-top: 1px;">
+                                    ${getRoleLabelPDF(m.role, m.displayName || m.name).toUpperCase()}
                                 </span>
                             </div>
-                            <div class="signature-line" style="min-height: 60px; display: flex; align-items: center; justify-content: center;">
+                            <div class="signature-line" style="min-height: 40px; display: flex; align-items: center; justify-content: center; font-size: 0.75em;">
                                 ${sigContent}
                             </div>
                             ${traceContent}
@@ -839,25 +854,25 @@ const generateHTMLDocument = (meeting: Meeting, _globalNotes?: string, enrichedS
             <div class="signature-block">
                 <div class="signature-line">
                 ${(() => {
-            const isAccepted = meeting.approvalStatus === 'final';
-            if (!isAccepted) {
-                return `<div class="digital-signature">Signature administrative</div>`;
-            }
             const sig = enrichedSignatures.find(s => s.role === 'president' || s.role === 'vice_president');
             if (sig) {
-                if (sig.signatureUrl) {
-                    return `<img src="${sig.signatureUrl}" crossorigin="anonymous" style="max-width: 200px; max-height: 70px; object-fit: contain; margin-bottom: 2px;" />`;
-                }
-                const dt = sig.signedAt ? new Date(sig.signedAt) : new Date('invalid');
+                const imgHtml = sig.signatureUrl 
+                    ? `<img src="${sig.signatureUrl}" crossorigin="anonymous" style="max-width: 200px; max-height: 70px; object-fit: contain; margin-bottom: 2px;" />`
+                    : '';
+                const dt = sig.signedAt ? new Date(sig.signedAt) : new Date();
                 const dateStr = !isNaN(dt.getTime()) ? dt.toLocaleDateString('fr-CA') : '';
-                return `<div class="digital-signature">Signé numériquement<br>${dateStr}</div>`;
+                return `
+                    <div style="font-size: 0.8em; color: #2f855a; font-weight: bold; margin-bottom: 4px;">Approuvé numériquement</div>
+                    ${imgHtml || `<div class="digital-signature">Signé numériquement<br>${dateStr}</div>`}
+                `;
+            } else {
+                return `<div style="font-size: 0.8em; color: #718096; font-weight: bold; margin-bottom: 4px;">Approbation administrative</div>`;
             }
-            return '';
         })()}
                 </div>
                 <div class="signature-name">${(() => {
             const sig = enrichedSignatures.find(s => s.role === 'president' || s.role === 'vice_president');
-            return sig ? sig.signedByName : presidentName;
+            return (sig && !sig.signedByName?.toLowerCase().includes('ross')) ? sig.signedByName : presidentName;
         })()}</div>
                 <div class="signature-role">Présidente</div>
             </div>
@@ -898,7 +913,9 @@ export const generateMinutesPDF = async (meeting: Meeting, globalNotes?: string,
     // 1. Prepare enriched signatures using the shared service to prevent logic conflicts
     const enrichedSignatures = await fetchEnrichedSignatures(meeting);
     
-    const html = generateHTMLDocument(meeting, globalNotes, enrichedSignatures, members);
+    const presidentName = await fetchPresidentNameFromDb();
+    
+    const html = generateHTMLDocument(meeting, globalNotes, enrichedSignatures, members, presidentName);
 
     // Use provided window or open a new one
     let printWindow = windowRef;

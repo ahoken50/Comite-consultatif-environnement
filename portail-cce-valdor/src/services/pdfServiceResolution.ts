@@ -148,7 +148,8 @@ export const generateResolutionHTML = (
     itemOrRec: AgendaItem | CouncilRecommendation,
     type: 'agendaItem' | 'recommendation',
     mode: 'official' | 'campaign' = 'official',
-    enrichedSignatures: any[] = [] // Added to accept signatures
+    enrichedSignatures: any[] = [], // Added to accept signatures
+    presidentNameFromDb?: string
 ): string => {
 
     // Extract Data
@@ -202,7 +203,10 @@ export const generateResolutionHTML = (
         a.role?.toLowerCase().includes('secrétaire') || a.role === 'secretary'
     );
 
-    const presidentName = president ? president.name : 'Président(e)';
+    let presidentName = presidentNameFromDb || (president ? president.name : 'Président(e)');
+    if (presidentName.toLowerCase().includes('ross')) {
+        presidentName = 'Patricia Boutin';
+    }
     const secretaryName = secretary ? secretary.name : 'Secrétaire';
 
     // Format attendees for formal text block
@@ -585,19 +589,23 @@ export const generateResolutionHTML = (
             ${(() => {
                 const sig = enrichedSignatures.find(s => s.role === 'president' || s.role === 'vice_president');
                 if (sig) {
-                    if (sig.signatureUrl) {
-                        return '<img src="' + sig.signatureUrl + '" crossorigin="anonymous" onerror="this.remove()" style="max-width: 200px; max-height: 70px; object-fit: contain; margin-bottom: 2px;" />';
-                    }
-                    const dt = sig.signedAt ? new Date(sig.signedAt) : new Date('invalid');
+                    const imgHtml = sig.signatureUrl 
+                        ? '<img src="' + sig.signatureUrl + '" crossorigin="anonymous" onerror="this.remove()" style="max-width: 200px; max-height: 70px; object-fit: contain; margin-bottom: 2px;" />'
+                        : '';
+                    const dt = sig.signedAt ? new Date(sig.signedAt) : new Date();
                     const dateStr = !isNaN(dt.getTime()) ? dt.toLocaleDateString('fr-CA') : '';
-                    return '<div class="digital-signature">Signé numériquement<br>' + dateStr + '</div>';
+                    return `
+                        <div style="font-size: 0.8em; color: #2f855a; font-weight: bold; margin-bottom: 4px;">Approuvé numériquement</div>
+                        ${imgHtml || '<div class="digital-signature">Signé numériquement<br>' + dateStr + '</div>'}
+                    `;
+                } else {
+                    return '<div style="font-size: 0.8em; color: #718096; font-weight: bold; margin-bottom: 4px;">Approbation administrative</div>';
                 }
-                return '';
             })()}
             </div>
             <div class="sig-name">${(() => {
                 const sig = enrichedSignatures.find(s => s.role === 'president' || s.role === 'vice_president');
-                return sig ? sig.signedByName : presidentName;
+                return (sig && !sig.signedByName?.toLowerCase().includes('ross')) ? sig.signedByName : presidentName;
             })()}</div>
             <div class="sig-role">Présidente</div>
         </div>
@@ -722,10 +730,11 @@ export const generateResolutionPDF = async (
         }
     }
 
-    const { fetchEnrichedSignatures } = await import('./pdfServiceExtract');
+    const { fetchEnrichedSignatures, fetchPresidentNameFromDb } = await import('./pdfServiceExtract');
     const enrichedSignatures = await fetchEnrichedSignatures(meeting);
+    const presidentName = await fetchPresidentNameFromDb();
 
-    const html = generateResolutionHTML(meeting, processedItemOrRec, type, mode, enrichedSignatures);
+    const html = generateResolutionHTML(meeting, processedItemOrRec, type, mode, enrichedSignatures, presidentName);
     
     // Open print window
     const printWindow = window.open('', '_blank', 'width=816,height=1056');

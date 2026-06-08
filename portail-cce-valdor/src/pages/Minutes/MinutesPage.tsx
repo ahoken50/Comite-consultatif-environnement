@@ -20,6 +20,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import type { AppDispatch } from '../../store/store';
 import type { RootState } from '../../store/rootReducer';
 import { fetchMeetings } from '../../features/meetings/meetingsSlice';
+import { fetchMembers } from '../../features/members/membersSlice';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import type { Meeting } from '../../types/meeting.types';
@@ -104,9 +105,11 @@ const MinutesPage: React.FC = () => {
     const navigate = useNavigate();
     const dispatch = useDispatch<AppDispatch>();
     const { items: meetings, loading } = useSelector((state: RootState) => state.meetings);
+    const { items: members } = useSelector((state: RootState) => state.members);
 
     useEffect(() => {
         dispatch(fetchMeetings());
+        dispatch(fetchMembers());
     }, [dispatch]);
 
     // ⚡ Bolt: Memoize the expensive sorting operation (O(N log N) + date parsing)
@@ -122,8 +125,8 @@ const MinutesPage: React.FC = () => {
 
     const handleDownloadPDF = useCallback(async (meeting: any) => {
         const { generateMinutesPDF } = await import('../../services/pdfServiceMinutes');
-        generateMinutesPDF(meeting, meeting.minutes);
-    }, []);
+        generateMinutesPDF(meeting, meeting.minutes, null, members);
+    }, [members]);
 
     if (loading) {
         return <Typography>Chargement...</Typography>;
