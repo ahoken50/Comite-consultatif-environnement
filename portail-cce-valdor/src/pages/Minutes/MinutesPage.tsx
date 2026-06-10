@@ -30,6 +30,13 @@ import type { Meeting } from '../../types/meeting.types';
 const MeetingRow = React.memo(({ meeting, onEdit, onDownload }: { meeting: Meeting | any, onEdit: (id: string) => void, onDownload: (meeting: Meeting | any) => void }) => {
     // ⚡ Bolt: Memoize the status calculation (O(M*K)) which was previously inline and unmemoized
     const minutesStatus = useMemo(() => {
+        if (meeting.approvalStatus === 'approved' || meeting.approvalStatus === 'final') {
+            return <Chip label="Confirmé" color="success" size="small" />;
+        }
+        if (meeting.approvalStatus === 'waiting_approval') {
+            return <Chip label="En attente" color="info" size="small" variant="outlined" />;
+        }
+
         const agendaItems = meeting.agendaItems || [];
 
         if (agendaItems.length === 0) {
@@ -57,7 +64,7 @@ const MeetingRow = React.memo(({ meeting, onEdit, onDownload }: { meeting: Meeti
         }
 
         return <Chip label="À rédiger" color="warning" size="small" variant="outlined" />;
-    }, [meeting.agendaItems]);
+    }, [meeting.agendaItems, meeting.approvalStatus]);
 
     // ⚡ Bolt: Memoize the disable logic (O(M*K)) which was previously calculated on every single render
     const isPdfDisabled = useMemo(() => {
