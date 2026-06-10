@@ -503,6 +503,7 @@ def send_approval_link(req: https_fn.CallableRequest) -> Any:
             "token": token,
             "meetingId": meeting_id,
             "memberId": member_id,
+            "email": email,
             "name": name,
             "role": role,
             "createdAt": datetime.now().isoformat(),
@@ -629,6 +630,92 @@ def send_approval_link(req: https_fn.CallableRequest) -> Any:
         return {"success": False, "error": str(e)}
 
 
+def sync_meeting_approval_status(meeting_id: str) -> None:
+    try:
+        db_client = firestore.client()
+        meeting_ref = db_client.collection("meetings").document(meeting_id)
+        meeting_snap = meeting_ref.get()
+        if not meeting_snap.exists:
+            print(f"[ApprovalSync] Meeting {meeting_id} not found during status sync.")
+            return
+
+        meeting_data = meeting_snap.to_dict()
+        meeting_type = meeting_data.get("type", "regular")
+        current_status = meeting_data.get("approvalStatus", "draft")
+
+        if current_status == "final":
+            return
+
+        # Fetch all approved tokens
+        tokens_ref = meeting_ref.collection("approval_tokens")
+        approved_tokens = [
+            doc.to_dict() for doc in tokens_ref.where("status", "==", "approved").stream()
+        ]
+
+        signatures = meeting_data.get("approvalSignatures", [])
+
+        # Check admin bypass
+        has_admin_bypass = any(s.get("role") == "admin_bypass" for s in signatures) or \
+                           any(t.get("role") == "admin_bypass" for t in approved_tokens)
+
+        if has_admin_bypass:
+            new_status = "approved"
+        elif meeting_type == "circular":
+            # Fetch active members
+            members_ref = db_client.collection("members")
+            active_members = [
+                doc.to_dict() for doc in members_ref.where("isActive", "==", True).stream()
+            ]
+            voting_members = [
+                m for m in active_members 
+                if m.get("role") in ["president", "vice_president", "member", "elected_official"]
+            ]
+
+            def get_member_signature(member_id, member_email):
+                # check direct signatures
+                for s in signatures:
+                    if s.get("signedBy") == member_id:
+                        return s
+                # check token approvals
+                for t in approved_tokens:
+                    if t.get("memberId") == member_id or (member_email and t.get("email") == member_email):
+                        return t
+                return None
+
+            total_voting = len(voting_members)
+            if total_voting == 0:
+                new_status = "draft"
+            else:
+                signed_count = sum(1 for m in voting_members if get_member_signature(m.get("id"), m.get("email")) is not None)
+                if signed_count == total_voting:
+                    new_status = "approved"
+                elif signed_count > 0:
+                    new_status = "waiting_approval"
+                else:
+                    new_status = "draft"
+        else:
+            # Regular/Special
+            has_president = any(s.get("role") in ["president", "vice_president"] for s in signatures) or \
+                            any(t.get("role") in ["president", "vice_president"] for t in approved_tokens)
+            has_elected = any(s.get("role") == "elected_official" for s in signatures) or \
+                          any(t.get("role") == "elected_official" for t in approved_tokens)
+            has_coordinator = any(s.get("role") == "coordinator" for s in signatures) or \
+                              any(t.get("role") == "coordinator" for t in approved_tokens)
+
+            if (has_president or has_elected) and has_coordinator:
+                new_status = "approved"
+            elif has_president or has_elected or has_coordinator:
+                new_status = "waiting_approval"
+            else:
+                new_status = "draft"
+
+        if current_status != new_status:
+            meeting_ref.update({"approvalStatus": new_status})
+            print(f"[ApprovalSync] Updated meeting {meeting_id} status to {new_status}")
+    except Exception as sync_error:
+        print(f"[ApprovalSync] Error during status sync for meeting {meeting_id}: {sync_error}")
+
+
 @https_fn.on_call()
 def send_approval_notification(req: https_fn.CallableRequest) -> Any:
     """
@@ -647,6 +734,9 @@ def send_approval_notification(req: https_fn.CallableRequest) -> Any:
         
         if not meeting_id or not comments:
             return {"success": False, "error": "Missing parameters"}
+        
+        # Recalculate and update parent meeting status in Firestore
+        sync_meeting_approval_status(meeting_id)
         
         # Get coordinator email from Firestore
         db = firestore.client()
