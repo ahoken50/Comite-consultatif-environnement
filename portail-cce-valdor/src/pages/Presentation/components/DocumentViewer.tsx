@@ -2,7 +2,6 @@ import React, { useRef, useEffect, useState } from 'react';
 import { Box, Typography, IconButton, Button, CircularProgress } from '@mui/material';
 import { FolderOpen, Close, Image as ImageIcon, PictureAsPdf, TableView, Web } from '@mui/icons-material';
 import type { Attachment } from '../types';
-import * as XLSX from 'xlsx';
 import { renderAsync } from 'docx-preview';
 import { PdfRenderer } from './PdfRenderer';
 import DOMPurify from 'dompurify';
@@ -118,6 +117,7 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
                 try {
                     const response = await fetch(activeAttachment.url);
                     const arrayBuffer = await response.arrayBuffer();
+                    const XLSX = await import('xlsx');
                     const workbook = XLSX.read(arrayBuffer, { type: 'array' });
                     const firstSheetName = workbook.SheetNames[0];
                     const worksheet = workbook.Sheets[firstSheetName];

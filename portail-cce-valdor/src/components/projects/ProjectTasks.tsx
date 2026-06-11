@@ -22,7 +22,7 @@ import type { RootState } from '../../store/rootReducer';
 import type { Project } from '../../types/project.types';
 import type { ProjectTask } from '../../types/task.types';
 import { fetchProjectTasks, addTask, updateTask, deleteTask } from '../../features/projects/projectsSlice';
-import { format } from 'date-fns';
+import { format, isValid } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
 interface ProjectTasksProps {
@@ -331,11 +331,11 @@ const ProjectTasks: React.FC<ProjectTasksProps> = ({ project, initialTaskContext
                                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mt: 0.5 }}>
                                                 <Typography variant="caption" color="text.secondary" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                                                     <CalendarToday fontSize="inherit" />
-                                                    Créé le {format(new Date(task.dateCreated), 'd MMM', { locale: fr })}
+                                                    Créé le {isValid(new Date(task.dateCreated)) ? format(new Date(task.dateCreated), 'd MMM', { locale: fr }) : 'Date inconnue'}
                                                 </Typography>
                                                 {task.dueDate && (
                                                     <Typography variant="caption" color={new Date(task.dueDate) < new Date() && task.status !== 'completed' ? 'error.main' : 'text.secondary'} sx={{ fontWeight: 'bold' }}>
-                                                        Échéance : {format(new Date(task.dueDate), 'd MMM', { locale: fr })}
+                                                        Échéance : {isValid(new Date(task.dueDate)) ? format(new Date(task.dueDate), 'd MMM', { locale: fr }) : 'Date inconnue'}
                                                     </Typography>
                                                 )}
                                                 {task.assigneeId && (

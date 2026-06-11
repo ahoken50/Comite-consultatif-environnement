@@ -107,18 +107,31 @@ const SectionConfigModal: React.FC<SectionConfigModalProps> = ({
             case 'stats':
                 return (
                     <Box>
-                        <Typography variant="subtitle2" gutterBottom>Métriques à inclure :</Typography>
+                        <FormControl fullWidth margin="normal">
+                            <InputLabel>Filtrer par Année</InputLabel>
+                            <Select
+                                value={config.year || 'all'}
+                                label="Filtrer par Année"
+                                onChange={(e) => setConfig({ ...config, year: e.target.value })}
+                            >
+                                <MenuItem value="all">Toutes les années</MenuItem>
+                                <MenuItem value={2023}>2023</MenuItem>
+                                <MenuItem value={2024}>2024</MenuItem>
+                                <MenuItem value={2025}>2025</MenuItem>
+                            </Select>
+                        </FormControl>
+                        <Typography variant="subtitle2" gutterBottom sx={{ mt: 2 }}>Métriques à inclure :</Typography>
                         <FormGroup>
                             <FormControlLabel
-                                control={<Checkbox defaultChecked onChange={(e) => setConfig({ ...config, showProjectCount: e.target.checked })} />}
+                                control={<Checkbox defaultChecked={config.showProjectCount !== false} onChange={(e) => setConfig({ ...config, showProjectCount: e.target.checked })} />}
                                 label="Nombre total de projets"
                             />
                             <FormControlLabel
-                                control={<Checkbox defaultChecked onChange={(e) => setConfig({ ...config, showMeetingCount: e.target.checked })} />}
+                                control={<Checkbox defaultChecked={config.showMeetingCount !== false} onChange={(e) => setConfig({ ...config, showMeetingCount: e.target.checked })} />}
                                 label="Nombre de réunions"
                             />
                             <FormControlLabel
-                                control={<Checkbox defaultChecked onChange={(e) => setConfig({ ...config, showResolutionCount: e.target.checked })} />}
+                                control={<Checkbox defaultChecked={config.showResolutionCount !== false} onChange={(e) => setConfig({ ...config, showResolutionCount: e.target.checked })} />}
                                 label="Nombre de résolutions"
                             />
                         </FormGroup>
@@ -141,16 +154,47 @@ const SectionConfigModal: React.FC<SectionConfigModalProps> = ({
                 );
             case 'recommendations':
                 return (
+                    <>
+                        <FormControl fullWidth margin="normal">
+                            <InputLabel>Filtrer par Année</InputLabel>
+                            <Select
+                                value={config.year || 'all'}
+                                label="Filtrer par Année"
+                                onChange={(e) => setConfig({ ...config, year: e.target.value })}
+                            >
+                                <MenuItem value="all">Toutes les années</MenuItem>
+                                <MenuItem value={2023}>2023</MenuItem>
+                                <MenuItem value={2024}>2024</MenuItem>
+                                <MenuItem value={2025}>2025</MenuItem>
+                            </Select>
+                        </FormControl>
+                        <FormControl fullWidth margin="normal">
+                            <InputLabel>Statut des recommandations</InputLabel>
+                            <Select
+                                value={config.statusFilter || 'all'}
+                                label="Statut des recommandations"
+                                onChange={(e) => setConfig({ ...config, statusFilter: e.target.value })}
+                            >
+                                <MenuItem value="all">Tous les statuts</MenuItem>
+                                <MenuItem value="accepted">Acceptées</MenuItem>
+                                <MenuItem value="pending">En attente</MenuItem>
+                            </Select>
+                        </FormControl>
+                    </>
+                );
+            case 'members':
+                return (
                     <FormControl fullWidth margin="normal">
-                        <InputLabel>Statut des recommandations</InputLabel>
+                        <InputLabel>Filtrer par Année</InputLabel>
                         <Select
-                            value={config.statusFilter || 'all'}
-                            label="Statut des recommandations"
-                            onChange={(e) => setConfig({ ...config, statusFilter: e.target.value })}
+                            value={config.year || 'all'}
+                            label="Filtrer par Année"
+                            onChange={(e) => setConfig({ ...config, year: e.target.value })}
                         >
-                            <MenuItem value="all">Touts les statuts</MenuItem>
-                            <MenuItem value="accepted">Acceptées</MenuItem>
-                            <MenuItem value="pending">En attente</MenuItem>
+                            <MenuItem value="all">Toutes les années</MenuItem>
+                            <MenuItem value={2023}>2023</MenuItem>
+                            <MenuItem value={2024}>2024</MenuItem>
+                            <MenuItem value={2025}>2025</MenuItem>
                         </Select>
                     </FormControl>
                 );

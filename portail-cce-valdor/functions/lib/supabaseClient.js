@@ -1,66 +1,26 @@
-import { createClient } from '@supabase/supabase-js';
-import { defineString, defineSecret } from 'firebase-functions/params';
-
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.deleteFromIndex = exports.indexRegulation = exports.indexProject = exports.indexMeeting = exports.supabaseKeyParam = void 0;
+const supabase_js_1 = require("@supabase/supabase-js");
+const params_1 = require("firebase-functions/params");
 // Define configuration parameters
-const supabaseUrlParam = defineString('SUPABASE_URL');
+const supabaseUrlParam = (0, params_1.defineString)('SUPABASE_URL');
 // Export the secret so it can be used in function triggers
-export const supabaseKeyParam = defineSecret('SUPABASE_SERVICE_ROLE_KEY');
-
+exports.supabaseKeyParam = (0, params_1.defineSecret)('SUPABASE_SERVICE_ROLE_KEY');
 // Initialize Supabase Client lazily or on demand
 // We use a helper to get the client ensures we capture the latest config values
 const getSupabase = () => {
     const supabaseUrl = supabaseUrlParam.value();
-    const supabaseKey = supabaseKeyParam.value();
-
+    const supabaseKey = exports.supabaseKeyParam.value();
     if (!supabaseUrl || !supabaseKey) {
         console.error("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY");
         console.error(`URL: ${supabaseUrl ? 'Set' : 'Missing'}, Key: ${supabaseKey ? 'Set' : 'Missing'}`);
         throw new Error("Supabase configuration missing");
     }
-
-    return createClient(supabaseUrl, supabaseKey);
+    return (0, supabase_js_1.createClient)(supabaseUrl, supabaseKey);
 };
-
-// Interfaces matching the SQL tables
-export interface SearchableMeeting {
-    id: string;
-    title: string;
-    date: string;
-    dateTimestamp: number;
-    type: string;
-    status: string;
-    minutes: string; // Full content
-    agendaItemTitles: string[];
-    resolutions: string[];
-    attendeeNames: string[];
-    embedding?: number[];
-}
-
-export interface SearchableProject {
-    id: string;
-    code: string;
-    name: string;
-    description: string;
-    category: string;
-    status: string;
-    priority: string;
-    notes: string;
-    embedding?: number[];
-}
-
-export interface SearchableRegulation {
-    id: string;
-    title: string;
-    content: string;
-    category: string;
-    year: number;
-    status: string;
-    embedding?: number[];
-}
-
 // Indexing Functions
-
-export const indexMeeting = async (meeting: SearchableMeeting) => {
+const indexMeeting = async (meeting) => {
     try {
         const supabase = getSupabase();
         // Map camelCase (TS) to snake_case (SQL) if needed, or just insert as is if columns match
@@ -78,21 +38,21 @@ export const indexMeeting = async (meeting: SearchableMeeting) => {
             attendee_names: meeting.attendeeNames,
             embedding: meeting.embedding
         };
-
         const { error } = await supabase.from('meetings').upsert(row);
         if (error) {
             console.error(`[Supabase Error] Upsert failed for meeting ${meeting.id}:`, JSON.stringify(error));
             throw error;
         }
         console.log(`[Supabase] Successfully indexed meeting ${meeting.id}`);
-    } catch (error) {
+    }
+    catch (error) {
         console.error(`[Supabase] Critical failure in logical indexMeeting for ${meeting.id}`, error);
         // Rethrow so Cloud Functions knows it failed
         throw error;
     }
 };
-
-export const indexProject = async (project: SearchableProject) => {
+exports.indexMeeting = indexMeeting;
+const indexProject = async (project) => {
     try {
         const supabase = getSupabase();
         const row = {
@@ -106,16 +66,17 @@ export const indexProject = async (project: SearchableProject) => {
             notes: project.notes,
             embedding: project.embedding
         };
-
         const { error } = await supabase.from('projects').upsert(row);
-        if (error) throw error;
+        if (error)
+            throw error;
         console.log(`[Supabase] Indexed project ${project.id}`);
-    } catch (error) {
+    }
+    catch (error) {
         console.error(`[Supabase] Failed to index project ${project.id}`, error);
     }
 };
-
-export const indexRegulation = async (regulation: SearchableRegulation) => {
+exports.indexProject = indexProject;
+const indexRegulation = async (regulation) => {
     try {
         const supabase = getSupabase();
         const row = {
@@ -127,28 +88,34 @@ export const indexRegulation = async (regulation: SearchableRegulation) => {
             status: regulation.status,
             embedding: regulation.embedding
         };
-
         const { error } = await supabase.from('regulations').upsert(row);
-        if (error) throw error;
+        if (error)
+            throw error;
         console.log(`[Supabase] Indexed regulation ${regulation.id}`);
-    } catch (error) {
+    }
+    catch (error) {
         console.error(`[Supabase] Failed to index regulation ${regulation.id}`, error);
     }
 };
-
-export const deleteFromIndex = async (table: 'meetings' | 'projects' | 'regulations', id: string) => {
+exports.indexRegulation = indexRegulation;
+const deleteFromIndex = async (table, id) => {
     try {
         const supabase = getSupabase();
         let query = supabase.from(table).delete();
         if (table === 'regulations') {
             query = query.like('id', `${id}%`);
-        } else {
+        }
+        else {
             query = query.eq('id', id);
         }
         const { error } = await query;
-        if (error) throw error;
+        if (error)
+            throw error;
         console.log(`[Supabase] Deleted ${id} from ${table}`);
-    } catch (error) {
+    }
+    catch (error) {
         console.error(`[Supabase] Failed to delete ${id} from ${table}`, error);
     }
 };
+exports.deleteFromIndex = deleteFromIndex;
+//# sourceMappingURL=supabaseClient.js.map

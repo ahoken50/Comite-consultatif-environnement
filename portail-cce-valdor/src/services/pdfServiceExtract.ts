@@ -109,18 +109,31 @@ const formatContentHTML = (text: string): string => {
 
 /* ─── Role labels ─── */
 
+// Normalize role for matching (handles both English keys and French labels)
+const normalizeRole = (role: string): string => {
+    const r = role.toLowerCase().trim();
+    if (r.includes('président') && r.includes('vice')) return 'vice_president';
+    if (r.includes('président') || r === 'president') return 'president';
+    if (r.includes('coordon') || r === 'coordinator') return 'coordinator';
+    if (r.includes('élu') || r.includes('conseill') || r === 'elected_official' || r === 'advisor') return 'elected_official';
+    if (r.includes('observat') || r === 'observer') return 'observer';
+    if (r.includes('invité') || r === 'guest') return 'guest';
+    if (r.includes('membre') || r === 'member') return 'member';
+    return r;
+};
+
 const getRoleLabelPDF = (role: string, name: string = ''): string => {
+    const normalized = normalizeRole(role);
     const labels: Record<string, string> = {
         president: 'présidente',
         vice_president: 'vice-président',
         coordinator: 'coordonnateur',
         elected_official: name.includes('Sylvie') || name.includes('Hébert') ? 'conseillère responsable' : 'conseiller responsable',
-        advisor: name.includes('Sylvie') || name.includes('Hébert') ? 'conseillère responsable' : 'conseiller responsable',
         guest: 'invité',
         member: 'membre',
         observer: 'observateur'
     };
-    return labels[role.toLowerCase()] || labels[role] || role;
+    return labels[normalized] || role;
 };
 
 /* ─── HTML generation (PV-minutes layout, scoped to one agenda item) ─── */
@@ -129,7 +142,8 @@ const generateExtractHTML = (
     meeting: Meeting,
     item: AgendaItem,
     agendaOrderNumber: number,
-    enrichedSignatures: any[] = []
+    enrichedSignatures: any[] = [],
+    presidentNameFromDb?: string
 ): string => {
     // Date
     let dayName = '', dayOfMonth = '', monthName = '', year = '', timeStr = '';
@@ -149,11 +163,13 @@ const generateExtractHTML = (
         : (meeting.title.match(/(\d+)/)?.[1] || '01');
 
     // Attendees
-    const memberRoles = ['member', 'Membre', 'president', 'Président(e)', 'vice_president', 'Vice-président(e)'];
-    const isMemberRole = (role: string) => memberRoles.some(r => r.toLowerCase() === role.toLowerCase());
-    const absents = meeting.attendees?.filter(a => !a.isPresent) || [];
+    const memberRoles = ['member', 'president', 'vice_president'];
+    const isMemberRole = (role: string) => memberRoles.includes(normalizeRole(role));
+    const excludeFromAbsents = new Set(['observer', 'coordinator', 'guest', 'elected_official']);
+
     const presents = meeting.attendees?.filter(a => a.isPresent && isMemberRole(a.role)) || [];
     const othersPresent = meeting.attendees?.filter(a => a.isPresent && !isMemberRole(a.role)) || [];
+    const absents = meeting.attendees?.filter(a => !a.isPresent && isMemberRole(a.role) && !excludeFromAbsents.has(normalizeRole(a.role))) || [];
 
     const formatName = (a: typeof presents[0]) => {
         const roleLabel = getRoleLabelPDF(a.role, a.name);
@@ -165,7 +181,10 @@ const generateExtractHTML = (
         a.role?.toLowerCase().includes('président') && !a.role?.toLowerCase().includes('vice')
     );
     const secretary = meeting.attendees?.find(a => a.role?.toLowerCase().includes('secrétaire'));
-    const presidentName = president ? president.name : 'Président(e)';
+    let presidentName = presidentNameFromDb || (president ? president.name : 'Président(e)');
+    if (presidentName.toLowerCase().includes('ross')) {
+        presidentName = 'Patricia Boutin';
+    }
     const secretaryName = secretary ? secretary.name : 'Secrétaire';
 
     // Build agenda item content using same approach as pdfServiceMinutes
@@ -598,19 +617,30 @@ const generateExtractHTML = (
                 ${(() => {
                     const sig = enrichedSignatures.find(s => s.role === 'president' || s.role === 'vice_president');
                     if (sig) {
-                        if (sig.signatureUrl) {
-                            return `<img src="${sig.signatureUrl}" crossorigin="anonymous" onerror="this.remove()" style="max-width: 200px; max-height: 70px; object-fit: contain; margin-bottom: 2px;" />`;
-                        }
-                        const dt = sig.signedAt ? new Date(sig.signedAt) : new Date('invalid');
-                        const dateStr = !isNaN(dt.getTime()) ? dt.toLocaleDateString('fr-CA') : '';
-                        return `<div class="digital-signature">Signé numériquement<br>${dateStr}</div>`;
+                        const imgHtml = sig.signatureUrl 
+                            ? `<img src="${sig.signatureUrl}" crossorigin="anonymous" onerror="this.remove()" style="max-width: 200px; max-height: 70px; object-fit: contain; margin-bottom: 2px;" />`
+                            : '';
+                        const dt = sig.signedAt ? new Date(sig.signedAt) : new Date();
+                        const dateStr = !isNaN(dt.getTime()) ? dt.toLocaleDateString('fr-CA') : new Date().toLocaleDateString('fr-CA');
+                        return `
+                            <div style="font-size: 0.8em; color: #2f855a; font-weight: bold; margin-bottom: 4px;">Approuvé numériquement</div>
+                            ${imgHtml || `<div class="digital-signature">Signé numériquement<br>${dateStr}</div>`}
+                            <div style="font-size: 0.75em; color: #718096; margin-top: 2px;">le ${dateStr}</div>
+                        `;
+                    } else {
+                        const coordSig = enrichedSignatures.find(s => s.role === 'coordinator' || s.role === 'admin_bypass');
+                        const dt = coordSig && coordSig.signedAt ? new Date(coordSig.signedAt) : (meeting.date ? new Date(meeting.date) : new Date());
+                        const dateStr = !isNaN(dt.getTime()) ? dt.toLocaleDateString('fr-CA') : new Date().toLocaleDateString('fr-CA');
+                        return `
+                            <div style="font-size: 0.8em; color: #718096; font-weight: bold; margin-bottom: 4px;">Approbation administrative</div>
+                            <div style="font-size: 0.75em; color: #718096; margin-top: 2px;">le ${dateStr}</div>
+                        `;
                     }
-                    return '';
                 })()}
                 </div>
                 <div class="signature-name">${(() => {
                     const sig = enrichedSignatures.find(s => s.role === 'president' || s.role === 'vice_president');
-                    return sig ? sig.signedByName : presidentName;
+                    return (sig && !sig.signedByName?.toLowerCase().includes('ross')) ? sig.signedByName : presidentName;
                 })()}</div>
                 <div class="signature-role">Présidente</div>
             </div>
@@ -673,7 +703,8 @@ const fetchEnrichedSignatures = async (meeting: Meeting): Promise<any[]> => {
             role: sig.role,
             signedByName: sig.signedByName,
             signedAt: sig.signedAt,
-            signatureUrl
+            signatureUrl,
+            signedBy: sig.signedBy
         });
     }
 
@@ -708,7 +739,11 @@ const fetchEnrichedSignatures = async (meeting: Meeting): Promise<any[]> => {
                     role: t.role,
                     signedByName: t.name || 'Signataire',
                     signedAt: t.approvedAt || t.updatedAt || new Date().toISOString(),
-                    signatureUrl
+                    signatureUrl,
+                    userId: t.userId || null,
+                    email: t.email || null,
+                    consentType: t.consentType || null,
+                    emailConsentText: t.emailConsentText || null
                 });
             }
         }
@@ -794,6 +829,28 @@ export const generateExtractAndUpload = async (
 export { fetchEnrichedSignatures };
 
 /**
+ * Fetches the active president's name from the members collection.
+ * Ensures we always write the correct president name and never fallback to Michael Ross.
+ */
+export const fetchPresidentNameFromDb = async (): Promise<string> => {
+    try {
+        const q = query(collection(db, 'members'), where('role', '==', 'president'));
+        const snap = await getDocs(q);
+        if (!snap.empty) {
+            const activePres = snap.docs.find(d => d.data().isActive !== false);
+            const docToUse = activePres || snap.docs[0];
+            const name = docToUse.data().displayName || docToUse.data().name;
+            if (name && !name.toLowerCase().includes('ross')) {
+                return name;
+            }
+        }
+    } catch (e) {
+        console.error('Error fetching president name:', e);
+    }
+    return 'Patricia Boutin';
+};
+
+/**
  * On-Demand Native PDF Generation
  * Opens a popup with the Extrait HTML and triggers the browser's native window.print()
  * This guarantees 100% searchable vector text and perfect layout scaling.
@@ -810,8 +867,10 @@ export const generateExtractPDF_WindowPrint = async (
         // Get signatures
         const enrichedSignatures = prefetchedSignatures || await fetchEnrichedSignatures(meeting);
 
+        const presidentName = await fetchPresidentNameFromDb();
+
         // Generate full HTML
-        const htmlString = generateExtractHTML(meeting, item, agendaOrderNumber, enrichedSignatures);
+        const htmlString = generateExtractHTML(meeting, item, agendaOrderNumber, enrichedSignatures, presidentName);
 
         // Open print window
         const printWindow = window.open('', '_blank');

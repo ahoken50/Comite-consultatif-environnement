@@ -385,6 +385,7 @@ def enhance_prompt_with_rlhf(
     base_prompt: str,
     db_client: Any,
     step: str = "drafting",
+    meeting_id: str = None,
 ) -> str:
     """
     Enhance a base prompt with RLHF-learned preferences and policy parameters.
@@ -392,6 +393,42 @@ def enhance_prompt_with_rlhf(
     This is the key integration point — it injects learned knowledge into
     the generation prompts so the AI improves over time.
     """
+    if step == "drafting":
+        try:
+            print(f"[RLHF] step is 'drafting' -> compiling with DSPy prompt compiler. meeting_id: {meeting_id}")
+            import dspy_compiler
+            
+            # Fetch current themes from meeting if available
+            current_themes = []
+            if meeting_id and db_client:
+                try:
+                    m_doc = db_client.collection("meetings").document(meeting_id).get()
+                    if m_doc.exists:
+                        m_data = m_doc.to_dict()
+                        # Extract themes from classification
+                        if "classification" in m_data:
+                            current_themes = [
+                                item.get("theme", "") 
+                                for item in m_data["classification"].get("items", [])
+                                if item.get("theme")
+                            ]
+                        # Fallback to agenda titles
+                        if not current_themes and "agendaItems" in m_data:
+                            current_themes = [
+                                item.get("title", "")
+                                for item in m_data.get("agendaItems", [])
+                                if item.get("title")
+                            ]
+                except Exception as e_themes:
+                    print(f"[RLHF] Warning: Could not extract themes for few-shot selection: {e_themes}")
+            
+            # Compile prompt using DSPy compiler
+            compiled = dspy_compiler.compile_dspy_prompt(db_client, base_prompt, current_themes)
+            return compiled
+        except Exception as e:
+            print(f"[RLHF] Error in DSPy prompt compilation: {e}. Falling back to standard RLHF enhancement.")
+            # Fall through to standard enhancement
+            
     policy = get_current_policy(db_client)
     preferences = get_learned_preferences(db_client)
     

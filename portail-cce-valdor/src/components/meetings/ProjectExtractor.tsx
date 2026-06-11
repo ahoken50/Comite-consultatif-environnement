@@ -13,9 +13,14 @@ import {
     CircularProgress,
     Alert,
     Divider,
-    Paper
+    Paper,
+    TextField,
+    Select,
+    MenuItem,
+    FormControl,
+    InputLabel
 } from '@mui/material';
-import { AutoAwesome, CheckCircle } from '@mui/icons-material';
+import { AutoAwesome, CheckCircle, Edit } from '@mui/icons-material';
 import { useDispatch } from 'react-redux';
 import type { AppDispatch } from '../../store/store';
 import type { Meeting } from '../../types/meeting.types';
@@ -58,6 +63,15 @@ const ProjectExtractor: React.FC<ProjectExtractorProps> = ({ meeting, onComplete
     const [selectedProjects, setSelectedProjects] = useState<Set<number>>(new Set());
     const [isCreating, setIsCreating] = useState(false);
     const [createdCount, setCreatedCount] = useState(0);
+    const [editingIndex, setEditingIndex] = useState<number | null>(null);
+
+    const handleUpdateProject = (index: number, updatedFields: Partial<SuggestedProject>) => {
+        setSuggestedProjects(prev => {
+            const newProjects = [...prev];
+            newProjects[index] = { ...newProjects[index], ...updatedFields };
+            return newProjects;
+        });
+    };
 
     const handleExtract = async () => {
         setIsLoading(true);
@@ -65,6 +79,7 @@ const ProjectExtractor: React.FC<ProjectExtractorProps> = ({ meeting, onComplete
         setIsDialogOpen(true);
         setSuggestedProjects([]);
         setSelectedProjects(new Set());
+        setEditingIndex(null);
 
         try {
             const projects = await aiService.extractProjects(meeting);
@@ -230,55 +245,150 @@ const ProjectExtractor: React.FC<ProjectExtractorProps> = ({ meeting, onComplete
                                         borderColor: selectedProjects.has(index) ? 'primary.main' : 'divider'
                                     }}
                                 >
-                                    <FormControlLabel
-                                        control={
-                                            <Checkbox
-                                                checked={selectedProjects.has(index)}
-                                                onChange={() => handleToggleProject(index)}
-                                            />
-                                        }
-                                        label={
-                                            <Typography variant="subtitle1" fontWeight="bold">
-                                                {project.name}
-                                            </Typography>
-                                        }
-                                    />
-
-                                    <Box sx={{ ml: 4, mt: 1 }}>
-                                        <Box sx={{ display: 'flex', gap: 1, mb: 1 }}>
-                                            <Chip
-                                                label={CATEGORY_LABELS[project.category] || project.category}
+                                    {editingIndex === index ? (
+                                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                                            <TextField
+                                                label="Nom du projet"
+                                                value={project.name}
+                                                onChange={(e) => handleUpdateProject(index, { name: e.target.value })}
+                                                fullWidth
                                                 size="small"
-                                                color="primary"
-                                                variant="outlined"
                                             />
-                                            <Chip
-                                                label={PRIORITY_LABELS[project.priority]?.label || project.priority}
+                                            <Box sx={{ display: 'flex', gap: 2 }}>
+                                                <FormControl size="small" fullWidth>
+                                                    <InputLabel>Catégorie</InputLabel>
+                                                    <Select
+                                                        value={project.category}
+                                                        label="Catégorie"
+                                                        onChange={(e) => handleUpdateProject(index, { category: e.target.value })}
+                                                    >
+                                                        {Object.entries(CATEGORY_LABELS).map(([value, label]) => (
+                                                            <MenuItem key={value} value={value}>{label}</MenuItem>
+                                                        ))}
+                                                    </Select>
+                                                </FormControl>
+                                                <FormControl size="small" fullWidth>
+                                                    <InputLabel>Priorité</InputLabel>
+                                                    <Select
+                                                        value={project.priority}
+                                                        label="Priorité"
+                                                        onChange={(e) => handleUpdateProject(index, { priority: e.target.value as any })}
+                                                    >
+                                                        {Object.entries(PRIORITY_LABELS).map(([value, { label }]) => (
+                                                            <MenuItem key={value} value={value}>{label}</MenuItem>
+                                                        ))}
+                                                    </Select>
+                                                </FormControl>
+                                            </Box>
+                                            <TextField
+                                                label="Description"
+                                                value={project.description}
+                                                onChange={(e) => handleUpdateProject(index, { description: e.target.value })}
+                                                fullWidth
+                                                multiline
+                                                rows={3}
                                                 size="small"
-                                                color={PRIORITY_LABELS[project.priority]?.color || 'default'}
                                             />
-                                            {project.isUrgent && (
-                                                <Chip label="URGENT" size="small" color="error" />
-                                            )}
-                                            {project.sourceResolution && (
-                                                <Chip
-                                                    label={project.sourceResolution}
+                                            <TextField
+                                                label="Prochaines étapes"
+                                                value={project.nextSteps || ''}
+                                                onChange={(e) => handleUpdateProject(index, { nextSteps: e.target.value })}
+                                                fullWidth
+                                                multiline
+                                                rows={2}
+                                                size="small"
+                                            />
+                                            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 2 }}>
+                                                <TextField
+                                                    label="Résolution Source"
+                                                    value={project.sourceResolution || ''}
+                                                    onChange={(e) => handleUpdateProject(index, { sourceResolution: e.target.value })}
                                                     size="small"
-                                                    variant="outlined"
+                                                    sx={{ width: '200px' }}
                                                 />
-                                            )}
+                                                <FormControlLabel
+                                                    control={
+                                                        <Checkbox
+                                                            checked={!!project.isUrgent}
+                                                            onChange={(e) => handleUpdateProject(index, { isUrgent: e.target.checked })}
+                                                        />
+                                                    }
+                                                    label="Urgent"
+                                                />
+                                                <Button
+                                                    variant="contained"
+                                                    color="success"
+                                                    size="small"
+                                                    startIcon={<CheckCircle />}
+                                                    onClick={() => setEditingIndex(null)}
+                                                >
+                                                    Enregistrer
+                                                </Button>
+                                            </Box>
                                         </Box>
+                                    ) : (
+                                        <>
+                                            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                                <FormControlLabel
+                                                    control={
+                                                        <Checkbox
+                                                            checked={selectedProjects.has(index)}
+                                                            onChange={() => handleToggleProject(index)}
+                                                        />
+                                                    }
+                                                    label={
+                                                        <Typography variant="subtitle1" fontWeight="bold">
+                                                            {project.name}
+                                                        </Typography>
+                                                    }
+                                                />
+                                                <Button
+                                                    size="small"
+                                                    startIcon={<Edit />}
+                                                    onClick={() => setEditingIndex(index)}
+                                                    sx={{ mt: 0.5 }}
+                                                >
+                                                    Modifier
+                                                </Button>
+                                            </Box>
 
-                                        <Typography variant="body2" color="text.secondary" paragraph>
-                                            {project.description}
-                                        </Typography>
+                                            <Box sx={{ ml: 4, mt: 1 }}>
+                                                <Box sx={{ display: 'flex', gap: 1, mb: 1 }}>
+                                                    <Chip
+                                                        label={CATEGORY_LABELS[project.category] || project.category}
+                                                        size="small"
+                                                        color="primary"
+                                                        variant="outlined"
+                                                    />
+                                                    <Chip
+                                                        label={PRIORITY_LABELS[project.priority]?.label || project.priority}
+                                                        size="small"
+                                                        color={PRIORITY_LABELS[project.priority]?.color || 'default'}
+                                                    />
+                                                    {project.isUrgent && (
+                                                        <Chip label="URGENT" size="small" color="error" />
+                                                    )}
+                                                    {project.sourceResolution && (
+                                                        <Chip
+                                                            label={project.sourceResolution}
+                                                            size="small"
+                                                            variant="outlined"
+                                                        />
+                                                    )}
+                                                </Box>
 
-                                        {project.nextSteps && (
-                                            <Typography variant="caption" color="text.secondary">
-                                                <strong>Prochaines étapes:</strong> {project.nextSteps}
-                                            </Typography>
-                                        )}
-                                    </Box>
+                                                <Typography variant="body2" color="text.secondary" paragraph>
+                                                    {project.description}
+                                                </Typography>
+
+                                                {project.nextSteps && (
+                                                    <Typography variant="caption" color="text.secondary">
+                                                        <strong>Prochaines étapes:</strong> {project.nextSteps}
+                                                    </Typography>
+                                                )}
+                                            </Box>
+                                        </>
+                                    )}
                                 </Paper>
                             ))}
                         </>
@@ -287,7 +397,10 @@ const ProjectExtractor: React.FC<ProjectExtractorProps> = ({ meeting, onComplete
 
                 <DialogActions>
                     <Button
-                        onClick={() => setIsDialogOpen(false)}
+                        onClick={() => {
+                            setIsDialogOpen(false);
+                            setEditingIndex(null);
+                        }}
                         disabled={isLoading || isCreating}
                     >
                         Fermer

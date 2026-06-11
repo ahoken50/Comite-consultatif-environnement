@@ -30,6 +30,7 @@ import {
 } from '@mui/icons-material';
 import { collection, query, orderBy, onSnapshot, doc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '../../services/firebase';
+import { syncMeetingApprovalStatus } from '../../services/meetingApprovalService';
 
 interface ApprovalToken {
     id: string;
@@ -65,6 +66,7 @@ const ApprovalRequestsPanel: React.FC<ApprovalRequestsPanelProps> = ({ meetingId
                 comments: '',
                 updatedAt: new Date().toISOString()
             });
+            await syncMeetingApprovalStatus(meetingId);
         } catch (err) {
             console.error('Error resetting approval:', err);
             alert('Erreur lors de la reinitialisation');
@@ -82,6 +84,7 @@ const ApprovalRequestsPanel: React.FC<ApprovalRequestsPanelProps> = ({ meetingId
                 status: 'approved',
                 approvedAt: new Date().toISOString()
             });
+            await syncMeetingApprovalStatus(meetingId);
         } catch (err) {
             console.error('Error accepting changes:', err);
             alert('Erreur lors de l\'acceptation');
@@ -97,6 +100,7 @@ const ApprovalRequestsPanel: React.FC<ApprovalRequestsPanelProps> = ({ meetingId
             setActionLoading(approvalId);
             const approvalRef = doc(db, 'meetings', meetingId, 'approval_tokens', approvalId);
             await deleteDoc(approvalRef);
+            await syncMeetingApprovalStatus(meetingId);
         } catch (err) {
             console.error('Error deleting approval:', err);
             alert('Erreur lors de la suppression');

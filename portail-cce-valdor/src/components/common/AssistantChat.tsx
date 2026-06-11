@@ -99,7 +99,7 @@ const AssistantChat: React.FC = () => {
                 console.warn("Supabase RAG search failed inside AssistantChat:", err);
             }
 
-            const model = getGenerativeModel(vertexAI, { model: 'gemini-2.0-flash' });
+            const model = getGenerativeModel(vertexAI, { model: 'gemini-2.5-flash' });
 
             // Prepare Context
             const contextData = {

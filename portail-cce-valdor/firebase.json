@@ -48,6 +48,10 @@
                 "function": "backup_firestore_to_storage"
             },
             {
+                "source": "/api/reevaluate_speaker_segments",
+                "function": "reevaluate_speaker_segments"
+            },
+            {
                 "source": "**",
                 "destination": "/index.html"
             }

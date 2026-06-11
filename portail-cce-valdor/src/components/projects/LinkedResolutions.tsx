@@ -40,8 +40,18 @@ import type { RootState } from '../../store/rootReducer';
 import type { Project, LinkedResolution } from '../../types/project.types';
 import { linkResolutionToProject, unlinkResolutionFromProject } from '../../features/projects/projectsSlice';
 import { fetchMeetings } from '../../features/meetings/meetingsSlice';
-import { format } from 'date-fns';
+import { format, isValid } from 'date-fns';
 import { fr } from 'date-fns/locale';
+
+/**
+ * Safely format a date string without throwing RangeError for invalid dates.
+ */
+const safeFormatDate = (dateInput: string | Date | undefined | null, fmt: string): string => {
+    if (!dateInput) return 'Date inconnue';
+    const d = dateInput instanceof Date ? dateInput : new Date(dateInput);
+    if (!isValid(d)) return 'Date inconnue';
+    return format(d, fmt, { locale: fr });
+};
 import { useNavigate } from 'react-router-dom';
 
 interface LinkedResolutionsProps {
@@ -299,7 +309,7 @@ const LinkedResolutions: React.FC<LinkedResolutionsProps> = ({ project }) => {
                                             </Typography>
                                             <Chip
                                                 icon={<Event />}
-                                                label={format(new Date(resolution.meetingDate), 'd MMM yyyy', { locale: fr })}
+                                                label={safeFormatDate(resolution.meetingDate, 'd MMM yyyy')}
                                                 size="small"
                                                 variant="outlined"
                                             />
@@ -365,7 +375,7 @@ const LinkedResolutions: React.FC<LinkedResolutionsProps> = ({ project }) => {
                                     📅 {resolutionDetails.meeting.title}
                                 </Typography>
                                 <Typography variant="body2" color="text.secondary">
-                                    {format(new Date(resolutionDetails.meeting.date), 'd MMMM yyyy', { locale: fr })}
+                                    {safeFormatDate(resolutionDetails.meeting.date, 'd MMMM yyyy')}
                                 </Typography>
                             </Paper>
 
@@ -501,7 +511,7 @@ const LinkedResolutions: React.FC<LinkedResolutionsProps> = ({ project }) => {
                             >
                                 {pastMeetingsWithMinutes.map(meeting => (
                                     <MenuItem key={meeting.id} value={meeting.id}>
-                                        {meeting.title} - {format(new Date(meeting.date), 'd MMMM yyyy', { locale: fr })}
+                                        {meeting.title} - {safeFormatDate(meeting.date, 'd MMMM yyyy')}
                                     </MenuItem>
                                 ))}
                             </Select>

@@ -1,4 +1,3 @@
-import mammoth from 'mammoth';
 import TurndownService from 'turndown';
 import { type AgendaItem, type MinuteEntry, type Attendee } from '../types/meeting.types';
 import { isGroqConfigured, parsePVWithGroq } from './groqService';
@@ -16,7 +15,8 @@ interface ParsedMeetingData {
 
 export const parseAgendaDOCX = async (file: File): Promise<ParsedMeetingData> => {
     const arrayBuffer = await file.arrayBuffer();
-    const result = await mammoth.convertToHtml({ arrayBuffer });
+    const mammoth = await import('mammoth');
+    const result = await mammoth.default.convertToHtml({ arrayBuffer });
     const html = result.value;
 
     if (result.messages.length > 0) {
@@ -625,7 +625,8 @@ export const parseAgendaDOCX = async (file: File): Promise<ParsedMeetingData> =>
 export const extractTextFromDOCX = async (file: File): Promise<string> => {
     try {
         const arrayBuffer = await file.arrayBuffer();
-        const result = await mammoth.extractRawText({ arrayBuffer });
+        const mammoth = await import('mammoth');
+        const result = await mammoth.default.extractRawText({ arrayBuffer });
 
         if (result.messages.length > 0) {
             console.warn('[docxParser] Mammoth warnings:', result.messages);
@@ -786,7 +787,8 @@ export const parseAgendaDOCXWithAI = async (
     const arrayBuffer = await file.arrayBuffer();
 
     // 1. Convert DOCX -> HTML (preserves formatting like bold, tables)
-    const htmlResult = await mammoth.convertToHtml({ arrayBuffer });
+    const mammothModule = await import('mammoth');
+    const htmlResult = await mammothModule.default.convertToHtml({ arrayBuffer });
     const html = htmlResult.value;
 
     if (htmlResult.messages.length > 0) {

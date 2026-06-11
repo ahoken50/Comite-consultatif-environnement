@@ -25,6 +25,7 @@ import { fetchMembers } from '../../features/members/membersSlice';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { db } from '../../services/firebase';
 import { generateExtractAndUpload, fetchEnrichedSignatures } from '../../services/pdfServiceExtract';
+import { calculateApprovalStatus } from '../../services/meetingApprovalService';
 
 interface CircularApprovalFlowProps {
     meeting: Meeting;
@@ -459,6 +460,13 @@ const CircularApprovalFlow: React.FC<CircularApprovalFlowProps> = ({ meeting, cu
  */
 const MeetingApprovalCard: React.FC<MeetingApprovalCardProps> = ({ meeting, currentUser, onApprove }) => {
     const dispatch = useDispatch<AppDispatch>();
+    const { items: members } = useSelector((state: RootState) => state.members);
+
+    useEffect(() => {
+        if (meeting.type !== 'circular' && members.length === 0) {
+            dispatch(fetchMembers());
+        }
+    }, [dispatch, members.length, meeting.type]);
 
     if (meeting.type === 'circular') {
         return (
@@ -491,6 +499,29 @@ const MeetingApprovalCard: React.FC<MeetingApprovalCardProps> = ({ meeting, curr
         });
         return () => unsubscribe();
     }, [meeting.id]);
+
+    useEffect(() => {
+        if (!meeting.id || meeting.approvalStatus === 'final' || !currentUser) return;
+        const isCoordinator = currentUser.role === 'coordinator';
+        if (!isCoordinator) return;
+
+        const computedStatus = calculateApprovalStatus(
+            meeting.type || 'regular',
+            meeting.approvalSignatures || [],
+            approvedTokens,
+            members
+        );
+
+        if (meeting.approvalStatus !== computedStatus) {
+            console.log(`Auto-syncing parent meeting approvalStatus to: ${computedStatus}`);
+            dispatch(updateMeeting({
+                id: meeting.id,
+                updates: {
+                    approvalStatus: computedStatus
+                }
+            }));
+        }
+    }, [meeting.id, meeting.approvalStatus, meeting.approvalSignatures, approvedTokens, members, currentUser, dispatch]);
 
     const signatures = meeting.approvalSignatures || [];
     const hasPresidentSigned = signatures.some(s => s.role === 'president' || (s.role as string) === 'vice_president') || approvedTokens.some(t => t.role === 'president' || t.role === 'vice_president');

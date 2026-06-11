@@ -77,10 +77,15 @@ def get_enrolled_speakers() -> list:
                         if name not in speaker_embeddings:
                             speaker_embeddings[name] = {
                                 "embeddings": [],
+                                "embeddings_meta": [],
                                 "speaker_id": row.get("speaker_id"),
                                 "sample_sources": set()
                             }
                         speaker_embeddings[name]["embeddings"].append(embedding)
+                        speaker_embeddings[name]["embeddings_meta"].append({
+                            "vector": embedding,
+                            "source": row.get("sample_source")
+                        })
                         speaker_embeddings[name]["sample_sources"].add(row.get("sample_source"))
                 
                 # Construire la liste des speakers
@@ -89,6 +94,7 @@ def get_enrolled_speakers() -> list:
                         "id": data.get("speaker_id", name),
                         "name": name,
                         "embedding": data["embeddings"],  # Liste de vecteurs
+                        "embeddings_meta": data["embeddings_meta"],  # Liste de vecteurs avec source
                         "source": "supabase",
                         "sampleCount": len(data["embeddings"]),
                         "sample_sources": list(data["sample_sources"])
@@ -133,10 +139,21 @@ def get_enrolled_speakers() -> list:
                         continue
                 
                 if embedding and isinstance(embedding, list):
+                    # Robust fallback embeddings_meta mapping
+                    embeddings_meta = []
+                    if len(embedding) > 0 and isinstance(embedding[0], list):
+                        for idx, vec in enumerate(embedding):
+                            # The first embedding is usually the original enrollment baseline
+                            source = "reference_enrollment" if idx == 0 else "ml_auto"
+                            embeddings_meta.append({"vector": vec, "source": source})
+                    else:
+                        embeddings_meta.append({"vector": embedding, "source": "reference_enrollment"})
+                        
                     speakers.append({
                         "id": doc.id,
                         "name": name,
                         "embedding": embedding,
+                        "embeddings_meta": embeddings_meta,
                         "role": member.get("role", "Membre"),
                         "source": "firestore",
                         "sampleCount": member.get("voiceSampleCount", 1)
@@ -174,13 +191,18 @@ def get_meeting_attendees(meeting_id: str) -> list:
 
 def compare_embedding_with_speakers(segment_embedding: list, enrolled_speakers: list = None, limit: int = 10) -> dict:
     """
-    Match a segment embedding with speakers using pgvector (Phase 2 - Primary).
+    Match a segment embedding with speakers.
     
-    Uses Supabase's native vector similarity search via SQL function match_speakers().
-    Falls back to local computation if Supabase is unavailable.
+    PRIMARY APPROACH: Robust local similarity calculation (supports custom heuristics like top-3 weighting, 
+    consistency/diversity bonuses, and 5% boost for reference enrollments).
+    FALLBACK: pgvector RPC match_speakers if enrolled_speakers is not provided.
     
     Returns dict of {name: similarity_score} (0.0 to 1.0)
     """
+    # Try robust local matching first if speakers list is provided
+    if enrolled_speakers:
+        return compare_embedding_with_speakers_local(segment_embedding, enrolled_speakers)
+        
     try:
         from supabase import create_client
         
@@ -213,11 +235,7 @@ def compare_embedding_with_speakers(segment_embedding: list, enrolled_speakers: 
                 return scores
         
     except Exception as e:
-        print(f"[PGVector] Error using pgvector, falling back to local computation: {e}")
-    
-    # Fallback: calcul local avec les speakers fournis
-    if enrolled_speakers:
-        return compare_embedding_with_speakers_local(segment_embedding, enrolled_speakers)
+        print(f"[PGVector] Error using pgvector: {e}")
     
     return {}
 
@@ -240,30 +258,51 @@ def compare_embedding_with_speakers_local(segment_embedding: list, enrolled_spea
     
     for speaker in enrolled_speakers:
         stored_embedding = speaker.get("embedding")
+        embeddings_meta = speaker.get("embeddings_meta")
         name = speaker.get("name", "Unknown")
         
-        # Parse string embedding
-        if isinstance(stored_embedding, str):
-            try:
-                stored_embedding = json_lib.loads(stored_embedding)
-            except (json_lib.JSONDecodeError, ValueError):
-                continue
-                 
-        if not stored_embedding:
-            continue
-            
-        vectors = []
-        # Handle Multi-Vector or Single Vector
-        if isinstance(stored_embedding, list) and len(stored_embedding) > 0 and isinstance(stored_embedding[0], list):
-            vectors = stored_embedding
-        elif isinstance(stored_embedding, list) and len(stored_embedding) == len(segment_embedding):
-            vectors = [stored_embedding]
-            
         sims = []
-        for vec in vectors:
-            if len(vec) == len(segment_embedding):
-                sim = cosine_similarity(segment_embedding, vec)
-                sims.append(sim)
+        if embeddings_meta:
+            for item in embeddings_meta:
+                vec = item.get("vector")
+                source = item.get("source")
+                
+                # Parse if needed
+                if isinstance(vec, str):
+                    try:
+                        vec = json_lib.loads(vec)
+                    except (json_lib.JSONDecodeError, ValueError):
+                        continue
+                        
+                if vec and len(vec) == len(segment_embedding):
+                    sim = cosine_similarity(segment_embedding, vec)
+                    if source == "reference_enrollment":
+                        # Apply 5% boost for pristine original reference enrollments
+                        sim = min(sim * 1.05, 1.0)
+                        
+                    sims.append(sim)
+        else:
+            # Parse string embedding
+            if isinstance(stored_embedding, str):
+                try:
+                    stored_embedding = json_lib.loads(stored_embedding)
+                except (json_lib.JSONDecodeError, ValueError):
+                    continue
+                     
+            if not stored_embedding:
+                continue
+                
+            vectors = []
+            # Handle Multi-Vector or Single Vector
+            if isinstance(stored_embedding, list) and len(stored_embedding) > 0 and isinstance(stored_embedding[0], list):
+                vectors = stored_embedding
+            elif isinstance(stored_embedding, list) and len(stored_embedding) == len(segment_embedding):
+                vectors = [stored_embedding]
+                
+            for vec in vectors:
+                if len(vec) == len(segment_embedding):
+                    sim = cosine_similarity(segment_embedding, vec)
+                    sims.append(sim)
         
         if sims:
             speaker_similarities[name] = sorted(sims, reverse=True)

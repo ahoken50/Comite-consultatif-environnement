@@ -58,6 +58,17 @@ const DocumentListItem: React.FC<DocumentListItemProps> = React.memo(({ doc, onP
         return `Point ${index + 1}: ${item.title}`;
     };
 
+    const formatDate = (dateValue: any) => {
+        try {
+            if (!dateValue) return 'Date inconnue';
+            const d = typeof dateValue.toDate === 'function' ? dateValue.toDate() : new Date(dateValue);
+            if (isNaN(d.getTime())) return 'Date inconnue';
+            return format(d, 'd MMM yyyy', { locale: fr });
+        } catch {
+            return 'Date inconnue';
+        }
+    };
+
     return (
         <Paper variant="outlined" sx={{ mb: 1 }}>
             <ListItem
@@ -135,7 +146,7 @@ const DocumentListItem: React.FC<DocumentListItemProps> = React.memo(({ doc, onP
                             <Typography component="span" variant="body2" color="text.primary">
                                 {formatSize(doc.size)}
                             </Typography>
-                            {" — " + format(new Date(doc.dateUploaded), 'd MMM yyyy', { locale: fr })}
+                            {" — " + formatDate(doc.dateUploaded)}
                         </React.Fragment>
                     }
                 />

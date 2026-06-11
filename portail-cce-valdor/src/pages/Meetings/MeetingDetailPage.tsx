@@ -40,6 +40,10 @@ import { fetchMembers } from '../../features/members/membersSlice';
 import Breadcrumbs from '../../components/common/Breadcrumbs';
 import { AccessControl } from '../../components/auth/AccessControl';
 import { getLatestConvocation } from '../../services/convocationService';
+import { collection, getDocs } from 'firebase/firestore';
+import { db } from '../../services/firebase';
+import { calculateApprovalStatus } from '../../services/meetingApprovalService';
+import type { Member } from '../../types/member.types';
 
 interface TabPanelProps {
     children?: React.ReactNode;
@@ -293,7 +297,7 @@ const MeetingDetailPage: React.FC = () => {
         { label: meeting?.title || 'Détail de la réunion' }
     ], [meeting?.title]);
 
-    const handleApproval = useCallback((role: 'president' | 'elected_official' | 'coordinator' | 'admin_bypass') => {
+    const handleApproval = useCallback(async (role: 'president' | 'elected_official' | 'coordinator' | 'admin_bypass') => {
         if (!id || !currentMember || !meeting) return;
 
         const newSignature = {
@@ -309,17 +313,26 @@ const MeetingDetailPage: React.FC = () => {
 
         const updatedSignatures = [...currentSignatures, newSignature];
 
-        let newStatus = meeting.approvalStatus || 'draft';
-        // Check if required roles are present
-        const hasPresidency = updatedSignatures.some((s: any) => s.role === 'president' || s.role === 'elected_official');
-        const hasCoordinator = updatedSignatures.some((s: any) => s.role === 'coordinator');
+        // Fetch approved tokens from Firestore subcollection to include in status calculation
+        let approvedTokens: any[] = [];
+        try {
+            const tokensRef = collection(db, 'meetings', id, 'approval_tokens');
+            const tokensSnap = await getDocs(tokensRef);
+            approvedTokens = tokensSnap.docs
+                .map(docSnap => docSnap.data())
+                .filter(t => t.status === 'approved');
+        } catch (err) {
+            console.error("Failed to fetch approval tokens:", err);
+        }
 
-        if (role === 'admin_bypass') {
-            newStatus = 'approved';
-        } else if (hasPresidency && hasCoordinator) {
-            newStatus = 'approved'; // Devient officiel quand Prez/Élu ET Secrétaire ont signé
-        } else if (hasPresidency || hasCoordinator) {
-            newStatus = 'waiting_approval';
+        let newStatus = meeting.approvalStatus || 'draft';
+        if (meeting.approvalStatus !== 'final') {
+            newStatus = calculateApprovalStatus(
+                meeting.type || 'regular',
+                updatedSignatures,
+                approvedTokens,
+                members as Member[]
+            );
         }
 
         dispatch(updateMeeting({
@@ -329,7 +342,7 @@ const MeetingDetailPage: React.FC = () => {
                 approvalStatus: newStatus as any
             }
         }));
-    }, [id, currentMember, meeting?.approvalSignatures, meeting?.approvalStatus, dispatch]);
+    }, [id, currentMember, meeting, members, dispatch]);
 
     // Early return moved to after all hooks to satisfy Rules of Hooks
     if (!meeting) {

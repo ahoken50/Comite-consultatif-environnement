@@ -1,9 +1,10 @@
 import type { AIService, AIProviderId, TranscriptionResult, TranscriptionOptions, SanitizeOptions, ResolutionContext } from '../ai.types';
 import type { Meeting, MinutesDraft } from '../../../types/meeting.types';
 import { PromptRegistry } from '../PromptRegistry';
+import { extractProjectsRobust } from '../utils';
 
 const GEMINI_API_KEY = import.meta.env.VITE_GOOGLE_AI_API;
-const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
+const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
 
 // Interface for Gemini response structure
 interface GeminiResponse {
@@ -277,7 +278,37 @@ export class GeminiProvider implements AIService {
                 contents: [{ parts: [{ text: prompt }] }],
                 generationConfig: {
                     temperature: 0.3,
-                    maxOutputTokens: 4096
+                    maxOutputTokens: 4096,
+                    responseMimeType: 'application/json',
+                    responseSchema: {
+                        type: 'OBJECT',
+                        properties: {
+                            projects: {
+                                type: 'ARRAY',
+                                items: {
+                                    type: 'OBJECT',
+                                    properties: {
+                                        name: { type: 'STRING' },
+                                        category: {
+                                            type: 'STRING',
+                                            enum: ['water', 'biodiversity', 'regulation', 'waste', 'emergency', 'innovation', 'operations', 'climate']
+                                        },
+                                        priority: {
+                                            type: 'STRING',
+                                            enum: ['low', 'medium', 'high', 'critical']
+                                        },
+                                        description: { type: 'STRING' },
+                                        nextSteps: { type: 'STRING' },
+                                        isUrgent: { type: 'BOOLEAN' },
+                                        sourceResolution: { type: 'STRING' },
+                                        estimatedEffort: { type: 'STRING' }
+                                    },
+                                    required: ['name', 'category', 'priority', 'description']
+                                }
+                            }
+                        },
+                        required: ['projects']
+                    }
                 }
             })
         });
@@ -286,19 +317,42 @@ export class GeminiProvider implements AIService {
         if (result.error) throw new Error(result.error.message);
 
         const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (!text) return [];
+        if (!text) {
+            throw new Error("Aucun texte généré par Gemini.");
+        }
 
-        // Parse JSON from response
-        const jsonMatch = text.match(/\{[\s\S]*\}/);
-        if (!jsonMatch) return [];
+        let projects: any[] = [];
+        let parseError: Error | null = null;
 
         try {
-            const parsed = JSON.parse(jsonMatch[0]);
-            return parsed.projects || [];
-        } catch (e) {
-            console.error('Failed to parse projects JSON', e);
-            return [];
+            projects = extractProjectsRobust(text);
+        } catch (err) {
+            parseError = err instanceof Error ? err : new Error(String(err));
         }
+
+        if (projects.length === 0) {
+            // Check if there was a syntax error in parsing
+            try {
+                // Try standard JSON.parse on the trimmed text to check if it has invalid syntax
+                let cleaned = text.trim();
+                cleaned = cleaned.replace(/^```json\s*/i, '').replace(/\s*```$/i, '');
+                const parsed = JSON.parse(cleaned);
+                // If it parsed successfully to an empty list or doesn't have projects, it's valid 0 projects.
+                if (parsed && (Array.isArray(parsed.projects) && parsed.projects.length === 0)) {
+                    return [];
+                }
+            } catch (syntaxErr) {
+                // If standard JSON parsing failed, raise the parse error
+                parseError = syntaxErr instanceof Error ? syntaxErr : new Error(String(syntaxErr));
+            }
+
+            if (parseError) {
+                console.error('Failed to parse projects JSON', parseError);
+                throw new Error(`Échec de l'analyse JSON de la réponse de Gemini : ${parseError.message}. Texte brut : ${text.substring(0, 500)}...`);
+            }
+        }
+
+        return projects;
     }
 
     async suggestFileMatches(fileNames: string[], agendaItems: string[]): Promise<Array<{ fileName: string; agendaItemTitle: string; confidence: number }>> {
@@ -342,8 +396,8 @@ Retourne uniquement le JSON.`;
     async generateEmbedding(text: string): Promise<number[]> {
         if (!this.isConfigured()) throw new Error('Gemini API key not configured');
 
-        // Use 'embedding-001' (text-embedding-004 is deprecated in v1beta)
-        const MODEL = 'models/embedding-001';
+        // Use 'gemini-embedding-001' with 768 dimensions (since text-embedding-004 is deprecated/unsupported for Developer keys)
+        const MODEL = 'models/gemini-embedding-001';
         const EMBED_URL = `https://generativelanguage.googleapis.com/v1beta/${MODEL}:embedContent`;
 
         const response = await fetch(`${EMBED_URL}?key=${GEMINI_API_KEY}`, {
@@ -353,7 +407,8 @@ Retourne uniquement le JSON.`;
                 model: MODEL,
                 content: {
                     parts: [{ text }]
-                }
+                },
+                outputDimensionality: 768
             })
         });
 
