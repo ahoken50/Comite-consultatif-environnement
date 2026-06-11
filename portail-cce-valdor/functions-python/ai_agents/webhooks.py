@@ -630,8 +630,6 @@ def speechmatics_webhook(req: https_fn.Request) -> https_fn.Response:
             json.dumps({"error": str(e)}),
             status=200,
             content_type="application/json"
-        )    status=200,
-            content_type="application/json"
         )
 
 
