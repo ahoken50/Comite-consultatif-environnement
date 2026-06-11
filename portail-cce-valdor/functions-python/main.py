@@ -941,12 +941,50 @@ def reset_speakers(req: https_fn.CallableRequest) -> dict:
                     updated = True
                 else:
                     print(f"[Reset Speakers] No original transcription for rec {i}")
+            
+            if updated:
+                # Rebuild merged transcription of all completed recordings
+                merged_parts = []
+                all_completed = True
+                for idx, rec in enumerate(audio_recordings):
+                    status = rec.get("transcriptionStatus")
+                    trans = rec.get("transcription")
+                    if status == "completed" and trans:
+                        part_name = rec.get("fileName", f"Partie {idx+1}")
+                        merged_parts.append(f"=== {part_name} ===\n\n{trans}")
+                    elif status in ["pending", "processing"]:
+                        all_completed = False
+                        
+                merged_transcription = "\n\n--- TRANSCRIPTION SUIVANTE ---\n\n".join(merged_parts)
+                
+                # Merge speaker mappings
+                merged_speaker_mapping = {}
+                for rec in audio_recordings:
+                    m = rec.get("speakerMapping")
+                    if isinstance(m, dict):
+                        merged_speaker_mapping.update(m)
+                        
+                update_data = {
+                    "audioRecordings": audio_recordings,
+                    "audioRecording.transcription": merged_transcription,
+                    "audioRecording.transcriptionStatus": "completed" if all_completed else "processing",
+                    "audioRecording.speakerMapping": merged_speaker_mapping,
+                    "dateUpdated": datetime.now().isoformat()
+                }
+                meeting_ref.update(update_data)
+        else:
+            # Legacy fallback
+            legacy = meeting_data.get("audioRecording", {})
+            if legacy.get("originalTranscription"):
+                update_data = {
+                    "audioRecording.transcription": legacy["originalTranscription"],
+                    "audioRecording.speakerMapping": {},
+                    "dateUpdated": datetime.now().isoformat()
+                }
+                meeting_ref.update(update_data)
+                updated = True
         
         if updated:
-            meeting_ref.update({
-                "audioRecordings": audio_recordings,
-                "dateUpdated": datetime.now().isoformat()
-            })
             return {"success": True, "message": "Speakers reset successfully"}
         else:
              return {"success": False, "message": "Nothing to reset (original transcription missing)"}

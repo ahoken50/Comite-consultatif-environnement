@@ -39,7 +39,7 @@ interface AudioUploadProps {
     audioRecordings?: AudioRecording[]; // New
     onUploadComplete?: (recording: AudioRecording) => void;
     onDelete?: (recording?: AudioRecording) => void;
-    onTranscriptionComplete?: (mergedTranscription?: string) => void;
+    onTranscriptionStarted?: (message?: string) => void;
 }
 
 const AudioUpload: React.FC<AudioUploadProps> = ({
@@ -48,7 +48,7 @@ const AudioUpload: React.FC<AudioUploadProps> = ({
     audioRecordings,
     onUploadComplete,
     onDelete,
-    onTranscriptionComplete
+    onTranscriptionStarted
 }) => {
     const [isDragging, setIsDragging] = useState(false);
     const [uploadProgress, setUploadProgress] = useState<UploadProgress | null>(null);
@@ -204,7 +204,7 @@ const AudioUpload: React.FC<AudioUploadProps> = ({
 
             // We don't wait for text, we wait for submission.
             // Feedback to user
-            onTranscriptionComplete?.('Transcription démarrée. Veuillez patienter, les statuts se mettront à jour automatiquement.');
+            onTranscriptionStarted?.('Transcription démarrée. Veuillez patienter, les statuts se mettront à jour automatiquement.');
 
         } catch (err) {
             console.error('Transcription submission failed:', err);

@@ -315,27 +315,38 @@ ${(localAgendaItems || []).map((item, idx) => {
     }, [onUpdate]);
 
     const handleTranscriptionUpdate = React.useCallback((newTranscription: string) => {
-        if (meeting.audioRecording) {
-            const updatedRecording = {
-                ...meeting.audioRecording,
-                transcription: newTranscription
-            };
+        // We always update the consolidated legacy field
+        const updatedLegacy = {
+            ...(meeting.audioRecording || {}),
+            transcription: newTranscription
+        };
 
-            // Also update the array if it exists to ensure SmartPV gets the latest version
-            let updatedRecordings = meeting.audioRecordings;
-            if (Array.isArray(meeting.audioRecordings)) {
-                updatedRecordings = meeting.audioRecordings.map(r =>
-                    r.storagePath === meeting.audioRecording!.storagePath
-                        ? updatedRecording
-                        : r
-                );
-            }
-
-            onUpdate({
-                audioRecording: updatedRecording,
-                audioRecordings: updatedRecordings as any
+        // Split the new transcription by the delimiter
+        const parts = newTranscription.split(/\r?\n\r?\n---\s*TRANSCRIPTION\s+SUIVANTE\s*---\r?\n\r?\n/);
+        
+        let updatedRecordings = meeting.audioRecordings;
+        if (Array.isArray(meeting.audioRecordings) && meeting.audioRecordings.length > 0) {
+            updatedRecordings = meeting.audioRecordings.map((rec, index) => {
+                if (index < parts.length) {
+                    // Extract transcription for this part and strip the "=== header ===" line
+                    let partText = parts[index].trim();
+                    const headerMatch = partText.match(/^===\s*(.*?)\s*===\s*\r?\n\r?\n?(.*)/s);
+                    if (headerMatch) {
+                        partText = headerMatch[2].trim();
+                    }
+                    return {
+                        ...rec,
+                        transcription: partText
+                    };
+                }
+                return rec;
             });
         }
+
+        onUpdate({
+            audioRecording: updatedLegacy as any,
+            audioRecordings: updatedRecordings as any
+        });
     }, [meeting.audioRecording, meeting.audioRecordings, onUpdate]);
 
     const handleSanitize = async () => {
@@ -1017,21 +1028,9 @@ ${(localAgendaItems || []).map((item, idx) => {
                                 onUpdate({ audioRecording: deleteField() as any, audioRecordings: [] });
                             }
                         }}
-                        onTranscriptionComplete={(text) => {
-                            console.log('Merge complete:', text?.substring(0, 50) + '...');
-                            if (text) {
-                                // Save merged transcription to the primary recording container
-                                // so TranscriptionViewer can see it
-                                const primary = meeting.audioRecording || (Array.isArray(meeting.audioRecordings) && meeting.audioRecordings[0]);
-                                if (primary) {
-                                    onUpdate({
-                                        audioRecording: {
-                                            ...primary,
-                                            transcription: text,
-                                            transcriptionStatus: 'completed'
-                                        }
-                                    });
-                                }
+                        onTranscriptionStarted={(message) => {
+                            if (message) {
+                                showSuccess(message);
                             }
                         }}
                     />
