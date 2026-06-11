@@ -416,7 +416,9 @@ def speechmatics_webhook(req: https_fn.Request) -> https_fn.Response:
     - status: success, error, fetch_error, trim_error
     
     The meeting_id is in the job's tracking.reference field.
-    We also receive the transcript in the request body (js    try:
+    We also receive the transcript in the request body (json-v2 format).
+    """
+    try:
         # Get query params
         job_id = req.args.get("id", "unknown")
         status = req.args.get("status", "unknown")
