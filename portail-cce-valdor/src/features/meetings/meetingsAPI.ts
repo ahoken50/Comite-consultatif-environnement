@@ -9,13 +9,24 @@ import {
     orderBy,
     Timestamp,
     getDoc,
-    FieldValue,
     runTransaction
 } from 'firebase/firestore';
 import { db } from '../../services/firebase';
 import type { Meeting } from '../../types/meeting.types';
 
 const COLLECTION_NAME = 'meetings';
+
+const isFieldValue = (val: unknown): boolean => {
+    if (!val || typeof val !== 'object') return false;
+    const obj = val as Record<string, unknown>;
+    const constructorName = obj.constructor?.name;
+    return (
+        constructorName === 'FieldValue' || 
+        constructorName === 'FieldValueImpl' ||
+        (typeof obj._methodName === 'string') ||
+        (obj.constructor && obj.constructor.toString().includes('FieldValue'))
+    );
+};
 
 /**
  * Recursively removes all undefined values from an object.
@@ -35,7 +46,7 @@ const sanitizeForFirestore = (obj: any): any => {
     if (obj instanceof Timestamp) {
         return obj; // Preserve Firestore Timestamps
     }
-    if (obj instanceof FieldValue) {
+    if (isFieldValue(obj)) {
         return obj; // Preserve Firestore FieldValues (arrayUnion, arrayRemove)
     }
     if (Array.isArray(obj)) {

@@ -1,6 +1,7 @@
 import os
 import time
 import json
+import re
 import requests
 from datetime import timedelta, datetime
 from firebase_admin import firestore, storage
@@ -10,6 +11,12 @@ from core.config import get_openai_client, get_anthropic_client
 from ai_agents.transcription import format_speechmatics_output, format_timestamp, clean_hallucinations, build_context_prompt, submit_speechmatics_job
 from ai_agents.speaker_profiles import get_enrolled_speakers, compare_embedding_with_speakers
 from audio_utils import extract_audio_segment_embedding
+
+
+def natural_sort_key(s):
+    import re
+    return [int(text) if text.isdigit() else text.lower() for text in re.split(r'(\d+)', s)]
+
 
 
 # SPEAKER IDENTIFICATION HELPER
@@ -784,6 +791,7 @@ def identify_speakers(req: https_fn.CallableRequest) -> dict:
         }
         
         if audio_recordings:
+            audio_recordings.sort(key=lambda r: natural_sort_key(r.get("fileName", "")))
             for idx, rec in enumerate(audio_recordings):
                 status = rec.get("transcriptionStatus")
                 trans = rec.get("transcription")
@@ -1104,6 +1112,9 @@ def check_transcription_status(req: https_fn.CallableRequest) -> dict:
                         recordings[rec_index]["transcriptionEngine"] = "speechmatics-async"
                         if mapping_data:
                             recordings[rec_index]["speakerMapping"] = mapping_data
+                        
+                        # Sort naturally by fileName
+                        recordings.sort(key=lambda r: natural_sort_key(r.get("fileName", "")))
                         
                         # Rebuild merged transcription of all completed recordings
                         merged_parts = []

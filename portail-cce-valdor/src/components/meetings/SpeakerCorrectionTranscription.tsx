@@ -74,6 +74,7 @@ interface SpeakerCorrectionTranscriptionProps {
     onSeek?: (seconds: number) => void;
     onTranscriptionUpdate?: (newTranscription: string) => void;
     onCorrectionMade?: (original: string, corrected: string) => void;
+    partIndex?: number;
 }
 
 export const SpeakerCorrectionTranscription: React.FC<SpeakerCorrectionTranscriptionProps> = React.memo(({
@@ -86,29 +87,32 @@ export const SpeakerCorrectionTranscription: React.FC<SpeakerCorrectionTranscrip
     onSeek,
     onTranscriptionUpdate,
     onCorrectionMade,
+    partIndex,
 }) => {
     const [corrections, setCorrections] = useState<SpeakerCorrection[]>([]);
     const [learningStatus, setLearningStatus] = useState<string | null>(null);
     const [snackMessage, setSnackMessage] = useState<string | null>(null);
 
+    const storageKey = partIndex !== undefined ? `cce_transcription_draft_${meetingId}_part_${partIndex}` : `cce_transcription_draft_${meetingId}`;
+
     // Save transcription backup to localStorage on update
     useEffect(() => {
         if (transcription && transcription.trim()) {
-            localStorage.setItem(`cce_transcription_draft_${meetingId}`, transcription);
+            localStorage.setItem(storageKey, transcription);
         }
-    }, [transcription, meetingId]);
+    }, [transcription, meetingId, storageKey]);
 
     // Restore draft backup on mount if live transcription is missing
     useEffect(() => {
         if (!transcription || !transcription.trim()) {
-            const savedDraft = localStorage.getItem(`cce_transcription_draft_${meetingId}`);
+            const savedDraft = localStorage.getItem(storageKey);
             if (savedDraft && savedDraft.trim()) {
                 console.log(`[Backup] Recovered transcription draft from localStorage for meeting ${meetingId}`);
                 onTranscriptionUpdate?.(savedDraft);
                 setSnackMessage("✏️ Brouillon de transcription restauré localement.");
             }
         }
-    }, [meetingId, onTranscriptionUpdate]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [meetingId, onTranscriptionUpdate, storageKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Split Popover State
     const [splitAnchorEl, setSplitAnchorEl] = useState<HTMLElement | null>(null);

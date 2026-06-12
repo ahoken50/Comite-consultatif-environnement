@@ -150,6 +150,11 @@ const BATCH_SIZE = 5; // Ou une constante importée d'un fichier de configuratio
         setHasUnsavedChanges
     });
 
+    const handleApplyTranscriptionAndClearDraft = React.useCallback(async (content: string) => {
+        await handleApplyTranscription(content);
+        onUpdate({ minutesDraft: deleteField() as unknown as MinutesDraft });
+    }, [handleApplyTranscription, onUpdate]);
+
     const handleGeneratePDF = async () => {
         // Create a temporary meeting object with current state
         // Use localAgendaItems directly without overwriting decision
@@ -326,7 +331,10 @@ ${(localAgendaItems || []).map((item, idx) => {
         
         let updatedRecordings = meeting.audioRecordings;
         if (Array.isArray(meeting.audioRecordings) && meeting.audioRecordings.length > 0) {
-            updatedRecordings = meeting.audioRecordings.map((rec, index) => {
+            const sortedRecordings = [...meeting.audioRecordings].sort((a, b) =>
+                a.fileName.localeCompare(b.fileName, undefined, { numeric: true, sensitivity: 'base' })
+            );
+            updatedRecordings = sortedRecordings.map((rec, index) => {
                 if (index < parts.length) {
                     // Extract transcription for this part and strip the "=== header ===" line
                     let partText = parts[index].trim();
@@ -1019,19 +1027,27 @@ ${(localAgendaItems || []).map((item, idx) => {
                                     // Use deleteField() to actually DELETE the field from Firestore
                                     // undefined gets stripped by sanitizeForFirestore and field remains!
                                     audioRecording: shouldClearLegacy || updated.length === 0
-                                        ? deleteField() as any
-                                        : meeting.audioRecording
+                                        ? deleteField() as unknown as AudioRecording
+                                        : meeting.audioRecording,
+                                    minutesDraft: shouldClearLegacy || updated.length === 0
+                                        ? deleteField() as unknown as MinutesDraft
+                                        : meeting.minutesDraft
                                 });
                             } else {
                                 // Clear all (explicit user action)
                                 console.log('[AudioDelete] Clearing ALL audio recordings with deleteField()');
-                                onUpdate({ audioRecording: deleteField() as any, audioRecordings: [] });
+                                onUpdate({ 
+                                    audioRecording: deleteField() as unknown as AudioRecording, 
+                                    audioRecordings: [],
+                                    minutesDraft: deleteField() as unknown as MinutesDraft
+                                });
                             }
                         }}
                         onTranscriptionStarted={(message) => {
                             if (message) {
                                 showSuccess(message);
                             }
+                            onUpdate({ minutesDraft: deleteField() as unknown as MinutesDraft });
                         }}
                     />
 
@@ -1040,7 +1056,7 @@ ${(localAgendaItems || []).map((item, idx) => {
                         <TranscriptionViewer
                             meeting={meeting}
                             onDraftGenerated={handleDraftGenerated}
-                            onApplyToMinutes={handleApplyTranscription}
+                            onApplyToMinutes={handleApplyTranscriptionAndClearDraft}
                             onTranscriptionUpdate={handleTranscriptionUpdate}
                         />
                     )}

@@ -27,7 +27,7 @@ import {
 } from '@mui/material';
 import { SpeakerCorrectionTranscription } from './SpeakerCorrectionTranscription';
 import { useSelector } from 'react-redux';
-import type { Meeting, MinutesDraft } from '../../types/meeting.types';
+import type { Meeting, MinutesDraft, AudioRecording } from '../../types/meeting.types';
 import { buildHistoricalContext, formatHistoricalContextForPrompt, reinforceSpeaker } from '../../services/geminiService';
 import { generateMinutesDraftClaude, finalizeDraftClaude, isClaudeConfigured } from '../../services/claudeService';
 import { selectAllMeetings } from '../../features/meetings/meetingsSlice';
@@ -113,10 +113,32 @@ const TranscriptionViewer: React.FC<TranscriptionViewerProps> = ({
     const [playingSegmentId, setPlayingSegmentId] = useState<string | null>(null);
     const audioRef = React.useRef<HTMLAudioElement | null>(null);
 
+    const sortedRecordings = React.useMemo(() => {
+        if (!Array.isArray(meeting.audioRecordings)) return [];
+        return [...meeting.audioRecordings].sort((a, b) =>
+            a.fileName.localeCompare(b.fileName, undefined, { numeric: true, sensitivity: 'base' })
+        );
+    }, [meeting.audioRecordings]);
+
+    const [activeRecording, setActiveRecording] = useState<AudioRecording | undefined>(() => {
+        return sortedRecordings.length > 0 ? sortedRecordings[0] : meeting.audioRecording;
+    });
+
+    React.useEffect(() => {
+        if (sortedRecordings.length > 0) {
+            const exists = sortedRecordings.find(r => r.storagePath === activeRecording?.storagePath);
+            if (!exists) {
+                setActiveRecording(sortedRecordings[0]);
+            }
+        } else {
+            setActiveRecording(meeting.audioRecording);
+        }
+    }, [sortedRecordings, meeting.audioRecording, activeRecording?.storagePath]);
+
     // Point 37 & Point C: Main Audio Player states and hooks
     const [mainAudioTime, setMainAudioTime] = useState(0);
     const mainAudioRef = React.useRef<HTMLAudioElement | null>(null);
-    const mainAudioUrl = meeting.audioRecording?.fileUrl || (Array.isArray(meeting.audioRecordings) && meeting.audioRecordings.length > 0 ? meeting.audioRecordings[0].fileUrl : undefined);
+    const mainAudioUrl = activeRecording?.fileUrl || meeting.audioRecording?.fileUrl;
 
     const handleMainAudioTimeUpdate = () => {
         if (mainAudioRef.current) {
@@ -124,8 +146,22 @@ const TranscriptionViewer: React.FC<TranscriptionViewerProps> = ({
         }
     };
 
-    const handleSeekMainAudio = (seconds: number) => {
-        if (mainAudioRef.current) {
+    const handleSeekMainAudio = (seconds: number, recording?: AudioRecording) => {
+        if (recording && activeRecording?.storagePath !== recording.storagePath) {
+            setActiveRecording(recording);
+            if (mainAudioRef.current) {
+                mainAudioRef.current.src = recording.fileUrl;
+                mainAudioRef.current.load();
+                const playAndSeek = () => {
+                    if (mainAudioRef.current) {
+                        mainAudioRef.current.currentTime = seconds;
+                        mainAudioRef.current.play().catch(console.error);
+                        mainAudioRef.current.removeEventListener('canplay', playAndSeek);
+                    }
+                };
+                mainAudioRef.current.addEventListener('canplay', playAndSeek);
+            }
+        } else if (mainAudioRef.current) {
             mainAudioRef.current.currentTime = seconds;
             mainAudioRef.current.play().catch(console.error);
         }
@@ -187,6 +223,10 @@ const TranscriptionViewer: React.FC<TranscriptionViewerProps> = ({
 
     const transcription = meeting.audioRecording?.transcription;
     const draft = meeting.minutesDraft;
+    const transcriptionParts = React.useMemo(() => {
+        if (!transcription) return [];
+        return transcription.split(/\r?\n\r?\n---\s*TRANSCRIPTION\s+SUIVANTE\s*---\r?\n\r?\n/);
+    }, [transcription]);
 
     // Extract unique speakers from transcription
     const detectedSpeakers = React.useMemo(() => {
@@ -592,7 +632,8 @@ const TranscriptionViewer: React.FC<TranscriptionViewerProps> = ({
                                         icon={<span>⏱️</span>}
                                         label={`${idx + 1}. ${item.title} (${Math.round(item.audioSegment!.start)}s - ${item.audioSegment!.end ? Math.round(item.audioSegment!.end) + 's' : 'fin'})`}
                                         onClick={() => {
-                                            handleSeekMainAudio(item.audioSegment!.start);
+                                            const rec = sortedRecordings.find(r => r.fileUrl === item.audioSegment!.audioUrl) || activeRecording;
+                                            handleSeekMainAudio(item.audioSegment!.start, rec);
                                         }}
                                         sx={{
                                             bgcolor: 'white',
@@ -609,19 +650,48 @@ const TranscriptionViewer: React.FC<TranscriptionViewerProps> = ({
                     );
                 })()}
 
-                <SpeakerCorrectionTranscription
-                    transcription={transcription}
-                    members={members}
-                    meetingId={meeting.id}
-                    audioUrl={meeting.audioRecording?.fileUrl}
-                    audioDuration={meeting.audioRecording?.duration || 0}
-                    currentTime={mainAudioTime}
-                    onSeek={handleSeekMainAudio}
-                    onTranscriptionUpdate={onTranscriptionUpdate}
-                    onCorrectionMade={(original, corrected) => {
-                        showToast?.(`Locuteur corrigé: ${original} → ${corrected}`, 'success');
-                    }}
-                />
+                {sortedRecordings.length > 1 ? (
+                    sortedRecordings.map((rec, idx) => (
+                        <Box key={rec.storagePath} sx={{ mb: 4 }}>
+                            <Typography variant="subtitle2" sx={{ fontWeight: 'bold', mb: 1, color: '#1e3a8a' }}>
+                                Partie {idx + 1} : {rec.fileName}
+                            </Typography>
+                            <SpeakerCorrectionTranscription
+                                transcription={transcriptionParts[idx] || ''}
+                                members={members}
+                                meetingId={meeting.id}
+                                audioUrl={rec.fileUrl}
+                                audioDuration={rec.duration || 0}
+                                currentTime={activeRecording?.storagePath === rec.storagePath ? mainAudioTime : -1}
+                                onSeek={(seconds) => handleSeekMainAudio(seconds, rec)}
+                                onTranscriptionUpdate={(newPartText) => {
+                                    const updatedParts = [...transcriptionParts];
+                                    updatedParts[idx] = newPartText;
+                                    const reCombined = updatedParts.join('\n\n--- TRANSCRIPTION SUIVANTE ---\n\n');
+                                    onTranscriptionUpdate?.(reCombined);
+                                }}
+                                onCorrectionMade={(original, corrected) => {
+                                    showToast?.(`Locuteur corrigé: ${original} → ${corrected}`, 'success');
+                                }}
+                                partIndex={idx}
+                            />
+                        </Box>
+                    ))
+                ) : (
+                    <SpeakerCorrectionTranscription
+                        transcription={transcription}
+                        members={members}
+                        meetingId={meeting.id}
+                        audioUrl={meeting.audioRecording?.fileUrl}
+                        audioDuration={meeting.audioRecording?.duration || 0}
+                        currentTime={mainAudioTime}
+                        onSeek={(seconds) => handleSeekMainAudio(seconds, activeRecording)}
+                        onTranscriptionUpdate={onTranscriptionUpdate}
+                        onCorrectionMade={(original, corrected) => {
+                            showToast?.(`Locuteur corrigé: ${original} → ${corrected}`, 'success');
+                        }}
+                    />
+                )}
             </Paper>
 
             {/* Speaker Identification Section */}
