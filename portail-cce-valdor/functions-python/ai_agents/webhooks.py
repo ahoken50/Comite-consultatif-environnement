@@ -552,70 +552,94 @@ def speechmatics_webhook(req: https_fn.Request) -> https_fn.Response:
                 import traceback
                 traceback.print_exc()
         
-        # Update specific recording inside audioRecordings array in memory
-        updated_array = False
-        if isinstance(audio_recordings, list) and len(audio_recordings) > 0:
-            for i, rec in enumerate(audio_recordings):
-                if rec.get("speechmaticsJobId") == job_id:
-                    audio_recordings[i]["transcription"] = identified_transcription
-                    if "originalTranscription" not in audio_recordings[i]:
-                        audio_recordings[i]["originalTranscription"] = full_transcription
-                    audio_recordings[i]["segments"] = formatted.get("segments", [])
-                    audio_recordings[i]["transcriptionStatus"] = "completed"
-                    audio_recordings[i]["transcribedAt"] = datetime.now().isoformat()
-                    audio_recordings[i]["transcriptionEngine"] = "speechmatics-webhook"
-                    if speaker_mapping:
-                        audio_recordings[i]["speakerMapping"] = speaker_mapping
-                    updated_array = True
-                    print(f"[Speechmatics Webhook] Updated audioRecordings[{i}] for job {job_id} in memory")
-                    break
-        
-        # Build merged transcription of all completed recordings
-        merged_parts = []
-        all_completed = True
-        
-        if isinstance(audio_recordings, list) and len(audio_recordings) > 0:
-            for idx, rec in enumerate(audio_recordings):
-                rec_status = rec.get("transcriptionStatus")
-                rec_trans = rec.get("transcription")
-                if rec_status == "completed" and rec_trans:
-                    part_name = rec.get("fileName", f"Partie {idx+1}")
-                    merged_parts.append(f"=== {part_name} ===\n\n{rec_trans}")
-                elif rec_status in ["pending", "processing"]:
-                    all_completed = False
-        else:
-            merged_parts.append(identified_transcription)
+        # NOW run the transaction to safely update Firestore
+        @firestore.transactional
+        def update_webhook_in_transaction(transaction, doc_ref, job_id, identified_transcription, full_transcription, speaker_mapping, segments):
+            snapshot = doc_ref.get(transaction=transaction)
+            if not snapshot.exists:
+                return False
             
-        merged_transcription = "\n\n--- TRANSCRIPTION SUIVANTE ---\n\n".join(merged_parts)
-        
-        # Perform single atomic update to Firestore
-        update_data = {
-            "audioRecording.transcription": merged_transcription,
-            "audioRecording.transcriptionStatus": "completed" if all_completed else "processing",
-            "audioRecording.transcribedAt": datetime.now().isoformat(),
-            "audioRecording.transcriptionEngine": "speechmatics-webhook",
-            "audioRecording.speechmaticsJobId": job_id,
-            "dateUpdated": datetime.now().isoformat()
-        }
-        
-        # Merge speaker mappings from all recordings for legacy compatibility
-        merged_speaker_mapping = {}
-        if isinstance(audio_recordings, list) and len(audio_recordings) > 0:
-            for rec in audio_recordings:
-                mapping = rec.get("speakerMapping")
-                if isinstance(mapping, dict):
-                    merged_speaker_mapping.update(mapping)
-        else:
-            merged_speaker_mapping = speaker_mapping
+            data = snapshot.to_dict()
+            recordings = data.get("audioRecordings", [])
             
-        if merged_speaker_mapping:
-            update_data["audioRecording.speakerMapping"] = merged_speaker_mapping
+            # Update specific recording inside audioRecordings array
+            updated_array = False
+            if isinstance(recordings, list) and len(recordings) > 0:
+                for i, rec in enumerate(recordings):
+                    if rec.get("speechmaticsJobId") == job_id:
+                        recordings[i]["transcription"] = identified_transcription
+                        if "originalTranscription" not in recordings[i]:
+                            recordings[i]["originalTranscription"] = full_transcription
+                        recordings[i]["segments"] = segments
+                        recordings[i]["transcriptionStatus"] = "completed"
+                        recordings[i]["transcribedAt"] = datetime.now().isoformat()
+                        recordings[i]["transcriptionEngine"] = "speechmatics-webhook"
+                        if speaker_mapping:
+                            recordings[i]["speakerMapping"] = speaker_mapping
+                        updated_array = True
+                        break
             
-        if updated_array:
-            update_data["audioRecordings"] = audio_recordings
+            # Sort the array naturally by fileName so that order is always consistent
+            if isinstance(recordings, list) and len(recordings) > 0:
+                recordings.sort(key=lambda r: natural_sort_key(r.get("fileName", "")))
+                
+            # Build merged transcription of all completed recordings
+            merged_parts = []
+            all_completed = True
             
-        meeting_ref.update(update_data)
-        print(f"[Speechmatics Webhook] SUCCESS! Atomically saved merged transcription for meeting {meeting_id}")
+            if isinstance(recordings, list) and len(recordings) > 0:
+                for idx, rec in enumerate(recordings):
+                    rec_status = rec.get("transcriptionStatus")
+                    rec_trans = rec.get("transcription")
+                    if rec_status == "completed" and rec_trans:
+                        part_name = rec.get("fileName", f"Partie {idx+1}")
+                        merged_parts.append(f"=== {part_name} ===\n\n{rec_trans}")
+                    elif rec_status in ["pending", "processing"]:
+                        all_completed = False
+            else:
+                merged_parts.append(identified_transcription)
+                
+            merged_transcription = "\n\n--- TRANSCRIPTION SUIVANTE ---\n\n".join(merged_parts)
+            
+            update_data = {
+                "audioRecording.transcription": merged_transcription,
+                "audioRecording.transcriptionStatus": "completed" if all_completed else "processing",
+                "audioRecording.transcribedAt": datetime.now().isoformat(),
+                "audioRecording.transcriptionEngine": "speechmatics-webhook",
+                "audioRecording.speechmaticsJobId": job_id,
+                "dateUpdated": datetime.now().isoformat()
+            }
+            
+            # Merge speaker mappings from all recordings for legacy compatibility
+            merged_speaker_mapping = {}
+            if isinstance(recordings, list) and len(recordings) > 0:
+                for rec in recordings:
+                    mapping = rec.get("speakerMapping")
+                    if isinstance(mapping, dict):
+                        merged_speaker_mapping.update(mapping)
+            else:
+                merged_speaker_mapping = speaker_mapping
+                
+            if merged_speaker_mapping:
+                update_data["audioRecording.speakerMapping"] = merged_speaker_mapping
+                
+            if updated_array:
+                update_data["audioRecordings"] = recordings
+                
+            transaction.update(doc_ref, update_data)
+            return True
+
+        transaction = db_client.transaction()
+        success = update_webhook_in_transaction(
+            transaction,
+            meeting_ref,
+            job_id,
+            identified_transcription,
+            full_transcription,
+            speaker_mapping,
+            formatted.get("segments", [])
+        )
+        print(f"[Speechmatics Webhook] SUCCESS! Atomically saved merged transcription for meeting {meeting_id} (success={success})")
         
         return https_fn.Response(
             json.dumps({
@@ -891,49 +915,52 @@ def submit_transcription(req: https_fn.CallableRequest) -> dict:
     try:
         db = firestore.client()
         meeting_ref = db.collection("meetings").document(meeting_id)
-        meeting_doc = meeting_ref.get()
         
-        if not meeting_doc.exists:
-            raise https_fn.HttpsError(
-                code=https_fn.FunctionsErrorCode.NOT_FOUND,
-                message="Meeting not found."
-            )
-        
-        # Submit to Speechmatics
+        # Submit to Speechmatics first (outside transaction, to avoid multiple submissions on retry)
         job_id = submit_speechmatics_job(download_url, meeting_id, language_code="fr")
         
-        meeting_data = meeting_doc.to_dict()
-        audio_recordings = meeting_data.get("audioRecordings", [])
-        
-        # If we have audioRecordings array and a storagePath, update the specific entry
-        if storage_path and isinstance(audio_recordings, list) and len(audio_recordings) > 0:
-            # Find the recording by storagePath
-            updated = False
-            for i, rec in enumerate(audio_recordings):
-                if rec.get("storagePath") == storage_path:
-                    audio_recordings[i]["speechmaticsJobId"] = job_id
-                    audio_recordings[i]["transcriptionStatus"] = "processing"
-                    audio_recordings[i]["transcriptionStartedAt"] = datetime.now().isoformat()
-                    updated = True
-                    print(f"[Async Transcription] Updated audioRecordings[{i}] with job {job_id}")
-                    break
+        @firestore.transactional
+        def update_recording_in_transaction(transaction, doc_ref, storage_path, job_id):
+            snapshot = doc_ref.get(transaction=transaction)
+            if not snapshot.exists:
+                return False, False
             
-            if updated:
-                meeting_ref.update({
-                    "audioRecordings": audio_recordings,
-                    "dateUpdated": datetime.now().isoformat()
-                })
-            else:
-                print(f"[Async Transcription] Warning: Could not find recording with storagePath {storage_path}")
-                # Fall back to legacy field
-                meeting_ref.update({
-                    "audioRecording.speechmaticsJobId": job_id,
-                    "audioRecording.transcriptionStatus": "processing",
-                    "audioRecording.transcriptionStartedAt": datetime.now().isoformat(),
-                    "dateUpdated": datetime.now().isoformat()
-                })
-        else:
-            # Legacy: update audioRecording (singular)
+            data = snapshot.to_dict()
+            recordings = data.get("audioRecordings", [])
+            
+            # If we have audioRecordings array and a storagePath, update the specific entry
+            if storage_path and isinstance(recordings, list) and len(recordings) > 0:
+                updated = False
+                for i, rec in enumerate(recordings):
+                    if rec.get("storagePath") == storage_path:
+                        recordings[i]["speechmaticsJobId"] = job_id
+                        recordings[i]["transcriptionStatus"] = "processing"
+                        recordings[i]["transcriptionStartedAt"] = datetime.now().isoformat()
+                        updated = True
+                        break
+                
+                # Sort naturally by fileName so that the array in Firestore is ordered
+                if isinstance(recordings, list) and len(recordings) > 0:
+                    recordings.sort(key=lambda r: natural_sort_key(r.get("fileName", "")))
+                
+                if updated:
+                    transaction.update(doc_ref, {
+                        "audioRecordings": recordings,
+                        "dateUpdated": datetime.now().isoformat()
+                    })
+                    return True, True  # has_array=True, updated=True
+                return True, False  # has_array=True, updated=False
+            return False, False  # has_array=False, updated=False
+
+        has_array, updated = False, False
+        if storage_path:
+            transaction = db.transaction()
+            has_array, updated = update_recording_in_transaction(transaction, meeting_ref, storage_path, job_id)
+            
+        if not has_array or not updated:
+            if storage_path and not updated:
+                print(f"[Async Transcription] Warning: Could not find recording with storagePath {storage_path} in transaction")
+            # Fall back to legacy field
             meeting_ref.update({
                 "audioRecording.speechmaticsJobId": job_id,
                 "audioRecording.transcriptionStatus": "processing",
