@@ -115,9 +115,16 @@ const TranscriptionViewer: React.FC<TranscriptionViewerProps> = ({
 
     const sortedRecordings = React.useMemo(() => {
         if (!Array.isArray(meeting.audioRecordings)) return [];
-        return [...meeting.audioRecordings].sort((a, b) =>
-            a.fileName.localeCompare(b.fileName, undefined, { numeric: true, sensitivity: 'base' })
-        );
+        return [...meeting.audioRecordings].sort((a, b) => {
+            if (a.uploadedAt && b.uploadedAt) {
+                const timeA = new Date(a.uploadedAt).getTime();
+                const timeB = new Date(b.uploadedAt).getTime();
+                if (timeA !== timeB) {
+                    return timeA - timeB;
+                }
+            }
+            return a.fileName.localeCompare(b.fileName, undefined, { numeric: true, sensitivity: 'base' });
+        });
     }, [meeting.audioRecordings]);
 
     const [activeRecording, setActiveRecording] = useState<AudioRecording | undefined>(() => {

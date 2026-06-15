@@ -159,7 +159,7 @@ export const uploadAudioFile = (
                             fileSize: file.size,
                             duration,
                             mimeType: file.type,
-                            uploadedAt: new Date().toISOString(),
+                            uploadedAt: new Date(timestamp).toISOString(),
                             transcriptionStatus: 'pending'
                         };
 
