@@ -18,6 +18,12 @@ def natural_sort_key(s):
     return [int(text) if text.isdigit() else text.lower() for text in re.split(r'(\d+)', s)]
 
 
+def recording_sort_key(r):
+    uploaded_at = r.get("uploadedAt") or "9999-12-31"
+    file_name = r.get("fileName") or ""
+    return (uploaded_at, natural_sort_key(file_name))
+
+
 
 # SPEAKER IDENTIFICATION HELPER
 # =============================================================================
@@ -579,9 +585,9 @@ def speechmatics_webhook(req: https_fn.Request) -> https_fn.Response:
                         updated_array = True
                         break
             
-            # Sort the array naturally by fileName so that order is always consistent
+            # Sort naturally by uploadedAt then fileName so that order is always consistent
             if isinstance(recordings, list) and len(recordings) > 0:
-                recordings.sort(key=lambda r: natural_sort_key(r.get("fileName", "")))
+                recordings.sort(key=recording_sort_key)
                 
             # Build merged transcription of all completed recordings
             merged_parts = []
@@ -815,7 +821,7 @@ def identify_speakers(req: https_fn.CallableRequest) -> dict:
         }
         
         if audio_recordings:
-            audio_recordings.sort(key=lambda r: natural_sort_key(r.get("fileName", "")))
+            audio_recordings.sort(key=recording_sort_key)
             for idx, rec in enumerate(audio_recordings):
                 status = rec.get("transcriptionStatus")
                 trans = rec.get("transcription")
@@ -939,9 +945,9 @@ def submit_transcription(req: https_fn.CallableRequest) -> dict:
                         updated = True
                         break
                 
-                # Sort naturally by fileName so that the array in Firestore is ordered
+                # Sort naturally by uploadedAt then fileName so that the array in Firestore is ordered
                 if isinstance(recordings, list) and len(recordings) > 0:
-                    recordings.sort(key=lambda r: natural_sort_key(r.get("fileName", "")))
+                    recordings.sort(key=recording_sort_key)
                 
                 if updated:
                     transaction.update(doc_ref, {
@@ -1140,8 +1146,8 @@ def check_transcription_status(req: https_fn.CallableRequest) -> dict:
                         if mapping_data:
                             recordings[rec_index]["speakerMapping"] = mapping_data
                         
-                        # Sort naturally by fileName
-                        recordings.sort(key=lambda r: natural_sort_key(r.get("fileName", "")))
+                        # Sort by uploadedAt then fileName naturally
+                        recordings.sort(key=recording_sort_key)
                         
                         # Rebuild merged transcription of all completed recordings
                         merged_parts = []

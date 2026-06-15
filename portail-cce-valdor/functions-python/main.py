@@ -929,6 +929,14 @@ def reset_speakers(req: https_fn.CallableRequest) -> dict:
         updated = False
         
         if audio_recordings:
+            def recording_sort_key(r):
+                uploaded_at = r.get("uploadedAt") or "9999-12-31"
+                file_name = r.get("fileName") or ""
+                import re
+                natural_key = [int(text) if text.isdigit() else text.lower() for text in re.split(r'(\d+)', file_name)]
+                return (uploaded_at, natural_key)
+            
+            audio_recordings.sort(key=recording_sort_key)
             for i, rec in enumerate(audio_recordings):
                 # Filter by path if provided
                 if storage_path and rec.get("storagePath") != storage_path:
