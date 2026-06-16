@@ -1,6 +1,8 @@
 import { useCallback } from 'react';
 import type { AgendaItem } from '../types/meeting.types';
 import { useToast } from './useToast';
+import { parseMinutesDraft } from '../services/minutesParserService';
+import { matchPVToAgenda } from '../services/docxParserService';
 
 interface UseTranscriptionProcessorProps {
     localAgendaItems: AgendaItem[];
@@ -23,9 +25,6 @@ export const useTranscriptionProcessor = ({
 
     const handleApplyTranscription = useCallback(async (content: string) => {
         try {
-            // Dynamic imports to keep initial bundle small
-            const { parseMinutesDraft } = await import('../services/minutesParserService');
-            const { matchPVToAgenda } = await import('../services/docxParserService');
 
             // Pass meetingNumber for auto-numbering resolutions (XX-N) and comments (XX-A)
             const { items: parsedItems, intro } = parseMinutesDraft(content, {

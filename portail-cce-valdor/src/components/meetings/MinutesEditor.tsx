@@ -32,6 +32,8 @@ import { usePVAgent } from '../../hooks/usePVAgent';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 // Note: parseAgendaDOCX is imported dynamically when needed
+import { parseAgendaDOCXWithAI, matchPVToAgenda } from '../../services/docxParserService';
+import { parseMinutesPDF } from '../../services/pvParserService';
 
 interface MinutesEditorProps {
     meeting: Meeting;
@@ -617,11 +619,9 @@ ${(localAgendaItems || []).map((item, idx) => {
 
                     if (isDocx) {
                         // Use AI-powered parser for DOCX (with Groq) - falls back to regex if not configured
-                        const { parseAgendaDOCXWithAI } = await import('../../services/docxParserService');
                         parsedData = await parseAgendaDOCXWithAI(file, localAgendaItems);
                     } else if (isPdf) {
                         // Use the OCR/Text parser for PDF
-                        const { parseMinutesPDF } = await import('../../services/pvParserService');
                         // PDF parsing with progress callback for OCR
                         parsedData = await parseMinutesPDF(
                             file,
@@ -637,9 +637,6 @@ ${(localAgendaItems || []).map((item, idx) => {
                             showSuccess('✅ PDF scanné détecté et traité par OCR (IA Gemini)');
                         }
                     }
-
-                    // Helper to match items (generic logic can be shared or moved, using existing helper for now)
-                    const { matchPVToAgenda } = await import('../../services/docxParserService');
 
                     console.log('[DEBUG] Parsed PV data:', parsedData);
 
