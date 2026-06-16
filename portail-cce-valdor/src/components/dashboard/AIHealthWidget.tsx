@@ -23,7 +23,8 @@ interface MLDashboardData {
         totalMembers: number;
     };
     qualityTrends: {
-        qualityTrend?: string;
+        overallTrend?: string;
+        qualityTrend?: Array<any>;
         avgQualityScore?: number;
     };
 }
@@ -228,7 +229,7 @@ const AIHealthWidget: React.FC = () => {
                         </Tooltip>
                     </Box>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                        {getTrendIcon(data.qualityTrends?.qualityTrend || 'stable')}
+                        {getTrendIcon(data.qualityTrends?.overallTrend || 'stable')}
                         <Typography variant="caption">
                             {data.qualityTrends?.avgQualityScore
                                 ? `${data.qualityTrends.avgQualityScore.toFixed(0)}/100`

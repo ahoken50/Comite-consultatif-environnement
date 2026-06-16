@@ -681,6 +681,7 @@ def analyze_quality_trends(db_client: Any, lookback: int = 20) -> Dict:
             "improvementRate": round(quality_trend_direction, 4),
             "insights": insights,
             "dataPoints": len(learning_docs),
+            "avgQualityScore": round(sum(quality_scores) / len(quality_scores), 1) if quality_scores else 0.0,
         }
         
     except Exception as e:
@@ -742,6 +743,7 @@ def _empty_trends() -> Dict:
         "improvementRate": 0,
         "insights": ["Pas assez de données pour analyser les tendances"],
         "dataPoints": 0,
+        "avgQualityScore": 0.0,
     }
 
 

@@ -135,7 +135,8 @@ export async function runAutonomousMLLoop(meetingId?: string, mode: 'full' | 'qu
         throw new Error(`ML Loop failed: ${response.status}`);
     }
 
-    return response.json();
+    const data = await response.json();
+    return data.results || { autoLearned: 0, queuedForReview: 0, suggestionsGenerated: 0 };
 }
 
 /**
