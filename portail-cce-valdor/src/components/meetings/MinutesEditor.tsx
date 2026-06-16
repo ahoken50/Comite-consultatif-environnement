@@ -321,11 +321,31 @@ ${(localAgendaItems || []).map((item, idx) => {
         onUpdate({ minutesDraft: draft });
     }, [onUpdate]);
 
-    const handleTranscriptionUpdate = React.useCallback((newTranscription: string) => {
+    const handleTranscriptionUpdate = React.useCallback((newTranscription: string, speakerMap?: Record<string, string>) => {
         // We always update the consolidated legacy field
+        let updatedLegacySpeakerMapping = meeting.audioRecording?.speakerMapping || {};
+        if (speakerMap) {
+            updatedLegacySpeakerMapping = { ...updatedLegacySpeakerMapping };
+            Object.entries(speakerMap).forEach(([oldName, newName]) => {
+                if (newName.trim()) {
+                    let found = false;
+                    Object.entries(updatedLegacySpeakerMapping).forEach(([key, val]) => {
+                        if (val === oldName) {
+                            updatedLegacySpeakerMapping[key] = newName;
+                            found = true;
+                        }
+                    });
+                    if (!found) {
+                        updatedLegacySpeakerMapping[oldName] = newName;
+                    }
+                }
+            });
+        }
+
         const updatedLegacy = {
             ...(meeting.audioRecording || {}),
-            transcription: newTranscription
+            transcription: newTranscription,
+            speakerMapping: updatedLegacySpeakerMapping
         };
 
         // Split the new transcription by the delimiter
@@ -351,9 +371,30 @@ ${(localAgendaItems || []).map((item, idx) => {
                     if (headerMatch) {
                         partText = headerMatch[2].trim();
                     }
+
+                    let recSpeakerMapping = rec.speakerMapping || {};
+                    if (speakerMap) {
+                        recSpeakerMapping = { ...recSpeakerMapping };
+                        Object.entries(speakerMap).forEach(([oldName, newName]) => {
+                            if (newName.trim()) {
+                                let found = false;
+                                Object.entries(recSpeakerMapping).forEach(([key, val]) => {
+                                    if (val === oldName) {
+                                        recSpeakerMapping[key] = newName;
+                                        found = true;
+                                    }
+                                });
+                                if (!found) {
+                                    recSpeakerMapping[oldName] = newName;
+                                }
+                            }
+                        });
+                    }
+
                     return {
                         ...rec,
-                        transcription: partText
+                        transcription: partText,
+                        speakerMapping: recSpeakerMapping
                     };
                 }
                 return rec;

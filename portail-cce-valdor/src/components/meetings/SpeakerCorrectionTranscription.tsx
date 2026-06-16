@@ -72,7 +72,7 @@ interface SpeakerCorrectionTranscriptionProps {
     audioDuration?: number;
     currentTime?: number;
     onSeek?: (seconds: number) => void;
-    onTranscriptionUpdate?: (newTranscription: string) => void;
+    onTranscriptionUpdate?: (newTranscription: string, speakerMap?: Record<string, string>) => void;
     onCorrectionMade?: (original: string, corrected: string) => void;
     partIndex?: number;
 }
@@ -219,7 +219,7 @@ export const SpeakerCorrectionTranscription: React.FC<SpeakerCorrectionTranscrip
         };
 
         setCorrections(prev => [...prev, correction]);
-        onTranscriptionUpdate?.(newTranscription);
+        onTranscriptionUpdate?.(newTranscription, { [oldName]: newName });
         onCorrectionMade?.(oldName, newName);
 
         // 3. Trigger ML learning if audio is available
@@ -503,7 +503,7 @@ export const SpeakerCorrectionTranscription: React.FC<SpeakerCorrectionTranscrip
         });
 
         // 4. Update the transcription text globally
-        onTranscriptionUpdate?.(updatedTranscription);
+        onTranscriptionUpdate?.(updatedTranscription, { [reevalOldName]: reevalNewName });
 
         // Keep the corrections in history (User preference)
         setCorrections(prev => [...prev, ...newCorrections]);

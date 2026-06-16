@@ -36,7 +36,7 @@ interface TranscriptionViewerProps {
     meeting: Meeting;
     onDraftGenerated?: (draft: MinutesDraft) => void;
     onApplyToMinutes?: (content: string) => void;
-    onTranscriptionUpdate?: (newTranscription: string) => void;
+    onTranscriptionUpdate?: (newTranscription: string, speakerMap?: Record<string, string>) => void;
 }
 
 // Add RootState import if missing (checked via view_file, needs explicit import)
@@ -512,7 +512,7 @@ const TranscriptionViewer: React.FC<TranscriptionViewerProps> = ({
             }
         });
 
-        onTranscriptionUpdate?.(newTranscription);
+        onTranscriptionUpdate?.(newTranscription, speakerMap);
 
         // Wait for learning to complete (background)
         if (learningPromises.length > 0) {
@@ -671,11 +671,11 @@ const TranscriptionViewer: React.FC<TranscriptionViewerProps> = ({
                                 audioDuration={rec.duration || 0}
                                 currentTime={activeRecording?.storagePath === rec.storagePath ? mainAudioTime : -1}
                                 onSeek={(seconds) => handleSeekMainAudio(seconds, rec)}
-                                onTranscriptionUpdate={(newPartText) => {
+                                onTranscriptionUpdate={(newPartText, subSpeakerMap) => {
                                     const updatedParts = [...transcriptionParts];
                                     updatedParts[idx] = newPartText;
                                     const reCombined = updatedParts.join('\n\n--- TRANSCRIPTION SUIVANTE ---\n\n');
-                                    onTranscriptionUpdate?.(reCombined);
+                                    onTranscriptionUpdate?.(reCombined, subSpeakerMap);
                                 }}
                                 onCorrectionMade={(original, corrected) => {
                                     showToast?.(`Locuteur corrigé: ${original} → ${corrected}`, 'success');

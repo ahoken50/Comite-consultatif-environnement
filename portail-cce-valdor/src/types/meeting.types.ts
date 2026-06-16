@@ -78,7 +78,9 @@ export interface AudioRecording {
     transcriptionStatus: 'pending' | 'processing' | 'completed' | 'error';
     transcriptionError?: string;
     transcribedAt?: string; // ISO string
+    speakerMapping?: Record<string, string>;
 }
+
 
 // AI-generated minutes draft
 export interface MinutesDraft {
