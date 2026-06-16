@@ -1097,7 +1097,9 @@ ${(localAgendaItems || []).map((item, idx) => {
                     />
 
 
-                    {meeting.audioRecording?.transcription && (
+                    {((meeting.audioRecording?.transcription) || 
+                      (Array.isArray(meeting.audioRecordings) && meeting.audioRecordings.some(r => !!r.transcription)) || 
+                      !!meeting.minutesDraft) && (
                         <TranscriptionViewer
                             meeting={meeting}
                             onDraftGenerated={handleDraftGenerated}

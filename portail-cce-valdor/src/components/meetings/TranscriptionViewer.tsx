@@ -20,7 +20,8 @@ import {
     People,
     Refresh,
     SmartToy,
-    WarningAmber
+    WarningAmber,
+    AutoAwesome
 } from '@mui/icons-material';
 import {
     Dialog, DialogTitle, DialogContent, DialogActions, Tooltip
@@ -265,7 +266,7 @@ const TranscriptionViewer: React.FC<TranscriptionViewerProps> = ({
         return Array.from(speakers).sort();
     }, [transcription]);
 
-    if (!transcription) {
+    if (!transcription && !draft) {
         return null;
     }
 
@@ -282,7 +283,7 @@ const TranscriptionViewer: React.FC<TranscriptionViewerProps> = ({
         const context = buildHistoricalContext(pastMeetings, meeting.agendaItems || []);
         const historicalContextText = formatHistoricalContextForPrompt(context);
 
-        const result = await generateMinutesDraftClaude(meeting, transcription, historicalContextText);
+        const result = await generateMinutesDraftClaude(meeting, transcription || '', historicalContextText);
 
         if (result.success && result.draft) {
             onDraftGenerated?.(result.draft);
@@ -498,7 +499,7 @@ const TranscriptionViewer: React.FC<TranscriptionViewerProps> = ({
         });
 
         // 2. Apply Renaming in Transcript
-        let newTranscription = transcription;
+        let newTranscription = transcription || '';
         Object.entries(speakerMap).forEach(([oldName, newName]) => {
             if (newName.trim()) {
                 // Strategy 1: Replace [OldName] -> [NewName]
@@ -551,6 +552,114 @@ const TranscriptionViewer: React.FC<TranscriptionViewerProps> = ({
                 return <Chip label="Brouillon" color="warning" size="small" />;
         }
     };
+
+    if (!transcription) {
+        if (draft) {
+            return (
+                <Box sx={{ mt: 3 }}>
+                    {error && (
+                        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>
+                            {error}
+                        </Alert>
+                    )}
+                    
+                    {/* Draft Section (rendering when no audio transcription is present) */}
+                    <Paper sx={{ p: 3, mb: 3, borderRadius: 3, boxShadow: '0 4px 20px rgba(0,0,0,0.05)' }}>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                                <Typography variant="subtitle1" fontWeight={600} sx={{ color: '#1e4e3d' }}>
+                                    📄 Brouillon du procès-verbal
+                                </Typography>
+                                {getStatusChip()}
+                            </Box>
+                            <Box sx={{ display: 'flex', gap: 1 }}>
+                                <Button
+                                    size="small"
+                                    startIcon={<ContentCopy />}
+                                    onClick={() => {
+                                        navigator.clipboard.writeText(draft.content || '');
+                                        showToast?.('Copié dans le presse-papiers !', 'success');
+                                    }}
+                                >
+                                    Copier
+                                </Button>
+                                <Button
+                                    size="small"
+                                    variant="outlined"
+                                    startIcon={<Edit />}
+                                    onClick={() => setShowFeedbackForm(!showFeedbackForm)}
+                                >
+                                    Réviser avec IA
+                                </Button>
+                            </Box>
+                        </Box>
+
+                        <Paper
+                            variant="outlined"
+                            sx={{
+                                p: 2,
+                                maxHeight: 400,
+                                overflow: 'auto',
+                                bgcolor: 'background.paper',
+                                whiteSpace: 'pre-wrap',
+                                mb: 2
+                            }}
+                        >
+                            {draft.content}
+                        </Paper>
+
+                        {/* Feedback Form */}
+                        {showFeedbackForm && (
+                            <Box sx={{ mt: 2 }}>
+                                <Divider sx={{ mb: 2 }} />
+                                <Typography variant="subtitle2" gutterBottom>
+                                    Corrections et ajustements :
+                                </Typography>
+                                <IsolatedTextField
+                                    fullWidth
+                                    multiline
+                                    rows={4}
+                                    placeholder="Décrivez les corrections à apporter..."
+                                    initialValue={feedback}
+                                    onChange={(val: string) => setFeedback(val)}
+                                    sx={{ mb: 2 }}
+                                />
+                                <Box sx={{ display: 'flex', gap: 2, justifyContent: 'flex-end' }}>
+                                    <Button
+                                        onClick={() => setShowFeedbackForm(false)}
+                                        disabled={isFinalizing}
+                                    >
+                                        Annuler
+                                    </Button>
+                                    <Button
+                                        variant="contained"
+                                        color="primary"
+                                        onClick={handleFinalize}
+                                        disabled={isFinalizing}
+                                        startIcon={isFinalizing ? <CircularProgress size={16} color="inherit" /> : <AutoAwesome />}
+                                    >
+                                        {isFinalizing ? 'Finalisation...' : 'Finaliser le PV'}
+                                    </Button>
+                                </Box>
+                            </Box>
+                        )}
+
+                        <Box sx={{ mt: 3, display: 'flex', justifyContent: 'flex-end' }}>
+                            <Button
+                                variant="contained"
+                                color="success"
+                                startIcon={<CheckCircle />}
+                                onClick={handleApplyToMinutes}
+                            >
+                                Appliquer au PV officiel
+                            </Button>
+                        </Box>
+                    </Paper>
+                </Box>
+            );
+        }
+        return null;
+    }
 
     return (
         <Box sx={{ mt: 3 }}>
