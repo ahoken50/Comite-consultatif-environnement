@@ -1090,41 +1090,63 @@ const TranscriptionViewer: React.FC<TranscriptionViewerProps> = ({
                             📋 File de Vérification Humaine
                             <Chip label={`${verificationQueue.length} en attente`} size="small" color="warning" />
                         </Typography>
-                        {verificationQueue.slice(0, 5).map((item: any, idx: number) => (
-                            <Paper key={idx} variant="outlined" sx={{ p: 1.5, mb: 1 }}>
-                                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 0.5 }}>
-                                    <Typography variant="body2">
-                                        <strong>{item.speakerLabel}</strong> → {item.suggestedName}?
+                        {verificationQueue.slice(0, 5).map((item: any, idx: number) => {
+                            const segId = `queue-${item.id || idx}`;
+                            const isPlaying = playingSegmentId === segId;
+                            
+                            return (
+                                <Paper key={idx} variant="outlined" sx={{ p: 1.5, mb: 1 }}>
+                                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 0.5 }}>
+                                        <Typography variant="body2">
+                                            <strong>{item.speakerLabel}</strong> → {item.suggestedName}?
+                                        </Typography>
+                                        <Chip
+                                            label={`${Math.round((item.confidence || 0) * 100)}%`}
+                                            size="small"
+                                            color={item.confidence > 0.6 ? 'warning' : 'error'}
+                                        />
+                                    </Box>
+                                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+                                        "{item.textSample?.substring(0, 60)}..."
                                     </Typography>
-                                    <Chip
-                                        label={`${Math.round((item.confidence || 0) * 100)}%`}
-                                        size="small"
-                                        color={item.confidence > 0.6 ? 'warning' : 'error'}
-                                    />
-                                </Box>
-                                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
-                                    "{item.textSample?.substring(0, 60)}..."
-                                </Typography>
-                                <Box sx={{ display: 'flex', gap: 0.5 }}>
-                                    <Button
-                                        size="small"
-                                        variant="contained"
-                                        color="success"
-                                        onClick={() => handleConfirmVerification(item, item.suggestedName)}
-                                    >
-                                        ✓ Confirmer
-                                    </Button>
-                                    <Button
-                                        size="small"
-                                        variant="outlined"
-                                        color="error"
-                                        onClick={() => handleRejectVerification(item)}
-                                    >
-                                        ✗ Rejeter
-                                    </Button>
-                                </Box>
-                            </Paper>
-                        ))}
+                                    <Box sx={{ display: 'flex', gap: 0.5 }}>
+                                        <Button
+                                            size="small"
+                                            variant="outlined"
+                                            color="primary"
+                                            onClick={() => {
+                                                if (isPlaying && audioRef.current) {
+                                                    audioRef.current.pause();
+                                                    setPlayingSegmentId(null);
+                                                } else {
+                                                    const url = item.audioUrl || mainAudioUrl;
+                                                    playAudioSegment(url, item.start, item.end, segId);
+                                                }
+                                            }}
+                                            sx={{ minWidth: 'unset', p: '2px 8px' }}
+                                        >
+                                            {isPlaying ? '⏹' : '▶'}
+                                        </Button>
+                                        <Button
+                                            size="small"
+                                            variant="contained"
+                                            color="success"
+                                            onClick={() => handleConfirmVerification(item, item.suggestedName)}
+                                        >
+                                            ✓ Confirmer
+                                        </Button>
+                                        <Button
+                                            size="small"
+                                            variant="outlined"
+                                            color="error"
+                                            onClick={() => handleRejectVerification(item)}
+                                        >
+                                            ✗ Rejeter
+                                        </Button>
+                                    </Box>
+                                </Paper>
+                            );
+                        })}
                         <Button
                             size="small"
                             onClick={() => setShowVerificationQueue(false)}
