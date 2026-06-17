@@ -1336,21 +1336,24 @@ def reevaluate_speaker_segments(req: https_fn.Request) -> https_fn.Response:
         audio_url = None
         segments = []
         
+        speaker_mapping = {}
         if "audioRecordings" in meeting:
             for rec in meeting["audioRecordings"]:
                 if rec.get("transcriptionStatus") == "completed":
                     audio_url = rec.get("downloadURL") or rec.get("url") or rec.get("fileUrl")
                     segments = rec.get("segments", [])
+                    speaker_mapping = rec.get("speakerMapping") or {}
                     if not segments and rec.get("transcription"):
-                        segments = reconstruct_segments_from_transcription(rec.get("transcription"), rec.get("speakerMapping", {}))
+                        segments = reconstruct_segments_from_transcription(rec.get("transcription"), speaker_mapping)
                     if audio_url: break
                     
         # Fallback to legacy field
         if not audio_url:
             rec = meeting.get("audioRecording", {})
             audio_url = rec.get("downloadURL") or rec.get("url") or rec.get("fileUrl")
+            speaker_mapping = rec.get("speakerMapping") or meeting.get("speakerMapping") or {}
             if rec.get("transcription") and not segments:
-                segments = reconstruct_segments_from_transcription(rec.get("transcription"), {})
+                segments = reconstruct_segments_from_transcription(rec.get("transcription"), speaker_mapping)
             
         if not audio_url:
             return https_fn.Response(json.dumps({"error": "Audio URL not found"}), status=404)
@@ -1363,13 +1366,14 @@ def reevaluate_speaker_segments(req: https_fn.Request) -> https_fn.Response:
             
         from speaker_identification import cosine_similarity
         
-        # 2. Iterate through all segments in the meeting that currently have speaker == old_name
+        # 2. Iterate through all segments in the meeting that currently have speaker matching old_name
         candidates = []
         for i, seg in enumerate(segments):
-            seg_speaker = seg.get("speaker")
+            seg_speaker_raw = seg.get("speaker")
+            seg_speaker_resolved = speaker_mapping.get(seg_speaker_raw, seg_speaker_raw) if speaker_mapping else seg_speaker_raw
             
-            # Match old_name (either label S3 or full display name)
-            if seg_speaker == old_name:
+            # Match old_name (either the raw label like "S2" or the resolved display name like "Donald Ratté")
+            if seg_speaker_raw == old_name or seg_speaker_resolved == old_name:
                 seg_start = seg.get("start", 0)
                 seg_end = seg.get("end", 0)
                 seg_duration = seg_end - seg_start
