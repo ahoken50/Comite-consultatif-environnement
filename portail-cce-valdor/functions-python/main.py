@@ -1362,70 +1362,99 @@ def reevaluate_speaker_segments(req: https_fn.Request) -> https_fn.Response:
         if not audio_url:
             return https_fn.Response(json.dumps({"error": "Audio URL not found"}), status=404)
             
-        # 1. Extract ground truth voice embedding for the corrected segment
-        print(f"[Reevaluate] Extracting reference embedding...")
-        ref_embedding = extract_audio_segment_embedding(audio_url, float(start_time), float(end_time))
-        if not ref_embedding:
-            return https_fn.Response(json.dumps({"error": "Failed to extract reference embedding"}), status=500)
-            
-        from speaker_identification import cosine_similarity
-        
-        # 2. Iterate through all segments in the meeting that currently have speaker matching old_name
-        candidates = []
-        for i, seg in enumerate(segments):
-            seg_speaker_raw = seg.get("speaker")
-            seg_speaker_resolved = speaker_mapping.get(seg_speaker_raw, seg_speaker_raw) if speaker_mapping else seg_speaker_raw
-            
-            # Match old_name (either the raw label like "S2" or the resolved display name like "Donald Ratté")
-            if seg_speaker_raw == old_name or seg_speaker_resolved == old_name:
-                seg_start = seg.get("start", 0)
-                seg_end = seg.get("end", 0)
-                seg_duration = seg_end - seg_start
+        local_audio_path = None
+        try:
+            # Download audio once to temporary folder to speed up multiple segment extractions
+            try:
+                import requests
+                import tempfile
+                import shutil
                 
-                # Skip the segment that was actually corrected (the reference itself)
-                if abs(seg_start - float(start_time)) < 1.0 and abs(seg_end - float(end_time)) < 1.0:
-                    continue
+                print(f"[Reevaluate] Downloading audio file to local temp space once...")
+                with requests.get(audio_url, stream=True, timeout=60) as r:
+                    if r.ok:
+                        with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp:
+                            shutil.copyfileobj(r.raw, tmp)
+                            local_audio_path = tmp.name
+                        print(f"[Reevaluate] Audio downloaded locally to {local_audio_path} ({os.path.getsize(local_audio_path)} bytes)")
+                    else:
+                        print(f"[Reevaluate] Failed to download audio: {r.status_code}. Using remote URL.")
+            except Exception as e_dl:
+                print(f"[Reevaluate] Error downloading local copy: {e_dl}. Falling back to remote URL.")
+
+            use_url = local_audio_path or audio_url
+
+            # 1. Extract ground truth voice embedding for the corrected segment
+            print(f"[Reevaluate] Extracting reference embedding...")
+            ref_embedding = extract_audio_segment_embedding(use_url, float(start_time), float(end_time))
+            if not ref_embedding:
+                return https_fn.Response(json.dumps({"error": "Failed to extract reference embedding"}), status=500)
+                
+            from speaker_identification import cosine_similarity
+            
+            # 2. Iterate through all segments in the meeting that currently have speaker matching old_name
+            candidates = []
+            for i, seg in enumerate(segments):
+                seg_speaker_raw = seg.get("speaker")
+                seg_speaker_resolved = speaker_mapping.get(seg_speaker_raw, seg_speaker_raw) if speaker_mapping else seg_speaker_raw
+                
+                # Match old_name (either the raw label like "S2" or the resolved display name like "Donald Ratté")
+                if seg_speaker_raw == old_name or seg_speaker_resolved == old_name:
+                    seg_start = seg.get("start", 0)
+                    seg_end = seg.get("end", 0)
+                    seg_duration = seg_end - seg_start
                     
-                if seg_duration > 1.5: # Min 1.5 seconds for decent voice matching
-                    try:
-                        seg_embedding = extract_audio_segment_embedding(audio_url, seg_start, seg_end)
-                        if seg_embedding:
-                            sim = cosine_similarity(ref_embedding, seg_embedding)
-                            score = (sim + 1) / 2 # Normalize from [-1, 1] to [0, 1]
-                            
-                            # Determine confidence category
-                            if score >= 0.82:
-                                confidence = "high"
-                                recommendation = f"Correspondance vocale forte ({score*100:.0f}%)"
-                            elif score >= 0.65:
-                                confidence = "medium"
-                                recommendation = f"Correspondance vocale modérée ({score*100:.0f}%)"
-                            else:
-                                confidence = "low"
-                                recommendation = f"Différent ({score*100:.0f}%)"
-                                
-                            candidates.append({
-                                "index": i,
-                                "startTime": seg_start,
-                                "endTime": seg_end,
-                                "duration": seg_duration,
-                                "text": seg.get("text", "Segment audio..."),
-                                "score": score,
-                                "confidence": confidence,
-                                "recommendation": recommendation
-                            })
-                    except Exception as e:
-                        print(f"[Reevaluate] Error comparing segment {i}: {e}")
+                    # Skip the segment that was actually corrected (the reference itself)
+                    if abs(seg_start - float(start_time)) < 1.0 and abs(seg_end - float(end_time)) < 1.0:
+                        continue
                         
-        # Sort candidates: highest confidence first
-        candidates.sort(key=lambda x: x["score"], reverse=True)
-        print(f"[Reevaluate] Found {len(candidates)} candidates for re-evaluation")
-        
-        return https_fn.Response(json.dumps({
-            "success": True,
-            "candidates": candidates
-        }), status=200, content_type="application/json")
-        
+                    if seg_duration > 1.5: # Min 1.5 seconds for decent voice matching
+                        try:
+                            seg_embedding = extract_audio_segment_embedding(use_url, seg_start, seg_end)
+                            if seg_embedding:
+                                sim = cosine_similarity(ref_embedding, seg_embedding)
+                                score = (sim + 1) / 2 # Normalize from [-1, 1] to [0, 1]
+                                
+                                # Determine confidence category
+                                if score >= 0.82:
+                                    confidence = "high"
+                                    recommendation = f"Correspondance vocale forte ({score*100:.0f}%)"
+                                elif score >= 0.65:
+                                    confidence = "medium"
+                                    recommendation = f"Correspondance vocale modérée ({score*100:.0f}%)"
+                                else:
+                                    confidence = "low"
+                                    recommendation = f"Différent ({score*100:.0f}%)"
+                                    
+                                candidates.append({
+                                    "index": i,
+                                    "startTime": seg_start,
+                                    "endTime": seg_end,
+                                    "duration": seg_duration,
+                                    "text": seg.get("text", "Segment audio..."),
+                                    "score": score,
+                                    "confidence": confidence,
+                                    "recommendation": recommendation
+                                })
+                        except Exception as e:
+                            print(f"[Reevaluate] Error comparing segment {i}: {e}")
+                            
+            # Sort candidates: highest confidence first
+            candidates.sort(key=lambda x: x["score"], reverse=True)
+            print(f"[Reevaluate] Found {len(candidates)} candidates for re-evaluation")
+            
+            return https_fn.Response(json.dumps({
+                "success": True,
+                "candidates": candidates
+            }), status=200, content_type="application/json")
+        finally:
+            if local_audio_path and os.path.exists(local_audio_path):
+                try:
+                    os.unlink(local_audio_path)
+                    print(f"[Reevaluate] Cleaned up temporary audio: {local_audio_path}")
+                except Exception as e_clean:
+                    print(f"[Reevaluate] Error cleaning up temporary audio: {e_clean}")
+                    
     except Exception as e:
         print(f"[Reevaluate] Error: {e}")
         import traceback
