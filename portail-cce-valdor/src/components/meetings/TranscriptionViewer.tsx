@@ -458,6 +458,30 @@ const TranscriptionViewer: React.FC<TranscriptionViewerProps> = ({
         }
     };
 
+    const handleRejectVerification = async (item: any) => {
+        try {
+            const response = await fetch(
+                `https://us-central1-comite-cce.cloudfunctions.net/human_verification_queue`,
+                {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        action: 'reject',
+                        itemId: item.id
+                    })
+                }
+            );
+            const data = await response.json();
+            if (data.success) {
+                showToast?.(`❌ Suggestion rejetée.`, 'info');
+                setVerificationQueue(prev => prev.filter(i => i.id !== item.id));
+            }
+        } catch (err) {
+            console.error(err);
+            showToast?.('Erreur lors du rejet', 'error');
+        }
+    };
+
     const copyToClipboard = (text: string) => {
         navigator.clipboard.writeText(text);
     };
@@ -1094,7 +1118,7 @@ const TranscriptionViewer: React.FC<TranscriptionViewerProps> = ({
                                         size="small"
                                         variant="outlined"
                                         color="error"
-                                        onClick={() => setVerificationQueue(prev => prev.filter(i => i.id !== item.id))}
+                                        onClick={() => handleRejectVerification(item)}
                                     >
                                         ✗ Rejeter
                                     </Button>
