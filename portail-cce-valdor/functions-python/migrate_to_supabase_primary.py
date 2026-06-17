@@ -11,7 +11,6 @@ import os
 import json
 from datetime import datetime
 from firebase_admin import firestore, credentials, initialize_app, _apps
-from supabase import create_client
 from firebase_functions import https_fn, options
 
 
@@ -43,6 +42,7 @@ def migrate_firestore_to_supabase():
             print("✗ SUPABASE_URL or SUPABASE_KEY not configured")
             return False
         
+        from supabase import create_client
         supabase = create_client(supabase_url, supabase_key)
         
         # Test speaker_embeddings table exists

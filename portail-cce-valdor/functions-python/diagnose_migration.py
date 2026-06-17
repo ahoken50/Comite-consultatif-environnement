@@ -7,8 +7,8 @@ It checks Firestore, Supabase, and migration status.
 
 import os
 import json
+
 from firebase_admin import firestore, credentials, initialize_app, _apps
-from supabase import create_client
 from firebase_functions import https_fn, options
 
 
@@ -89,6 +89,7 @@ def check_supabase_status():
             print("✗ SUPABASE_URL or SUPABASE_KEY not configured")
             return {"error": "Credentials not configured"}
         
+        from supabase import create_client
         supabase = create_client(supabase_url, supabase_key)
         print("✓ Supabase connection successful")
         

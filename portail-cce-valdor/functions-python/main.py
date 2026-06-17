@@ -2553,8 +2553,9 @@ def purge_speaker_profile(req: https_fn.CallableRequest) -> dict:
         print(f"[Admin] Purging profiles for: {names_to_clean}")
 
         # 1. Clean Supabase
-        from supabase_embeddings import supabase
+        from supabase_embeddings import _get_supabase_client
         try:
+            supabase = _get_supabase_client()
             res = supabase.table("speaker_embeddings").delete().in_("speaker_name", names_to_clean).execute()
             print(f"[Admin] Supabase clean successful.")
         except Exception as e:
@@ -3007,6 +3008,7 @@ from recommendation_engine import (
     extract_meeting_features,
 )
 
+
 from active_learning import (
     analyze_embedding_quality,
     build_style_memory,
@@ -3024,6 +3026,8 @@ from diagnose_migration import api_diagnose_migration
 from diagnose_enrollment import diagnose_enrollment_issues
 from sync_firestore_to_supabase import force_sync_firestore_to_supabase
 from retry_enrollment import retry_failed_enrollments
+
+
 
 
 # -----------------------------------------------------------------------------

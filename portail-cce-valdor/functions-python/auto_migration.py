@@ -9,8 +9,6 @@ import os
 import json
 from datetime import datetime
 from firebase_admin import firestore
-from supabase import create_client
-
 
 MIGRATION_FLAG_KEY = "phase2_migration_completed"
 MIGRATION_TIMESTAMP_KEY = "phase2_migration_timestamp"
@@ -117,7 +115,7 @@ def is_supabase_phase2_ready() -> bool:
         if not supabase_url or not supabase_key:
             print("[AutoMigration] Supabase credentials not configured")
             return False
-        
+        from supabase import create_client
         supabase = create_client(supabase_url, supabase_key)
         
         # Try to query speaker_embeddings table
