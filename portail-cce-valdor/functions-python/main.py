@@ -1341,10 +1341,12 @@ def reevaluate_speaker_segments(req: https_fn.Request) -> https_fn.Response:
             for rec in meeting["audioRecordings"]:
                 if rec.get("transcriptionStatus") == "completed":
                     audio_url = rec.get("downloadURL") or rec.get("url") or rec.get("fileUrl")
-                    segments = rec.get("segments", [])
                     speaker_mapping = rec.get("speakerMapping") or {}
-                    if not segments and rec.get("transcription"):
+                    # Always prioritize reconstructing segments from the transcription text to reflect the user's edits
+                    if rec.get("transcription"):
                         segments = reconstruct_segments_from_transcription(rec.get("transcription"), speaker_mapping)
+                    else:
+                        segments = rec.get("segments", [])
                     if audio_url: break
                     
         # Fallback to legacy field
@@ -1352,8 +1354,10 @@ def reevaluate_speaker_segments(req: https_fn.Request) -> https_fn.Response:
             rec = meeting.get("audioRecording", {})
             audio_url = rec.get("downloadURL") or rec.get("url") or rec.get("fileUrl")
             speaker_mapping = rec.get("speakerMapping") or meeting.get("speakerMapping") or {}
-            if rec.get("transcription") and not segments:
+            if rec.get("transcription"):
                 segments = reconstruct_segments_from_transcription(rec.get("transcription"), speaker_mapping)
+            else:
+                segments = rec.get("segments", [])
             
         if not audio_url:
             return https_fn.Response(json.dumps({"error": "Audio URL not found"}), status=404)

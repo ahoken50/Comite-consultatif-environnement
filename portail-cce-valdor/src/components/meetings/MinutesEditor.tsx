@@ -335,7 +335,7 @@ ${(localAgendaItems || []).map((item, idx) => {
                             found = true;
                         }
                     });
-                    if (!found) {
+                    if (!found && /^S\d+$/.test(oldName)) {
                         updatedLegacySpeakerMapping[oldName] = newName;
                     }
                 }
@@ -384,7 +384,7 @@ ${(localAgendaItems || []).map((item, idx) => {
                                         found = true;
                                     }
                                 });
-                                if (!found) {
+                                if (!found && /^S\d+$/.test(oldName)) {
                                     recSpeakerMapping[oldName] = newName;
                                 }
                             }
