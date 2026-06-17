@@ -36,7 +36,8 @@ def run_speaker_identification(
     meeting_context: dict,
     attendees: list,
     db,
-    meeting_id: str
+    meeting_id: str,
+    existing_mapping: dict = None
 ) -> dict:
     """
     Core speaker identification logic. Reusable by both speechmatics_webhook and identify_speakers.
@@ -192,6 +193,10 @@ def run_speaker_identification(
     
     # Identify unique speakers
     for speaker_label, texts in unique_speakers.items():
+        if existing_mapping and speaker_label in existing_mapping:
+            speaker_mapping[speaker_label] = existing_mapping[speaker_label]
+            continue
+            
         combined_text = " ".join(texts[:5])
         voice_scores = {}
         
@@ -769,7 +774,8 @@ def identify_speakers(req: https_fn.CallableRequest) -> dict:
                 meeting_context=meeting_context,
                 attendees=attendees,
                 db=db,
-                meeting_id=meeting_id
+                meeting_id=meeting_id,
+                existing_mapping=rec.get("speakerMapping")
             )
             
             if id_result.get("success"):
@@ -796,7 +802,8 @@ def identify_speakers(req: https_fn.CallableRequest) -> dict:
                     meeting_context=meeting_context,
                     attendees=attendees,
                     db=db,
-                    meeting_id=meeting_id
+                    meeting_id=meeting_id,
+                    existing_mapping=legacy.get("speakerMapping")
                 )
                 if id_result.get("success"):
                     legacy_result = id_result
@@ -1104,6 +1111,7 @@ def check_transcription_status(req: https_fn.CallableRequest) -> dict:
             if enrolled_speakers and len(enrolled_speakers) > 0 and audio_url:
                 try:
                     meeting_context = {"type": "Régulière"}
+                    existing_mapping = rec.get("speakerMapping") if recording_index >= 0 else legacy.get("speakerMapping")
                     id_result = run_speaker_identification(
                         transcription_text=full_transcription,
                         audio_url=audio_url,
@@ -1112,7 +1120,8 @@ def check_transcription_status(req: https_fn.CallableRequest) -> dict:
                         meeting_context=meeting_context,
                         attendees=attendees,
                         db=db,
-                        meeting_id=meeting_id
+                        meeting_id=meeting_id,
+                        existing_mapping=existing_mapping
                     )
                     if id_result.get("success"):
                         identified_transcription = id_result["identified_transcription"]
