@@ -1393,7 +1393,10 @@ def reevaluate_speaker_segments(req: https_fn.Request) -> https_fn.Response:
             from speaker_identification import cosine_similarity
             
             # 2. Iterate through all segments in the meeting that currently have speaker matching old_name
-            candidates = []
+            from concurrent.futures import ThreadPoolExecutor, as_completed
+            
+            # First, gather all candidate segments to evaluate
+            candidate_segments = []
             for i, seg in enumerate(segments):
                 seg_speaker_raw = seg.get("speaker")
                 seg_speaker_resolved = speaker_mapping.get(seg_speaker_raw, seg_speaker_raw) if speaker_mapping else seg_speaker_raw
@@ -1409,39 +1412,56 @@ def reevaluate_speaker_segments(req: https_fn.Request) -> https_fn.Response:
                         continue
                         
                     if seg_duration > 1.5: # Min 1.5 seconds for decent voice matching
-                        try:
-                            seg_embedding = extract_audio_segment_embedding(use_url, seg_start, seg_end)
-                            if seg_embedding:
-                                sim = cosine_similarity(ref_embedding, seg_embedding)
-                                score = (sim + 1) / 2 # Normalize from [-1, 1] to [0, 1]
-                                
-                                # Determine confidence category
-                                if score >= 0.82:
-                                    confidence = "high"
-                                    recommendation = f"Correspondance vocale forte ({score*100:.0f}%)"
-                                elif score >= 0.65:
-                                    confidence = "medium"
-                                    recommendation = f"Correspondance vocale modérée ({score*100:.0f}%)"
-                                else:
-                                    confidence = "low"
-                                    recommendation = f"Différent ({score*100:.0f}%)"
-                                    
-                                candidates.append({
-                                    "index": i,
-                                    "startTime": seg_start,
-                                    "endTime": seg_end,
-                                    "duration": seg_duration,
-                                    "text": seg.get("text", "Segment audio..."),
-                                    "score": score,
-                                    "confidence": confidence,
-                                    "recommendation": recommendation
-                                })
-                        except Exception as e:
-                            print(f"[Reevaluate] Error comparing segment {i}: {e}")
+                        candidate_segments.append((i, seg_start, seg_end, seg_duration, seg.get("text", "Segment audio...")))
+
+            print(f"[Reevaluate] Found {len(candidate_segments)} candidate segments to process in parallel")
+
+            # Worker function to process a single segment
+            def process_segment(item):
+                idx, seg_start, seg_end, seg_duration, text = item
+                try:
+                    seg_embedding = extract_audio_segment_embedding(use_url, seg_start, seg_end)
+                    if seg_embedding:
+                        sim = cosine_similarity(ref_embedding, seg_embedding)
+                        score = (sim + 1) / 2 # Normalize from [-1, 1] to [0, 1]
+                        
+                        # Determine confidence category
+                        if score >= 0.82:
+                            confidence = "high"
+                            recommendation = f"Correspondance vocale forte ({score*100:.0f}%)"
+                        elif score >= 0.65:
+                            confidence = "medium"
+                            recommendation = f"Correspondance vocale modérée ({score*100:.0f}%)"
+                        else:
+                            confidence = "low"
+                            recommendation = f"Différent ({score*100:.0f}%)"
                             
+                        return {
+                            "index": idx,
+                            "startTime": seg_start,
+                            "endTime": seg_end,
+                            "duration": seg_duration,
+                            "text": text,
+                            "score": score,
+                            "confidence": confidence,
+                            "recommendation": recommendation
+                        }
+                except Exception as e:
+                    print(f"[Reevaluate] Error comparing segment {idx}: {e}")
+                return None
+
+            candidates = []
+            max_workers = 15
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                futures = {executor.submit(process_segment, item): item for item in candidate_segments}
+                for future in as_completed(futures):
+                    result = future.result()
+                    if result:
+                        candidates.append(result)
+
             # Sort candidates: highest confidence first
             candidates.sort(key=lambda x: x["score"], reverse=True)
-            print(f"[Reevaluate] Found {len(candidates)} candidates for re-evaluation")
+            print(f"[Reevaluate] Evaluated {len(candidates)} candidates successfully")
             
             return https_fn.Response(json.dumps({
                 "success": True,
