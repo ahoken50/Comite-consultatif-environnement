@@ -97,7 +97,27 @@ def extract_audio_segment_embedding(audio_url: str, start_sec: float, end_sec: f
             os.unlink(input_path)
         os.unlink(output_path)
         
-        # Decide whether to send base64 or upload to storage (HF or fallback)
+        duration = min(end_sec - start_sec, 30)
+        return get_embedding_from_segment_data(segment_data, duration, start_sec, end_sec)
+
+    except Exception as e:
+        print(f"[VoiceEmbed] Error: {e}")
+        import traceback
+        traceback.print_exc()
+        return []
+
+def get_embedding_from_segment_data(segment_data: bytes, duration: float, start_sec: float = 0, end_sec: float = 0) -> list:
+    """
+    Call Modal/HF endpoint to get voice embedding from raw segment audio bytes in memory.
+    """
+    try:
+        endpoint_url = os.environ.get("MODAL_ENDPOINT_URL") or os.environ.get("HF_ENDPOINT_URL")
+        hf_token = os.environ.get("HF_TOKEN")
+        
+        if not endpoint_url:
+            print("[VoiceEmbed] MODAL_ENDPOINT_URL or HF_ENDPOINT_URL not configured")
+            return []
+            
         import base64
         is_modal = "modal.run" in endpoint_url
         
@@ -114,7 +134,6 @@ def extract_audio_segment_embedding(audio_url: str, start_sec: float, end_sec: f
             temp_blob.upload_from_string(segment_data, content_type="audio/wav")
             
             # Generate signed URL (expires in 15 minutes)
-            # On GCF/Cloud Run, default Compute Engine credentials lack private keys, so we bypass signing and use token fallback.
             use_token_fallback = False
             try:
                 from google.auth import default as auth_default
@@ -142,7 +161,6 @@ def extract_audio_segment_embedding(audio_url: str, start_sec: float, end_sec: f
                         use_token_fallback = True
 
             if use_token_fallback or not signed_url:
-                # Fallback: Use secure Firebase Download Token (works without private key on Cloud Run)
                 try:
                     import uuid
                     token = str(uuid.uuid4())
@@ -153,16 +171,12 @@ def extract_audio_segment_embedding(audio_url: str, start_sec: float, end_sec: f
                     bucket_name = temp_blob.bucket.name
                     blob_name = temp_blob.name.replace("/", "%2F")
                     signed_url = f"https://firebasestorage.googleapis.com/v0/b/{bucket_name}/o/{blob_name}?alt=media&token={token}"
-                    print(f"[VoiceEmbed] Generated secure Firebase token fallback URL: {signed_url[:70]}...")
                 except Exception as e3:
                      print(f"[VoiceEmbed] Token generation/patch failed: {e3}")
-                     # Last resort: try public link without token
                      bucket_name = temp_blob.bucket.name
                      blob_name = temp_blob.name.replace("/", "%2F")
                      signed_url = f"https://firebasestorage.googleapis.com/v0/b/{bucket_name}/o/{blob_name}?alt=media"
-                     print(f"[VoiceEmbed] WARNING: Using unsigned public fallback link: {signed_url}")
 
-            # Modal uses "url", HF uses "inputs" - send both for compatibility
             payload = {"url": signed_url, "inputs": signed_url}
 
         try:
@@ -171,7 +185,6 @@ def extract_audio_segment_embedding(audio_url: str, start_sec: float, end_sec: f
             host_str = endpoint_url
         print(f"[VoiceEmbed] Sending segment to {host_str} ({duration:.1f}s)")
         
-        # Call endpoint with headers (supports both Modal and HF)
         headers = {"Content-Type": "application/json"}
         if hf_token:
             headers["Authorization"] = f"Bearer {hf_token}"
@@ -180,7 +193,7 @@ def extract_audio_segment_embedding(audio_url: str, start_sec: float, end_sec: f
             endpoint_url,
             headers=headers,
             json=payload,
-            timeout=600  # Increased to 10m to handle cold start
+            timeout=600
         )
         
         if not modal_response.ok:
@@ -188,9 +201,40 @@ def extract_audio_segment_embedding(audio_url: str, start_sec: float, end_sec: f
             return []
             
         return modal_response.json()
-
     except Exception as e:
-        print(f"[VoiceEmbed] Error: {e}")
+        print(f"[VoiceEmbed] Error in get_embedding_from_segment_data: {e}")
         import traceback
         traceback.print_exc()
         return []
+
+def extract_audio_segment_bytes(local_audio_path: str, start_sec: float, end_sec: float) -> bytes:
+    """
+    Run ffmpeg locally on a local audio file to extract start_sec to end_sec as WAV bytes.
+    """
+    try:
+        with tempfile.NamedTemporaryFile(suffix="_segment.wav", delete=False) as tmp_out:
+            output_path = tmp_out.name
+            
+        duration = min(end_sec - start_sec, 30)
+        
+        cmd = [
+            "ffmpeg", "-y",
+            "-ss", str(start_sec),
+            "-i", local_audio_path,
+            "-t", str(duration),
+            "-ar", "16000", "-ac", "1",
+            output_path
+        ]
+        
+        # Capture output silently to prevent logging pollution
+        subprocess.run(cmd, capture_output=True, text=True, check=True)
+        
+        with open(output_path, "rb") as f:
+            segment_data = f.read()
+            
+        os.unlink(output_path)
+        return segment_data
+    except Exception as e:
+        print(f"[AudioUtils] Error extracting segment bytes: {e}")
+        return b""
+

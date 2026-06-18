@@ -1304,7 +1304,7 @@ def reinforce_speaker_voice(req: https_fn.Request) -> https_fn.Response:
 
 @https_fn.on_request(
     timeout_sec=300,
-    memory=512,
+    memory=options.MemoryOption.GB_1,
     cors=options.CorsOptions(cors_origins="*", cors_methods=["GET", "POST", "OPTIONS"])
 )
 def reevaluate_speaker_segments(req: https_fn.Request) -> https_fn.Response:
@@ -1377,6 +1377,27 @@ def reevaluate_speaker_segments(req: https_fn.Request) -> https_fn.Response:
                             shutil.copyfileobj(r.raw, tmp)
                             local_audio_path = tmp.name
                         print(f"[Reevaluate] Audio downloaded locally to {local_audio_path} ({os.path.getsize(local_audio_path)} bytes)")
+                        
+                        # Convert to 16kHz mono WAV to make subsequent seeking instant
+                        try:
+                            print(f"[Reevaluate] Converting downloaded audio to resampled 16kHz mono WAV for instant seeking...")
+                            t_conv = time.time()
+                            wav_path = local_audio_path + ".wav"
+                            cmd_conv = [
+                                "ffmpeg", "-y",
+                                "-i", local_audio_path,
+                                "-ar", "16000", "-ac", "1",
+                                wav_path
+                            ]
+                            subprocess.run(cmd_conv, capture_output=True, check=True)
+                            try:
+                                os.unlink(local_audio_path) # Delete original mp3
+                            except Exception:
+                                pass
+                            local_audio_path = wav_path
+                            print(f"[Reevaluate] Resampled WAV created at {local_audio_path} in {time.time() - t_conv:.2f}s ({os.path.getsize(local_audio_path)} bytes)")
+                        except Exception as e_conv:
+                            print(f"[Reevaluate] Resampling failed: {e_conv}. Continuing with original format.")
                     else:
                         print(f"[Reevaluate] Failed to download audio: {r.status_code}. Using remote URL.")
             except Exception as e_dl:
@@ -1416,11 +1437,34 @@ def reevaluate_speaker_segments(req: https_fn.Request) -> https_fn.Response:
 
             print(f"[Reevaluate] Found {len(candidate_segments)} candidate segments to process in parallel")
 
+            # Sequentially extract WAV bytes for all candidates in the main thread.
+            # This is super fast (~0.02s per segment) and avoids spawning concurrent ffmpeg processes.
+            print(f"[Reevaluate] Starting sequential audio segment extraction for {len(candidate_segments)} candidates...")
+            t_extract_start = time.time()
+            prepared_candidates = []
+            from audio_utils import extract_audio_segment_bytes, get_embedding_from_segment_data
+            
+            for item in candidate_segments:
+                idx, seg_start, seg_end, seg_duration, text = item
+                if local_audio_path:
+                    seg_bytes = extract_audio_segment_bytes(local_audio_path, seg_start, seg_end)
+                    if seg_bytes:
+                        prepared_candidates.append((idx, seg_start, seg_end, seg_duration, text, seg_bytes))
+                else:
+                    # Fallback (no local file) - we will pass None and extract in threads
+                    prepared_candidates.append((idx, seg_start, seg_end, seg_duration, text, None))
+                    
+            print(f"[Reevaluate] Extracted WAV bytes for {len(prepared_candidates)} candidates in {time.time() - t_extract_start:.2f}s")
+
             # Worker function to process a single segment
             def process_segment(item):
-                idx, seg_start, seg_end, seg_duration, text = item
+                idx, seg_start, seg_end, seg_duration, text, seg_bytes = item
                 try:
-                    seg_embedding = extract_audio_segment_embedding(use_url, seg_start, seg_end)
+                    if seg_bytes:
+                        seg_embedding = get_embedding_from_segment_data(seg_bytes, min(seg_duration, 30.0), seg_start, seg_end)
+                    else:
+                        seg_embedding = extract_audio_segment_embedding(use_url, seg_start, seg_end)
+                        
                     if seg_embedding:
                         sim = cosine_similarity(ref_embedding, seg_embedding)
                         score = (sim + 1) / 2 # Normalize from [-1, 1] to [0, 1]
@@ -1451,9 +1495,9 @@ def reevaluate_speaker_segments(req: https_fn.Request) -> https_fn.Response:
                 return None
 
             candidates = []
-            max_workers = 15
+            max_workers = 35  # Increased since threads are doing pure network I/O
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                futures = {executor.submit(process_segment, item): item for item in candidate_segments}
+                futures = {executor.submit(process_segment, item): item for item in prepared_candidates}
                 for future in as_completed(futures):
                     result = future.result()
                     if result:
