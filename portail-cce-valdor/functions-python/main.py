@@ -1415,9 +1415,8 @@ def reevaluate_speaker_segments(req: https_fn.Request) -> https_fn.Response:
             
             # 2. Iterate through all segments in the meeting that currently have speaker matching old_name
             from concurrent.futures import ThreadPoolExecutor, as_completed
-            
-            # First, gather all candidate segments to evaluate
-            candidate_segments = []
+            # Group candidate segments by their raw speaker label (e.g. S1, S2...)
+            raw_label_segments = {}
             for i, seg in enumerate(segments):
                 seg_speaker_raw = seg.get("speaker")
                 seg_speaker_resolved = speaker_mapping.get(seg_speaker_raw, seg_speaker_raw) if speaker_mapping else seg_speaker_raw
@@ -1433,79 +1432,126 @@ def reevaluate_speaker_segments(req: https_fn.Request) -> https_fn.Response:
                         continue
                         
                     if seg_duration > 1.5: # Min 1.5 seconds for decent voice matching
-                        candidate_segments.append((i, seg_start, seg_end, seg_duration, seg.get("text", "Segment audio...")))
+                        if seg_speaker_raw not in raw_label_segments:
+                            raw_label_segments[seg_speaker_raw] = []
+                        raw_label_segments[seg_speaker_raw].append({
+                            "index": i,
+                            "start": seg_start,
+                            "end": seg_end,
+                            "duration": seg_duration,
+                            "text": seg.get("text", "Segment audio...")
+                        })
 
-            print(f"[Reevaluate] Found {len(candidate_segments)} candidate segments to process in parallel")
+            labels_to_evaluate = []
+            for label, segs in raw_label_segments.items():
+                # Find the longest segment for this label to serve as representative
+                representative = max(segs, key=lambda x: x["duration"])
+                labels_to_evaluate.append({
+                    "label": label,
+                    "representative": representative,
+                    "all_segments": segs
+                })
 
-            # Sequentially extract WAV bytes for all candidates in the main thread.
+            print(f"[Reevaluate] Found {len(labels_to_evaluate)} unique raw speaker labels to evaluate")
+
+            # Sequentially extract WAV bytes for only these representative segments.
             # This is super fast (~0.02s per segment) and avoids spawning concurrent ffmpeg processes.
-            print(f"[Reevaluate] Starting sequential audio segment extraction for {len(candidate_segments)} candidates...")
+            print(f"[Reevaluate] Starting sequential audio segment extraction for {len(labels_to_evaluate)} labels...")
             t_extract_start = time.time()
-            prepared_candidates = []
+            prepared_representatives = []
             from audio_utils import extract_audio_segment_bytes, get_embedding_from_segment_data
             
-            for item in candidate_segments:
-                idx, seg_start, seg_end, seg_duration, text = item
+            for item in labels_to_evaluate:
+                rep = item["representative"]
                 if local_audio_path:
-                    seg_bytes = extract_audio_segment_bytes(local_audio_path, seg_start, seg_end)
+                    seg_bytes = extract_audio_segment_bytes(local_audio_path, rep["start"], rep["end"])
                     if seg_bytes:
-                        prepared_candidates.append((idx, seg_start, seg_end, seg_duration, text, seg_bytes))
+                        prepared_representatives.append({
+                            "label": item["label"],
+                            "start": rep["start"],
+                            "end": rep["end"],
+                            "duration": rep["duration"],
+                            "seg_bytes": seg_bytes,
+                            "all_segments": item["all_segments"]
+                        })
                 else:
-                    # Fallback (no local file) - we will pass None and extract in threads
-                    prepared_candidates.append((idx, seg_start, seg_end, seg_duration, text, None))
+                    prepared_representatives.append({
+                        "label": item["label"],
+                        "start": rep["start"],
+                        "end": rep["end"],
+                        "duration": rep["duration"],
+                        "seg_bytes": None,
+                        "all_segments": item["all_segments"]
+                    })
                     
-            print(f"[Reevaluate] Extracted WAV bytes for {len(prepared_candidates)} candidates in {time.time() - t_extract_start:.2f}s")
+            print(f"[Reevaluate] Extracted WAV bytes for {len(prepared_representatives)} labels in {time.time() - t_extract_start:.2f}s")
 
-            # Worker function to process a single segment
-            def process_segment(item):
-                idx, seg_start, seg_end, seg_duration, text, seg_bytes = item
+            # Worker function to process a single representative label
+            def process_label(item):
+                label = item["label"]
+                seg_bytes = item["seg_bytes"]
+                duration = item["duration"]
+                start = item["start"]
+                end = item["end"]
                 try:
                     if seg_bytes:
-                        seg_embedding = get_embedding_from_segment_data(seg_bytes, min(seg_duration, 30.0), seg_start, seg_end)
+                        seg_embedding = get_embedding_from_segment_data(seg_bytes, min(duration, 30.0), start, end)
                     else:
-                        seg_embedding = extract_audio_segment_embedding(use_url, seg_start, seg_end)
+                        seg_embedding = extract_audio_segment_embedding(use_url, start, end)
                         
                     if seg_embedding:
                         sim = cosine_similarity(ref_embedding, seg_embedding)
                         score = (sim + 1) / 2 # Normalize from [-1, 1] to [0, 1]
-                        
-                        # Determine confidence category
-                        if score >= 0.82:
-                            confidence = "high"
-                            recommendation = f"Correspondance vocale forte ({score*100:.0f}%)"
-                        elif score >= 0.65:
-                            confidence = "medium"
-                            recommendation = f"Correspondance vocale modérée ({score*100:.0f}%)"
-                        else:
-                            confidence = "low"
-                            recommendation = f"Différent ({score*100:.0f}%)"
-                            
                         return {
-                            "index": idx,
-                            "startTime": seg_start,
-                            "endTime": seg_end,
-                            "duration": seg_duration,
-                            "text": text,
-                            "score": score,
-                            "confidence": confidence,
-                            "recommendation": recommendation
+                            "label": label,
+                            "score": score
                         }
                 except Exception as e:
-                    print(f"[Reevaluate] Error comparing segment {idx}: {e}")
+                    print(f"[Reevaluate] Error comparing label {label}: {e}")
                 return None
 
-            candidates = []
-            max_workers = 35  # Increased since threads are doing pure network I/O
+            label_scores = {}
+            max_workers = 10
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                futures = {executor.submit(process_segment, item): item for item in prepared_candidates}
+                futures = {executor.submit(process_label, item): item for item in prepared_representatives}
                 for future in as_completed(futures):
                     result = future.result()
                     if result:
-                        candidates.append(result)
+                        label_scores[result["label"]] = result["score"]
+
+            # Propagate label scores to all segments of that label
+            candidates = []
+            for item in prepared_representatives:
+                label = item["label"]
+                score = label_scores.get(label)
+                if score is not None:
+                    # Determine confidence category
+                    if score >= 0.82:
+                        confidence = "high"
+                        recommendation = f"Correspondance vocale forte ({score*100:.0f}%)"
+                    elif score >= 0.65:
+                        confidence = "medium"
+                        recommendation = f"Correspondance vocale modérée ({score*100:.0f}%)"
+                    else:
+                        confidence = "low"
+                        recommendation = f"Différent ({score*100:.0f}%)"
+                        
+                    # Add all segments of this label to the candidates list
+                    for seg in item["all_segments"]:
+                        candidates.append({
+                            "index": seg["index"],
+                            "startTime": seg["start"],
+                            "endTime": seg["end"],
+                            "duration": seg["duration"],
+                            "text": seg["text"],
+                            "score": score,
+                            "confidence": confidence,
+                            "recommendation": recommendation
+                        })
 
             # Sort candidates: highest confidence first
             candidates.sort(key=lambda x: x["score"], reverse=True)
-            print(f"[Reevaluate] Evaluated {len(candidates)} candidates successfully")
+            print(f"[Reevaluate] Evaluated {len(candidates)} candidate segments successfully at speaker label level")
             
             return https_fn.Response(json.dumps({
                 "success": True,
