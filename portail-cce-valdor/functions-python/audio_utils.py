@@ -64,8 +64,9 @@ def extract_audio_segment_embedding(audio_url: str, start_sec: float, end_sec: f
             return []
 
         cmd = [
-            "ffmpeg", "-y", "-i", input_path,
+            "ffmpeg", "-y",
             "-ss", str(start_sec),
+            "-i", input_path,
             "-t", str(duration),
             "-ar", "16000", "-ac", "1",
             output_path
@@ -96,70 +97,84 @@ def extract_audio_segment_embedding(audio_url: str, start_sec: float, end_sec: f
             os.unlink(input_path)
         os.unlink(output_path)
         
-        # Upload segment to temporary storage for remote access
-        bucket = storage.bucket()
-        temp_blob_path = f"temp_audio_segments/{int(time.time())}_{start_sec}_{end_sec}.wav"
-        temp_blob = bucket.blob(temp_blob_path)
-        temp_blob.upload_from_string(segment_data, content_type="audio/wav")
+        # Decide whether to send base64 or upload to storage (HF or fallback)
+        import base64
+        is_modal = "modal.run" in endpoint_url
         
-        # Generate signed URL (expires in 15 minutes)
-        # On GCF/Cloud Run, default Compute Engine credentials lack private keys, so we bypass signing and use token fallback.
-        use_token_fallback = False
-        try:
-            from google.auth import default as auth_default
-            credentials, _ = auth_default()
-            if "compute_engine" in str(type(credentials)).lower():
-                use_token_fallback = True
-        except Exception:
-            pass
-
-        signed_url = None
-        if not use_token_fallback:
+        if is_modal:
+            print(f"[VoiceEmbed] Sending base64 audio to Modal directly...")
+            audio_base64 = base64.b64encode(segment_data).decode("utf-8")
+            payload = {"audio_base64": audio_base64}
+        else:
+            print(f"[VoiceEmbed] Fallback to Firebase Storage upload for non-Modal endpoint...")
+            # Upload segment to temporary storage for remote access
+            bucket = storage.bucket()
+            temp_blob_path = f"temp_audio_segments/{int(time.time())}_{start_sec}_{end_sec}.wav"
+            temp_blob = bucket.blob(temp_blob_path)
+            temp_blob.upload_from_string(segment_data, content_type="audio/wav")
+            
+            # Generate signed URL (expires in 15 minutes)
+            # On GCF/Cloud Run, default Compute Engine credentials lack private keys, so we bypass signing and use token fallback.
+            use_token_fallback = False
             try:
-                signed_url = temp_blob.generate_signed_url(
-                    version="v4",
-                    expiration=timedelta(minutes=15),
-                    method="GET"
-                )
+                from google.auth import default as auth_default
+                credentials, _ = auth_default()
+                if "compute_engine" in str(type(credentials)).lower():
+                    use_token_fallback = True
             except Exception:
+                pass
+
+            signed_url = None
+            if not use_token_fallback:
                 try:
                     signed_url = temp_blob.generate_signed_url(
+                        version="v4",
                         expiration=timedelta(minutes=15),
                         method="GET"
                     )
                 except Exception:
-                    use_token_fallback = True
+                    try:
+                        signed_url = temp_blob.generate_signed_url(
+                            expiration=timedelta(minutes=15),
+                            method="GET"
+                        )
+                    except Exception:
+                        use_token_fallback = True
 
-        if use_token_fallback or not signed_url:
-            # Fallback: Use secure Firebase Download Token (works without private key on Cloud Run)
-            try:
-                import uuid
-                token = str(uuid.uuid4())
-                metadata = {"firebaseStorageDownloadTokens": token}
-                temp_blob.metadata = metadata
-                temp_blob.patch()
-                
-                bucket_name = temp_blob.bucket.name
-                blob_name = temp_blob.name.replace("/", "%2F")
-                signed_url = f"https://firebasestorage.googleapis.com/v0/b/{bucket_name}/o/{blob_name}?alt=media&token={token}"
-                print(f"[VoiceEmbed] Generated secure Firebase token fallback URL: {signed_url[:70]}...")
-            except Exception as e3:
-                 print(f"[VoiceEmbed] Token generation/patch failed: {e3}")
-                 # Last resort: try public link without token
-                 bucket_name = temp_blob.bucket.name
-                 blob_name = temp_blob.name.replace("/", "%2F")
-                 signed_url = f"https://firebasestorage.googleapis.com/v0/b/{bucket_name}/o/{blob_name}?alt=media"
-                 print(f"[VoiceEmbed] WARNING: Using unsigned public fallback link: {signed_url}")
+            if use_token_fallback or not signed_url:
+                # Fallback: Use secure Firebase Download Token (works without private key on Cloud Run)
+                try:
+                    import uuid
+                    token = str(uuid.uuid4())
+                    metadata = {"firebaseStorageDownloadTokens": token}
+                    temp_blob.metadata = metadata
+                    temp_blob.patch()
+                    
+                    bucket_name = temp_blob.bucket.name
+                    blob_name = temp_blob.name.replace("/", "%2F")
+                    signed_url = f"https://firebasestorage.googleapis.com/v0/b/{bucket_name}/o/{blob_name}?alt=media&token={token}"
+                    print(f"[VoiceEmbed] Generated secure Firebase token fallback URL: {signed_url[:70]}...")
+                except Exception as e3:
+                     print(f"[VoiceEmbed] Token generation/patch failed: {e3}")
+                     # Last resort: try public link without token
+                     bucket_name = temp_blob.bucket.name
+                     blob_name = temp_blob.name.replace("/", "%2F")
+                     signed_url = f"https://firebasestorage.googleapis.com/v0/b/{bucket_name}/o/{blob_name}?alt=media"
+                     print(f"[VoiceEmbed] WARNING: Using unsigned public fallback link: {signed_url}")
 
-        print(f"[VoiceEmbed] Sending segment to {endpoint_url.split('//')[1].split('/')[0]} ({duration:.1f}s)")
+            # Modal uses "url", HF uses "inputs" - send both for compatibility
+            payload = {"url": signed_url, "inputs": signed_url}
+
+        try:
+            host_str = endpoint_url.split('//')[1].split('/')[0] if '//' in endpoint_url else endpoint_url
+        except Exception:
+            host_str = endpoint_url
+        print(f"[VoiceEmbed] Sending segment to {host_str} ({duration:.1f}s)")
         
         # Call endpoint with headers (supports both Modal and HF)
         headers = {"Content-Type": "application/json"}
         if hf_token:
             headers["Authorization"] = f"Bearer {hf_token}"
-        
-        # Modal uses "url", HF uses "inputs" - send both for compatibility
-        payload = {"url": signed_url, "inputs": signed_url}
         
         modal_response = requests.post(
             endpoint_url,
