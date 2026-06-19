@@ -249,7 +249,7 @@ RÈGLES :
     }
 
     const data = await response.json();
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    const text = data.candidates?.[0]?.content?.parts?.map((p: any) => p.text || '').join('') || '';
 
     if (!text) {
         throw new Error('Aucun texte retourné par l\'IA');
@@ -354,7 +354,7 @@ Retourne uniquement le texte extrait, sans commentaires.`;
     }
 
     const data = await response.json();
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    const text = data.candidates?.[0]?.content?.parts?.map((p: any) => p.text || '').join('') || '';
 
     if (!text) {
         return `[Page ${pageNum} - Aucun texte détecté]`;
