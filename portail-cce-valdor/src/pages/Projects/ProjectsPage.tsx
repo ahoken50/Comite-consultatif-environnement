@@ -36,6 +36,7 @@ import PaginationControls from '../../components/common/PaginationControls';
 import { ProjectStatus } from '../../types/project.types';
 import type { Project } from '../../types/project.types';
 import ProjectMergeDialog from '../../components/projects/ProjectMergeDialog';
+import ProjectSimilarityDialog from '../../components/projects/ProjectSimilarityDialog';
 import { AccessControl } from '../../components/auth/AccessControl';
 import { useToast } from '../../hooks/useToast';
 import { generateStatusBrief } from '../../services/reportService';
@@ -56,6 +57,7 @@ const ProjectsPage: React.FC = () => {
     // Merge State
     const [isMergeOpen, setIsMergeOpen] = useState(false);
     const [mergeSourceProject, setMergeSourceProject] = useState<Project | null>(null);
+    const [isSimilarityOpen, setIsSimilarityOpen] = useState(false);
 
 
     useEffect(() => {
@@ -213,6 +215,14 @@ const ProjectsPage: React.FC = () => {
                 <AccessControl allowedRoles={['coordinator']}>
                     <Button
                         variant="outlined"
+                        color="secondary"
+                        onClick={() => setIsSimilarityOpen(true)}
+                        sx={{ mr: 2 }}
+                    >
+                        Détecter les doublons
+                    </Button>
+                    <Button
+                        variant="outlined"
                         startIcon={<Download />}
                         onClick={handleExportBrief}
                         sx={{ mr: 2 }}
@@ -333,6 +343,12 @@ const ProjectsPage: React.FC = () => {
                 open={isMergeOpen}
                 onClose={() => setIsMergeOpen(false)}
                 sourceProject={mergeSourceProject}
+                allProjects={projects}
+            />
+
+            <ProjectSimilarityDialog
+                open={isSimilarityOpen}
+                onClose={() => setIsSimilarityOpen(false)}
                 allProjects={projects}
             />
         </Box>
