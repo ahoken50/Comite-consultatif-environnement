@@ -487,7 +487,10 @@ FORMAT JSON ATTENDU :
                 contents: [{ parts: [{ text: prompt }] }],
                 generationConfig: {
                     response_mime_type: "application/json",
-                    temperature: 0.2
+                    temperature: 0.2,
+                    thinking_config: {
+                        thinking_budget: 0
+                    }
                 }
             })
         });
@@ -546,7 +549,10 @@ FORMAT JSON ATTENDU (Liste d'objets) :
                 // tools: [{ google_search_retrieval: {} }], 
                 generationConfig: {
                     response_mime_type: "application/json",
-                    temperature: 0.3
+                    temperature: 0.3,
+                    thinking_config: {
+                        thinking_budget: 0
+                    }
                 }
             })
         });
@@ -599,7 +605,10 @@ FORMAT JSON ATTENDU :
                 contents: [{ parts: [{ text: prompt }] }],
                 generationConfig: {
                     response_mime_type: "application/json",
-                    temperature: 0.5
+                    temperature: 0.5,
+                    thinking_config: {
+                        thinking_budget: 0
+                    }
                 }
             })
         });

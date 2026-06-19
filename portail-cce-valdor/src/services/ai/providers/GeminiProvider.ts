@@ -284,6 +284,9 @@ export class GeminiProvider implements AIService {
                     temperature: 0.3,
                     maxOutputTokens: 4096,
                     responseMimeType: 'application/json',
+                    thinkingConfig: {
+                        thinkingBudget: 0
+                    },
                     responseSchema: {
                         type: 'OBJECT',
                         properties: {
@@ -588,7 +591,10 @@ FORMAT JSON ATTENDU :
                 contents: [{ parts: [{ text: prompt }] }],
                 generationConfig: {
                     temperature: 0.1, // Low temp for analytical precision
-                    responseMimeType: "application/json" // Force JSON mode
+                    responseMimeType: "application/json", // Force JSON mode
+                    thinkingConfig: {
+                        thinkingBudget: 0
+                    }
                 }
             })
         });
@@ -671,7 +677,10 @@ INSTRUCTIONS :
                 contents: [{ parts: [{ text: prompt }] }],
                 generationConfig: {
                     temperature: 0.1,
-                    responseMimeType: "application/json"
+                    responseMimeType: "application/json",
+                    thinkingConfig: {
+                        thinkingBudget: 0
+                    }
                 }
             })
         });
