@@ -38,6 +38,8 @@ import ProjectTimeline from '../../components/projects/ProjectTimeline';
 import Breadcrumbs from '../../components/common/Breadcrumbs';
 import { AccessControl } from '../../components/auth/AccessControl';
 import { generateProjectSummary, isGroqConfigured } from '../../services/ai/projectSummaryService';
+import ProjectMergeDialog from '../../components/projects/ProjectMergeDialog';
+import { Merge } from '@mui/icons-material';
 
 interface TabPanelProps {
     children?: React.ReactNode;
@@ -77,15 +79,15 @@ const ProjectDetailPage: React.FC = () => {
     // Check if we came from MinuteEntryEditor specifically to create a task
     const [tabValue, setTabValue] = useState(location.state?.openTaskDialog ? 1 : 0);
     const [editDialogOpen, setEditDialogOpen] = useState(false);
+    const [mergeDialogOpen, setMergeDialogOpen] = useState(false);
 
     // #11.1 AI Summary state
     const [summaryLoading, setSummaryLoading] = useState(false);
     const [summaryError, setSummaryError] = useState<string | null>(null);
 
     // Selectors
-    const project = useSelector((state: RootState) =>
-        state.projects.items.find(p => p.id === id)
-    );
+    const { items: projects } = useSelector((state: RootState) => state.projects);
+    const project = projects.find(p => p.id === id);
     const { items: documents } = useSelector((state: RootState) => state.documents);
     const { items: members } = useSelector((state: RootState) => state.members);
     const { user } = useSelector((state: RootState) => state.auth);
@@ -208,6 +210,15 @@ const ProjectDetailPage: React.FC = () => {
                     </Box>
                     <Box>
                         <AccessControl allowedRoles={['coordinator']}>
+                            <Button
+                                startIcon={<Merge />}
+                                variant="outlined"
+                                color="secondary"
+                                sx={{ mr: 1 }}
+                                onClick={() => setMergeDialogOpen(true)}
+                            >
+                                Fusionner
+                            </Button>
                             <Button
                                 startIcon={<Edit />}
                                 variant="outlined"
@@ -402,6 +413,13 @@ const ProjectDetailPage: React.FC = () => {
                 onClose={() => setEditDialogOpen(false)}
                 onSubmit={handleUpdateProject}
                 members={members}
+            />
+
+            <ProjectMergeDialog
+                open={mergeDialogOpen}
+                onClose={() => setMergeDialogOpen(false)}
+                sourceProject={project}
+                allProjects={projects}
             />
         </Box>
     );
