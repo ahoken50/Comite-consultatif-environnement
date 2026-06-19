@@ -92,6 +92,7 @@ const ProjectDetailPage: React.FC = () => {
     const { items: members } = useSelector((state: RootState) => state.members);
     const { user } = useSelector((state: RootState) => state.auth);
     const tasks = useSelector((state: RootState) => id ? state.projects.tasksByProjectId[id] || EMPTY_TASKS : EMPTY_TASKS);
+    const recommendations = useSelector((state: RootState) => state.governance.recommendations);
 
     useEffect(() => {
         if (id) {
@@ -275,7 +276,7 @@ const ProjectDetailPage: React.FC = () => {
                                 <ProjectTimeline 
                                     project={project} 
                                     tasks={tasks} 
-                                    recommendations={useSelector((state: RootState) => state.governance.recommendations)} 
+                                    recommendations={recommendations} 
                                 />
                             </Box>
                         </Grid>
