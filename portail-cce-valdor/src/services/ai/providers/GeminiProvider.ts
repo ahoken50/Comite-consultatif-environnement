@@ -20,6 +20,10 @@ interface GeminiResponse {
     };
 }
 
+function getResponseText(data: GeminiResponse): string {
+    return data.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('') || '';
+}
+
 export class GeminiProvider implements AIService {
     id: AIProviderId = 'gemini';
 
@@ -50,7 +54,7 @@ export class GeminiProvider implements AIService {
         if (!response.ok) throw new Error('Gemini API refused connection');
         const data: GeminiResponse = await response.json();
 
-        const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+        const text = getResponseText(data);
         if (!text) throw new Error('No transcription generated');
 
         return {
@@ -103,7 +107,7 @@ export class GeminiProvider implements AIService {
 
         if (result.error) throw new Error(result.error.message);
 
-        const draftContent = result.candidates?.[0]?.content?.parts?.[0]?.text;
+        const draftContent = getResponseText(result);
         if (!draftContent) throw new Error('No draft content generated');
 
         return {
@@ -145,7 +149,7 @@ export class GeminiProvider implements AIService {
                 });
 
                 const data: GeminiResponse = await response.json();
-                const summary = data.candidates?.[0]?.content?.parts?.[0]?.text;
+                const summary = getResponseText(data);
                 if (summary) partialSummaries.push(`--- SECTION ${chunk.id} ---\n${summary}`);
             } catch (e) {
                 console.error(`Error processing chunk ${chunk.id}`, e);
@@ -172,7 +176,7 @@ export class GeminiProvider implements AIService {
         });
 
         const finalData: GeminiResponse = await finalResponse.json();
-        const finalContent = finalData.candidates?.[0]?.content?.parts?.[0]?.text || partialSummaries.join('\n'); // Fixed part access
+        const finalContent = getResponseText(finalData) || partialSummaries.join('\n'); // Fixed part access
 
         return {
             content: finalContent || 'Erreur de génération finale',
@@ -206,7 +210,7 @@ export class GeminiProvider implements AIService {
 
         const result: GeminiResponse = await response.json();
         if (result.error) throw new Error(result.error.message);
-        return result.candidates?.[0]?.content?.parts?.[0]?.text || '';
+        return getResponseText(result);
     }
 
     async sanitize(text: string, _options?: SanitizeOptions): Promise<string> {
@@ -225,7 +229,7 @@ export class GeminiProvider implements AIService {
         });
 
         const result: GeminiResponse = await response.json();
-        return result.candidates?.[0]?.content?.parts?.[0]?.text || text;
+        return getResponseText(result) || text;
     }
 
     async generateSummary(transcription: string): Promise<string> {
@@ -242,7 +246,7 @@ export class GeminiProvider implements AIService {
         });
 
         const result: GeminiResponse = await response.json();
-        return result.candidates?.[0]?.content?.parts?.[0]?.text || '';
+        return getResponseText(result);
     }
 
     async extractProjects(meeting: Meeting): Promise<any[]> {
@@ -316,7 +320,7 @@ export class GeminiProvider implements AIService {
         const result: GeminiResponse = await response.json();
         if (result.error) throw new Error(result.error.message);
 
-        const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
+        const text = getResponseText(result);
         if (!text) {
             throw new Error("Aucun texte généré par Gemini.");
         }
@@ -386,7 +390,7 @@ Retourne uniquement le JSON.`;
         });
 
         const data: GeminiResponse = await response.json();
-        const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+        const text = getResponseText(data);
         if (!text) return [];
 
         const jsonMatch = text.match(/\[[\s\S]*\]/);
@@ -503,7 +507,7 @@ RÉSOLUTION PROPOSÉE :`;
         const result: GeminiResponse = await response.json();
         if (result.error) throw new Error(result.error.message);
 
-        return result.candidates?.[0]?.content?.parts?.[0]?.text || '';
+        return getResponseText(result);
     }
 
     async extractText(file: File): Promise<string> {
@@ -529,7 +533,7 @@ RÉSOLUTION PROPOSÉE :`;
         const data: GeminiResponse = await response.json();
 
         if (data.error) throw new Error(data.error.message);
-        return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+        return getResponseText(data);
     }
 
     async checkRegulatoryCompliance(resolutionText: string, context?: string): Promise<{
@@ -592,7 +596,7 @@ FORMAT JSON ATTENDU :
         const result: GeminiResponse = await response.json();
         if (result.error) throw new Error(result.error.message);
 
-        const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
+        const text = getResponseText(result);
         if (!text) throw new Error('No compliance analysis generated');
 
         try {
@@ -675,7 +679,7 @@ INSTRUCTIONS :
         const result: GeminiResponse = await response.json();
         if (result.error) throw new Error(result.error.message);
 
-        const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
+        const text = getResponseText(result);
         if (!text) return { relevantRegulationIds: [], reasoning: "Erreur d'analyse IA" };
 
         try {
@@ -721,7 +725,7 @@ RÉPONSE :`;
         const result: GeminiResponse = await response.json();
         if (result.error) throw new Error(result.error.message);
 
-        return result.candidates?.[0]?.content?.parts?.[0]?.text || "Désolé, je n'ai pas pu générer de réponse.";
+        return getResponseText(result) || "Désolé, je n'ai pas pu générer de réponse.";
     }
 
     async generateAnnualSummary(year: number, context: string): Promise<string> {
@@ -763,6 +767,6 @@ RÉPONSE :`;
         const result: GeminiResponse = await response.json();
         if (result.error) throw new Error(result.error.message);
 
-        return result.candidates?.[0]?.content?.parts?.[0]?.text || "Désolé, je n'ai pas pu générer de rapport de synthèse.";
+        return getResponseText(result) || "Désolé, je n'ai pas pu générer de rapport de synthèse.";
     }
 }

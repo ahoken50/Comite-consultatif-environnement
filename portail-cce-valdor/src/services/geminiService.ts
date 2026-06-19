@@ -21,6 +21,10 @@ interface GeminiResponse {
     };
 }
 
+function getResponseText(data: GeminiResponse): string {
+    return data.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('') || '';
+}
+
 /*
 const UPLOAD_API_URL = 'https://generativelanguage.googleapis.com/upload/v1beta/files';
 
@@ -425,7 +429,7 @@ Ton ton doit être convaincant, clair et concis. Prêt à être lu à l'oral.`;
             throw new Error(result.error.message);
         }
 
-        const speakingPoints = result.candidates?.[0]?.content?.parts?.[0]?.text;
+        const speakingPoints = getResponseText(result);
 
         if (!speakingPoints) {
             throw new Error('Aucun contenu généré');
@@ -491,7 +495,7 @@ FORMAT JSON ATTENDU :
         const result = await response.json();
         if (result.error) throw new Error(result.error.message);
 
-        const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
+        const text = getResponseText(result);
         if (!text) throw new Error('No content');
 
         const data = JSON.parse(text) as PVStructure;
@@ -550,7 +554,7 @@ FORMAT JSON ATTENDU (Liste d'objets) :
         const result = await response.json();
         if (result.error) throw new Error(result.error.message);
 
-        const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
+        const text = getResponseText(result);
         const results = JSON.parse(text) as VerificationResult[];
         return { success: true, results };
 
@@ -603,7 +607,7 @@ FORMAT JSON ATTENDU :
         const result = await response.json();
         if (result.error) throw new Error(result.error.message);
 
-        const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
+        const text = getResponseText(result);
         const recommendations = JSON.parse(text) as DraftRecommendation[];
         return { success: true, recommendations };
 
