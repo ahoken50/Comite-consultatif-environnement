@@ -100,15 +100,28 @@ export const getAggregates = async (
  * Useful when you need to query multiple conditions that can't be combined
  */
 export const batchQuery = async <T extends DocumentData>(
-    collectionName: string,
-    batchConstraints: QueryConstraint[][]
+    collectionRef: import('firebase/firestore').CollectionReference | string,
+    fieldPath: string,
+    values: unknown[]
 ): Promise<T[]> => {
     const timer = logger.time('FirestoreOptim', 'Batch query');
 
     try {
-        const promises = batchConstraints.map(constraints =>
-            getDocs(query(collection(db, collectionName), ...constraints))
-        );
+        if (!values || values.length === 0) return [];
+
+        // Firestore 'in' queries are limited to 30 values
+        const BATCH_SIZE = 30;
+        const chunks = [];
+        for (let i = 0; i < values.length; i += BATCH_SIZE) {
+            chunks.push(values.slice(i, i + BATCH_SIZE));
+        }
+
+        const promises = chunks.map(chunk => {
+            const ref = typeof collectionRef === 'string'
+                ? collection(db, collectionRef)
+                : collectionRef;
+            return getDocs(query(ref, where(fieldPath, 'in', chunk)));
+        });
 
         const snapshots = await Promise.all(promises);
 
@@ -122,7 +135,7 @@ export const batchQuery = async <T extends DocumentData>(
             });
         });
 
-        timer.end({ batchCount: batchConstraints.length, resultCount: resultsMap.size });
+        timer.end({ batchCount: chunks.length, resultCount: resultsMap.size });
         return Array.from(resultsMap.values());
 
     } catch (error) {
