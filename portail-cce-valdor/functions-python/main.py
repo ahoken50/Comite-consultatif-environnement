@@ -2785,6 +2785,41 @@ def _run_ml_loop_internal(db_client, meeting_id=None, mode="full"):
                 print("[AutonomousML] No meetings with audio data found. Falling back to top 5 meetings.")
                 meetings_docs = raw_meetings[:5]
         
+        # PREFETCH MEMBERS (Optimization: avoid N+1 queries)
+        high_conf_names = set()
+        for meeting_doc in meetings_docs:
+            if not meeting_doc.exists:
+                continue
+            meeting = meeting_doc.to_dict()
+            recordings = meeting.get("audioRecordings", [])
+            if not recordings and meeting.get("audioRecording"):
+                recordings = [meeting.get("audioRecording")]
+            for rec in recordings:
+                mapping = rec.get("speakerMapping", {})
+                confidence_data = rec.get("confidenceScores", {})
+                for label, name in mapping.items():
+                    conf_info = confidence_data.get(label, {})
+                    score = conf_info.get("score", 0) if isinstance(conf_info, dict) else conf_info
+                    if not score or score == 0:
+                        score = 0.85
+                    if score >= 0.80:
+                        high_conf_names.add(name)
+
+        prefetched_members = {}
+        if high_conf_names:
+            print(f"[AutonomousML] Prefetching {len(high_conf_names)} unique high-confidence members to avoid N+1 queries...")
+            names_list = list(high_conf_names)
+            # Firestore 'in' query limit is 30
+            for i in range(0, len(names_list), 30):
+                batch_names = names_list[i:i+30]
+                try:
+                    members_query = db_client.collection("members").where("displayName", "in", batch_names).stream()
+                    for m_doc in members_query:
+                        m_data = m_doc.to_dict()
+                        prefetched_members[m_data.get("displayName")] = (m_doc, m_data)
+                except Exception as e:
+                    print(f"[AutonomousML] Error prefetching members batch: {e}")
+
         for meeting_doc in meetings_docs:
             if not meeting_doc.exists:
                 continue
@@ -2821,11 +2856,10 @@ def _run_ml_loop_internal(db_client, meeting_id=None, mode="full"):
                     
                     # AUTO-LEARN: High confidence (>80%)
                     if score >= 0.80:
-                        member_query = db_client.collection("members").where("displayName", "==", name).limit(1).stream()
                         member_found = False
-                        for member_doc in member_query:
+                        if name in prefetched_members:
+                            member_doc, member = prefetched_members[name]
                             member_found = True
-                            member = member_doc.to_dict()
                             sample_count = member.get("voiceSampleCount", 0)
                             print(f"[AutonomousML] Found member {name} with voiceSampleCount={sample_count}")
                             
