@@ -375,14 +375,24 @@ export const runIdentificationStep = async (
     const unidentified: string[] = [];
 
     if (transcription.speakers && transcription.speakers.length > 0) {
+        // PRE-COMPUTE MEMBER LOOKUPS (Optimization Pattern)
+        // Extract display name lowercase and last name lowercase once per member
+        // to avoid O(N*M) repeated string splits and lowercasing inside the loop.
+        const normalizedMembers = config.members.map(m => {
+            const displayNameLower = m.displayName.toLowerCase();
+            const lastNameLower = m.displayName.split(' ').pop()?.toLowerCase() || '';
+            return { member: m, displayNameLower, lastNameLower };
+        });
+
         // Map detected speakers to member names
         for (const speaker of transcription.speakers) {
-            const memberMatch = config.members.find(m =>
-                m.displayName.toLowerCase().includes(speaker.toLowerCase()) ||
-                speaker.toLowerCase().includes(m.displayName.split(' ').pop()?.toLowerCase() || '')
+            const speakerLower = speaker.toLowerCase();
+            const memberMatch = normalizedMembers.find(m =>
+                m.displayNameLower.includes(speakerLower) ||
+                (m.lastNameLower && speakerLower.includes(m.lastNameLower))
             );
             if (memberMatch) {
-                speakerMapping[speaker] = memberMatch.displayName;
+                speakerMapping[speaker] = memberMatch.member.displayName;
                 confidence[speaker] = 0.8;
             } else {
                 unidentified.push(speaker);
