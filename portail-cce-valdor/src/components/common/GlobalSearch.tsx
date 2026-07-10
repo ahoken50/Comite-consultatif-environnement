@@ -142,7 +142,14 @@ const GlobalSearch: React.FC = () => {
     const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
     const [selectedIndex, setSelectedIndex] = useState(-1);
     const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>('all');
-    const [recentSearches, setRecentSearches] = useState<string[]>([]);
+    const [recentSearches, setRecentSearches] = useState<string[]>(() => {
+        try {
+            const saved = localStorage.getItem(RECENT_SEARCHES_KEY);
+            return saved ? JSON.parse(saved) : [];
+        } catch {
+            return [];
+        }
+    });
 
     // Debounce the query for filtering
     const debouncedQuery = useDebounce(query, 300);
@@ -153,17 +160,6 @@ const GlobalSearch: React.FC = () => {
     const documents = useSelector((state: RootState) => state.documents.items);
     const members = useSelector((state: RootState) => state.members.items);
 
-    // Load recent searches from localStorage
-    useEffect(() => {
-        const saved = localStorage.getItem(RECENT_SEARCHES_KEY);
-        if (saved) {
-            try {
-                setRecentSearches(JSON.parse(saved));
-            } catch (e) {
-                console.error('Failed to parse recent searches');
-            }
-        }
-    }, []);
 
     // Ctrl+K keyboard shortcut
     useEffect(() => {
