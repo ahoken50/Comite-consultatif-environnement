@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
     Box,
     Typography,
@@ -24,7 +24,15 @@ interface MandateListProps {
 
 const MandateList: React.FC<MandateListProps> = ({ members }) => {
     // Filter only members with mandate dates
-    const mandateMembers = members.filter(m => m.mandateEnd && m.isActive);
+    const sortedMembers = useMemo(() => {
+        const mandateMembers = members.filter(m => m.mandateEnd && m.isActive);
+
+        // Sort by expiration date (soonest first)
+        return mandateMembers.sort((a, b) => {
+            if (!a.mandateEnd || !b.mandateEnd) return 0;
+            return new Date(a.mandateEnd).getTime() - new Date(b.mandateEnd).getTime();
+        });
+    }, [members]);
 
     const getStatus = (endDateStr: string) => {
         const endDate = parseISO(endDateStr);
@@ -35,12 +43,6 @@ const MandateList: React.FC<MandateListProps> = ({ members }) => {
         if (daysLeft < 90) return { label: 'Expire bientôt', color: 'warning', icon: <Warning fontSize="small" /> };
         return { label: 'Actif', color: 'success', icon: <CheckCircle fontSize="small" /> };
     };
-
-    // Sort by expiration date (soonest first)
-    const sortedMembers = [...mandateMembers].sort((a, b) => {
-        if (!a.mandateEnd || !b.mandateEnd) return 0;
-        return new Date(a.mandateEnd).getTime() - new Date(b.mandateEnd).getTime();
-    });
 
     return (
         <Paper variant="outlined" sx={{ p: 0, overflow: 'hidden' }}>
@@ -89,7 +91,7 @@ const MandateList: React.FC<MandateListProps> = ({ members }) => {
                                         <TableCell>
                                             <Chip
                                                 label={status.label}
-                                                color={status.color as any}
+                                                color={status.color as 'default' | 'primary' | 'secondary' | 'error' | 'info' | 'success' | 'warning'}
                                                 size="small"
                                                 icon={status.icon}
                                                 variant="outlined"
@@ -106,4 +108,4 @@ const MandateList: React.FC<MandateListProps> = ({ members }) => {
     );
 };
 
-export default MandateList;
+export default React.memo(MandateList);

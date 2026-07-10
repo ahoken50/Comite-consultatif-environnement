@@ -151,7 +151,9 @@ const MembersPage: React.FC = () => {
     };
 
     // Filter members based on tab
-    const displayedMembers = members.filter(m => tabValue === 0 ? m.isActive : !m.isActive);
+    const displayedMembers = React.useMemo(() => {
+        return members.filter(m => tabValue === 0 ? m.isActive : !m.isActive);
+    }, [members, tabValue]);
 
     if (loading && members.length === 0) {
         return (
