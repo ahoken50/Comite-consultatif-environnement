@@ -90,6 +90,8 @@ interface SearchResult {
 
 type CategoryFilter = 'all' | 'project' | 'meeting' | 'document' | 'member';
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const EMPTY_ARRAY: any[] = [];
 const RECENT_SEARCHES_KEY = 'cce-recent-searches';
 const MAX_RECENT_SEARCHES = 5;
 
@@ -142,28 +144,34 @@ const GlobalSearch: React.FC = () => {
     const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
     const [selectedIndex, setSelectedIndex] = useState(-1);
     const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>('all');
-    const [recentSearches, setRecentSearches] = useState<string[]>([]);
+    const [recentSearches, setRecentSearches] = useState<string[]>(() => {
+        const saved = localStorage.getItem(RECENT_SEARCHES_KEY);
+        if (saved) {
+            try {
+                return JSON.parse(saved);
+            } catch {
+                console.error('Failed to parse recent searches');
+            }
+        }
+        return [];
+    });
 
     // Debounce the query for filtering
     const debouncedQuery = useDebounce(query, 300);
 
-    // Get data from Redux
-    const projects = useSelector((state: RootState) => state.projects.items);
-    const meetings = useSelector((state: RootState) => state.meetings.items);
-    const documents = useSelector((state: RootState) => state.documents.items);
-    const members = useSelector((state: RootState) => state.members.items);
+    // Check if data is loaded (lightweight selectors)
+    const hasProjects = useSelector((state: RootState) => state.projects.items.length > 0);
+    const hasMeetings = useSelector((state: RootState) => state.meetings.items.length > 0);
+    const hasDocuments = useSelector((state: RootState) => state.documents.items.length > 0);
+    const hasMembers = useSelector((state: RootState) => state.members.items.length > 0);
 
-    // Load recent searches from localStorage
-    useEffect(() => {
-        const saved = localStorage.getItem(RECENT_SEARCHES_KEY);
-        if (saved) {
-            try {
-                setRecentSearches(JSON.parse(saved));
-            } catch (e) {
-                console.error('Failed to parse recent searches');
-            }
-        }
-    }, []);
+    // Get data from Redux (Conditional subscription: only when searching)
+    // This prevents re-renders of the global layout when data updates in the background
+    const projects = useSelector((state: RootState) => showResults ? state.projects.items : EMPTY_ARRAY);
+    const meetings = useSelector((state: RootState) => showResults ? state.meetings.items : EMPTY_ARRAY);
+    const documents = useSelector((state: RootState) => showResults ? state.documents.items : EMPTY_ARRAY);
+    const members = useSelector((state: RootState) => showResults ? state.members.items : EMPTY_ARRAY);
+
 
     // Ctrl+K keyboard shortcut
     useEffect(() => {
@@ -331,10 +339,10 @@ const GlobalSearch: React.FC = () => {
         setShowResults(true);
 
         // Lazy load data if missing
-        if (projects.length === 0) dispatch(fetchProjects());
-        if (meetings.length === 0) dispatch(fetchMeetings());
-        if (documents.length === 0) dispatch(fetchDocuments());
-        if (members.length === 0) dispatch(fetchMembers());
+        if (!hasProjects) dispatch(fetchProjects());
+        if (!hasMeetings) dispatch(fetchMeetings());
+        if (!hasDocuments) dispatch(fetchDocuments());
+        if (!hasMembers) dispatch(fetchMembers());
     };
 
     const handleResultClick = (result: SearchResult) => {
